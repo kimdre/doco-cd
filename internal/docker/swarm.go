@@ -49,6 +49,31 @@ var (
 	ErrGlobalSwarmServiceNotScalable = errors.New("global-mode swarm service cannot be scaled")
 )
 
+// SwarmServiceReplicas returns the desired replica count before a service is
+// scaled down. Global services return ErrGlobalSwarmServiceNotScalable.
+func SwarmServiceReplicas(ctx context.Context, dockerCLI command.Cli, serviceName string) (uint64, error) {
+	result, err := dockerCLI.Client().ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
+		InsertDefaults: true,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("inspect service %s: %w", serviceName, err)
+	}
+
+	svc := result.Service
+	if svc.Spec.Mode.Global != nil || svc.Spec.Mode.GlobalJob != nil {
+		return 0, ErrGlobalSwarmServiceNotScalable
+	}
+
+	switch {
+	case svc.Spec.Mode.Replicated != nil && svc.Spec.Mode.Replicated.Replicas != nil:
+		return *svc.Spec.Mode.Replicated.Replicas, nil
+	case svc.Spec.Mode.ReplicatedJob != nil && svc.Spec.Mode.ReplicatedJob.TotalCompletions != nil:
+		return *svc.Spec.Mode.ReplicatedJob.TotalCompletions, nil
+	default:
+		return 1, nil
+	}
+}
+
 // LoadSwarmStack loads a Docker Swarm stack using the provided project and deploy configuration.
 func LoadSwarmStack(dockerCli command.Cli, project *types.Project,
 	deployConfig *deploy.Config, externalWorkingDir string,

@@ -3,9 +3,11 @@ package docker
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
+	"github.com/containerd/errdefs"
 	containerTypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -123,6 +125,20 @@ func getContainerRunAction(inspectResult containerTypes.InspectResponse) contain
 }
 
 func RunContainerOneOffFromExisting(ctx context.Context, apiClient client.APIClient, containerID string) error {
+	return RunContainerOneOffFromExistingWithOptions(ctx, apiClient, containerID, OneOffContainerOptions{})
+}
+
+type OneOffContainerOptions struct {
+	RunID       string
+	SourceID    string
+	ScheduledAt string
+	StartedAt   string
+}
+
+// RunContainerOneOffFromExistingWithOptions starts a disposable clone of
+// containerID. A run ID retains the completed clone for crash recovery; callers
+// must remove it with RemoveOneOffContainer when finalization is complete.
+func RunContainerOneOffFromExistingWithOptions(ctx context.Context, apiClient client.APIClient, containerID string, opts OneOffContainerOptions) error {
 	inspectResult, err := apiClient.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return fmt.Errorf("inspect container %s: %w", containerID, err)
@@ -132,17 +148,39 @@ func RunContainerOneOffFromExisting(ctx context.Context, apiClient client.APICli
 		return fmt.Errorf("container %s has no config", containerID)
 	}
 
-	config := inspectResult.Container.Config
-	if config.Labels == nil {
-		config.Labels = map[string]string{}
+	configCopy := *inspectResult.Container.Config
+
+	configCopy.Labels = maps.Clone(configCopy.Labels)
+	if configCopy.Labels == nil {
+		configCopy.Labels = map[string]string{}
 	}
 
-	config.Labels[DocoCDJobLabels.JobEphemeral] = "true"
+	config := &configCopy
 
-	hostConfig := inspectResult.Container.HostConfig
-	if hostConfig != nil {
+	config.Labels[DocoCDJobLabels.JobEphemeral] = "true"
+	if opts.RunID != "" {
+		config.Labels[DocoCDJobLabels.JobRunID] = opts.RunID
+	}
+
+	if opts.SourceID != "" {
+		config.Labels[DocoCDJobLabels.JobSourceServiceID] = opts.SourceID
+	}
+
+	if opts.ScheduledAt != "" {
+		config.Labels[DocoCDJobLabels.JobScheduledAt] = opts.ScheduledAt
+	}
+
+	if opts.StartedAt != "" {
+		config.Labels[DocoCDJobLabels.JobStartedAt] = opts.StartedAt
+	}
+
+	var hostConfig *containerTypes.HostConfig
+
+	if inspectResult.Container.HostConfig != nil {
+		hostConfigCopy := *inspectResult.Container.HostConfig
+		hostConfig = &hostConfigCopy
 		hostConfig.RestartPolicy = containerTypes.RestartPolicy{Name: "no"}
-		hostConfig.AutoRemove = true
+		hostConfig.AutoRemove = opts.RunID == ""
 	}
 
 	baseName := strings.TrimPrefix(inspectResult.Container.Name, "/")
@@ -174,4 +212,64 @@ func RunContainerOneOffFromExisting(ctx context.Context, apiClient client.APICli
 	}
 
 	return awaitContainerExit(waitResult, createResult.ID)
+}
+
+// WaitOnOneOffContainer waits for a retained container to stop and returns its
+// exit result. It is safe to call for an already-exited container.
+func WaitOnOneOffContainer(ctx context.Context, apiClient client.APIClient, containerID string) error {
+	inspectResult, err := apiClient.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+	if err != nil {
+		return fmt.Errorf("inspect one-off container %s: %w", containerID, err)
+	}
+
+	if inspectResult.Container.State == nil {
+		return fmt.Errorf("one-off container %s has no state", containerID)
+	}
+
+	if !inspectResult.Container.State.Running {
+		if inspectResult.Container.State.Status == containerTypes.StateCreated {
+			return fmt.Errorf("one-off container %s was created but never started", containerID)
+		}
+
+		if inspectResult.Container.State.ExitCode != 0 {
+			return &ContainerExitError{ContainerID: containerID, ExitCode: inspectResult.Container.State.ExitCode}
+		}
+
+		return nil
+	}
+
+	waitResult := apiClient.ContainerWait(ctx, containerID, client.ContainerWaitOptions{Condition: containerTypes.WaitConditionNotRunning})
+
+	return awaitContainerExit(waitResult, containerID)
+}
+
+// FindOneOffContainer finds the one retained ephemeral container for runID.
+func FindOneOffContainer(ctx context.Context, apiClient client.APIClient, runID string) (string, error) {
+	filter := make(client.Filters)
+	filter.Add("label", DocoCDJobLabels.JobRunID+"="+runID)
+
+	result, err := apiClient.ContainerList(ctx, client.ContainerListOptions{All: true, Filters: filter})
+	if err != nil {
+		return "", fmt.Errorf("list one-off containers for run %s: %w", runID, err)
+	}
+
+	if len(result.Items) == 0 {
+		return "", nil
+	}
+
+	if len(result.Items) != 1 {
+		return "", fmt.Errorf("found %d one-off containers for run %s", len(result.Items), runID)
+	}
+
+	return result.Items[0].ID, nil
+}
+
+// RemoveOneOffContainer removes a retained one-off container after reporting.
+func RemoveOneOffContainer(ctx context.Context, apiClient client.APIClient, containerID string) error {
+	_, err := apiClient.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})
+	if err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("remove one-off container %s: %w", containerID, err)
+	}
+
+	return nil
 }

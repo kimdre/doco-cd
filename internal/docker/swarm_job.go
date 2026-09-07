@@ -192,6 +192,10 @@ func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []stri
 type SwarmOneOffFromServiceOptions struct {
 	Replicas         uint64
 	SendRegistryAuth bool
+	RunID            string
+	ScheduledAt      string
+	StartedAt        string
+	KeepService      bool
 }
 
 // RunSwarmOneOffFromService creates a temporary job service from an existing service spec and waits for completion.
@@ -236,7 +240,19 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 		oneOffSpec.Labels,
 	} {
 		labels[DocoCDJobLabels.JobEphemeral] = "true"
+
 		labels[DocoCDJobLabels.JobSourceServiceID] = sourceService.ID
+		if opts.RunID != "" {
+			labels[DocoCDJobLabels.JobRunID] = opts.RunID
+		}
+
+		if opts.ScheduledAt != "" {
+			labels[DocoCDJobLabels.JobScheduledAt] = opts.ScheduledAt
+		}
+
+		if opts.StartedAt != "" {
+			labels[DocoCDJobLabels.JobStartedAt] = opts.StartedAt
+		}
 	}
 
 	oneOffSpec.Labels[DocoCDLabels.Metadata.Manager] = app.Name
@@ -279,25 +295,70 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 		return fmt.Errorf("create one-off service from %s: %w", serviceName, err)
 	}
 
-	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), swarmOneOffCleanupTimeout)
-		defer cancel()
+	if !opts.KeepService {
+		defer func() {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), swarmOneOffCleanupTimeout)
+			defer cancel()
 
-		_, cleanupErr := apiClient.ServiceRemove(cleanupCtx, createResult.ID, client.ServiceRemoveOptions{})
-		if cleanupErr == nil || errdefs.IsNotFound(cleanupErr) {
-			return
-		}
+			_, cleanupErr := apiClient.ServiceRemove(cleanupCtx, createResult.ID, client.ServiceRemoveOptions{})
+			if cleanupErr == nil || errdefs.IsNotFound(cleanupErr) {
+				return
+			}
 
-		cleanupErr = fmt.Errorf("remove one-off service %s: %w", createResult.ID, cleanupErr)
-		if err == nil {
-			err = cleanupErr
-		} else {
-			err = errors.Join(err, cleanupErr)
-		}
-	}()
+			cleanupErr = fmt.Errorf("remove one-off service %s: %w", createResult.ID, cleanupErr)
+			if err == nil {
+				err = cleanupErr
+			} else {
+				err = errors.Join(err, cleanupErr)
+			}
+		}()
+	}
 
 	if err = swarm.WaitOnJobService(ctx, dockerCLI, createResult.ID, nil); err != nil {
 		return fmt.Errorf("wait one-off service %s: %w", createResult.ID, err)
+	}
+
+	return nil
+}
+
+// RemoveSwarmOneOffService removes a retained temporary job service.
+func RemoveSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), swarmOneOffCleanupTimeout)
+	defer cancel()
+
+	_, err := dockerCLI.Client().ServiceRemove(cleanupCtx, serviceID, client.ServiceRemoveOptions{})
+	if err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("remove one-off service %s: %w", serviceID, err)
+	}
+
+	return nil
+}
+
+// FindSwarmOneOffService finds the single retained temporary service for runID.
+func FindSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, runID string) (string, error) {
+	filter := make(client.Filters)
+	filter.Add("label", DocoCDJobLabels.JobRunID+"="+runID)
+
+	result, err := dockerCLI.Client().ServiceList(ctx, client.ServiceListOptions{Filters: filter})
+	if err != nil {
+		return "", fmt.Errorf("list one-off services for run %s: %w", runID, err)
+	}
+
+	if len(result.Items) == 0 {
+		return "", nil
+	}
+
+	if len(result.Items) != 1 {
+		return "", fmt.Errorf("found %d one-off services for run %s", len(result.Items), runID)
+	}
+
+	return result.Items[0].ID, nil
+}
+
+// WaitOnSwarmOneOffService adopts a retained temporary job service.
+func WaitOnSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string) error {
+	if err := swarm.WaitOnJobService(ctx, dockerCLI, serviceID, nil); err != nil {
+		return fmt.Errorf("wait one-off service %s: %w", serviceID, err)
 	}
 
 	return nil

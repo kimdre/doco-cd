@@ -66,6 +66,7 @@ type scheduler struct {
 	wg              *sync.WaitGroup
 	startedAt       time.Time
 	runtime         *runtimeStore
+	executions      *executionStore
 	runs            sync.WaitGroup
 	// composeOptions bundles the Docker-owned settings needed to reload the compose project for
 	// a scheduled run (see docker.ScheduledComposeOptions), resolved explicitly by the caller
@@ -85,6 +86,8 @@ type scheduler struct {
 	// restored when the last holder releases it.
 	stopHoldsMu sync.Mutex
 	stopHolds   map[stopHoldKey]*stopHoldState
+	recoveryMu  sync.Mutex
+	recovering  map[string]struct{}
 }
 
 // ServiceStopHoldTracker suppresses reconciliation while scheduled jobs
@@ -159,8 +162,10 @@ func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *sl
 		wg:              wg,
 		startedAt:       schedulerNow(),
 		runtime:         runtime,
+		executions:      newExecutionStore(composeOptions.ComposeLoad.DataMountPath),
 		composeOptions:  composeOptions,
 		states:          map[string]scheduledJobState{},
 		stopHolds:       map[stopHoldKey]*stopHoldState{},
+		recovering:      map[string]struct{}{},
 	}
 }

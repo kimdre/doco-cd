@@ -144,15 +144,21 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 
 	runStart := time.Now()
 	runFailed := false
+	recordTerminalMetrics := true
 
 	prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Inc()
 	defer prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Dec()
 	defer func() {
-		prometheus.ScheduledRunDuration.WithLabelValues(metricLabels...).Observe(time.Since(runStart).Seconds())
+		if recordTerminalMetrics {
+			prometheus.ScheduledRunDuration.WithLabelValues(metricLabels...).Observe(time.Since(runStart).Seconds())
+		}
 	}()
-	defer prometheus.ScheduledRunsTotal.WithLabelValues(metricLabels...).Inc()
 	defer func() {
-		if runFailed {
+		if recordTerminalMetrics {
+			prometheus.ScheduledRunsTotal.WithLabelValues(metricLabels...).Inc()
+		}
+
+		if recordTerminalMetrics && runFailed {
 			prometheus.ScheduledRunErrorsTotal.WithLabelValues(metricLabels...).Inc()
 		}
 	}()
@@ -166,7 +172,30 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 	s.setRunInProgress(job.key, true)
 	defer s.setRunInProgress(job.key, false)
 
-	err = s.executeScheduledRun(ctx, job, cfg)
+	var record *executionRecord
+
+	if cfg.ExecutionMode == docker.JobExecutionModeOneOff {
+		if !s.claimRecovery(runID) {
+			return runID, fmt.Errorf("scheduled run %s is already active", runID)
+		}
+
+		defer s.releaseRecovery(runID)
+
+		newRecord := s.newExecutionRecord(runID, job, cfg)
+		if err := s.executions.create(&newRecord); err != nil {
+			return runID, fmt.Errorf("persist scheduled execution before launch: %w", err)
+		}
+
+		record = &newRecord
+	}
+
+	err = s.executeScheduledRun(ctx, job, cfg, record, schedulerNow(), runStart)
+	if ctx.Err() != nil {
+		recordTerminalMetrics = false
+
+		return runID, errors.Join(err, ctx.Err())
+	}
+
 	s.runtime.updateRunStatus(job, cfg, err)
 	s.runtime.setLastRun(job.key, schedulerNow())
 
@@ -176,11 +205,15 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 		runLog.Error("scheduled run failed", logger.ErrAttr(err))
 		s.sendRunNotification(job, cfg, runID, false, "Scheduled job failed", fmt.Sprintf("scheduled job '%s' failed to run: %v", job.name, err))
 
+		s.completeExecutionRecord(ctx, record)
+
 		return runID, err
 	}
 
 	runLog.Info("scheduled run completed")
 	s.sendRunNotification(job, cfg, runID, true, "Scheduled job completed", fmt.Sprintf("scheduled job '%s' completed successfully", job.name))
+
+	s.completeExecutionRecord(ctx, record)
 
 	return runID, nil
 }
