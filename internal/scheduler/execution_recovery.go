@@ -83,10 +83,8 @@ func (s *scheduler) cleanupExecutionArtifact(ctx context.Context, record *execut
 	}
 }
 
-// recoverExecutions adopts retained one-off workloads before the worker
-// calculates normal schedules. A missing workload is terminally failed so any
-// services that were held for it are restored by executeScheduledRun's normal
-// finalization path on the next recovered completion.
+// recoverExecutions finds in-flight jobs by RunID label and continues monitoring
+// them until completion. Runs on startup after forced termination or crash.
 func (s *scheduler) recoverExecutions(ctx context.Context) {
 	records, err := s.executions.list(s.contextName, s.mode)
 	if err != nil {
@@ -130,6 +128,8 @@ func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecor
 	)
 
 	if !record.Reported {
+		// Extract original start time from artifact labels for accurate metrics.
+		// If artifact was removed, use current time instead.
 		runStart = s.recoveredExecutionStartedAt(ctx, record)
 
 		if runStart == nil {
@@ -183,6 +183,8 @@ func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecor
 	s.completeExecutionRecord(ctx, record)
 }
 
+// recoveredExecutionStartedAt reads the start time from Docker artifact labels.
+// Returns nil if artifact or label is missing.
 func (s *scheduler) recoveredExecutionStartedAt(ctx context.Context, record *executionRecord) *time.Time {
 	var labels map[string]string
 
@@ -216,6 +218,8 @@ func (s *scheduler) recoveredExecutionStartedAt(ctx context.Context, record *exe
 	return parseRFC3339Time(labels[docker.DocoCDJobLabels.JobStartedAt])
 }
 
+// claimRecovery acquires exclusive local ownership of a run to prevent
+// duplicate adoption. Returns true if claimed, false if already held.
 func (s *scheduler) claimRecovery(runID string) bool {
 	s.recoveryMu.Lock()
 	defer s.recoveryMu.Unlock()
@@ -265,6 +269,8 @@ func (s *scheduler) waitForRecoveredArtifact(ctx context.Context, record *execut
 	}
 }
 
+// seedRecoveredStopHolds re-acquires stop holds for services from persisted stop
+// plans. Restores each service to its original replica count.
 func (s *scheduler) seedRecoveredStopHolds(record *executionRecord, job scheduledJob) {
 	if record.Restored || len(record.Finalization.StopServices) == 0 {
 		return

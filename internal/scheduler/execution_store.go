@@ -107,6 +107,9 @@ func (j executionJob) scheduled() scheduledJob {
 	}
 }
 
+// executionStore persists finalization state that cannot be stored in Docker
+// labels: stop plans, notification status, and restoration markers.
+// All writes are atomic: temp file → sync → rename → directory sync.
 type executionStore struct {
 	mu   sync.Mutex
 	root string
@@ -205,6 +208,8 @@ func (s *executionStore) list(contextName string, mode scheduledJobMode) ([]exec
 
 		var record executionRecord
 		if unmarshalErr := json.Unmarshal(data, &record); unmarshalErr != nil {
+			// Corrupt files are renamed with .corrupt suffix to prevent
+			// parse errors on every startup.
 			if err := s.quarantine(path); err != nil {
 				return nil, fmt.Errorf("quarantine malformed execution record %s: %w", entry.Name(), err)
 			}
@@ -213,6 +218,8 @@ func (s *executionStore) list(contextName string, mode scheduledJobMode) ([]exec
 		}
 
 		if record.Version != executionRecordVersion {
+			// Unsupported schema versions are quarantined to allow future
+			// migrations without breaking startup.
 			if err := s.quarantine(path); err != nil {
 				return nil, fmt.Errorf("quarantine unsupported execution record %s: %w", entry.Name(), err)
 			}
@@ -243,6 +250,8 @@ func (s *executionStore) write(record executionRecord) error {
 		return fmt.Errorf("encode execution record %s: %w", record.RunID, err)
 	}
 
+	// Write to temp file, sync, then rename to final name. Then sync directory.
+	// Prevents corruption if process crashes during write.
 	file, err := os.CreateTemp(s.root, ".execution-*.json")
 	if err != nil {
 		return fmt.Errorf("create temporary execution record: %w", err)
@@ -272,6 +281,7 @@ func (s *executionStore) write(record executionRecord) error {
 		return fmt.Errorf("publish execution record %s: %w", record.RunID, err)
 	}
 
+	// Sync directory inode to durably link the new/updated record.
 	dir, err := os.Open(s.root)
 	if err != nil {
 		return fmt.Errorf("open execution record directory: %w", err)
