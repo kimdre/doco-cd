@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
+	"github.com/avast/retry-go/v5"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/compose/convert"
 	composetypes "github.com/docker/cli/cli/compose/types"
@@ -101,26 +104,49 @@ func pruneServices(ctx context.Context, dockerCCLI command.Cli, namespace conver
 func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string, replicas uint64, wait, force bool) error {
 	apiClient := dockerCLI.Client()
 
-	result, err := apiClient.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{})
-	if err != nil {
-		return err
-	}
+	err := retry.New(
+		retry.Attempts(5),
+		retry.Delay(250*time.Millisecond),
+		retry.DelayType(retry.BackOffDelay),
+		retry.RetryIf(func(err error) bool {
+			return strings.Contains(err.Error(), "update out of sequence")
+		}),
+	).Do(func() error {
+		result, err := apiClient.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{})
+		if err != nil {
+			return err
+		}
 
-	service := result.Service
+		service := result.Service
 
-	if force {
-		service.Spec.TaskTemplate.ForceUpdate++
-	}
+		if force {
+			service.Spec.TaskTemplate.ForceUpdate++
+		}
 
-	// Handle replicated-job services
-	if service.Spec.Mode.ReplicatedJob != nil {
-		// Jobs may not have an update config (daemon rejects ServiceUpdate otherwise).
-		service.Spec.UpdateConfig = nil
-		service.Spec.RollbackConfig = nil
+		// Handle replicated-job services
+		if service.Spec.Mode.ReplicatedJob != nil {
+			// Jobs may not have an update config (daemon rejects ServiceUpdate otherwise).
+			service.Spec.UpdateConfig = nil
+			service.Spec.RollbackConfig = nil
 
-		// Treat `replicas` as "how many completions to run" and allow that many concurrently.
-		service.Spec.Mode.ReplicatedJob.TotalCompletions = &replicas
-		service.Spec.Mode.ReplicatedJob.MaxConcurrent = &replicas
+			// Treat `replicas` as "how many completions to run" and allow that many concurrently.
+			service.Spec.Mode.ReplicatedJob.TotalCompletions = &replicas
+			service.Spec.Mode.ReplicatedJob.MaxConcurrent = &replicas
+
+			_, err = apiClient.ServiceUpdate(ctx, service.ID, client.ServiceUpdateOptions{
+				Version: service.Version,
+				Spec:    service.Spec,
+			})
+
+			return err
+		}
+
+		// Handle classic replicated services
+		if service.Spec.Mode.Replicated == nil {
+			return fmt.Errorf("%w: %s", ErrNotReplicatedService, serviceName)
+		}
+
+		service.Spec.Mode.Replicated.Replicas = &replicas
 
 		_, err = apiClient.ServiceUpdate(ctx, service.ID, client.ServiceUpdateOptions{
 			Version: service.Version,
@@ -128,18 +154,6 @@ func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string
 		})
 
 		return err
-	}
-
-	// Handle classic replicated services
-	if service.Spec.Mode.Replicated == nil {
-		return fmt.Errorf("%w: %s", ErrNotReplicatedService, serviceName)
-	}
-
-	service.Spec.Mode.Replicated.Replicas = &replicas
-
-	_, err = apiClient.ServiceUpdate(ctx, service.ID, client.ServiceUpdateOptions{
-		Version: service.Version,
-		Spec:    service.Spec,
 	})
 	if err != nil {
 		return err
