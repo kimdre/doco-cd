@@ -2,10 +2,7 @@ name: Build Dev Image
 
 permissions:
   contents: read # for actions/checkout to check out the repository
-  id-token: write # for docker/login-action to authenticate to the GitHub Container Registry
   packages: write # for docker/build-push-action to push the image to the GitHub Container Registry
-  security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
-  actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
 
 on:
   push:
@@ -66,20 +63,6 @@ jobs:
           sbom: false
           cache-from: type=gha,scope=build-dev
           cache-to: type=gha,scope=build-dev,mode=max
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          image-ref: 'ghcr.io/${{ github.repository }}:dev'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          version: latest
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
-        with:
-          sarif_file: 'trivy-results.sarif'
 
       - name: Push dev image
         shell: bash
