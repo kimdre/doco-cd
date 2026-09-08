@@ -16,6 +16,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/stages"
@@ -222,6 +223,48 @@ func TestPrepare_GitSuccess(t *testing.T) {
 
 	if result.PathInternal == "" || result.PathExternal == "" {
 		t.Fatal("expected internal/external paths to be set")
+	}
+}
+
+func TestPrepare_WebhookInlineDeploymentsOverrideRepositoryConfig(t *testing.T) {
+	t.Parallel()
+
+	srcPath, _ := createLocalGitFixture(t, map[string]string{
+		".doco-cd.yaml": `
+name: repository-config
+reference: main
+`,
+		"compose.yaml": "services: {}\n",
+	})
+
+	inline := &deploy.Config{
+		Name:             "inline-config",
+		Reference:        git.MainBranch,
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"compose.yaml"},
+	}
+	p := newTestPreparer(t, &app.Config{})
+
+	result, err := p.Prepare(t.Context(), Request{
+		Logger:         logger.New(logger.LevelCritical).Logger,
+		JobTrigger:     stages.JobTriggerWebhook,
+		SourceType:     config.SourceTypeGit,
+		SourceRef:      "file://" + srcPath,
+		Ref:            git.MainBranch,
+		Deployments:    []*deploy.Config{inline},
+		Payload:        webhook.ParsedPayload{Ref: git.MainBranch},
+		DataMountPoint: testMountPoint(t),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	if len(result.DeployConfigs) != 1 || result.DeployConfigs[0].Name != "inline-config" {
+		t.Fatalf("expected inline config to override repository config, got %+v", result.DeployConfigs)
+	}
+
+	if result.DeployConfigs[0] == inline {
+		t.Fatal("expected inline deployment to be copied before resolution")
 	}
 }
 

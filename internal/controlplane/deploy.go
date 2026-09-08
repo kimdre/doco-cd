@@ -11,6 +11,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -73,7 +74,7 @@ func NewDeployment(dependencies DeploymentDependencies) (*Deployment, error) {
 // DeploymentRequest bundles Deployment.Deploy's per-call, per-deployment-request
 // input: the source location and its trigger/reference/visibility,
 // notification metadata, an optional custom deploy target, an optional test
-// identity, poll configuration (used only for poll-triggered requests), and
+// identity, poll configuration, optional centrally supplied deployments, and
 // the parsed webhook payload (zero value for non-webhook triggers).
 type DeploymentRequest struct {
 	Logger       *slog.Logger      `validate:"required,nostructlevel"`
@@ -86,6 +87,7 @@ type DeploymentRequest struct {
 	CustomTarget string
 	TestName     string
 	PollConfig   poll.Config
+	Deployments  []*deploy.Config
 	Payload      webhook.ParsedPayload
 }
 
@@ -193,6 +195,7 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		Private:        req.Private,
 		CustomTarget:   req.CustomTarget,
 		PollConfig:     req.PollConfig,
+		Deployments:    req.Deployments,
 		Payload:        req.Payload,
 		DataMountPoint: d.dataMountPoint,
 	})

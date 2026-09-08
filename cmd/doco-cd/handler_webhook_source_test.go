@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -239,5 +241,148 @@ func TestShouldUsePayloadSSHURL(t *testing.T) {
 				t.Fatalf("expected %v, got %v", tc.expected, usePayloadSSH)
 			}
 		})
+	}
+}
+
+func TestMatchingInlineWebhookDeployments(t *testing.T) {
+	t.Parallel()
+
+	deployment := func(name string) *deploy.Config {
+		return &deploy.Config{Name: name}
+	}
+
+	cfg := &app.Config{
+		SourceURLRewrites: map[string]string{
+			"https://forgejo.example.com/": "http://forgejo:3000/",
+		},
+		PollConfig: []poll.Config{
+			{
+				SourceUrl:   "git@forgejo.example.com:org/repo.git",
+				Reference:   "main",
+				Deployments: []*deploy.Config{deployment("first")},
+			},
+			{
+				SourceUrl:   "https://forgejo.example.com/org/repo.git",
+				Reference:   "refs/heads/main",
+				Deployments: []*deploy.Config{deployment("second")},
+			},
+			{
+				SourceUrl:    "https://forgejo.example.com/org/repo.git",
+				Reference:    "main",
+				CustomTarget: "production",
+				Deployments:  []*deploy.Config{deployment("wrong-target")},
+			},
+			{
+				SourceUrl:   "https://forgejo.example.com/org/repo.git",
+				Reference:   "develop",
+				Deployments: []*deploy.Config{deployment("wrong-ref")},
+			},
+			{
+				SourceUrl:   "https://forgejo.example.com/org/other.git",
+				Reference:   "main",
+				Deployments: []*deploy.Config{deployment("wrong-repo")},
+			},
+			{
+				Source:      "oci",
+				SourceUrl:   "forgejo.example.com/org/repo",
+				Reference:   "main",
+				Deployments: []*deploy.Config{deployment("wrong-source")},
+			},
+			{
+				SourceUrl: "https://forgejo.example.com/org/repo.git",
+				Reference: "main",
+			},
+		},
+	}
+
+	got := matchingInlineWebhookDeployments(cfg, webhook.ParsedPayload{
+		CloneURL: "https://forgejo.example.com/org/repo.git",
+		Ref:      "refs/heads/main",
+	}, "http://forgejo:3000/org/repo.git", "")
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 matching deployments, got %d", len(got))
+	}
+
+	if got[0].Name != "first" || got[1].Name != "second" {
+		t.Fatalf("unexpected deployment order: %q, %q", got[0].Name, got[1].Name)
+	}
+}
+
+func TestMatchingInlineWebhookDeploymentsMatchesRewrittenSource(t *testing.T) {
+	t.Parallel()
+
+	cfg := &app.Config{
+		SourceURLRewrites: map[string]string{
+			"https://public.example.com/": "http://git:3000/",
+		},
+		PollConfig: []poll.Config{{
+			SourceUrl:   "https://public.example.com/org/repo.git",
+			Reference:   "main",
+			Deployments: []*deploy.Config{{Name: "app"}},
+		}},
+	}
+
+	got := matchingInlineWebhookDeployments(cfg, webhook.ParsedPayload{
+		CloneURL: "https://different.example.com/org/repo.git",
+		Ref:      "refs/heads/main",
+	}, "http://git:3000/org/repo.git", "")
+
+	if len(got) != 1 || got[0].Name != "app" {
+		t.Fatalf("expected rewritten source identity to match, got %+v", got)
+	}
+}
+
+func TestMatchingInlineWebhookDeploymentsRequiresMatchingTarget(t *testing.T) {
+	t.Parallel()
+
+	cfg := &app.Config{PollConfig: []poll.Config{{
+		SourceUrl:    "https://example.com/org/repo.git",
+		Reference:    "main",
+		CustomTarget: "production",
+		Deployments:  []*deploy.Config{{Name: "app"}},
+	}}}
+	payload := webhook.ParsedPayload{
+		CloneURL: "https://example.com/org/repo.git",
+		Ref:      "refs/heads/main",
+	}
+
+	if got := matchingInlineWebhookDeployments(cfg, payload, payload.CloneURL, ""); got != nil {
+		t.Fatalf("expected target mismatch not to match, got %+v", got)
+	}
+
+	if got := matchingInlineWebhookDeployments(cfg, payload, payload.CloneURL, " production "); len(got) != 1 {
+		t.Fatalf("expected trimmed target to match, got %+v", got)
+	}
+}
+
+func TestMatchingInlineWebhookDeploymentsIgnoresUnusedSSHURL(t *testing.T) {
+	t.Parallel()
+
+	cfg := &app.Config{PollConfig: []poll.Config{{
+		SourceUrl:   "git@example.com:org/configured.git",
+		Reference:   "main",
+		Deployments: []*deploy.Config{{Name: "configured"}},
+	}}}
+
+	got := matchingInlineWebhookDeployments(cfg, webhook.ParsedPayload{
+		CloneURL: "https://example.com/org/actual.git",
+		SSHUrl:   "git@example.com:org/configured.git",
+		Ref:      "refs/heads/main",
+	}, "https://example.com/org/actual.git", "")
+	if got != nil {
+		t.Fatalf("expected unused SSH URL not to influence matching, got %+v", got)
+	}
+}
+
+func TestReferencesMatchKeepsTagsDistinct(t *testing.T) {
+	t.Parallel()
+
+	if !referencesMatch("main", "refs/heads/main") {
+		t.Fatal("expected short branch and full branch ref to match")
+	}
+
+	if referencesMatch("v1.0.0", "refs/tags/v1.0.0") {
+		t.Fatal("expected short branch-like ref and tag ref to remain distinct")
 	}
 }

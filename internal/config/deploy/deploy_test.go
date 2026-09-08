@@ -650,6 +650,45 @@ func TestCloneConfigSliceDeepCopiesMutableFields(t *testing.T) {
 	}
 }
 
+func TestResolveConfigsCopiesInlineDeployments(t *testing.T) {
+	t.Parallel()
+
+	inline := &Config{
+		Name:             "app",
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"compose.yaml"},
+	}
+
+	configs, err := ResolveConfigs([]*Config{inline}, "", "main", t.TempDir(), ".", nil)
+	if err != nil {
+		t.Fatalf("ResolveConfigs() error = %v", err)
+	}
+
+	if configs[0] == inline {
+		t.Fatal("expected ResolveConfigs to copy inline deployment")
+	}
+
+	if inline.Reference != "" {
+		t.Fatalf("expected input reference to remain unchanged, got %q", inline.Reference)
+	}
+
+	if configs[0].Reference != "main" {
+		t.Fatalf("expected resolved reference %q, got %q", "main", configs[0].Reference)
+	}
+}
+
+func TestResolveConfigsRejectsDuplicateInlineProjectNames(t *testing.T) {
+	t.Parallel()
+
+	_, err := ResolveConfigs([]*Config{
+		{Name: "app", Context: "production"},
+		{Name: "app", Context: "production"},
+	}, "", "main", t.TempDir(), ".", nil)
+	if !errors.Is(err, ErrDuplicateProjectName) {
+		t.Fatalf("expected ErrDuplicateProjectName, got %v", err)
+	}
+}
+
 func TestResolveConfigs_InlineMissingName(t *testing.T) {
 	t.Parallel()
 

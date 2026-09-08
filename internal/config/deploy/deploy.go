@@ -606,16 +606,17 @@ func ValidateUniqueProjectNames(configs []*Config) error {
 	return nil
 }
 
-// ResolveConfigs returns Deployment Config's for a poll run, preferring inline
-// deployments defined on the PollConfig when provided. Inline deployments bypass
-// repository config file discovery. When no inline deployments are present,
-// repository config files are required.
+// ResolveConfigs returns deployment configs, preferring supplied inline
+// deployments. Inline deployments bypass repository config file discovery.
+// When no inline deployments are present, repository config files are required.
 // repoRoot is the absolute path to the repository root.
 // configBaseDir is the relative path from repo root where config files are located.
 // gitOpts is optional (may be nil) and is only required when AutoDiscovery with a remote RepositoryUrl is used.
 func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRoot, configBaseDir string, gitOpts *GitOptions) ([]*Config, error) {
 	// Prefer inline deployments when present
 	if len(inlineDeployments) > 0 {
+		inlineDeployments = cloneConfigSlice(inlineDeployments)
+
 		// Apply reference to inline deployments if not already set
 		for _, d := range inlineDeployments {
 			if d.Reference == "" {
@@ -630,6 +631,10 @@ func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRo
 
 		for _, cfg := range configs {
 			cfg.Internal.OciTrustPolicyOverrideTrusted = true
+		}
+
+		if err := ValidateUniqueProjectNames(configs); err != nil {
+			return nil, err
 		}
 
 		return configs, nil

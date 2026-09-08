@@ -16,6 +16,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -223,6 +224,91 @@ func shouldUsePayloadSSHURL(overrideApplied bool, payloadSSHURL string, resolved
 	}
 
 	return strings.TrimSpace(payloadSSHURL) != "" && resolved.SSHPrivateKey != ""
+}
+
+// matchingInlineWebhookDeployments returns inline deployments whose poll source, reference, and target match the webhook.
+func matchingInlineWebhookDeployments(
+	appConfig *app.Config,
+	payload webhook.ParsedPayload,
+	sourceRef string,
+	customTarget string,
+) []*deploy.Config {
+	if appConfig == nil {
+		return nil
+	}
+
+	webhookIdentities := gitSourceIdentities(payload.CloneURL, sourceRef)
+	if len(webhookIdentities) == 0 {
+		return nil
+	}
+
+	customTarget = strings.TrimSpace(customTarget)
+
+	var deployments []*deploy.Config
+
+	for i := range appConfig.PollConfig {
+		pollConfig := &appConfig.PollConfig[i]
+		if config.NormalizeSourceType(pollConfig.Source) != config.SourceTypeGit ||
+			len(pollConfig.Deployments) == 0 ||
+			strings.TrimSpace(pollConfig.CustomTarget) != customTarget ||
+			!referencesMatch(pollConfig.Reference, payload.Ref) {
+			continue
+		}
+
+		rewrittenSource, _ := rewriteSourceURL(pollConfig.SourceUrl, appConfig.SourceURLRewrites)
+		if !identitySetsOverlap(webhookIdentities, gitSourceIdentities(pollConfig.SourceUrl, rewrittenSource)) {
+			continue
+		}
+
+		deployments = append(deployments, pollConfig.Deployments...)
+	}
+
+	return deployments
+}
+
+// gitSourceIdentities returns stable repository identities for Git source URLs.
+func gitSourceIdentities(sourceURLs ...string) map[string]struct{} {
+	identities := make(map[string]struct{}, len(sourceURLs))
+
+	for _, sourceURL := range sourceURLs {
+		if identity := git.GetRepoName(config.NormalizeGitURL(sourceURL)); identity != "" && identity != "." {
+			identities[identity] = struct{}{}
+		}
+	}
+
+	return identities
+}
+
+// identitySetsOverlap reports whether two repository identity sets intersect.
+func identitySetsOverlap(left, right map[string]struct{}) bool {
+	for identity := range left {
+		if _, ok := right[identity]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// referencesMatch reports whether configured and webhook references identify the same branch or tag.
+func referencesMatch(configured, webhookRef string) bool {
+	return canonicalWebhookReference(configured) == canonicalWebhookReference(webhookRef)
+}
+
+// canonicalWebhookReference normalizes a ref while retaining its branch, tag, or other-ref type.
+func canonicalWebhookReference(reference string) string {
+	reference = strings.TrimSpace(reference)
+
+	switch {
+	case strings.HasPrefix(reference, git.BranchPrefix):
+		return "branch:" + strings.TrimPrefix(reference, git.BranchPrefix)
+	case strings.HasPrefix(reference, git.TagPrefix):
+		return "tag:" + strings.TrimPrefix(reference, git.TagPrefix)
+	case strings.HasPrefix(reference, "refs/"):
+		return "ref:" + reference
+	default:
+		return "branch:" + reference
+	}
 }
 
 // repositoryNameFromWebhookPayload extracts the repository name from the webhook payload,
@@ -434,6 +520,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		CustomTarget: customTarget,
 		TestName:     testName,
 		PollConfig:   poll.Config{},
+		Deployments:  matchingInlineWebhookDeployments(appConfig, payload, sourceRef, customTarget),
 		Payload:      payload,
 	})
 	if errors.Is(deployErr, stages.ErrSkipDeployment) {
