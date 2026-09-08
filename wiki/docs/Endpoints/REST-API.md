@@ -217,6 +217,11 @@ curl --request POST \
 | `/v1/api/project/{projectName}/restart` | POST   | Restart a project                         |                                                                                                                                                                                            |
 | `/v1/api/project/{projectName}/recreate` | POST | Force-recreate a project or service       | - `service` (string, optional): Name of the service to recreate.<br/>- `timeout` (integer, default: `30`): Time in seconds to wait for containers to stop.                              |
 
+Managed recreation returns `409 Conflict` when the cached Git/OCI source cannot
+be verified against the revision recorded on the running deployment. Run a
+normal deployment to refresh the source cache and deployment metadata before
+retrying recreation.
+
 ### Swarm Stacks
 
 !!! note 
@@ -262,8 +267,3 @@ curl -X POST -H "x-api-key: your_api_key" "http://example.com/v1/api/project/my_
 ```sh
 curl -X POST -H "x-api-key: your_api_key" "http://example.com/v1/api/project/my_project/recreate?service=web"
 ```
-
-Managed recreation returns `409 Conflict` when the cached Git/OCI source cannot
-be verified against the revision recorded on the running deployment. Run a
-normal deployment to refresh the source cache and deployment metadata before
-retrying recreation.
