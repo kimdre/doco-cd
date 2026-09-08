@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/docker/compose/v5/pkg/api"
 )
 
 func TestSelectRecreateServices(t *testing.T) {
@@ -58,4 +59,35 @@ func TestSelectRecreateServices(t *testing.T) {
 			t.Fatalf("error = %v, want ErrComposeServiceNotFound", err)
 		}
 	})
+}
+
+func TestAddComposeServiceTrackingLabels(t *testing.T) {
+	project := &types.Project{
+		Name:         "example",
+		WorkingDir:   "/srv/example",
+		ComposeFiles: []string{"/srv/example/compose.yml"},
+		Services: types.Services{
+			"web": {
+				Name:         "web",
+				CustomLabels: map[string]string{"example.com/custom": "preserved"},
+			},
+		},
+	}
+
+	addComposeServiceTrackingLabels(project)
+
+	labels := project.Services["web"].CustomLabels
+	for key, want := range map[string]string{
+		"example.com/custom": "preserved",
+		api.ProjectLabel:     "example",
+		api.ServiceLabel:     "web",
+		api.WorkingDirLabel:  "/srv/example",
+		api.ConfigFilesLabel: "/srv/example/compose.yml",
+		api.VersionLabel:     api.ComposeVersion,
+		api.OneoffLabel:      "False",
+	} {
+		if got := labels[key]; got != want {
+			t.Errorf("label %q = %q, want %q", key, got, want)
+		}
+	}
 }

@@ -61,6 +61,28 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 	}
 }
 
+func addComposeServiceTrackingLabels(project *types.Project) {
+	for i, service := range project.Services {
+		service.CustomLabels = composeServiceTrackingLabels(service.CustomLabels, service.Name, project)
+		project.Services[i] = service
+	}
+}
+
+func composeServiceTrackingLabels(labels map[string]string, serviceName string, project *types.Project) map[string]string {
+	if labels == nil {
+		labels = map[string]string{}
+	}
+
+	labels[api.ProjectLabel] = project.Name
+	labels[api.ServiceLabel] = serviceName
+	labels[api.WorkingDirLabel] = project.WorkingDir
+	labels[api.ConfigFilesLabel] = strings.Join(project.ComposeFiles, ",")
+	labels[api.VersionLabel] = api.ComposeVersion
+	labels[api.OneoffLabel] = "False"
+
+	return labels
+}
+
 func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
 	appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {

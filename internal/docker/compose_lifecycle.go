@@ -405,6 +405,8 @@ func recreateStandardProject(
 		return err
 	}
 
+	addComposeServiceTrackingLabels(project)
+
 	service, err := compose.NewComposeService(dockerCli)
 	if err != nil {
 		return fmt.Errorf("create compose service: %w", err)
