@@ -429,6 +429,7 @@ func TestLoadComposeScheduledDeployConfigSetsConfigHash(t *testing.T) {
 
 	dataMountPath := t.TempDir()
 	repositoryURL := "https://example.com/owner/repo"
+
 	repoPath := filepath.Join(dataMountPath, git.GetRepoName(repositoryURL))
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {
 		t.Fatal(err)
