@@ -20,8 +20,11 @@ func New[T any](src *T) *T {
 // Deep creates an independent copy of src into dst using reflection.
 // It recursively copies structs, pointers, slices, maps and interface values,
 // so that no reference-type field of dst shares storage with src.
-// Unexported struct fields are left at their zero value, matching Go's
-// reflection limitations (they cannot be read or set via reflect).
+//
+// Unexported struct fields cannot be traversed by reflection, so they are
+// copied bitwise, exactly as a plain `*dst = *src` assignment would. Types
+// whose unexported fields hold references (for example a struct wrapping a
+// private slice) therefore still share that storage with src.
 func Deep[T any](dst, src *T) {
 	deepValue(reflect.ValueOf(dst).Elem(), reflect.ValueOf(src).Elem())
 }
@@ -50,6 +53,11 @@ func deepValue(dst, src reflect.Value) {
 		deepValue(copied, elem)
 		dst.Set(copied)
 	case reflect.Struct:
+		// Copy the whole struct first so unexported fields, which reflection
+		// cannot read or set individually, keep their values instead of being
+		// silently zeroed. Exported reference fields are deep-copied over it below.
+		dst.Set(src)
+
 		for i := 0; i < src.NumField(); i++ {
 			if src.Type().Field(i).PkgPath != "" { // unexported field
 				continue
