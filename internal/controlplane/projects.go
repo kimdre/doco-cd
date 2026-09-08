@@ -12,6 +12,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
 const (
@@ -67,6 +68,14 @@ type ProjectAction struct {
 	execute     func(context.Context, time.Duration, *slog.Logger) error
 }
 
+// ProjectActionOptions contains optional inputs for project lifecycle actions.
+type ProjectActionOptions struct {
+	Context        string
+	Service        string
+	SecretProvider secretprovider.SecretProvider
+	Compose        docker.ScheduledComposeOptions
+}
+
 // DestroyProject removes a Compose project and optionally its volumes and images.
 func DestroyProject(
 	ctx context.Context,
@@ -109,7 +118,7 @@ func RunProjectAction(
 	timeoutSeconds int,
 	log *slog.Logger,
 ) (ProjectActionResult, error) {
-	operation, err := ResolveProjectAction(ctx, dockerCLI, projectName, action)
+	operation, err := ResolveProjectAction(ctx, dockerCLI, projectName, action, ProjectActionOptions{})
 	if err != nil {
 		return ProjectActionResult{}, err
 	}
@@ -118,7 +127,7 @@ func RunProjectAction(
 }
 
 // ResolveProjectAction validates a project and prepares its requested lifecycle action.
-func ResolveProjectAction(ctx context.Context, dockerCLI command.Cli, projectName, action string) (ProjectAction, error) {
+func ResolveProjectAction(ctx context.Context, dockerCLI command.Cli, projectName, action string, opts ProjectActionOptions) (ProjectAction, error) {
 	if err := requireProject(ctx, dockerCLI, projectName); err != nil {
 		return ProjectAction{}, err
 	}
@@ -146,6 +155,17 @@ func ResolveProjectAction(ctx context.Context, dockerCLI command.Cli, projectNam
 			log.Info("restarting project", slog.String("project", projectName))
 
 			return docker.RestartProject(ctx, dockerCLI, projectName, timeout)
+		}
+	case "recreate":
+		operation.message = "project recreated: " + projectName
+		if opts.Service != "" {
+			operation.message = "service recreated: " + projectName + "/" + opts.Service
+		}
+
+		operation.execute = func(ctx context.Context, timeout time.Duration, log *slog.Logger) error {
+			log.Info("recreating project", slog.String("project", projectName), slog.String("service", opts.Service))
+
+			return docker.RecreateProject(ctx, opts.Context, dockerCLI, projectName, opts.Service, timeout, opts.SecretProvider, opts.Compose)
 		}
 	default:
 		return ProjectAction{}, fmt.Errorf("%w: action not supported: %s", restapi.ErrInvalidAction, action)

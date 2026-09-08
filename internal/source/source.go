@@ -53,6 +53,8 @@ var (
 	ErrOCIVerify = errors.New("failed OCI signature verification")
 	// ErrOCIPull indicates an OCI artifact pull/extract failure.
 	ErrOCIPull = errors.New("failed to pull oci artifact")
+	// ErrPersistCacheRevision indicates that the immutable revision for cached source contents could not be recorded.
+	ErrPersistCacheRevision = errors.New("failed to persist cached source revision")
 	// ErrDeployConfig indicates a webhook/poll deployment configuration resolution failure.
 	ErrDeployConfig = errors.New("failed to get deploy configuration")
 	// ErrUnsupportedJobTrigger indicates an unrecognized JobTrigger.

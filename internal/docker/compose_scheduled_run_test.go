@@ -424,6 +424,43 @@ func TestLoadComposeScheduledDeployConfigReportsUnavailableSource(t *testing.T) 
 	}
 }
 
+func TestLoadComposeScheduledDeployConfigSetsConfigHash(t *testing.T) {
+	t.Parallel()
+
+	dataMountPath := t.TempDir()
+	repositoryURL := "https://example.com/owner/repo"
+
+	repoPath := filepath.Join(dataMountPath, git.GetRepoName(repositoryURL))
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoPath, ".doco-cd.yaml"), []byte("name: stack-a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	config, _, err := loadComposeScheduledDeployConfig(context.Background(), composeScheduledServiceRef{
+		Project:        "stack-a",
+		RepositoryURL:  repositoryURL,
+		SourceType:     "git",
+		DeploymentName: "stack-a",
+	}, newStubProvider(nil, nil), ScheduledComposeOptions{
+		ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want, err := config.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if config.Internal.Hash != want {
+		t.Fatalf("config hash = %q, want %q", config.Internal.Hash, want)
+	}
+}
+
 func TestSplitCommaSeparatedLabelValues(t *testing.T) {
 	t.Parallel()
 

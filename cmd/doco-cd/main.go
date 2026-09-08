@@ -448,11 +448,12 @@ func run() error {
 	}
 
 	apiHandler, err := api.NewHandler(api.Dependencies{
-		AppConfig: c,
-		Logger:    log,
-		DockerCLI: dockerCli,
-		Contexts:  contexts,
-		Runs:      controlPlaneRuns,
+		AppConfig:      c,
+		Logger:         log,
+		DockerCLI:      dockerCli,
+		Contexts:       contexts,
+		Runs:           controlPlaneRuns,
+		SecretProvider: secretProvider,
 		HealthFailureReporter: func(w http.ResponseWriter, log *slog.Logger, jobID string, failureType, cause error) {
 			reportHealthFailure(w, log, jobID, failureType, cause, notifier)
 		},

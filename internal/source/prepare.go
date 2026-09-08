@@ -12,6 +12,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
@@ -76,6 +77,9 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 		return Result{}, wrapPrepareError(ErrInvalidExternalPath, err)
 	}
 
+	unlockSource := sourcecache.AcquirePathLock(internalRepoPath)
+	defer unlockSource()
+
 	payload := req.Payload
 	resolvedRevision := strings.TrimSpace(payload.Digest)
 	ociTrusted := sourceType != config.SourceTypeOCI
@@ -88,9 +92,22 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 			return Result{}, err
 		}
 	case config.SourceTypeOCI:
+		if err = sourcecache.RemoveRevision(req.DataMountPoint.Destination, internalRepoPath, sourceType); err != nil {
+			return Result{}, wrapPrepareError(ErrPersistCacheRevision, err)
+		}
+
 		resolvedRevision, ociTrusted, payload, err = p.prepareOCI(ctx, req, internalRepoPath, repoName)
 		if err != nil {
 			return Result{}, err
+		}
+
+		if err = sourcecache.WriteRevision(
+			req.DataMountPoint.Destination,
+			internalRepoPath,
+			sourceType,
+			resolvedRevision,
+		); err != nil {
+			return Result{}, wrapPrepareError(ErrPersistCacheRevision, err)
 		}
 	}
 

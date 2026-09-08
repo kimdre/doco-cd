@@ -199,8 +199,14 @@ func (h *Handler) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	action := r.PathValue("action")
+	serviceName := r.URL.Query().Get("service")
 
-	operation, err := controlplane.ResolveProjectAction(ctx, dockerCli, projectName, action)
+	operation, err := controlplane.ResolveProjectAction(ctx, dockerCli, projectName, action, controlplane.ProjectActionOptions{
+		Context:        docker.NormalizeContextName(contextName),
+		Service:        serviceName,
+		SecretProvider: h.secretProvider,
+		Compose:        docker.NewScheduledComposeOptions(h.appConfig),
+	})
 	if err != nil {
 		if errors.Is(err, controlplane.ErrProjectNotFound) {
 			restapi.JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
@@ -238,6 +244,18 @@ func (h *Handler) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		if errors.Is(err, controlplane.ErrInvalidProjectTimeout) {
 			restapi.JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
+
+			return
+		}
+
+		if errors.Is(err, docker.ErrComposeServiceNotFound) {
+			restapi.JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
+
+			return
+		}
+
+		if errors.Is(err, docker.ErrComposeSourceRevisionConflict) {
+			restapi.JSONError(w, err.Error(), "", jobID, http.StatusConflict)
 
 			return
 		}

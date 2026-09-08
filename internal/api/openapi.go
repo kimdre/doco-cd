@@ -665,7 +665,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 		return nil, err
 	}
 
-	mutationResponses, err := standardResponses(builder, map[int]*openapi3.ResponseRef{http.StatusOK: stringResponse}, http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError, http.StatusMethodNotAllowed)
+	mutationResponses, err := standardResponses(builder, map[int]*openapi3.ResponseRef{http.StatusOK: stringResponse}, http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusInternalServerError, http.StatusMethodNotAllowed)
 	if err != nil {
 		return nil, err
 	}
@@ -799,9 +799,10 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Operations: []Operation{
 				operation(http.MethodPost, "runComposeProjectAction", "Run a Compose project action", []string{"Projects"}, openapi3.Parameters{
 					pathParameter("projectName", "Compose project name."),
-					pathParameter("action", "Lifecycle action.", "start", "stop", "restart"),
+					pathParameter("action", "Lifecycle action.", "start", "stop", "restart", "recreate"),
 					contextParameter(),
 					timeout,
+					queryStringParameter("service", "Optional service name for recreate action."),
 				}, nil, responses(mutationResponses), apiAuth),
 			},
 		},

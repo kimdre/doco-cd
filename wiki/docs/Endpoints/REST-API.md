@@ -207,14 +207,20 @@ curl --request POST \
 !!! note
     Project management endpoints are only available for compose projects, and will not work for Swarm stacks. To manage Swarm stacks, see the [Swarm Stacks](#swarm-stacks) section below.
 
-| Endpoint                                | Method | Description                               | Query Parameters                                                                                                                                                                           |
-|-----------------------------------------|--------|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `/v1/api/projects`                      | GET    | List all deployed compose projects        | - `all` (boolean, default: `false`): Return all projects including inactive ones.                                                                                                          |
-| `/v1/api/project/{projectName}`         | GET    | Get details of a project                  |                                                                                                                                                                                            |
-| `/v1/api/project/{projectName}`         | DELETE | Remove a project                          | - `volumes` (boolean, default: `true`): remove all associated volumes.<br/>- `images` (boolean, default: `true`): remove all associated images.                                            |
-| `/v1/api/project/{projectName}/start`   | POST   | Start a project                           |                                                                                                                                                                                            |
-| `/v1/api/project/{projectName}/stop`    | POST   | Stop a project                            |                                                                                                                                                                                            |
-| `/v1/api/project/{projectName}/restart` | POST   | Restart a project                         |                                                                                                                                                                                            |
+| Endpoint                                 | Method | Description                         | Query Parameters                                                                                                                                           |
+|------------------------------------------|--------|-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/v1/api/projects`                       | GET    | List all deployed compose projects  | - `all` (boolean, default: `false`): Return all projects including inactive ones.                                                                          |
+| `/v1/api/project/{projectName}`          | GET    | Get details of a project            |                                                                                                                                                            |
+| `/v1/api/project/{projectName}`          | DELETE | Remove a project                    | - `volumes` (boolean, default: `true`): remove all associated volumes.<br/>- `images` (boolean, default: `true`): remove all associated images.            |
+| `/v1/api/project/{projectName}/start`    | POST   | Start a project                     |                                                                                                                                                            |
+| `/v1/api/project/{projectName}/stop`     | POST   | Stop a project                      |                                                                                                                                                            |
+| `/v1/api/project/{projectName}/restart`  | POST   | Restart a project                   |                                                                                                                                                            |
+| `/v1/api/project/{projectName}/recreate` | POST   | Force-recreate a project or service | - `service` (string, optional): Name of the service to recreate.<br/>- `timeout` (integer, default: `30`): Time in seconds to wait for containers to stop. |
+
+Managed recreation returns `409 Conflict` when the cached Git/OCI source cannot
+be verified against the revision recorded on the running deployment. Run a
+normal deployment to refresh the source cache and deployment metadata before
+retrying recreation.
 
 ### Swarm Stacks
 
@@ -248,4 +254,16 @@ curl -X DELETE -H "x-api-key: your_api_key" "http://example.com/v1/api/project/m
 
 ```sh
 curl -X POST -H "x-api-key: your_api_key" "http://example.com/v1/api/project/my_project/restart?timeout=60"
+```
+
+### Force-recreate all services in a Compose project
+
+```sh
+curl -X POST -H "x-api-key: your_api_key" "http://example.com/v1/api/project/my_project/recreate"
+```
+
+### Force-recreate a specific Compose service
+
+```sh
+curl -X POST -H "x-api-key: your_api_key" "http://example.com/v1/api/project/my_project/recreate?service=web"
 ```

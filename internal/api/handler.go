@@ -16,6 +16,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/scheduler"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
 // RunOperations is the control-plane surface consumed by the REST API.
@@ -44,7 +45,8 @@ type Dependencies struct {
 	DockerCLI             command.Cli             `validate:"required,nostructlevel"`
 	Contexts              *docker.ContextRegistry `validate:"required,nostructlevel"`
 	Runs                  RunOperations           `validate:"required,nostructlevel"`
-	HealthFailureReporter HealthFailureReporter   `validate:"required"`
+	SecretProvider        secretprovider.SecretProvider
+	HealthFailureReporter HealthFailureReporter `validate:"required"`
 }
 
 // Handler adapts REST requests to Docker and control-plane operations.
@@ -54,6 +56,7 @@ type Handler struct {
 	dockerCli             command.Cli
 	contexts              *docker.ContextRegistry
 	controlPlaneRuns      RunOperations
+	secretProvider        secretprovider.SecretProvider
 	healthFailureReporter HealthFailureReporter
 }
 
@@ -73,6 +76,7 @@ func NewHandler(dependencies Dependencies) (*Handler, error) {
 		dockerCli:             dependencies.DockerCLI,
 		contexts:              dependencies.Contexts,
 		controlPlaneRuns:      dependencies.Runs,
+		secretProvider:        dependencies.SecretProvider,
 		healthFailureReporter: dependencies.HealthFailureReporter,
 	}, nil
 }
