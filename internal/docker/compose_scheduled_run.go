@@ -480,6 +480,11 @@ func loadComposeScheduledDeployConfig(
 		return nil, "", err
 	}
 
+	deployConfig.Internal.Hash, err = deployConfig.Hash()
+	if err != nil {
+		return nil, "", fmt.Errorf("hash deploy config for scheduled service %s: %w", deployConfig.Name, err)
+	}
+
 	return deployConfig, repoPath, nil
 }
 
