@@ -1,7 +1,10 @@
 // Package clone provides helpers for copying reference types.
 package clone
 
-import "reflect"
+import (
+	"reflect"
+	"sync"
+)
 
 // New returns a deep copy of src in a newly allocated value, or nil if src is nil.
 // It is a convenience wrapper around Deep for callers that don't already
@@ -62,11 +65,15 @@ func deepValue(dst, src reflect.Value) {
 	case reflect.Struct:
 		// Copy the whole struct first so unexported fields, which reflection
 		// cannot read or set individually, keep their values instead of being
-		// silently zeroed. Exported reference fields are deep-copied over it below.
+		// silently zeroed. Only exported fields that actually hold references
+		// need to be deep-copied over it below.
 		dst.Set(src)
 
-		for i := 0; i < src.NumField(); i++ {
-			if src.Type().Field(i).PkgPath != "" { // unexported field
+		srcType := src.Type()
+
+		for i := range srcType.NumField() {
+			field := srcType.Field(i)
+			if field.PkgPath != "" || !needsDeepCopy(field.Type) { // unexported or value-only
 				continue
 			}
 
@@ -79,7 +86,13 @@ func deepValue(dst, src reflect.Value) {
 
 		dst.Set(reflect.MakeSlice(src.Type(), src.Len(), src.Cap()))
 
-		for i := 0; i < src.Len(); i++ {
+		if !needsDeepCopy(src.Type().Elem()) {
+			reflect.Copy(dst, src)
+
+			return
+		}
+
+		for i := range src.Len() {
 			deepValue(dst.Index(i), src.Index(i))
 		}
 	case reflect.Map:
@@ -89,14 +102,66 @@ func deepValue(dst, src reflect.Value) {
 
 		dst.Set(reflect.MakeMapWithSize(src.Type(), src.Len()))
 
-		for _, key := range src.MapKeys() {
-			val := reflect.New(src.MapIndex(key).Type()).Elem()
-			deepValue(val, src.MapIndex(key))
-			dst.SetMapIndex(key, val)
+		mapType := src.Type()
+		deepElem := needsDeepCopy(mapType.Elem())
+		iter := src.MapRange()
+
+		for iter.Next() {
+			if !deepElem {
+				dst.SetMapIndex(iter.Key(), iter.Value())
+
+				continue
+			}
+
+			val := reflect.New(mapType.Elem()).Elem()
+			deepValue(val, iter.Value())
+			dst.SetMapIndex(iter.Key(), val)
 		}
 	default:
 		dst.Set(src)
 	}
+}
+
+// deepCopyCache memoizes needsDeepCopy results, which are constant per type.
+var deepCopyCache sync.Map // reflect.Type -> bool
+
+// needsDeepCopy reports whether values of t can hold references that must be
+// recreated to make a copy independent of its source. Value-only types are
+// already fully copied by a bitwise assignment, so they can be skipped.
+//
+// Map keys are not inspected: Go forbids maps, slices and functions as key
+// types, and the remaining reference-capable key types (pointers, interfaces
+// and arrays of them) are compared by identity, so cloning them would change
+// lookup semantics.
+func needsDeepCopy(t reflect.Type) bool {
+	if cached, ok := deepCopyCache.Load(t); ok {
+		return cached.(bool)
+	}
+
+	var needed bool
+
+	switch t.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Interface:
+		needed = true
+	case reflect.Array:
+		needed = needsDeepCopy(t.Elem())
+	case reflect.Struct:
+		// Unexported fields are copied bitwise and never traversed, so they
+		// cannot make a deep copy necessary.
+		for i := range t.NumField() {
+			if field := t.Field(i); field.PkgPath == "" && needsDeepCopy(field.Type) {
+				needed = true
+
+				break
+			}
+		}
+	default:
+		needed = false
+	}
+
+	deepCopyCache.Store(t, needed)
+
+	return needed
 }
 
 // Pointer returns an independent copy of value.
