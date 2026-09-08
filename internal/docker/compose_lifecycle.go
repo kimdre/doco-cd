@@ -14,15 +14,21 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 // ErrComposeServiceNotFound indicates that the requested service is not declared by the project.
 var ErrComposeServiceNotFound = errors.New("compose service not found")
+
+// ErrComposeSourceRevisionConflict indicates that managed recreation cannot use the deployed source revision.
+var ErrComposeSourceRevisionConflict = errors.New("compose source revision conflict")
 
 // DestroyStack destroys the stack using the provided deployment configuration.
 func DestroyStack(
@@ -311,6 +317,19 @@ func recreateManagedProject(
 	secretProvider secretprovider.SecretProvider,
 	opts ScheduledComposeOptions,
 ) error {
+	sourceRepoPath, sourceType, err := resolveScheduledSourceRepo(ref, opts.ComposeLoad.DataMountPath)
+	if err != nil {
+		return fmt.Errorf("%w: cannot resolve cached source for project %s: %v",
+			ErrComposeSourceRevisionConflict, ref.Project, err)
+	}
+
+	unlockSource := sourcecache.AcquirePathLock(sourceRepoPath)
+	defer unlockSource()
+
+	if err := validateManagedRecreateRevision(ref, labels, opts, sourceRepoPath, sourceType); err != nil {
+		return err
+	}
+
 	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, opts)
 	if err != nil {
 		return fmt.Errorf("reload managed compose project %s: %w", ref.Project, err)
@@ -324,7 +343,6 @@ func recreateManagedProject(
 	}
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
-	sourceType := resolvedSourceType(ref, opts)
 	payload := &webhook.ParsedPayload{
 		Source:   webhook.PayloadSource(SourceTypeLabelValue(string(sourceType), labels[DocoCDLabels.Source.Type])),
 		Trigger:  "api.recreate",
@@ -354,14 +372,54 @@ func recreateManagedProject(
 		strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash]),
 	)
 
-	config := *deployConfig
-	config.Timeout = int(timeout.Seconds())
+	recreateConfig := *deployConfig
+	recreateConfig.Timeout = int(timeout.Seconds())
 
-	if err := deployCompose(ctx, dockerCli, project, &config, api.RecreateForce, services, nil, func(string) {}); err != nil {
+	if err := deployCompose(ctx, dockerCli, project, &recreateConfig, api.RecreateForce, services, nil, func(string) {}); err != nil {
 		return fmt.Errorf("recreate managed compose project %s: %w", ref.Project, err)
 	}
 
 	return nil
+}
+
+func validateManagedRecreateRevision(
+	ref composeScheduledServiceRef,
+	labels map[string]string,
+	opts ScheduledComposeOptions,
+	sourceRepoPath string,
+	sourceType config.SourceType,
+) error {
+	expected := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
+	if expected == "" {
+		return fmt.Errorf("%w: project %s has no deployed revision; run a normal deployment before recreating",
+			ErrComposeSourceRevisionConflict, ref.Project)
+	}
+
+	switch sourceType {
+	case config.SourceTypeGit:
+		matches, err := git.HeadMatchesCommit(sourceRepoPath, expected)
+		if err != nil {
+			return fmt.Errorf("%w: cannot verify cached Git source for project %s: %v",
+				ErrComposeSourceRevisionConflict, ref.Project, err)
+		}
+
+		if matches {
+			return nil
+		}
+	case config.SourceTypeOCI:
+		revision, err := sourcecache.ReadRevision(opts.ComposeLoad.DataMountPath, sourceRepoPath, sourceType)
+		if err != nil {
+			return fmt.Errorf("%w: cannot verify cached OCI source for project %s: %v; run a normal deployment before recreating",
+				ErrComposeSourceRevisionConflict, ref.Project, err)
+		}
+
+		if revision == expected {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%w: cached %s source for project %s does not match deployed revision %s; run a normal deployment before recreating",
+		ErrComposeSourceRevisionConflict, sourceType, ref.Project, expected)
 }
 
 func restoreDeploymentConfigHash(deployConfig *deploy.Config, labels map[string]string) {

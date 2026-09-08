@@ -254,6 +254,12 @@ func (h *Handler) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 
+		if errors.Is(err, docker.ErrComposeSourceRevisionConflict) {
+			restapi.JSONError(w, err.Error(), "", jobID, http.StatusConflict)
+
+			return
+		}
+
 		errMsg := "failed to " + action + " project"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		restapi.JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
