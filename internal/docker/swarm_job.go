@@ -215,7 +215,10 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 	}
 
 	sourceService := inspectResult.Service
-	oneOffSpec := *clone.New(&sourceService.Spec)
+
+	var oneOffSpec swarmTypes.ServiceSpec
+
+	clone.Deep(&oneOffSpec, &sourceService.Spec)
 	oneOffSpec.Name = swarmOneOffServiceName(sourceService.Spec.Name, time.Now())
 
 	if oneOffSpec.TaskTemplate.ContainerSpec == nil {
