@@ -3,10 +3,14 @@ package clone
 
 import "reflect"
 
-// New returns a deep copy of src in a newly allocated value. It is a
-// convenience wrapper around Deep for callers that don't already have a
-// destination to copy into.
+// New returns a deep copy of src in a newly allocated value, or nil if src is nil.
+// It is a convenience wrapper around Deep for callers that don't already
+// have a destination to copy into.
 func New[T any](src *T) *T {
+	if src == nil {
+		return nil
+	}
+
 	dst := new(T)
 	Deep(dst, src)
 
