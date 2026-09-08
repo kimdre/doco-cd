@@ -20,12 +20,19 @@ func New[T any](src *T) *T {
 // Deep creates an independent copy of src into dst using reflection.
 // It recursively copies structs, pointers, slices, maps and interface values,
 // so that no reference-type field of dst shares storage with src.
+// It is a no-op if either dst or src is nil.
 //
 // Unexported struct fields cannot be traversed by reflection, so they are
 // copied bitwise, exactly as a plain `*dst = *src` assignment would. Types
 // whose unexported fields hold references (for example a struct wrapping a
 // private slice) therefore still share that storage with src.
+//
+// Cyclic references are not supported and cause unbounded recursion.
 func Deep[T any](dst, src *T) {
+	if dst == nil || src == nil {
+		return
+	}
+
 	deepValue(reflect.ValueOf(dst).Elem(), reflect.ValueOf(src).Elem())
 }
 

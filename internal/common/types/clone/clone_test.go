@@ -87,6 +87,19 @@ func TestNewNilSource(t *testing.T) {
 	}
 }
 
+func TestDeepNilArguments(t *testing.T) {
+	t.Parallel()
+
+	dst := withUnexported{unexported: "keep"}
+
+	Deep(&dst, nil)
+	Deep[withUnexported](nil, &dst)
+
+	if dst.unexported != "keep" {
+		t.Fatalf("dst was modified: %q", dst.unexported)
+	}
+}
+
 func TestPointer(t *testing.T) {
 	t.Parallel()
 
