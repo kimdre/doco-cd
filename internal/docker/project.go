@@ -20,16 +20,6 @@ func isScaledToZero(svc types.ServiceConfig) bool {
 	return svc.GetScale() == 0
 }
 
-// copyProject creates a deep copy of the given project struct.
-// This is necessary because some fields in the compose types are pointers, and we want to avoid modifying the original struct when adding labels.
-func copyProject(orig *types.Project) *types.Project {
-	if orig == nil {
-		return nil
-	}
-
-	return clone.New(orig)
-}
-
 // behaviorLabelPrefixes lists the cd.doco.* label prefixes that configure behaviour and
 // should therefore be included in the project hash for redeploy detection.
 // All other cd.doco.* labels (metadata, timestamps, …) are excluded.
@@ -66,7 +56,7 @@ func WithNormalizedEnvValues(p *types.Project, normMap map[string]string) *types
 		return p
 	}
 
-	pCopy := copyProject(p)
+	pCopy := clone.New(p)
 
 	for name, svc := range pCopy.Services {
 		changed := false
@@ -100,7 +90,7 @@ func WithNormalizedEnvValues(p *types.Project, normMap map[string]string) *types
 
 // ProjectHash generates a SHA256 hash of the project configuration to be used for detecting changes in the project that may require a redeployment.
 func ProjectHash(p *types.Project) (string, error) {
-	pCopy := copyProject(p)
+	pCopy := clone.New(p)
 
 	// Services scaled to zero never create containers, so they must not affect restart-time hash checks.
 	for name, svc := range pCopy.Services {
