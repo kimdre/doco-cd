@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 
+	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/config/app"
 
 	"github.com/moby/moby/api/types/mount"
@@ -215,20 +215,12 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 	}
 
 	sourceService := inspectResult.Service
-	oneOffSpec := sourceService.Spec
+	oneOffSpec := *clone.New(&sourceService.Spec)
 	oneOffSpec.Name = swarmOneOffServiceName(sourceService.Spec.Name, time.Now())
 
 	if oneOffSpec.TaskTemplate.ContainerSpec == nil {
 		return fmt.Errorf("service %s has no task container spec", serviceName)
 	}
-
-	// Copy the nested reference fields before changing the clone. A direct
-	// ServiceSpec assignment shares the source service's label maps and
-	// ContainerSpec pointer.
-	containerSpec := *oneOffSpec.TaskTemplate.ContainerSpec
-	containerSpec.Labels = maps.Clone(containerSpec.Labels)
-	oneOffSpec.TaskTemplate.ContainerSpec = &containerSpec
-	oneOffSpec.Labels = maps.Clone(oneOffSpec.Labels)
 
 	if oneOffSpec.TaskTemplate.ContainerSpec.Labels == nil {
 		oneOffSpec.TaskTemplate.ContainerSpec.Labels = map[string]string{}
