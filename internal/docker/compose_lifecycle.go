@@ -288,6 +288,7 @@ func RecreateProject(
 	return recreateStandardProject(ctx, dockerCli, ref, labels, containers, serviceName, timeout, opts.ComposeLoad)
 }
 
+// recreateProjectLabels selects metadata from the managed container when available.
 func recreateProjectLabels(containers []api.ContainerSummary) map[string]string {
 	var fallback map[string]string
 
@@ -307,6 +308,7 @@ func recreateProjectLabels(containers []api.ContainerSummary) map[string]string 
 	return fallback
 }
 
+// recreateManagedProject reloads and force-recreates a project deployed by doco-cd.
 func recreateManagedProject(
 	ctx context.Context,
 	dockerCli command.Cli,
@@ -423,12 +425,14 @@ func validateManagedRecreateRevision(
 		ErrComposeSourceRevisionConflict, sourceType, ref.Project, expected)
 }
 
+// restoreDeploymentConfigHash retains the deployed hash when recreating a managed project.
 func restoreDeploymentConfigHash(deployConfig *deploy.Config, labels map[string]string) {
 	if configHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigHash]); configHash != "" {
 		deployConfig.Internal.Hash = configHash
 	}
 }
 
+// recreateStandardProject force-recreates a Compose project using its container metadata.
 func recreateStandardProject(
 	ctx context.Context,
 	dockerCli command.Cli,
@@ -497,6 +501,7 @@ func recreateStandardProject(
 	return nil
 }
 
+// selectRecreateServices returns the requested service or the currently active project services.
 func selectRecreateServices(project *types.Project, serviceName string, activeServices []string) (*types.Project, []string, error) {
 	if serviceName != "" {
 		if _, ok := project.Services[serviceName]; !ok {

@@ -61,6 +61,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 	}
 }
 
+// addComposeServiceTrackingLabels restores the Compose labels required for lifecycle operations.
 func addComposeServiceTrackingLabels(project *types.Project) {
 	for i, service := range project.Services {
 		service.CustomLabels = composeServiceTrackingLabels(service.CustomLabels, service.Name, project)
@@ -68,6 +69,7 @@ func addComposeServiceTrackingLabels(project *types.Project) {
 	}
 }
 
+// composeServiceTrackingLabels adds Compose's project-level labels without replacing user labels.
 func composeServiceTrackingLabels(labels map[string]string, serviceName string, project *types.Project) map[string]string {
 	if labels == nil {
 		labels = map[string]string{}
