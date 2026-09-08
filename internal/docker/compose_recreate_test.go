@@ -6,6 +6,8 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
+
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 )
 
 func TestSelectRecreateServices(t *testing.T) {
@@ -90,4 +92,30 @@ func TestAddComposeServiceTrackingLabels(t *testing.T) {
 			t.Errorf("label %q = %q, want %q", key, got, want)
 		}
 	}
+}
+
+func TestRestoreDeploymentConfigHash(t *testing.T) {
+	t.Run("preserves existing hash", func(t *testing.T) {
+		config := &deploy.Config{}
+		config.Internal.Hash = "reloaded-hash"
+
+		restoreDeploymentConfigHash(config, map[string]string{
+			DocoCDLabels.Deployment.ConfigHash: "deployed-hash",
+		})
+
+		if config.Internal.Hash != "deployed-hash" {
+			t.Fatalf("config hash = %q, want deployed hash", config.Internal.Hash)
+		}
+	})
+
+	t.Run("keeps reloaded hash when label is absent", func(t *testing.T) {
+		config := &deploy.Config{}
+		config.Internal.Hash = "reloaded-hash"
+
+		restoreDeploymentConfigHash(config, nil)
+
+		if config.Internal.Hash != "reloaded-hash" {
+			t.Fatalf("config hash = %q, want reloaded hash", config.Internal.Hash)
+		}
+	})
 }

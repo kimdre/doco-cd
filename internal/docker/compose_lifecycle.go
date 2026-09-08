@@ -316,6 +316,8 @@ func recreateManagedProject(
 		return fmt.Errorf("reload managed compose project %s: %w", ref.Project, err)
 	}
 
+	restoreDeploymentConfigHash(deployConfig, labels)
+
 	project, services, err := selectRecreateServices(project, serviceName, nil)
 	if err != nil {
 		return err
@@ -360,6 +362,12 @@ func recreateManagedProject(
 	}
 
 	return nil
+}
+
+func restoreDeploymentConfigHash(deployConfig *deploy.Config, labels map[string]string) {
+	if configHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigHash]); configHash != "" {
+		deployConfig.Internal.Hash = configHash
+	}
 }
 
 func recreateStandardProject(
