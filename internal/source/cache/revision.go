@@ -13,7 +13,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
-const revisionDirectory = ".doco-cd/source-revisions"
+const revisionDirectory = "source-revisions"
 
 // RemoveRevision invalidates the recorded revision before cached source contents are replaced.
 func RemoveRevision(dataMountPath, sourcePath string, sourceType config.SourceType) error {
@@ -94,6 +94,7 @@ func ReadRevision(dataMountPath, sourcePath string, sourceType config.SourceType
 	return revision, nil
 }
 
+// revisionMarkerPath returns the metadata path for a cached source revision.
 func revisionMarkerPath(dataMountPath, sourcePath string, sourceType config.SourceType) (string, error) {
 	sourceType = config.NormalizeSourceType(sourceType)
 	if err := config.ValidateSourceType(sourceType); err != nil {

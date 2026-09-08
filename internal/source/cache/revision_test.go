@@ -3,6 +3,7 @@ package cache
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -28,6 +29,15 @@ func TestRevisionRoundTrip(t *testing.T) {
 
 	if revision != "sha256:second" {
 		t.Fatalf("ReadRevision() = %q, want %q", revision, "sha256:second")
+	}
+
+	markerPath, err := revisionMarkerPath(dataMountPath, sourcePath, config.SourceTypeOCI)
+	if err != nil {
+		t.Fatalf("revisionMarkerPath() error = %v", err)
+	}
+
+	if !strings.HasPrefix(markerPath, filepath.Join(dataMountPath, revisionDirectory)+string(filepath.Separator)) {
+		t.Fatalf("revision marker path = %q, want it in %q", markerPath, filepath.Join(dataMountPath, revisionDirectory))
 	}
 
 	if err := RemoveRevision(dataMountPath, sourcePath, config.SourceTypeOCI); err != nil {

@@ -382,6 +382,7 @@ func recreateManagedProject(
 	return nil
 }
 
+// validateManagedRecreateRevision ensures the cache still contains the deployed revision.
 func validateManagedRecreateRevision(
 	ref composeScheduledServiceRef,
 	labels map[string]string,
