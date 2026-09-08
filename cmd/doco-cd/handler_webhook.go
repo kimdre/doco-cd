@@ -226,6 +226,7 @@ func shouldUsePayloadSSHURL(overrideApplied bool, payloadSSHURL string, resolved
 	return strings.TrimSpace(payloadSSHURL) != "" && resolved.SSHPrivateKey != ""
 }
 
+// matchingInlineWebhookDeployments returns inline deployments whose poll source, reference, and target match the webhook.
 func matchingInlineWebhookDeployments(
 	appConfig *app.Config,
 	payload webhook.ParsedPayload,
@@ -265,6 +266,7 @@ func matchingInlineWebhookDeployments(
 	return deployments
 }
 
+// gitSourceIdentities returns stable repository identities for Git source URLs.
 func gitSourceIdentities(sourceURLs ...string) map[string]struct{} {
 	identities := make(map[string]struct{}, len(sourceURLs))
 
@@ -277,6 +279,7 @@ func gitSourceIdentities(sourceURLs ...string) map[string]struct{} {
 	return identities
 }
 
+// identitySetsOverlap reports whether two repository identity sets intersect.
 func identitySetsOverlap(left, right map[string]struct{}) bool {
 	for identity := range left {
 		if _, ok := right[identity]; ok {
@@ -287,10 +290,12 @@ func identitySetsOverlap(left, right map[string]struct{}) bool {
 	return false
 }
 
+// referencesMatch reports whether configured and webhook references identify the same branch or tag.
 func referencesMatch(configured, webhookRef string) bool {
 	return canonicalWebhookReference(configured) == canonicalWebhookReference(webhookRef)
 }
 
+// canonicalWebhookReference normalizes a ref while retaining its branch, tag, or other-ref type.
 func canonicalWebhookReference(reference string) string {
 	reference = strings.TrimSpace(reference)
 
