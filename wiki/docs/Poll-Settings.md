@@ -194,6 +194,13 @@ Inline deployments reuse the same fields as `.doco-cd.yml` files (See [Deploy Se
 
 If the poll config has an inline deployment config and the target repository also contains a `.doco-cd.yml` file, the file will be ignored in favor of the inline deployment config.
 
+Matching Git webhooks also reuse inline deployments. A poll entry matches a webhook when its repository, reference, and optional `target` match the webhook request. Short branch names such as `main` are equivalent to full branch references such as `refs/heads/main`.
+
+!!! warning "Inline configuration takes precedence"
+    When one or more inline poll entries match a webhook, their deployments are combined and the repository's `.doco-cd.yml` is ignored. Inline and repository configurations are never merged. Repository configuration discovery is used only when no inline poll entry matches.
+
+    Deployment names must remain unique within each Docker context across all matching inline entries.
+
 ```yaml title="Poll Config with inline deploy config"
 - url: https://github.com/example/app.git
   reference: refs/heads/main

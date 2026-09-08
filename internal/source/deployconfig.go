@@ -7,11 +7,9 @@ import (
 	"github.com/kimdre/doco-cd/internal/stages"
 )
 
-// resolveDeployConfigs resolves the deployment configuration(s) for req: for
-// webhook triggers it reads .doco-cd(.<target>).y(a)ml from internalRepoPath,
-// for poll triggers it resolves the (optionally inline) configured
-// deployments. ref is the reference used to select the branch/tag-scoped
-// deploy config file for webhook triggers (the webhook payload's ref).
+// resolveDeployConfigs resolves the deployment configuration(s) for req.
+// Webhooks prefer centrally supplied deployments and otherwise read
+// .doco-cd(.<target>).y(a)ml; polls resolve their optionally inline config.
 func (p *Preparer) resolveDeployConfigs(req Request, internalRepoPath, ref string) ([]*deploy.Config, error) {
 	gitOpts := &deploy.GitOptions{
 		SSHPrivateKey:           p.appConfig.SSHPrivateKey,
@@ -25,6 +23,15 @@ func (p *Preparer) resolveDeployConfigs(req Request, internalRepoPath, ref strin
 
 	switch req.JobTrigger {
 	case stages.JobTriggerWebhook:
+		if len(req.Deployments) > 0 {
+			deployConfigs, err := deploy.ResolveConfigs(req.Deployments, req.CustomTarget, req.Ref, internalRepoPath, p.appConfig.DeployConfigBaseDir, gitOpts)
+			if err != nil {
+				return nil, wrapPrepareError(ErrDeployConfig, err)
+			}
+
+			return deployConfigs, nil
+		}
+
 		deployConfigs, err := deploy.GetConfigs(internalRepoPath, p.appConfig.DeployConfigBaseDir, req.CustomTarget, ref, gitOpts)
 		if err != nil {
 			return nil, wrapPrepareError(ErrDeployConfig, err)

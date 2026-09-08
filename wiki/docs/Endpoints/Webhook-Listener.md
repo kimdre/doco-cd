@@ -20,6 +20,15 @@ Set both `HTTP_TLS_CERT_FILE` and `HTTP_TLS_KEY_FILE` to serve the endpoint over
 By default, all incoming webhooks are accepted and trigger deployments if they match a deployment configuration.
 See [Webhook Filter](../Deploy-Settings.md#webhook-filter) for more granular control over which webhooks should trigger deployments.
 
+## Inline deployment configuration
+
+Git webhooks automatically reuse inline deployments from matching [`POLL_CONFIG`](../Poll-Settings.md#inline-deploy-configs) entries. Matching uses the repository, reference, and webhook target. Short branch names such as `main` match their full `refs/heads/main` form.
+
+If multiple poll entries match, their inline deployments are combined in configuration order. Deployment names must be unique within each Docker context.
+
+!!! warning "Inline configuration overrides repository configuration"
+    If a matching inline deployment exists, `.doco-cd.yml` in the repository is ignored. The inline and repository configurations are never merged. The webhook reads repository configuration files only when no inline poll entry matches.
+
 ## With custom Target
 
 You can specify multiple deployment target configurations in a mono-repo style setup using the application's dynamic webhook path.
