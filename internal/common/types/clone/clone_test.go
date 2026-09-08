@@ -100,6 +100,29 @@ func TestDeepNilArguments(t *testing.T) {
 	}
 }
 
+func TestDeepCopiesArrayElements(t *testing.T) {
+	t.Parallel()
+
+	src := struct {
+		Refs   [2][]string
+		Values [2]string
+	}{
+		Refs:   [2][]string{{"a"}, {"b"}},
+		Values: [2]string{"x", "y"},
+	}
+
+	cloned := New(&src)
+	cloned.Refs[0][0] = "changed"
+
+	if src.Refs[0][0] != "a" {
+		t.Fatalf("source array element = %q, want %q", src.Refs[0][0], "a")
+	}
+
+	if cloned.Refs[1][0] != "b" || cloned.Values != src.Values {
+		t.Fatalf("array contents not copied: %+v", cloned)
+	}
+}
+
 func TestPointer(t *testing.T) {
 	t.Parallel()
 

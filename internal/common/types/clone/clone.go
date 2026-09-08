@@ -21,8 +21,8 @@ func New[T any](src *T) *T {
 }
 
 // Deep creates an independent copy of src into dst using reflection.
-// It recursively copies structs, pointers, slices, maps and interface values,
-// so that no reference-type field of dst shares storage with src.
+// It recursively copies structs, arrays, pointers, slices, maps and interface
+// values, so that no reference-type field of dst shares storage with src.
 // It is a no-op if either dst or src is nil.
 //
 // Unexported struct fields cannot be traversed by reflection, so they are
@@ -78,6 +78,18 @@ func deepValue(dst, src reflect.Value) {
 			}
 
 			deepValue(dst.Field(i), src.Field(i))
+		}
+	case reflect.Array:
+		// The caller already copied the array bitwise, but that leaves any
+		// reference-typed elements shared with src.
+		dst.Set(src)
+
+		if !needsDeepCopy(src.Type().Elem()) {
+			return
+		}
+
+		for i := range src.Len() {
+			deepValue(dst.Index(i), src.Index(i))
 		}
 	case reflect.Slice:
 		if src.IsNil() {
