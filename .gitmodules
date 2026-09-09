@@ -1,4 +1,4 @@
 [submodule "test-cases"]
-	path = test-cases
+	path = test/test-cases
 	url = https://github.com/kimdre/doco-cd_tests.git
 	branch = main
