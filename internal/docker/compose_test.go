@@ -2705,6 +2705,47 @@ func TestDecryptProjectFiles(t *testing.T) {
 			},
 			expectedDecryptedFileBasenames: []string{},
 		},
+		{
+			name: "bind-mounted directory without encrypted files does not discard earlier results",
+			buildProject: func(t *testing.T, tmpDir string) *types.Project {
+				t.Helper()
+
+				secretsDir := filepath.Join(tmpDir, "secrets")
+				if err := os.Mkdir(secretsDir, filesystem.PermDir); err != nil {
+					t.Fatalf("failed to create %s: %v", secretsDir, err)
+				}
+
+				envFile := filepath.Join(secretsDir, "app.env")
+				copyFile(t, encryptedEnvSrc, envFile)
+
+				staticDir := filepath.Join(tmpDir, "static")
+				if err := os.Mkdir(staticDir, filesystem.PermDir); err != nil {
+					t.Fatalf("failed to create %s: %v", staticDir, err)
+				}
+
+				// #nosec G703 -- path is constructed from t.TempDir(), not user input
+				if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte("<html></html>"), filesystem.PermOwner); err != nil {
+					t.Fatalf("failed to write plain file: %v", err)
+				}
+
+				return &types.Project{
+					WorkingDir: tmpDir,
+					Services: types.Services{
+						"svc1": {
+							Name:     "svc1",
+							EnvFiles: []types.EnvFile{{Path: envFile}},
+							// The directory with the encrypted file is walked first, the
+							// directory without encrypted files second.
+							Volumes: []types.ServiceVolumeConfig{
+								{Type: "bind", Source: secretsDir, Target: "/run/secrets"},
+								{Type: "bind", Source: staticDir, Target: "/srv"},
+							},
+						},
+					},
+				}
+			},
+			expectedDecryptedFileBasenames: []string{"app.env"},
+		},
 	}
 
 	for _, tc := range testCases {
