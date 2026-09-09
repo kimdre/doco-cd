@@ -16,6 +16,7 @@ import (
 	containerTypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -192,24 +193,24 @@ func prepareComposeProjectForOneOffRunWithOptions(project *types.Project, servic
 		return nil, errors.New("compose project is required")
 	}
 
-	svc, ok := project.Services[serviceName]
+	sourceSvc, ok := project.Services[serviceName]
 	if !ok {
 		return nil, fmt.Errorf("compose service %q not found", serviceName)
 	}
 
+	projectCopy := *project
+	projectCopy.Services = maps.Clone(project.Services)
+
+	svc := *clone.New(&sourceSvc)
 	if svc.Labels == nil {
 		svc.Labels = map[string]string{}
-	} else {
-		svc.Labels = maps.Clone(svc.Labels)
 	}
 
 	if svc.CustomLabels == nil {
 		svc.CustomLabels = map[string]string{}
-	} else {
-		svc.CustomLabels = maps.Clone(svc.CustomLabels)
 	}
 
-	svc.CustomLabels = composeServiceTrackingLabels(svc.CustomLabels, svc.Name, project)
+	svc.CustomLabels = composeServiceTrackingLabels(svc.CustomLabels, svc.Name, &projectCopy)
 
 	svc.Labels[DocoCDJobLabels.JobEphemeral] = "true"
 
@@ -234,8 +235,6 @@ func prepareComposeProjectForOneOffRunWithOptions(project *types.Project, servic
 		svc.CustomLabels[DocoCDJobLabels.JobStartedAt] = opts.StartedAt
 	}
 
-	projectCopy := *project
-	projectCopy.Services = maps.Clone(project.Services)
 	projectCopy.Services[serviceName] = svc
 
 	return &projectCopy, nil

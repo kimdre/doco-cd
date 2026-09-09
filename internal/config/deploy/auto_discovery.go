@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,9 +17,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 // AutoDiscoveryConfig holds auto-discovery settings for a deployment.
@@ -181,8 +178,7 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 			return nil
 		}
 
-		c := &Config{}
-		deepCopy(baseConfig, c)
+		c := clone.New(baseConfig)
 
 		stackDirName := filepath.Base(p)    // Get the stack name from the directory name where the compose file is located
 		repoName := filepath.Base(repoRoot) // Get the repository name from the repo root path
@@ -292,9 +288,7 @@ func cloneConfigSlice(configs []*Config) []*Config {
 			continue
 		}
 
-		copyCfg := &Config{}
-		deepCopy(cfg, copyCfg)
-		cloned = append(cloned, copyCfg)
+		cloned = append(cloned, clone.New(cfg))
 	}
 
 	return cloned
@@ -393,73 +387,4 @@ func mergeAllStructFields(base, override reflect.Value) {
 	for i := 0; i < base.NumField(); i++ {
 		mergeField(base.Field(i), override.Field(i))
 	}
-}
-
-// deepCopy creates a deep copy of a Config struct.
-func deepCopy(src, dst *Config) {
-	*dst = *src
-
-	if src.ComposeFiles != nil {
-		dst.ComposeFiles = make([]string, len(src.ComposeFiles))
-		copy(dst.ComposeFiles, src.ComposeFiles)
-	}
-
-	if src.EnvFiles != nil {
-		dst.EnvFiles = make([]string, len(src.EnvFiles))
-		copy(dst.EnvFiles, src.EnvFiles)
-	}
-
-	if src.BuildOpts.Args != nil {
-		dst.BuildOpts.Args = make(map[string]string)
-		maps.Copy(dst.BuildOpts.Args, src.BuildOpts.Args)
-	}
-
-	if src.Environment != nil {
-		dst.Environment = make(map[string]string)
-		maps.Copy(dst.Environment, src.Environment)
-	}
-
-	if src.Profiles != nil {
-		dst.Profiles = make([]string, len(src.Profiles))
-		copy(dst.Profiles, src.Profiles)
-	}
-
-	if src.ExternalSecrets != nil {
-		dst.ExternalSecrets = make(map[string]secrettypes.ExternalSecretRef, len(src.ExternalSecrets))
-		for key, ref := range src.ExternalSecrets {
-			dst.ExternalSecrets[key] = cloneExternalSecretRef(ref)
-		}
-	}
-
-	if src.Internal.Environment != nil {
-		dst.Internal.Environment = make(map[string]string)
-		maps.Copy(dst.Internal.Environment, src.Internal.Environment)
-	}
-
-	dst.Swarm.Enabled = clone.Pointer(src.Swarm.Enabled)
-	dst.Swarm.ConfigRetention = clone.Pointer(src.Swarm.ConfigRetention)
-	dst.Swarm.SecretRetention = clone.Pointer(src.Swarm.SecretRetention)
-
-	if src.Reconciliation.Events != nil {
-		dst.Reconciliation.Events = append([]string(nil), src.Reconciliation.Events...)
-	}
-
-	dst.Oci.Verify = clone.Pointer(src.Oci.Verify)
-
-	dst.Oci.IgnoreTlog = clone.Pointer(src.Oci.IgnoreTlog)
-	if src.Oci.KeylessIdentities != nil {
-		dst.Oci.KeylessIdentities = append([]config.OciKeylessIdentity(nil), src.Oci.KeylessIdentities...)
-	}
-
-	if src.Oci.PublicKeys != nil {
-		dst.Oci.PublicKeys = append([]string(nil), src.Oci.PublicKeys...)
-	}
-}
-
-// cloneExternalSecretRef creates a deep copy of an ExternalSecretRef struct.
-func cloneExternalSecretRef(ref secrettypes.ExternalSecretRef) secrettypes.ExternalSecretRef {
-	cloned := ref
-	cloned.RemoteRef = clone.StringAnyMap(ref.RemoteRef)
-
-	return cloned
 }
