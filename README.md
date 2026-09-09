@@ -15,8 +15,9 @@ Doco-CD is a lightweight, declarative GitOps continuous delivery tool that autom
 
 You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
-> [!NOTE]
-> The documentation is now available at [doco.cd](https://doco.cd/latest/). The old GitHub wiki is no longer available.
+## Documentation
+
+You can find the documentation at [doco.cd](https://doco.cd/latest/).
 
 ## Features
 
@@ -30,10 +31,6 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Supports both Docker Compose projects and Swarm stacks in [Swarm mode](https://doco.cd/latest/Advanced/Swarm-Mode/).
 - Provides [notifications](https://doco.cd/latest/Advanced/Notifications/) and [Prometheus metrics](https://doco.cd/latest/Endpoints/Metrics/) for monitoring.
 - Supports [Job Scheduling / Cron Jobs](https://doco.cd/latest/Advanced/Job-Scheduling/) for running periodic tasks.
-
-## Documentation
-
-You can find the documentation at [doco.cd](https://doco.cd/latest/).
 
 ## Community
 
