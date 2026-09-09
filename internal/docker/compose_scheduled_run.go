@@ -193,13 +193,15 @@ func prepareComposeProjectForOneOffRunWithOptions(project *types.Project, servic
 		return nil, errors.New("compose project is required")
 	}
 
-	if _, ok := project.Services[serviceName]; !ok {
+	sourceSvc, ok := project.Services[serviceName]
+	if !ok {
 		return nil, fmt.Errorf("compose service %q not found", serviceName)
 	}
 
-	projectCopy := clone.New(project)
+	projectCopy := *project
+	projectCopy.Services = maps.Clone(project.Services)
 
-	svc := projectCopy.Services[serviceName]
+	svc := *clone.New(&sourceSvc)
 	if svc.Labels == nil {
 		svc.Labels = map[string]string{}
 	}
@@ -208,7 +210,7 @@ func prepareComposeProjectForOneOffRunWithOptions(project *types.Project, servic
 		svc.CustomLabels = map[string]string{}
 	}
 
-	svc.CustomLabels = composeServiceTrackingLabels(svc.CustomLabels, svc.Name, projectCopy)
+	svc.CustomLabels = composeServiceTrackingLabels(svc.CustomLabels, svc.Name, &projectCopy)
 
 	svc.Labels[DocoCDJobLabels.JobEphemeral] = "true"
 
@@ -235,7 +237,7 @@ func prepareComposeProjectForOneOffRunWithOptions(project *types.Project, servic
 
 	projectCopy.Services[serviceName] = svc
 
-	return projectCopy, nil
+	return &projectCopy, nil
 }
 
 func loadComposeScheduledProject(
