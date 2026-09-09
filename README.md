@@ -21,16 +21,16 @@ You can find the documentation at [doco.cd](https://doco.cd/latest/).
 
 ## Features
 
-- Easy to set up and use.
-- Runs with a minimal (distroless) image
-- Built in Go with tiny RAM and CPU requirements.
-- Supports various [external secret management providers](https://doco.cd/latest/External-Secrets/) and data encryption with [SOPS](https://doco.cd/latest/Advanced/Encryption/)
-- Can deploy applications via webhooks and/or polling.
-- Supports various [Git providers](https://doco.cd/latest/#supported-git-providers)
-- Supports [OCI artifacts](https://doco.cd/latest/Advanced/OCI/Artifact-Usage/) and Git repositories for deployment configurations.
+- Easy to set up and use with minimal configuration.
+- Runs with a minimal (distroless) image with tiny RAM and CPU requirements.
+- Supports various [Git providers](https://doco.cd/latest/#supported-git-providers).
+- Deploy via [webhooks](https://doco.cd/latest/Getting-Started/#webhooks) and/or [polling](https://doco.cd/latest/Getting-Started/#polling).
 - Supports both Docker Compose projects and Swarm stacks in [Swarm mode](https://doco.cd/latest/Advanced/Swarm-Mode/).
+- Supports [OCI artifacts](https://doco.cd/latest/Advanced/OCI/Artifact-Usage/) and Git repositories for deployments.
+- Supports various [external secret providers](https://doco.cd/latest/External-Secrets/) and encryption with [SOPS](https://doco.cd/latest/Advanced/Encryption/).
+- Deploy to multiple Docker hosts with [Docker Contexts](https://doco.cd/latest/Advanced/Docker-Contexts/).
 - Provides [notifications](https://doco.cd/latest/Advanced/Notifications/) and [Prometheus metrics](https://doco.cd/latest/Endpoints/Metrics/) for monitoring.
-- Supports [Job Scheduling / Cron Jobs](https://doco.cd/latest/Advanced/Job-Scheduling/) for running periodic tasks.
+- [Job Scheduling](https://doco.cd/latest/Advanced/Job-Scheduling/), [Pre/Post-deployment scripts](https://doco.cd/latest/Advanced/Pre-Post-Deployment-Scripts/), [REST API](https://doco.cd/latest/Endpoints/REST-API/) and [MCP Server](https://doco.cd/latest/Endpoints/MCP-Server/) for advanced automation and integrations.
 
 ## Community
 
