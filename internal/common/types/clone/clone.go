@@ -160,8 +160,8 @@ func needsDeepCopy(t reflect.Type) bool {
 	case reflect.Struct:
 		// Unexported fields are copied bitwise and never traversed, so they
 		// cannot make a deep copy necessary.
-		for i := range t.NumField() {
-			if field := t.Field(i); field.PkgPath == "" && needsDeepCopy(field.Type) {
+		for field := range t.Fields() {
+			if field.PkgPath == "" && needsDeepCopy(field.Type) {
 				needed = true
 
 				break
