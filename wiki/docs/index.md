@@ -15,16 +15,16 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
 ## Features
 
-- Easy to set up and use.
-- Runs with a minimal (distroless) image
-- Built in Go with tiny RAM and CPU requirements.
-- Supports both Docker Compose projects and Swarm stacks in [Swarm mode](Advanced/Swarm-Mode.md).
-- Can deploy applications via [webhooks](Getting-Started.md#webhooks) and/or [polling](Getting-Started.md#polling).
+- Easy to set up and use with minimal configuration.
+- Runs with a minimal (distroless) image with tiny RAM and CPU requirements.
 - Supports various [Git providers](#supported-git-providers)
+- Deploy via [webhooks](Getting-Started.md#webhooks) and/or [polling](Getting-Started.md#polling).
+- Supports both Docker Compose projects and Swarm stacks in [Swarm mode](Advanced/Swarm-Mode.md).
 - Supports [OCI artifacts](Advanced/OCI/Artifact-Usage.md) and Git repositories for deployment configurations.
-- Supports various [external secret management providers](External-Secrets/index.md) and data encryption with [SOPS](Advanced/Encryption.md)
-- Supports [Job Scheduling / Cron Jobs](Advanced/Job-Scheduling.md) for running periodic tasks.
+- Supports various [external secret providers](External-Secrets/index.md) and encryption with [SOPS](Advanced/Encryption.md)
+- Deploy to multiple Docker hosts with [Docker Contexts](Advanced/Docker-Contexts.md).
 - Provides [Notifications](Advanced/Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
+- [Job Scheduling / Cron Jobs](Advanced/Job-Scheduling.md), [Pre/Post-deployment scripts](Advanced/Pre-Post-Deployment-Scripts.md), [REST API](Endpoints/REST-API.md) and [MCP Server](Endpoints/MCP-Server.md) for advanced automation and integrations.
 
 ## Getting Started
 
