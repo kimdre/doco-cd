@@ -31,17 +31,11 @@ const recoverStateWaitBudget = 60 * time.Second
 
 // recoverReconciliationState rebuilds in-memory reconciliation state (job registry, event
 // listeners, unhealthy-restart suppression history) for repositories that were already
-// deployed before this process started. It relies entirely on doco-cd labels already
-// present on existing containers/services and on the Git/OCI checkout already present on
-// the data volume to reload deploy configs, so that reload step requires no network access
-// and never re-fetches/re-clones a source: repositories whose local checkout is no longer
-// present are skipped (logged as a warning) and are left for the next real poll/webhook
-// trigger to recover instead. Recovery then runs the same one-time startup healing a
-// normal deploy would (restarting containers already unhealthy, redeploying stacks with no
-// running containers/services at all), so drift accumulated while the process was down is
-// corrected immediately instead of waiting for the next poll/webhook trigger. Unlike the
-// config reload, that healing can reach the network exactly like any other reconciliation
-// redeploy (git fetch/OCI pull) when it redeploys a missing stack.
+// deployed before this process started, using the doco-cd labels on existing
+// containers/services and the checkout already present on the data volume. Repositories
+// whose local checkout is gone are skipped with a warning and left to the next poll/webhook
+// trigger. Each recovered job then runs the usual startup healing, which can reach the
+// network when it redeploys a missing stack.
 func recoverReconciliationState(
 	ctx context.Context,
 	appConfig *app.Config,
@@ -61,11 +55,9 @@ func recoverReconciliationState(
 		return
 	}
 
-	// Recovered jobs are registered synchronously but keep initializing in the background
-	// (their lifetime is detached from ctx), so this budget only bounds how long startup
-	// waits for them. Without it, several repositories on a slow or unreachable Docker
-	// context would each add RecoverJob's own timeout to the time before doco-cd starts
-	// serving webhooks.
+	// Recovered jobs are registered synchronously and keep initializing in the background,
+	// so this only caps the wait. Without it, every repository on a slow or unreachable
+	// Docker context would add its own RecoverJob timeout to the startup delay.
 	waitCtx, cancelWait := context.WithTimeout(ctx, recoverStateWaitBudget)
 	defer cancelWait()
 
@@ -116,10 +108,9 @@ func recoverManagedDeployment(
 			Name:         source.Name,
 			PathInternal: source.Path,
 			Revision:     revision,
-			// The artifact passed trust-policy verification when it was originally deployed,
-			// and the reconciliation deploy path refuses to run without this. If the trust
-			// policy was tightened while doco-cd was down, the next poll cycle replaces this
-			// recovered job with a freshly verified one.
+			// The artifact passed trust-policy verification when it was originally
+			// deployed, and the reconciliation deploy path refuses to run without this.
+			// A tightened trust policy takes effect on the next poll cycle.
 			OCITrusted: true,
 		},
 		DeployConfigs: deployConfigs,

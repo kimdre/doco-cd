@@ -12,9 +12,8 @@ import (
 )
 
 // TestRunContextEventListener_SignalsReadyWithoutReconciliationConfigs ensures a context/mode
-// group that has deploy configs but none with reconciliation enabled still reports readiness.
-// run counts one listener per non-empty context/mode group, so a silent listener would stall
-// the job's readiness signal forever and block callers waiting for it (startup state recovery).
+// group that has deploy configs but none with reconciliation enabled still reports readiness,
+// since a silent listener would stall the job's readiness signal forever.
 func TestRunContextEventListener_SignalsReadyWithoutReconciliationConfigs(t *testing.T) {
 	t.Parallel()
 
@@ -51,9 +50,8 @@ func TestRunContextEventListener_SignalsReadyWithoutReconciliationConfigs(t *tes
 }
 
 // TestRunContextEventListener_SignalsReadyExactlyOnceOnClose ensures the readiness callback is
-// invoked exactly once, even when the listener already reported readiness and then returns
-// because the job was closed. Double-signalling would make the job's readiness accounting
-// release before all of its listeners are up.
+// invoked exactly once when a listener reports readiness and then returns because the job was
+// closed. Double-signalling would release the job's readiness before all listeners are up.
 func TestRunContextEventListener_SignalsReadyExactlyOnceOnClose(t *testing.T) {
 	t.Parallel()
 

@@ -67,17 +67,11 @@ const recoverJobReadyTimeout = 30 * time.Second
 var ErrRecoverJobNotReady = errors.New("recovered reconciliation job did not become ready in time")
 
 // RecoverJob registers a long-lived reconciliation job for req without running the normal
-// deployment pipeline (no source preparation/cloning: req.DeployConfigs must already be
-// reloaded from an existing local checkout by the caller). It exists to rebuild in-memory
-// reconciliation state (job registry, event listeners, unhealthy-restart suppression history)
-// for a repository that was already deployed in a previous process lifetime. Like a normally
-// deployed job, it still runs one-time startup healing for the reloaded deploy configs
-// (restarting containers already unhealthy, redeploying stacks with no running
-// containers/services at all) before its event listeners are considered ready, so drift
-// accumulated while the process was down gets corrected immediately instead of waiting for
-// the next poll/webhook trigger. A redeploy triggered by that healing follows the same path
-// as any other reconciliation redeploy and can therefore reach the network (git fetch/OCI
-// pull), even though reloading req.DeployConfigs itself did not.
+// deployment pipeline: there is no source preparation, so req.DeployConfigs must already be
+// reloaded from an existing local checkout by the caller. It rebuilds the in-memory state
+// (job registry, event listeners, unhealthy-restart suppression history) of a repository
+// deployed in a previous process lifetime. Like a normally deployed job, it first runs the
+// one-time startup healing, which can reach the network when it redeploys a missing stack.
 func (m *Manager) RecoverJob(ctx context.Context, req DeployRequest) error {
 	if m == nil {
 		return errors.New("reconciliation manager is required")

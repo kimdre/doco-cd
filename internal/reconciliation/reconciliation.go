@@ -133,13 +133,11 @@ func (j *job) run(ctx context.Context) {
 
 	defer listenerWG.Wait()
 
-	// Startup recovery: run for every configured context in parallel, whether this job was
-	// just deployed or rebuilt from existing state on process startup (see RecoverJob) — in
-	// both cases the in-memory job is new and has not yet observed the daemon's current state,
-	// so any drift (unhealthy containers, fully-missing stacks) accumulated before this job
-	// started must be healed once before relying on the Docker event stream for the rest.
-	// Run both checks concurrently per context, then wait for all to finish before subscribing
-	// to Docker events so startup healing happens against a stable initial view of daemon state.
+	// Startup healing runs for every job, whether just deployed or rebuilt from existing
+	// state (see RecoverJob): both have not observed the daemon yet, so drift from before
+	// the job started must be healed once before the event stream takes over. Both checks
+	// run concurrently per context and must finish before subscribing to Docker events, so
+	// healing sees a stable initial view of the daemon state.
 	var startupRecoveryWG sync.WaitGroup
 
 	for ctxName, entry := range j.contextCLIs {
@@ -175,9 +173,8 @@ func (j *job) run(ctx context.Context) {
 	// Fan-in Docker events from all contexts into a single channel processed serially.
 	// The buffer absorbs short bursts from multiple daemons without backpressure.
 	mergedCh := make(chan contextualEvent, 256)
-	// Every listener releases its slot once it is connected, and on exit if it never got
-	// there, so the job reports ready exactly once and callers waiting for it (startup state
-	// recovery) never stall, no matter how many listeners the job ends up spawning.
+	// Every listener releases its slot once connected, and on exit if it never got there,
+	// so the job reports ready exactly once and waiting callers never stall.
 	var listenersReadyWG sync.WaitGroup
 
 	for ctxName, entry := range j.contextCLIs {
@@ -226,8 +223,8 @@ func (j *job) runContextEventListener(ctx context.Context, jobLog *slog.Logger, 
 		repositoryLabelValue = j.info.Payload.FullName
 	}
 
-	// Report this listener as ready exactly once, and always on exit so a listener that
-	// returns before it could connect cannot stall the job's readiness signal.
+	// Report readiness exactly once, and always on exit so a listener that returns before
+	// it could connect cannot stall the job's readiness signal.
 	var readyOnce sync.Once
 
 	signalListenerReady := func() { readyOnce.Do(markReady) }

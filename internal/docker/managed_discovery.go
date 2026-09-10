@@ -152,10 +152,9 @@ func (i *managedDeploymentIndex) refs() []ManagedDeploymentRef {
 
 // DiscoverManagedDeployments groups every doco-cd managed container (running or stopped) and,
 // when swarmMode is true, every managed Swarm service of a single Docker context by
-// repository/artifact. Unlike ListManagedRepositoryContainers/ListManagedRepositoryServices,
-// it is not filtered to a single repository: it is meant to discover every repository that
-// was already deployed before the current process started, e.g. to rebuild reconciliation
-// state on startup.
+// repository/artifact. Unlike ListManagedRepositoryContainers/ListManagedRepositoryServices it
+// is not limited to one repository, so it can discover everything deployed by a previous
+// process, e.g. to rebuild reconciliation state on startup.
 func DiscoverManagedDeployments(ctx context.Context, apiClient client.APIClient, contextName string, swarmMode bool) ([]ManagedDeploymentRef, error) {
 	index := newManagedDeploymentIndex()
 	if err := index.addContext(ctx, apiClient, contextName, swarmMode); err != nil {

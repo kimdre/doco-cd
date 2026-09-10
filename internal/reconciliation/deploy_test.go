@@ -38,10 +38,9 @@ import (
 )
 
 // TestRecoverJob_RegistersJobWithoutRunningDeployPipeline verifies that RecoverJob registers a
-// long-lived reconciliation job directly (no source preparation/cloning), without going through
-// the normal deployment pipeline used by Deploy. It still runs the same one-time startup-healing
-// pass as a normal job; here that pass is a no-op since no matching containers exist for the
-// unique test repository, so the job becomes ready promptly.
+// long-lived reconciliation job directly, bypassing the deployment pipeline used by Deploy. Its
+// startup-healing pass is a no-op here because no containers exist for the unique test
+// repository, so the job becomes ready promptly.
 func TestRecoverJob_RegistersJobWithoutRunningDeployPipeline(t *testing.T) {
 	t.Parallel()
 
