@@ -1,6 +1,7 @@
 package reconciliation
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func TestRunContextEventListener_SignalsReadyWithoutReconciliationConfigs(t *tes
 		defer close(done)
 
 		j.runContextEventListener(t.Context(), j.info.Logger, "", contextCLIEntry{}, false,
-			[]*deployConfig.Config{disabled}, nil, ready)
+			[]*deployConfig.Config{disabled}, nil, func() { close(ready) })
 	}()
 
 	select {
@@ -49,10 +50,11 @@ func TestRunContextEventListener_SignalsReadyWithoutReconciliationConfigs(t *tes
 	}
 }
 
-// TestRunContextEventListener_ReadySignalDoesNotBlockOnClose ensures the readiness signal is
-// abandoned when the job is closed before the readiness collector drained the channel, so the
-// listener goroutine cannot leak and block the job from shutting down.
-func TestRunContextEventListener_ReadySignalDoesNotBlockOnClose(t *testing.T) {
+// TestRunContextEventListener_SignalsReadyExactlyOnceOnClose ensures the readiness callback is
+// invoked exactly once, even when the listener already reported readiness and then returns
+// because the job was closed. Double-signalling would make the job's readiness accounting
+// release before all of its listeners are up.
+func TestRunContextEventListener_SignalsReadyExactlyOnceOnClose(t *testing.T) {
 	t.Parallel()
 
 	disabled := deployConfig.New("no-reconciliation", "main")
@@ -66,20 +68,24 @@ func TestRunContextEventListener_ReadySignalDoesNotBlockOnClose(t *testing.T) {
 
 	j.close()
 
-	// Unbuffered: nobody reads it, so a blocking send would hang the listener forever.
-	ready := make(chan struct{})
+	var readyCount atomic.Int64
+
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
 
 		j.runContextEventListener(t.Context(), j.info.Logger, "", contextCLIEntry{}, false,
-			[]*deployConfig.Config{disabled}, nil, ready)
+			[]*deployConfig.Config{disabled}, nil, func() { readyCount.Add(1) })
 	}()
 
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("listener blocked on the readiness signal after the job was closed")
+		t.Fatal("listener did not return after the job was closed")
+	}
+
+	if got := readyCount.Load(); got != 1 {
+		t.Fatalf("expected exactly one readiness signal, got %d", got)
 	}
 }

@@ -175,10 +175,10 @@ func (j *job) run(ctx context.Context) {
 	// Fan-in Docker events from all contexts into a single channel processed serially.
 	// The buffer absorbs short bursts from multiple daemons without backpressure.
 	mergedCh := make(chan contextualEvent, 256)
-	// Each context can spawn one listener per compose/swarm mode group, so size the buffer
-	// for the upper bound to keep readiness reporting non-blocking.
-	listenerReadyCh := make(chan struct{}, 2*len(j.contextCLIs))
-	expectedListeners := 0
+	// Every listener releases its slot once it is connected, and on exit if it never got
+	// there, so the job reports ready exactly once and callers waiting for it (startup state
+	// recovery) never stall, no matter how many listeners the job ends up spawning.
+	var listenersReadyWG sync.WaitGroup
 
 	for ctxName, entry := range j.contextCLIs {
 		for swarmMode, configs := range groupDeployConfigsByMode(j.deployConfigsForContext(ctxName), entry.swarmMode) {
@@ -186,37 +186,21 @@ func (j *job) run(ctx context.Context) {
 				continue
 			}
 
-			expectedListeners++
-
 			listenerWG.Add(1)
+			listenersReadyWG.Add(1)
 
 			go func(ctxName string, entry contextCLIEntry, swarmMode bool, configs []*deployConfig.Config) {
 				defer listenerWG.Done()
 
-				j.runContextEventListener(ctx, jobLog, ctxName, entry, swarmMode, configs, mergedCh, listenerReadyCh)
+				j.runContextEventListener(ctx, jobLog, ctxName, entry, swarmMode, configs, mergedCh, listenersReadyWG.Done)
 			}(ctxName, entry, swarmMode, configs)
 		}
 	}
 
-	if expectedListeners == 0 {
+	go func() {
+		listenersReadyWG.Wait()
 		j.signalReady()
-	} else {
-		go func() {
-			ready := 0
-			for ready < expectedListeners {
-				select {
-				case <-ctx.Done():
-					return
-				case <-j.closeChan:
-					return
-				case <-listenerReadyCh:
-					ready++
-				}
-			}
-
-			j.signalReady()
-		}()
-	}
+	}()
 
 	for {
 		select {
@@ -236,39 +220,24 @@ func (j *job) run(ctx context.Context) {
 
 // runContextEventListener connects to the Docker daemon for entry, listens for relevant events,
 // forwards them (tagged with contextName) to out, and automatically reconnects on disconnection.
-func (j *job) runContextEventListener(ctx context.Context, jobLog *slog.Logger, contextName string, entry contextCLIEntry, swarmMode bool, contextDCs []*deployConfig.Config, out chan<- contextualEvent, ready chan<- struct{}) {
+func (j *job) runContextEventListener(ctx context.Context, jobLog *slog.Logger, contextName string, entry contextCLIEntry, swarmMode bool, contextDCs []*deployConfig.Config, out chan<- contextualEvent, markReady func()) {
 	repositoryLabelValue := gitInternal.GetFullName(j.info.Repository.SourceUrl)
 	if j.info.Payload != nil && strings.TrimSpace(j.info.Payload.FullName) != "" {
 		repositoryLabelValue = j.info.Payload.FullName
 	}
 
-	// signalListenerReady reports this listener as ready exactly once. The send must not
-	// block forever if the job is torn down before the readiness collector drained the
-	// channel, otherwise run's deferred listenerWG.Wait would never return.
-	readySignaled := false
+	// Report this listener as ready exactly once, and always on exit so a listener that
+	// returns before it could connect cannot stall the job's readiness signal.
+	var readyOnce sync.Once
 
-	signalListenerReady := func() {
-		if readySignaled {
-			return
-		}
-
-		readySignaled = true
-
-		select {
-		case ready <- struct{}{}:
-		case <-ctx.Done():
-		case <-j.closeChan:
-		}
-	}
+	signalListenerReady := func() { readyOnce.Do(markReady) }
+	defer signalListenerReady()
 
 	contextGroupByEvent := getDeployConfigGroupByEvent(contextDCs)
 
 	// This context/mode has deploy configs but none with reconciliation enabled, so no
-	// Docker event listener is needed. Still report readiness: the job counts one listener
-	// per non-empty context/mode group, so staying silent here would stall its readiness
-	// signal forever (and with it any caller waiting for it, e.g. startup state recovery).
+	// Docker event listener is needed. The deferred readiness signal above covers it.
 	if len(contextGroupByEvent) == 0 {
-		signalListenerReady()
 		return
 	}
 
