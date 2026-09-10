@@ -56,11 +56,16 @@ func recoverReconciliationState(
 	}
 
 	if len(refs) == 0 {
-		log.Info("no previously deployed repositories found to recover reconciliation state for")
+		log.Debug("no previously deployed repositories found to recover reconciliation state for")
 		return
 	}
 
-	log.Info("recovering reconciliation state on startup", slog.Int("repositories", len(refs)))
+	// This only rebuilds in-memory bookkeeping (job registry, event listeners) for
+	// repositories that were already deployed; it says nothing about their health. Any
+	// actual healing action (restarting a container, redeploying a missing stack) logs
+	// separately at info level, so this stays at debug to avoid implying a problem on
+	// every normal restart.
+	log.Debug("recovering reconciliation state on startup", slog.Int("repositories", len(refs)))
 
 	// Recovered jobs are registered synchronously and keep initializing in the background,
 	// so this only caps the wait. Without it, every repository on a slow or unreachable
@@ -81,7 +86,7 @@ func recoverReconciliationState(
 		}
 	}
 
-	log.Info("finished recovering reconciliation state on startup",
+	log.Debug("finished recovering reconciliation state on startup",
 		slog.Int("repositories_recovered", recoveredCount),
 		slog.Int("repositories_discovered", len(refs)))
 }
@@ -151,7 +156,7 @@ func recoverManagedDeployment(
 		repoLog.Error("failed to recover reconciliation state", logger.ErrAttr(err))
 		return false
 	default:
-		recoveredLog.Info("recovered reconciliation state on startup")
+		recoveredLog.Debug("recovered reconciliation state on startup")
 		return true
 	}
 }
