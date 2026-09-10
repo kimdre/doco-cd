@@ -146,19 +146,24 @@ func (j *job) run(ctx context.Context) {
 				continue
 			}
 
-			unhealthyConfigs := filterConfigsByMode(
-				getDeployConfigGroupByEvent(configs)["unhealthy"],
-				entry.swarmMode,
-				swarmMode,
-			)
+			groupByEvent := getDeployConfigGroupByEvent(configs)
 
-			startupRecoveryWG.Add(2)
+			unhealthyConfigs := filterConfigsByMode(groupByEvent["unhealthy"], entry.swarmMode, swarmMode)
+			stoppedConfigs := filterConfigsByMode(restartCandidateDCsForStoppedContainers(groupByEvent), entry.swarmMode, swarmMode)
+
+			startupRecoveryWG.Add(3)
 
 			go func(entry contextCLIEntry, swarmMode bool, unhealthyConfigs []*deployConfig.Config) {
 				defer startupRecoveryWG.Done()
 
 				j.restartUnhealthyContainersOnStartup(ctx, jobLog, entry.cli, swarmMode, unhealthyConfigs)
 			}(entry, swarmMode, unhealthyConfigs)
+
+			go func(entry contextCLIEntry, swarmMode bool, stoppedConfigs []*deployConfig.Config) {
+				defer startupRecoveryWG.Done()
+
+				j.restartStoppedContainersOnStartup(ctx, jobLog, entry.cli, swarmMode, stoppedConfigs)
+			}(entry, swarmMode, stoppedConfigs)
 
 			go func(ctxName string, entry contextCLIEntry, swarmMode bool, configs []*deployConfig.Config) {
 				defer startupRecoveryWG.Done()

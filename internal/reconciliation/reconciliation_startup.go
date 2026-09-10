@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/docker/cli/cli/command"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/events"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
@@ -97,6 +98,113 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 
 		j.restartContainer(ctx, eventLog, restartEvent, restartDC, cli, swarmMode)
 	}
+}
+
+// restartStoppedContainersOnStartup performs a one-time startup check for stacks whose
+// reconciliation is configured for the "stop", "kill", or "oom" events and restarts any
+// container that is present but not running (exited/dead). This covers containers that were
+// stopped while doco-cd itself was not running (e.g. a plain "docker stop" during a doco-cd
+// restart), which the normal Docker event listener can never observe since the event already
+// happened before doco-cd started listening again.
+func (j *job) restartStoppedContainersOnStartup(ctx context.Context, jobLog *slog.Logger, cli command.Cli, swarmMode bool, stoppedDCs []*deployConfig.Config) {
+	if len(stoppedDCs) == 0 || swarmMode {
+		return
+	}
+
+	repositoryLabelValue := gitInternal.GetFullName(j.info.Repository.SourceUrl)
+	if j.info.Payload != nil && strings.TrimSpace(j.info.Payload.FullName) != "" {
+		repositoryLabelValue = j.info.Payload.FullName
+	}
+
+	containers, err := j.manager.runtimeQueries.ListManagedRepositoryContainers(
+		ctx, cli.Client(), repositoryLabelValue, true,
+	)
+	if err != nil {
+		jobLog.Error("failed to list containers for startup stopped scan", logger.ErrAttr(err))
+		return
+	}
+
+	for _, c := range containers {
+		if c.State != container.StateExited && c.State != container.StateDead {
+			continue
+		}
+
+		stackName := strings.TrimSpace(c.Labels[docker.DocoCDLabels.Deployment.Name])
+		if stackName == "" {
+			continue
+		}
+
+		stackDCs := deployConfigsByName(stoppedDCs, stackName)
+
+		restartDC := selectRestartDeployConfig(stackDCs, c.Labels)
+		if restartDC == nil {
+			continue
+		}
+
+		containerName := ""
+		if len(c.Names) > 0 {
+			containerName = strings.TrimPrefix(c.Names[0], "/")
+		}
+
+		traceID := id.New()
+
+		eventLog := logger.
+			WithoutAttr(jobLog, "job_id").
+			With(
+				// Keep one trace ID for both logs and notifications for this reconciliation action.
+				slog.Group("reconciliation",
+					slog.String("event", "startup_stopped"),
+					slog.Group("container",
+						slog.String("id", shortID(c.ID)),
+						slog.String("name", containerName),
+					),
+					slog.String("trace_id", traceID),
+				),
+				slog.String("stack", stackName),
+			)
+
+		// ContainerRestart on an already-stopped container simply starts it, so it's safe
+		// to reuse the same restart path as a live "stop" event.
+		restartEvent := withReconciliationTraceID(events.Message{
+			Action: events.Action("stop"),
+			Actor: events.Actor{
+				ID: c.ID,
+				Attributes: map[string]string{
+					"name": containerName,
+				},
+			},
+		}, traceID)
+
+		j.restartContainer(ctx, eventLog, restartEvent, restartDC, cli, swarmMode)
+	}
+}
+
+// restartCandidateDCsForStoppedContainers returns a deduplicated slice (by Docker context and
+// stack name) of deploy configs configured for at least one of the non-health-based restart
+// events ("stop", "kill", "oom"). "unhealthy" is excluded since that case is already covered by
+// restartUnhealthyContainersOnStartup, which inspects the container's health status rather than
+// its run state.
+func restartCandidateDCsForStoppedContainers(grouped map[string][]*deployConfig.Config) []*deployConfig.Config {
+	seen := set.New[string]()
+
+	var result []*deployConfig.Config
+
+	for _, action := range []string{"stop", "kill", "oom"} {
+		for _, dc := range grouped[action] {
+			if dc == nil {
+				continue
+			}
+
+			key := dc.Context + "\x00" + dc.Name
+			if !seen.Contains(key) {
+				seen.Add(key)
+
+				result = append(result, dc)
+			}
+		}
+	}
+
+	return result
 }
 
 // uniqueRedeployDCsFromGroupByEvent returns a deduplicated slice (by Docker context and stack name)

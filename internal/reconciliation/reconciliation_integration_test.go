@@ -256,6 +256,61 @@ func TestRecoverJob_RestartsUnhealthyContainerOnStartup(t *testing.T) {
 	waitForContainerRestartedAfter(ctx, t, stack.Client, containerID, startedBefore, 20*time.Second)
 }
 
+// TestRecoverJob_RestartsStoppedContainerOnStartup proves that RecoverJob's one-time startup
+// healing restarts a container that was stopped (e.g. via "docker stop") before any
+// reconciliation job existed for it, simulating a stop that happened while doco-cd was not
+// running and therefore could never be observed as a live "stop" Docker event.
+func TestRecoverJob_RestartsStoppedContainerOnStartup(t *testing.T) {
+	requireDockerIntegrationTestGate(t)
+
+	ctx := t.Context()
+	stackName := internaltest.ConvertTestName(t.Name())
+	repositoryName := "kimdre/doco-cd_tests"
+
+	stack := internaltest.ComposeUp(ctx, t,
+		internaltest.WithName(stackName),
+		internaltest.WithYAML(runningServiceComposeYAML()),
+		internaltest.WithWaitTimeout(reconciliationIntegrationWaitTimeout),
+		internaltest.WithCustomLabel(map[string]string{
+			docker.DocoCDLabels.Metadata.Manager: app.Name,
+			docker.DocoCDLabels.Source.Name:      repositoryName,
+			docker.DocoCDLabels.Deployment.Name:  stackName,
+		}),
+	)
+
+	containerID := stack.ServiceContainerID(ctx, t, "app")
+	startedBefore := containerStartedAt(ctx, t, stack.Client, containerID)
+
+	// Stop the container before any reconciliation job watches it, simulating a plain
+	// "docker stop" that happened while doco-cd itself was not running.
+	stopTimeout := 1
+
+	if _, err := stack.Client.ContainerStop(ctx, containerID, client.ContainerStopOptions{Timeout: &stopTimeout}); err != nil {
+		t.Fatalf("failed to stop container %s: %v", containerID, err)
+	}
+
+	dc := deployConfig.New(stackName, "main")
+	dc.Reconciliation.Enabled = true
+	dc.Reconciliation.Events = []string{"stop"}
+
+	manager := newTestManagerWithDependencies(t, Dependencies{DockerCLI: stack.DockerCli})
+	t.Cleanup(manager.Close)
+
+	err := manager.RecoverJob(ctx, DeployRequest{
+		Logger:        logger.New(slog.LevelError).Logger,
+		Metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-recover-job"},
+		JobTrigger:    stages.JobTriggerWebhook,
+		Repository:    stages.RepositoryData{SourceUrl: "https://github.com/" + repositoryName + ".git", Name: repositoryName},
+		Payload:       &webhook.ParsedPayload{FullName: repositoryName},
+		DeployConfigs: []*deployConfig.Config{dc},
+	})
+	if err != nil {
+		t.Fatalf("RecoverJob returned an error: %v", err)
+	}
+
+	waitForContainerRestartedAfter(ctx, t, stack.Client, containerID, startedBefore, 20*time.Second)
+}
+
 func waitForContainerHealthStatus(ctx context.Context, t *testing.T, cli client.APIClient, containerID, wantStatus string, timeout time.Duration) {
 	t.Helper()
 
