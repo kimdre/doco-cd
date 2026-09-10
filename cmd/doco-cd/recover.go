@@ -55,11 +55,20 @@ func recoverReconciliationState(
 		return
 	}
 
+	if len(refs) == 0 {
+		log.Info("no previously deployed repositories found to recover reconciliation state for")
+		return
+	}
+
+	log.Info("recovering reconciliation state on startup", slog.Int("repositories", len(refs)))
+
 	// Recovered jobs are registered synchronously and keep initializing in the background,
 	// so this only caps the wait. Without it, every repository on a slow or unreachable
 	// Docker context would add its own RecoverJob timeout to the startup delay.
 	waitCtx, cancelWait := context.WithTimeout(ctx, recoverStateWaitBudget)
 	defer cancelWait()
+
+	var recoveredCount int
 
 	for _, ref := range refs {
 		if ctx.Err() != nil {
@@ -67,13 +76,20 @@ func recoverReconciliationState(
 			return
 		}
 
-		recoverManagedDeployment(waitCtx, appConfig, manager, dataMountPoint, ref, log)
+		if recoverManagedDeployment(waitCtx, appConfig, manager, dataMountPoint, ref, log) {
+			recoveredCount++
+		}
 	}
+
+	log.Info("finished recovering reconciliation state on startup",
+		slog.Int("repositories_recovered", recoveredCount),
+		slog.Int("repositories_discovered", len(refs)))
 }
 
 // recoverManagedDeployment reloads deploy configs for a single previously deployed
 // repository from its existing local checkout (no clone/fetch/pull) and, if any were
-// found, registers a reconciliation job for it.
+// found, registers a reconciliation job for it. It returns true if a job was registered
+// (even if its event listeners are still initializing in the background).
 func recoverManagedDeployment(
 	ctx context.Context,
 	appConfig *app.Config,
@@ -81,22 +97,28 @@ func recoverManagedDeployment(
 	dataMountPoint container.MountPoint,
 	ref docker.ManagedDeploymentRef,
 	log *slog.Logger,
-) {
+) bool {
 	repoLog := log.With(slog.String("repository", ref.RepositoryName))
 
 	source, ok := docker.ResolveManagedSourceDir(dataMountPoint.Destination, ref.RepositoryURL, ref.SourceType)
 	if !ok {
 		repoLog.Warn("skipping reconciliation state recovery: local checkout not found on data volume; will recover on the next poll/webhook trigger instead")
-		return
+		return false
 	}
 
 	deployConfigs := reloadManagedDeployConfigs(appConfig, dataMountPoint.Destination, source, ref, repoLog)
 	if len(deployConfigs) == 0 {
 		repoLog.Debug("no reloadable deploy configs found for reconciliation state recovery")
-		return
+		return false
 	}
 
 	reference, revision := firstManagedTargetLabels(ref.Targets)
+
+	recoveredLog := repoLog.With(
+		slog.Any("deployments", deployConfigNames(deployConfigs)),
+		slog.String("reference", reference),
+		slog.String("revision", revision),
+	)
 
 	err := manager.RecoverJob(ctx, reconciliation.DeployRequest{
 		Logger:     repoLog,
@@ -120,15 +142,28 @@ func recoverManagedDeployment(
 	switch {
 	case errors.Is(err, context.Canceled):
 		repoLog.Debug("reconciliation state recovery canceled during shutdown", logger.ErrAttr(err))
+		return false
 	case errors.Is(err, reconciliation.ErrRecoverJobNotReady), errors.Is(err, context.DeadlineExceeded):
 		// The job is registered and keeps initializing in the background; do not block startup.
-		repoLog.Warn("recovered reconciliation state on startup, job is still initializing",
-			slog.Int("deploy_configs", len(deployConfigs)), logger.ErrAttr(err))
+		recoveredLog.Warn("recovered reconciliation state on startup, job is still initializing", logger.ErrAttr(err))
+		return true
 	case err != nil:
 		repoLog.Error("failed to recover reconciliation state", logger.ErrAttr(err))
+		return false
 	default:
-		repoLog.Info("recovered reconciliation state on startup", slog.Int("deploy_configs", len(deployConfigs)))
+		recoveredLog.Info("recovered reconciliation state on startup")
+		return true
 	}
+}
+
+// deployConfigNames returns the deployment names of configs, in order, for logging.
+func deployConfigNames(configs []*deploy.Config) []string {
+	names := make([]string, len(configs))
+	for i, cfg := range configs {
+		names[i] = cfg.Name
+	}
+
+	return names
 }
 
 // recoveredPayload rebuilds the webhook payload of the deployment that originally created the

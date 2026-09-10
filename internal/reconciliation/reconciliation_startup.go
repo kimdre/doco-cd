@@ -195,7 +195,7 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 
 	for _, dc := range candidates {
 		if !runningStacks.Contains(dc.Name) {
-			jobLog.Debug("detected missing containers on startup", slog.String("stack", dc.Name))
+			jobLog.Info("detected missing containers on startup", slog.String("stack", dc.Name))
 			missing = append(missing, dc)
 		}
 	}
@@ -233,7 +233,7 @@ func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slo
 
 	for _, dc := range candidates {
 		if !existingStacks.Contains(dc.Name) {
-			jobLog.Debug("detected missing swarm services on startup", slog.String("stack", dc.Name))
+			jobLog.Info("detected missing swarm services on startup", slog.String("stack", dc.Name))
 			missing = append(missing, dc)
 		}
 	}
