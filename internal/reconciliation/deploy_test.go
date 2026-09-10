@@ -37,6 +37,61 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
+// TestRecoverJob_RegistersJobWithoutRunningDeployPipeline verifies that RecoverJob registers a
+// long-lived reconciliation job without invoking the deployment pipeline or one-time startup
+// healing. The job becoming ready demonstrates that its event listener was registered directly.
+func TestRecoverJob_RegistersJobWithoutRunningDeployPipeline(t *testing.T) {
+	t.Parallel()
+
+	manager := newTestManager(t)
+
+	repo := "owner/recover-job-test-" + id.New()
+
+	dc := deployConfig.New("recover-stack", "main")
+	dc.Reconciliation.Enabled = true
+	dc.Reconciliation.Events = []string{"unhealthy"}
+
+	err := manager.RecoverJob(t.Context(), DeployRequest{
+		Logger:     logger.New(logger.LevelCritical).Logger,
+		Metadata:   notification.Metadata{Repository: repo},
+		JobTrigger: stages.JobTriggerPoll,
+		Repository: stages.RepositoryData{
+			Source:    config.SourceTypeGit,
+			SourceUrl: "https://github.com/" + repo + ".git",
+			Name:      repo,
+		},
+		DeployConfigs: []*deployConfig.Config{dc},
+		Payload:       &webhook.ParsedPayload{FullName: repo},
+	})
+	if err != nil {
+		t.Fatalf("RecoverJob() error = %v", err)
+	}
+
+	waitForReconciliationJobReady(t, manager, repo, 10*time.Second)
+
+	manager.jobs.mu.Lock()
+	recoveredJob := manager.jobs.jobs[repo]
+	manager.jobs.mu.Unlock()
+
+	if recoveredJob == nil || !recoveredJob.info.skipStartupRecovery {
+		t.Fatal("RecoverJob() registered a job without disabling startup healing")
+	}
+}
+
+func TestRecoverJob_ValidatesRequest(t *testing.T) {
+	t.Parallel()
+
+	manager := newTestManager(t)
+
+	err := manager.RecoverJob(t.Context(), DeployRequest{
+		JobTrigger: stages.JobTriggerPoll,
+		Repository: stages.RepositoryData{Name: "owner/repo"},
+	})
+	if err == nil {
+		t.Fatal("expected RecoverJob to fail validation for a request with no logger")
+	}
+}
+
 func TestDeploy_RejectsUnverifiedOCIArtifact(t *testing.T) {
 	t.Parallel()
 

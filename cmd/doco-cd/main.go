@@ -383,6 +383,8 @@ func run() error {
 		return err
 	}
 
+	RecoverReconciliationState(ctx, c, contexts, reconciliationManager, dataMountPoint, log.Logger)
+
 	sourcePreparer, err := source.NewPreparer(source.Dependencies{
 		AppConfig: c,
 	})

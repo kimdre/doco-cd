@@ -55,6 +55,52 @@ func (m *Manager) Deploy(ctx context.Context, req DeployRequest) error {
 	return err
 }
 
+// RecoverJob registers a long-lived reconciliation job for req without running the
+// deployment pipeline (no Docker compose/stack apply, no source preparation). It exists
+// to rebuild in-memory reconciliation state (job registry, event listeners, unhealthy-restart
+// suppression history) for a repository that was already deployed in a previous process
+// lifetime, once its deploy configs have been reloaded from an existing local checkout by
+// the caller. It skips one-time startup healing so registration cannot apply deployments or
+// synchronize sources, then waits until the event listeners are ready.
+func (m *Manager) RecoverJob(ctx context.Context, req DeployRequest) error {
+	if m == nil {
+		return errors.New("reconciliation manager is required")
+	}
+
+	if err := m.beginDeploy(); err != nil {
+		return err
+	}
+	defer m.deployWG.Done()
+
+	if err := validation.Validate(req); err != nil {
+		return fmt.Errorf("validate deploy request: %w", err)
+	}
+
+	if req.Payload == nil {
+		return errors.New("recover reconciliation job: payload is required")
+	}
+
+	if strings.TrimSpace(req.Metadata.Repository) == "" {
+		return errors.New("recover reconciliation job: metadata repository is required")
+	}
+
+	req.skipStartupRecovery = true
+
+	recoveredJob := m.addJob(ctx, req)
+	if recoveredJob == nil {
+		return nil
+	}
+
+	select {
+	case <-recoveredJob.readyChan:
+		return nil
+	case <-recoveredJob.doneChan:
+		return errors.New("recovered reconciliation job exited before its event listeners became ready")
+	case <-ctx.Done():
+		return fmt.Errorf("wait for recovered reconciliation job readiness: %w", ctx.Err())
+	}
+}
+
 func (m *Manager) deploy(ctx context.Context, req DeployRequest) error {
 	if req.Repository.Source == config.SourceTypeOCI && !req.Repository.OCITrusted {
 		return fmt.Errorf("%w: refusing to run reconciliation cleanup before trust-policy verification", ErrOCIArtifactNotVerified)

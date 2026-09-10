@@ -459,20 +459,34 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 			repoDir := repoRoot
 			// Check for configs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
 			if c.AutoDiscovery.Enabled {
-				if c.RepositoryUrl != "" {
-					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), opts.SSHPrivateKey, opts.SSHPrivateKeyPassphrase, opts.GitAccessToken)
-					if err != nil {
-						return nil, fmt.Errorf("failed to get auth method: %w", err)
-					}
-
+				switch {
+				case c.RepositoryUrl != "":
 					repoDir = path.Join(path.Dir(repoRoot), gitInternal.GetRepoName(string(c.RepositoryUrl)))
+					if opts.LocalOnly {
+						if info, statErr := os.Stat(repoDir); statErr != nil || !info.IsDir() {
+							return nil, fmt.Errorf("local auto-discovery repository is unavailable at %s", repoDir)
+						}
 
-					// Synchronize the repository once, whether it already exists or must be cloned.
-					_, err = gitInternal.SyncRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth))
-					if err != nil {
-						return nil, fmt.Errorf("failed to synchronize repository: %w", err)
+						if matches, matchErr := gitInternal.MatchesHead(repoDir, c.Reference); matchErr != nil || !matches {
+							return nil, fmt.Errorf("local auto-discovery repository at %s does not match reference %s", repoDir, c.Reference)
+						}
+					} else {
+						auth, authErr := gitInternal.GetAuthMethod(string(c.RepositoryUrl), opts.SSHPrivateKey, opts.SSHPrivateKeyPassphrase, opts.GitAccessToken)
+						if authErr != nil {
+							return nil, fmt.Errorf("failed to get auth method: %w", authErr)
+						}
+
+						// Synchronize the repository once, whether it already exists or must be cloned.
+						_, err = gitInternal.SyncRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth))
+						if err != nil {
+							return nil, fmt.Errorf("failed to synchronize repository: %w", err)
+						}
 					}
-				} else if isGitRepo {
+				case isGitRepo && opts.LocalOnly:
+					if matches, matchErr := gitInternal.MatchesHead(repoRoot, c.Reference); matchErr != nil || !matches {
+						return nil, fmt.Errorf("local auto-discovery repository at %s does not match reference %s", repoRoot, c.Reference)
+					}
+				case isGitRepo:
 					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), opts.SSHPrivateKey, opts.SSHPrivateKeyPassphrase, opts.GitAccessToken)
 					if err != nil {
 						return nil, fmt.Errorf("failed to get auth method: %w", err)
