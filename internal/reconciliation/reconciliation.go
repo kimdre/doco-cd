@@ -239,9 +239,33 @@ func (j *job) runContextEventListener(ctx context.Context, jobLog *slog.Logger, 
 		repositoryLabelValue = j.info.Payload.FullName
 	}
 
+	// signalListenerReady reports this listener as ready exactly once. The send must not
+	// block forever if the job is torn down before the readiness collector drained the
+	// channel, otherwise run's deferred listenerWG.Wait would never return.
+	readySignaled := false
+
+	signalListenerReady := func() {
+		if readySignaled {
+			return
+		}
+
+		readySignaled = true
+
+		select {
+		case ready <- struct{}{}:
+		case <-ctx.Done():
+		case <-j.closeChan:
+		}
+	}
+
 	contextGroupByEvent := getDeployConfigGroupByEvent(contextDCs)
 
+	// This context/mode has deploy configs but none with reconciliation enabled, so no
+	// Docker event listener is needed. Still report readiness: the job counts one listener
+	// per non-empty context/mode group, so staying silent here would stall its readiness
+	// signal forever (and with it any caller waiting for it, e.g. startup state recovery).
 	if len(contextGroupByEvent) == 0 {
+		signalListenerReady()
 		return
 	}
 
@@ -258,7 +282,6 @@ func (j *job) runContextEventListener(ctx context.Context, jobLog *slog.Logger, 
 	}
 
 	eventSinceCursor := time.Now().UTC().Add(-reconciliationSinceSafetySkew)
-	readySignaled := false
 
 	const reconnectDelay = 5 * time.Second
 
@@ -279,9 +302,7 @@ func (j *job) runContextEventListener(ctx context.Context, jobLog *slog.Logger, 
 		})
 
 		if !readySignaled {
-			readySignaled = true
-
-			ready <- struct{}{}
+			signalListenerReady()
 		}
 
 		reconnect, newestEventTime := j.forwardEvents(ctx, jobLog, eventResult.Messages, eventResult.Err, contextName, swarmMode, out)

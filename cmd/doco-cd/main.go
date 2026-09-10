@@ -383,8 +383,6 @@ func run() error {
 		return err
 	}
 
-	RecoverReconciliationState(ctx, c, contexts, reconciliationManager, dataMountPoint, log.Logger)
-
 	sourcePreparer, err := source.NewPreparer(source.Dependencies{
 		AppConfig: c,
 	})
@@ -438,6 +436,11 @@ func run() error {
 	defer controlPlaneRuns.CloseAndWait()
 	// Cancel lifecycle work before waiting, then close shared resources after all jobs stop.
 	defer rootCancel()
+
+	// Rebuild reconciliation state for already-deployed repositories before any trigger
+	// source (poll, scheduler, webhook/API server) starts, so a real deployment can never
+	// race with recovery and be replaced by a job built from recovered (older) state.
+	RecoverReconciliationState(ctx, c, contexts, reconciliationManager, dataMountPoint, log.Logger)
 
 	h := orchestrationHandler{
 		appConfig:        c,

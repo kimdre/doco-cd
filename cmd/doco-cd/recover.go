@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -29,11 +31,13 @@ import (
 // the data volume, so it requires no network access and never re-fetches/re-clones a
 // source: repositories whose local checkout is no longer present are skipped (logged as a
 // warning) and are left for the next real poll/webhook trigger to recover instead. Recovery
-// registers event listeners only; it does not run deployment startup-healing actions.
+// registers event listeners only; it does not run deployment startup-healing actions such as
+// restarting unhealthy containers or redeploying missing services. Those still run when the
+// next poll/webhook trigger replaces the recovered job with a fully deployed one.
 //
 // Without this, reconciliation state stays empty after a restart until the next poll cycle
 // or webhook delivery triggers a deploy for each repository (see issue: "Recover
-// reconciliation state on app re-/start"). Registering the job here runs its normal startup.
+// reconciliation state on app re-/start").
 func RecoverReconciliationState(
 	ctx context.Context,
 	appConfig *app.Config,
@@ -163,15 +167,20 @@ func recoverManagedDeployment(
 		FullName: ref.RepositoryName,
 		CloneURL: ref.RepositoryURL,
 		WebURL:   ref.RepositoryURL,
-	}
-	if len(ref.Targets) > 0 {
-		payload.Ref = ref.Targets[0].Reference
+		Ref:      firstManagedReference(ref.Targets),
 	}
 
 	revision := firstManagedRevision(ref.Targets)
-	if sourceType == config.SourceTypeOCI {
+
+	switch {
+	case sourceType == config.SourceTypeOCI:
 		payload.Artifact = ref.RepositoryURL
 		payload.Digest = revision
+		payload.Trigger = revision
+	case plumbing.IsHash(revision):
+		// Keep the deployed commit on the payload so notifications and commit statuses for
+		// reconciliation deployments triggered by this recovered job report the right revision.
+		payload.CommitSHA = plumbing.NewHash(revision)
 		payload.Trigger = revision
 	}
 
@@ -190,8 +199,14 @@ func recoverManagedDeployment(
 		DeployConfigs: deployConfigs,
 		Payload:       payload,
 	})
-	if err != nil {
+
+	switch {
+	case errors.Is(err, reconciliation.ErrRecoverJobNotReady):
+		// The job is registered and keeps initializing in the background; do not block startup.
+		repoLog.Warn("reconciliation state recovery is still initializing", logger.ErrAttr(err))
+	case err != nil:
 		repoLog.Error("failed to recover reconciliation state", logger.ErrAttr(err))
+
 		return
 	}
 
@@ -271,6 +286,18 @@ func firstManagedRevision(targets []docker.ManagedDeploymentTarget) string {
 	for _, target := range targets {
 		if revision := strings.TrimSpace(target.Revision); revision != "" {
 			return revision
+		}
+	}
+
+	return ""
+}
+
+// firstManagedReference returns the first non-empty git/OCI reference across targets, so a
+// target that was deployed without a reference label does not mask the reference of a later one.
+func firstManagedReference(targets []docker.ManagedDeploymentTarget) string {
+	for _, target := range targets {
+		if reference := strings.TrimSpace(target.Reference); reference != "" {
+			return reference
 		}
 	}
 

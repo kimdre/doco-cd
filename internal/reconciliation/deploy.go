@@ -55,6 +55,17 @@ func (m *Manager) Deploy(ctx context.Context, req DeployRequest) error {
 	return err
 }
 
+// recoverJobReadyTimeout bounds how long RecoverJob waits for a recovered job's event
+// listeners. Recovery runs on the application startup path, so an unreachable or slow
+// Docker context must delay startup only briefly; the job keeps initializing in the
+// background after the timeout.
+const recoverJobReadyTimeout = 30 * time.Second
+
+// ErrRecoverJobNotReady is returned by RecoverJob when the recovered job was registered
+// but its event listeners did not become ready in time. The job stays registered and
+// continues to initialize in the background.
+var ErrRecoverJobNotReady = errors.New("recovered reconciliation job did not become ready in time")
+
 // RecoverJob registers a long-lived reconciliation job for req without running the
 // deployment pipeline (no Docker compose/stack apply, no source preparation). It exists
 // to rebuild in-memory reconciliation state (job registry, event listeners, unhealthy-restart
@@ -91,11 +102,16 @@ func (m *Manager) RecoverJob(ctx context.Context, req DeployRequest) error {
 		return nil
 	}
 
+	readyTimer := time.NewTimer(recoverJobReadyTimeout)
+	defer readyTimer.Stop()
+
 	select {
 	case <-recoveredJob.readyChan:
 		return nil
 	case <-recoveredJob.doneChan:
 		return errors.New("recovered reconciliation job exited before its event listeners became ready")
+	case <-readyTimer.C:
+		return ErrRecoverJobNotReady
 	case <-ctx.Done():
 		return fmt.Errorf("wait for recovered reconciliation job readiness: %w", ctx.Err())
 	}
