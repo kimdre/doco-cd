@@ -238,7 +238,7 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 				}
 
 				if info.IsDir() {
-					decryptedFiles, err = encryption.DecryptFilesInDirectory(repoPath, v.Source)
+					files, err := encryption.DecryptFilesInDirectory(repoPath, v.Source)
 					if err != nil {
 						if errors.Is(err, filesystem.ErrPathTraversal) {
 							continue
@@ -246,6 +246,8 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 
 						return decryptedFiles, fmt.Errorf("failed to decrypt files in bind mount directory '%s': %w", v.Source, err)
 					}
+
+					decryptedFiles = append(decryptedFiles, files...)
 
 					continue
 				}
