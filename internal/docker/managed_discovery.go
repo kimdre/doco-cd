@@ -23,7 +23,13 @@ type ManagedDeploymentTarget struct {
 	ConfigTarget   string
 	Reference      string
 	Revision       string
-	Context        string
+	// ConfigHash is the deploy config hash (DocoCDLabels.Deployment.ConfigHash) recorded at
+	// deploy time. It lets recovery detect real config drift for this specific target (its
+	// resolved config changed since it was deployed) without being tripped up by unrelated
+	// commits elsewhere in the repository advancing the shared checkout's HEAD, e.g. in a
+	// monorepo where many independently deployed targets share one git checkout.
+	ConfigHash string
+	Context    string
 }
 
 // ManagedDeploymentRef identifies a previously deployed repository/artifact, discovered
@@ -102,6 +108,7 @@ func (i *managedDeploymentIndex) add(contextName string, labels map[string]strin
 		ConfigTarget:   strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigTarget]),
 		Reference:      strings.TrimSpace(labels[DocoCDLabels.Deployment.TargetRef]),
 		Revision:       strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA]),
+		ConfigHash:     strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigHash]),
 		Context:        contextName,
 	}
 

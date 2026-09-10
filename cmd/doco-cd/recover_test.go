@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -182,11 +183,18 @@ func TestRecoverManagedDeployment_RegistersJobWhenWaitBudgetIsExhausted(t *testi
 func commitRecoveryTestRepo(t *testing.T, repoDir string, files []string) plumbing.Hash {
 	t.Helper()
 
-	repo, err := gogit.PlainInitWithOptions(repoDir, &gogit.PlainInitOptions{
-		DefaultBranch: plumbing.NewBranchReferenceName("main"),
-	})
+	repo, err := gogit.PlainOpen(repoDir)
 	if err != nil {
-		t.Fatalf("initialize recovery test repository: %v", err)
+		if !errors.Is(err, gogit.ErrRepositoryNotExists) {
+			t.Fatalf("open recovery test repository: %v", err)
+		}
+
+		repo, err = gogit.PlainInitWithOptions(repoDir, &gogit.PlainInitOptions{
+			DefaultBranch: plumbing.NewBranchReferenceName("main"),
+		})
+		if err != nil {
+			t.Fatalf("initialize recovery test repository: %v", err)
+		}
 	}
 
 	worktree, err := repo.Worktree()
@@ -346,5 +354,126 @@ auto_discovery:
 	)
 	if len(configs) != 0 {
 		t.Fatalf("got %d configs, want remote auto-discovery target skipped without fetching", len(configs))
+	}
+}
+
+// TestReloadManagedDeployConfigs_ConfigHashMatchSurvivesUnrelatedHeadAdvance proves the fix for
+// monorepos with many independently deployed targets sharing one git checkout: a target whose
+// recorded config hash still matches its reloaded config is kept even though its recorded
+// revision is no longer the checkout's current HEAD (advanced by an unrelated commit, e.g. from
+// another target being deployed later).
+func TestReloadManagedDeployConfigs_ConfigHashMatchSurvivesUnrelatedHeadAdvance(t *testing.T) {
+	t.Parallel()
+
+	repoDir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(repoDir, "compose.yaml"), []byte("services:\n  app:\n    image: alpine:3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoDir, ".doco-cd.yml"), []byte("name: nas-stack\nreference: main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	deployedRevision := commitRecoveryTestRepo(t, repoDir, []string{"compose.yaml", ".doco-cd.yml"})
+
+	appConfig := &app.Config{DeployConfigBaseDir: "/"}
+	source := docker.ManagedSource{Name: "owner/repo", Path: repoDir, Type: config.SourceTypeGit}
+
+	// Reload once at the deployed revision to obtain the config hash exactly as it would have
+	// been recorded on the container's label at deploy time.
+	deployedConfigs := reloadManagedDeployConfigs(
+		appConfig,
+		repoDir,
+		source,
+		docker.ManagedDeploymentRef{
+			RepositoryName: "owner/repo",
+			Targets: []docker.ManagedDeploymentTarget{
+				{DeploymentName: "nas-stack", Reference: "main", Revision: deployedRevision.String()},
+			},
+		},
+		logger.New(logger.LevelCritical).Logger,
+	)
+	if len(deployedConfigs) != 1 {
+		t.Fatalf("got %d deploy configs at deployed revision, want 1", len(deployedConfigs))
+	}
+
+	deployedHash := deployedConfigs[0].Internal.Hash
+	if deployedHash == "" {
+		t.Fatal("deployed config hash is empty")
+	}
+
+	// Advance HEAD with an unrelated commit that does not touch this target's own files,
+	// simulating another target being deployed later in the same monorepo checkout.
+	if err := os.WriteFile(filepath.Join(repoDir, "unrelated.txt"), []byte("unrelated\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	commitRecoveryTestRepo(t, repoDir, []string{"unrelated.txt"})
+
+	ref := docker.ManagedDeploymentRef{
+		RepositoryName: "owner/repo",
+		Targets: []docker.ManagedDeploymentTarget{
+			{
+				DeploymentName: "nas-stack",
+				Reference:      "main",
+				Revision:       deployedRevision.String(), // stale: no longer HEAD
+				ConfigHash:     deployedHash,
+			},
+		},
+	}
+
+	configs := reloadManagedDeployConfigs(appConfig, repoDir, source, ref, logger.New(logger.LevelCritical).Logger)
+	if len(configs) != 1 {
+		t.Fatalf("got %d deploy configs, want 1 (matching config hash despite stale revision)", len(configs))
+	}
+}
+
+// TestReloadManagedDeployConfigs_SkipsWhenConfigHashDiffersFromDeployedState proves that real
+// drift (the target's own config genuinely changed since it was deployed) is still detected and
+// skipped, even though the config hash check no longer depends on the repository-wide HEAD.
+func TestReloadManagedDeployConfigs_SkipsWhenConfigHashDiffersFromDeployedState(t *testing.T) {
+	t.Parallel()
+
+	repoDir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(repoDir, "compose.yaml"), []byte("services:\n  app:\n    image: alpine:3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoDir, ".doco-cd.yml"), []byte("name: nas-stack\nreference: main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	deployedRevision := commitRecoveryTestRepo(t, repoDir, []string{"compose.yaml", ".doco-cd.yml"})
+
+	// Change the target's own config after it was "deployed", simulating genuine drift.
+	if err := os.WriteFile(filepath.Join(repoDir, ".doco-cd.yml"), []byte("name: nas-stack\nreference: main\nworking_dir: changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	commitRecoveryTestRepo(t, repoDir, []string{".doco-cd.yml"})
+
+	ref := docker.ManagedDeploymentRef{
+		RepositoryName: "owner/repo",
+		Targets: []docker.ManagedDeploymentTarget{
+			{
+				DeploymentName: "nas-stack",
+				Reference:      "main",
+				Revision:       deployedRevision.String(),
+				ConfigHash:     "sha256-of-config-as-it-was-when-deployed",
+			},
+		},
+	}
+
+	configs := reloadManagedDeployConfigs(
+		&app.Config{DeployConfigBaseDir: "/"},
+		repoDir,
+		docker.ManagedSource{Name: "owner/repo", Path: repoDir, Type: config.SourceTypeGit},
+		ref,
+		logger.New(logger.LevelCritical).Logger,
+	)
+	if len(configs) != 0 {
+		t.Fatalf("got %d deploy configs, want 0 (config hash mismatch must be skipped)", len(configs))
 	}
 }

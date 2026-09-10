@@ -235,8 +235,18 @@ func reloadManagedDeployConfigs(
 				continue
 			}
 
-			if !managedConfigMatchesLocalSource(dataMountPath, source, cfg, target.Revision) {
-				repoLog.Warn("skipping reconciliation target whose deployed revision is not present in the local source",
+			if source.Type == config.SourceTypeOCI && target.Reference != "" {
+				cfg.Reference = target.Reference
+			}
+
+			cfg.Internal.ConfigTarget = target.ConfigTarget
+
+			if hash, err := cfg.Hash(); err == nil {
+				cfg.Internal.Hash = hash
+			}
+
+			if !managedConfigMatchesDeployedState(dataMountPath, source, cfg, target) {
+				repoLog.Warn("skipping reconciliation target whose config no longer matches the deployed state",
 					slog.String("deployment", target.DeploymentName),
 					slog.String("config_target", target.ConfigTarget),
 					slog.String("reference", target.Reference),
@@ -245,21 +255,12 @@ func reloadManagedDeployConfigs(
 				continue
 			}
 
-			if source.Type == config.SourceTypeOCI && target.Reference != "" {
-				cfg.Reference = target.Reference
-			}
-
 			key := docker.NormalizeContextName(cfg.Context) + "\x00" + cfg.Name
 			if _, dup := seen[key]; dup {
 				continue
 			}
 
 			seen[key] = struct{}{}
-			cfg.Internal.ConfigTarget = target.ConfigTarget
-
-			if hash, err := cfg.Hash(); err == nil {
-				cfg.Internal.Hash = hash
-			}
 
 			deployConfigs = append(deployConfigs, cfg)
 		}
@@ -286,6 +287,27 @@ func firstManagedTargetLabels(targets []docker.ManagedDeploymentTarget) (referen
 	}
 
 	return reference, revision
+}
+
+// managedConfigMatchesDeployedState checks whether the deploy config reloaded for a managed
+// target still matches what was actually deployed. When the target recorded a config hash
+// (DocoCDLabels.Deployment.ConfigHash, the normal case for deployments made by a reasonably
+// recent doco-cd), an exact hash match is definitive proof that nothing relevant to this
+// specific target changed, no matter how far the shared repository checkout's HEAD has since
+// moved for unrelated commits/targets (e.g. in a monorepo with many independently deployed
+// targets). Falls back to comparing the deployed revision against the local source's HEAD for
+// older deployments made before the config hash label existed.
+func managedConfigMatchesDeployedState(
+	dataMountPath string,
+	source docker.ManagedSource,
+	cfg *deploy.Config,
+	target docker.ManagedDeploymentTarget,
+) bool {
+	if configHash := strings.TrimSpace(target.ConfigHash); configHash != "" {
+		return strings.TrimSpace(cfg.Internal.Hash) == configHash
+	}
+
+	return managedConfigMatchesLocalSource(dataMountPath, source, cfg, target.Revision)
 }
 
 // managedConfigMatchesLocalSource checks whether the revision a managed deployment target was
