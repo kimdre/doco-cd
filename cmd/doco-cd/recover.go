@@ -33,12 +33,15 @@ const recoverStateWaitBudget = 60 * time.Second
 // listeners, unhealthy-restart suppression history) for repositories that were already
 // deployed before this process started. It relies entirely on doco-cd labels already
 // present on existing containers/services and on the Git/OCI checkout already present on
-// the data volume, so it requires no network access and never re-fetches/re-clones a
-// source: repositories whose local checkout is no longer present are skipped (logged as a
-// warning) and are left for the next real poll/webhook trigger to recover instead. Recovery
-// registers event listeners only; it does not run deployment startup-healing actions such as
-// restarting unhealthy containers or redeploying missing services. Those still run when the
-// next poll/webhook trigger replaces the recovered job with a fully deployed one.
+// the data volume to reload deploy configs, so that reload step requires no network access
+// and never re-fetches/re-clones a source: repositories whose local checkout is no longer
+// present are skipped (logged as a warning) and are left for the next real poll/webhook
+// trigger to recover instead. Recovery then runs the same one-time startup healing a
+// normal deploy would (restarting containers already unhealthy, redeploying stacks with no
+// running containers/services at all), so drift accumulated while the process was down is
+// corrected immediately instead of waiting for the next poll/webhook trigger. Unlike the
+// config reload, that healing can reach the network exactly like any other reconciliation
+// redeploy (git fetch/OCI pull) when it redeploys a missing stack.
 func recoverReconciliationState(
 	ctx context.Context,
 	appConfig *app.Config,

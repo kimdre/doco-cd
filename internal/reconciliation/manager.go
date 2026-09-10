@@ -133,14 +133,13 @@ type contextCLIEntry struct {
 // unique test name. Stable application dependencies (app config, Docker CLI, context registry,
 // secret provider) live on the Manager itself instead; see Dependencies.
 type DeployRequest struct {
-	Logger              *slog.Logger `validate:"required,nostructlevel"`
-	Metadata            notification.Metadata
-	JobTrigger          stages.JobTrigger `validate:"required,oneof=webhook poll"`
-	Repository          stages.RepositoryData
-	DeployConfigs       []*deployConfig.Config `validate:"dive,required"`
-	Payload             *webhook.ParsedPayload
-	TestName            string
-	skipStartupRecovery bool
+	Logger        *slog.Logger `validate:"required,nostructlevel"`
+	Metadata      notification.Metadata
+	JobTrigger    stages.JobTrigger `validate:"required,oneof=webhook poll"`
+	Repository    stages.RepositoryData
+	DeployConfigs []*deployConfig.Config `validate:"dive,required"`
+	Payload       *webhook.ParsedPayload
+	TestName      string
 }
 
 type job struct {

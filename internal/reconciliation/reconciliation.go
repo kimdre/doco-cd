@@ -133,43 +133,44 @@ func (j *job) run(ctx context.Context) {
 
 	defer listenerWG.Wait()
 
-	if !j.info.skipStartupRecovery {
-		// Startup recovery: run for every configured context in parallel.
-		// Run both checks concurrently per context, then wait for all to finish
-		// before subscribing to Docker events so startup healing happens against
-		// a stable initial view of the daemon state.
-		var startupRecoveryWG sync.WaitGroup
+	// Startup recovery: run for every configured context in parallel, whether this job was
+	// just deployed or rebuilt from existing state on process startup (see RecoverJob) — in
+	// both cases the in-memory job is new and has not yet observed the daemon's current state,
+	// so any drift (unhealthy containers, fully-missing stacks) accumulated before this job
+	// started must be healed once before relying on the Docker event stream for the rest.
+	// Run both checks concurrently per context, then wait for all to finish before subscribing
+	// to Docker events so startup healing happens against a stable initial view of daemon state.
+	var startupRecoveryWG sync.WaitGroup
 
-		for ctxName, entry := range j.contextCLIs {
-			for swarmMode, configs := range groupDeployConfigsByMode(j.deployConfigsForContext(ctxName), entry.swarmMode) {
-				if len(configs) == 0 {
-					continue
-				}
-
-				unhealthyConfigs := filterConfigsByMode(
-					getDeployConfigGroupByEvent(configs)["unhealthy"],
-					entry.swarmMode,
-					swarmMode,
-				)
-
-				startupRecoveryWG.Add(2)
-
-				go func(entry contextCLIEntry, swarmMode bool, unhealthyConfigs []*deployConfig.Config) {
-					defer startupRecoveryWG.Done()
-
-					j.restartUnhealthyContainersOnStartup(ctx, jobLog, entry.cli, swarmMode, unhealthyConfigs)
-				}(entry, swarmMode, unhealthyConfigs)
-
-				go func(ctxName string, entry contextCLIEntry, swarmMode bool, configs []*deployConfig.Config) {
-					defer startupRecoveryWG.Done()
-
-					j.redeployMissingServicesOnStartup(ctx, jobLog, ctxName, entry.cli, swarmMode, configs)
-				}(ctxName, entry, swarmMode, configs)
+	for ctxName, entry := range j.contextCLIs {
+		for swarmMode, configs := range groupDeployConfigsByMode(j.deployConfigsForContext(ctxName), entry.swarmMode) {
+			if len(configs) == 0 {
+				continue
 			}
-		}
 
-		startupRecoveryWG.Wait()
+			unhealthyConfigs := filterConfigsByMode(
+				getDeployConfigGroupByEvent(configs)["unhealthy"],
+				entry.swarmMode,
+				swarmMode,
+			)
+
+			startupRecoveryWG.Add(2)
+
+			go func(entry contextCLIEntry, swarmMode bool, unhealthyConfigs []*deployConfig.Config) {
+				defer startupRecoveryWG.Done()
+
+				j.restartUnhealthyContainersOnStartup(ctx, jobLog, entry.cli, swarmMode, unhealthyConfigs)
+			}(entry, swarmMode, unhealthyConfigs)
+
+			go func(ctxName string, entry contextCLIEntry, swarmMode bool, configs []*deployConfig.Config) {
+				defer startupRecoveryWG.Done()
+
+				j.redeployMissingServicesOnStartup(ctx, jobLog, ctxName, entry.cli, swarmMode, configs)
+			}(ctxName, entry, swarmMode, configs)
+		}
 	}
+
+	startupRecoveryWG.Wait()
 
 	// Fan-in Docker events from all contexts into a single channel processed serially.
 	// The buffer absorbs short bursts from multiple daemons without backpressure.

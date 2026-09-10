@@ -38,8 +38,10 @@ import (
 )
 
 // TestRecoverJob_RegistersJobWithoutRunningDeployPipeline verifies that RecoverJob registers a
-// long-lived reconciliation job without invoking the deployment pipeline or one-time startup
-// healing. The job becoming ready demonstrates that its event listener was registered directly.
+// long-lived reconciliation job directly (no source preparation/cloning), without going through
+// the normal deployment pipeline used by Deploy. It still runs the same one-time startup-healing
+// pass as a normal job; here that pass is a no-op since no matching containers exist for the
+// unique test repository, so the job becomes ready promptly.
 func TestRecoverJob_RegistersJobWithoutRunningDeployPipeline(t *testing.T) {
 	t.Parallel()
 
@@ -69,12 +71,8 @@ func TestRecoverJob_RegistersJobWithoutRunningDeployPipeline(t *testing.T) {
 
 	waitForReconciliationJobReady(t, manager, repo, 10*time.Second)
 
-	manager.jobs.mu.Lock()
-	recoveredJob := manager.jobs.jobs[repo]
-	manager.jobs.mu.Unlock()
-
-	if recoveredJob == nil || !recoveredJob.info.skipStartupRecovery {
-		t.Fatal("RecoverJob() registered a job without disabling startup healing")
+	if !manager.HasJob(repo) {
+		t.Fatal("RecoverJob() did not register a reconciliation job")
 	}
 }
 
@@ -341,6 +339,194 @@ func TestDeploy(t *testing.T) {
 	}
 
 	waitForRunningDeploymentNames(ctx, t, dockerCli.Client(), swarmMode, stackName, firstPartWanted, reconciliationTimeout)
+}
+
+// TestRecoverJob_RedeploysMissingStackOnStartup proves that RecoverJob's one-time startup
+// healing redeploys a stack whose containers/services are completely missing at recovery
+// time, simulating a stack that was removed while doco-cd was not running.
+func TestRecoverJob_RedeploysMissingStackOnStartup(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
+	ctx := t.Context()
+
+	c, err := app.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.GitCommitStatus = false
+
+	log := logger.New(logger.LevelCritical).Logger
+
+	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy)
+	if err != nil {
+		t.Fatalf("Failed to create docker client: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := dockerCli.Client().Close(); err != nil {
+			t.Log("Failed to close docker client:", err)
+		}
+	})
+
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
+	if err != nil {
+		if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {
+			t.Skip(err.Error())
+		}
+
+		t.Fatalf("failed to initialize secret provider: %s", err.Error())
+
+		return
+	}
+
+	if secretProvider != nil {
+		t.Cleanup(func() {
+			secretProvider.Close()
+		})
+	}
+
+	p := webhook.ParsedPayload{
+		Ref:       "7be81e788a40724cee7542eec00a2af0c4340eba",
+		CommitSHA: plumbing.NewHash("7be81e788a40724cee7542eec00a2af0c4340eba"),
+		FullName:  "kimdre/doco-cd_tests",
+		CloneURL:  "https://github.com/kimdre/doco-cd_tests.git",
+		Private:   false,
+	}
+	swarmMode := resolveTestSwarmMode(t, dockerCli.Client())
+
+	tmpDir := t.TempDir()
+
+	// Use a test-unique repository name so this test's reconciliation job key does not
+	// collide with other package tests that may run in parallel.
+	repoName := test.ConvertTestName(t.Name()) + "-repo"
+	repoPath := filepath.Join(tmpDir, repoName)
+
+	_, err = git.CloneOrUpdateRepository(log, p.CloneURL, p.Ref,
+		repoPath, repoPath,
+		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
+		c.HttpProxy, c.GitCloneSubmodules, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if swarmMode {
+		makeDeployFixtureSwarmCompatible(t, repoPath)
+	}
+
+	stackName := test.ConvertTestName(t.Name())
+
+	dcs, err := deployConfig.GetConfigs(repoPath, c.DeployConfigBaseDir, "", p.Ref, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dcs) < 3 {
+		t.Fatalf("expected at least three deployment configs, got %d", len(dcs))
+	}
+
+	// Reuse a single stack (the third fixture config) that already carries a
+	// redeploy-oriented reconciliation event in this repository's fixtures.
+	dc := dcs[2]
+	dc.Name = stackName + "-" + dc.Name
+
+	if swarmMode {
+		// Service removal emits "remove", normalized to "destroy".
+		dc.Reconciliation.Events = []string{"destroy"}
+	} else {
+		// Force-removing a container emits "die", not "stop".
+		dc.Reconciliation.Events = []string{"die"}
+	}
+
+	t.Cleanup(func() {
+		ctx := context.Background()
+		if swarmMode {
+			if err := removeTestSwarmStack(ctx, dockerCli, dc.Name); err != nil {
+				t.Error("removeTestSwarmStack err", err)
+			}
+		} else if err := destroyTestStack(ctx, dockerCli.Client(), dc.Name); err != nil {
+			t.Error("destroyTestStack err", err)
+		}
+	})
+
+	firstManager := newTestManagerWithDependencies(t, Dependencies{
+		AppConfig: c,
+		DataMountPoint: container.MountPoint{
+			Type:        "bind",
+			Source:      tmpDir,
+			Destination: tmpDir,
+			Mode:        "rw",
+		},
+		DockerCLI:      dockerCli,
+		SecretProvider: secretProvider,
+	})
+
+	deployRequest := DeployRequest{
+		Metadata: notification.Metadata{
+			Repository: repoName,
+			Revision:   notification.GetRevision(p.Ref, p.CommitSHAString()),
+		},
+		JobTrigger: stages.JobTriggerWebhook,
+		Repository: stages.RepositoryData{
+			SourceUrl:    p.CloneURL,
+			Name:         repoName,
+			PathInternal: repoPath,
+			PathExternal: repoPath,
+		},
+		DeployConfigs: []*deployConfig.Config{dc},
+		Payload:       &p,
+	}
+
+	deployRequest.Logger = log
+	deployRequest.Metadata.JobID = id.New()
+
+	if err := firstManager.Deploy(ctx, deployRequest); err != nil {
+		t.Fatalf("Failed to deploy: %v", err)
+	}
+
+	waitForRunningDeploymentNames(ctx, t, dockerCli.Client(), swarmMode, stackName, []string{dc.Name}, 20*time.Second)
+	waitForReconciliationJobReady(t, firstManager, repoName, 5*time.Second)
+
+	// Simulate the application shutting down: the reconciliation job stops watching
+	// events, but the deployed stack itself keeps running.
+	firstManager.Close()
+
+	// Simulate drift while the process was down: the stack's containers/services
+	// disappear completely with nothing left watching for it.
+	if swarmMode {
+		removeSwarmServices(ctx, t, dockerCli.Client(), []*deployConfig.Config{dc})
+	} else if err := rmContainersForDeployments(ctx, t, dockerCli.Client(), []string{dc.Name}); err != nil {
+		t.Fatal("rm container err:", err)
+	}
+
+	waitForRunningDeploymentNames(ctx, t, dockerCli.Client(), swarmMode, stackName, nil, 20*time.Second)
+
+	// Simulate the application starting back up: a fresh manager (sharing the same
+	// Docker CLI/daemon) recovers reconciliation state for the same repository.
+	secondManager := newTestManagerWithDependencies(t, Dependencies{
+		AppConfig: c,
+		DataMountPoint: container.MountPoint{
+			Type:        "bind",
+			Source:      tmpDir,
+			Destination: tmpDir,
+			Mode:        "rw",
+		},
+		DockerCLI:      dockerCli,
+		SecretProvider: secretProvider,
+	})
+
+	deployRequest.Metadata.JobID = id.New()
+
+	if err := secondManager.RecoverJob(ctx, deployRequest); err != nil {
+		t.Fatalf("RecoverJob returned an error: %v", err)
+	}
+
+	reconciliationTimeout := 20 * time.Second
+	if swarmMode {
+		reconciliationTimeout = 60 * time.Second
+	}
+
+	waitForRunningDeploymentNames(ctx, t, dockerCli.Client(), swarmMode, stackName, []string{dc.Name}, reconciliationTimeout)
 }
 
 func makeDeployFixtureSwarmCompatible(t *testing.T, repoPath string) {
