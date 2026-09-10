@@ -174,7 +174,9 @@ func (j *job) run(ctx context.Context) {
 	// Fan-in Docker events from all contexts into a single channel processed serially.
 	// The buffer absorbs short bursts from multiple daemons without backpressure.
 	mergedCh := make(chan contextualEvent, 256)
-	listenerReadyCh := make(chan struct{}, len(j.contextCLIs))
+	// Each context can spawn one listener per compose/swarm mode group, so size the buffer
+	// for the upper bound to keep readiness reporting non-blocking.
+	listenerReadyCh := make(chan struct{}, 2*len(j.contextCLIs))
 	expectedListeners := 0
 
 	for ctxName, entry := range j.contextCLIs {
@@ -301,9 +303,7 @@ func (j *job) runContextEventListener(ctx context.Context, jobLog *slog.Logger, 
 			Since:   dockerEventsSinceValue(eventSinceCursor),
 		})
 
-		if !readySignaled {
-			signalListenerReady()
-		}
+		signalListenerReady()
 
 		reconnect, newestEventTime := j.forwardEvents(ctx, jobLog, eventResult.Messages, eventResult.Err, contextName, swarmMode, out)
 

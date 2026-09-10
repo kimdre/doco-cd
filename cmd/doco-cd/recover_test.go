@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -95,6 +96,89 @@ func TestRecoverManagedDeployment_ReloadsConfigFromLocalCheckoutAndRegistersJob(
 	}
 }
 
+// TestRecoverManagedDeployment_RegistersJobWhenWaitBudgetIsExhausted verifies that exceeding
+// the startup wait budget never drops a recovery: the reconciliation job is registered before
+// the readiness wait, so an expired context only stops doco-cd from waiting for it.
+func TestRecoverManagedDeployment_RegistersJobWhenWaitBudgetIsExhausted(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+
+	repoDirName := "github.com/owner/recover-budget-test"
+	repoDir := filepath.Join(dataDir, repoDirName)
+
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoDir, "compose.yaml"), []byte("services:\n  app:\n    image: alpine:3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	deployConfigYAML := "name: recover-budget-stack\nreference: main\nreconciliation:\n  enabled: true\n  events:\n    - unhealthy\n"
+	if err := os.WriteFile(filepath.Join(repoDir, ".doco-cd.yml"), []byte(deployConfigYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	revision := commitRecoveryTestRepo(t, repoDir, []string{"compose.yaml", ".doco-cd.yml"})
+
+	appConfig := &app.Config{DeployConfigBaseDir: "/"}
+
+	dockerCli, err := docker.CreateDockerCli(true)
+	if err != nil {
+		t.Fatalf("failed to create docker cli: %v", err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	dataMountPoint := container.MountPoint{Type: "bind", Source: dataDir, Destination: dataDir, Mode: "rw"}
+
+	manager := newTestReconciliationManager(t, reconciliation.Dependencies{
+		AppConfig:                appConfig,
+		DataMountPoint:           dataMountPoint,
+		DockerCLI:                dockerCli,
+		MaxConcurrentDeployments: 1,
+	})
+
+	ref := docker.ManagedDeploymentRef{
+		RepositoryName: "owner/recover-budget-test",
+		RepositoryURL:  "https://github.com/owner/recover-budget-test.git",
+		SourceType:     "git",
+		Targets: []docker.ManagedDeploymentTarget{{
+			DeploymentName: "recover-budget-stack",
+			Reference:      "main",
+			Revision:       revision.String(),
+		}},
+	}
+
+	expired, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		recoverManagedDeployment(expired, appConfig, manager, dataMountPoint, ref, logger.New(logger.LevelCritical).Logger)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("recoverManagedDeployment did not return once the wait budget was exhausted")
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+
+	for !manager.HasJob(repoDirName) {
+		if time.Now().After(deadline) {
+			t.Fatalf("reconciliation job for %q was not registered despite the exhausted wait budget", repoDirName)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func commitRecoveryTestRepo(t *testing.T, repoDir string, files []string) plumbing.Hash {
 	t.Helper()
 
@@ -156,8 +240,7 @@ func TestReloadManagedDeployConfigs_DedupsAcrossTargets(t *testing.T) {
 	configs := reloadManagedDeployConfigs(
 		appConfig,
 		repoDir,
-		repoDir,
-		config.SourceTypeGit,
+		docker.ManagedSource{Name: "owner/repo", Path: repoDir, Type: config.SourceTypeGit},
 		ref,
 		logger.New(logger.LevelCritical).Logger,
 	)
@@ -209,8 +292,7 @@ reference: main
 	configs := reloadManagedDeployConfigs(
 		&app.Config{DeployConfigBaseDir: "/"},
 		repoDir,
-		repoDir,
-		config.SourceTypeGit,
+		docker.ManagedSource{Name: "owner/repo", Path: repoDir, Type: config.SourceTypeGit},
 		ref,
 		logger.New(logger.LevelCritical).Logger,
 	)
@@ -258,8 +340,7 @@ auto_discovery:
 	configs := reloadManagedDeployConfigs(
 		&app.Config{DeployConfigBaseDir: "/"},
 		repoDir,
-		repoDir,
-		config.SourceTypeGit,
+		docker.ManagedSource{Name: "owner/repo", Path: repoDir, Type: config.SourceTypeGit},
 		ref,
 		logger.New(logger.LevelCritical).Logger,
 	)

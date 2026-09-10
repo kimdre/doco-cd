@@ -92,7 +92,7 @@ func TestDiscoverManagedDeployments(t *testing.T) {
 
 		apiClient := &runtimeQueryTestClient{containers: containers, services: services}
 
-		refs, err := DiscoverManagedDeployments(t.Context(), apiClient, false)
+		refs, err := DiscoverManagedDeployments(t.Context(), apiClient, "", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestDiscoverManagedDeployments(t *testing.T) {
 
 		apiClient := &runtimeQueryTestClient{containers: containers, services: services}
 
-		refs, err := DiscoverManagedDeployments(t.Context(), apiClient, true)
+		refs, err := DiscoverManagedDeployments(t.Context(), apiClient, "", true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,7 +158,7 @@ func TestDiscoverManagedDeployments_UsesManagerLabelFilter(t *testing.T) {
 
 	apiClient := &runtimeQueryTestClient{}
 
-	if _, err := DiscoverManagedDeployments(t.Context(), apiClient, false); err != nil {
+	if _, err := DiscoverManagedDeployments(t.Context(), apiClient, "", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -196,7 +196,7 @@ func TestDiscoverManagedDeployments_DistinguishesRepositoryHosts(t *testing.T) {
 		},
 	}
 
-	refs, err := DiscoverManagedDeployments(t.Context(), apiClient, false)
+	refs, err := DiscoverManagedDeployments(t.Context(), apiClient, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,17 +219,21 @@ func TestResolveManagedSourceDir(t *testing.T) {
 	t.Run("finds labeled git source directory", func(t *testing.T) {
 		t.Parallel()
 
-		path, sourceType, ok := ResolveManagedSourceDir(dataMountPath, "https://github.com/owner/git-repo.git", "git")
+		source, ok := ResolveManagedSourceDir(dataMountPath, "https://github.com/owner/git-repo.git", "git")
 		if !ok {
 			t.Fatal("expected to find existing git checkout")
 		}
 
-		if sourceType != config.SourceTypeGit {
-			t.Fatalf("source type = %q, want %q", sourceType, config.SourceTypeGit)
+		if source.Type != config.SourceTypeGit {
+			t.Fatalf("source type = %q, want %q", source.Type, config.SourceTypeGit)
 		}
 
-		if filepath.Clean(path) != filepath.Join(dataMountPath, gitRepoName) {
-			t.Fatalf("path = %q, want %q", path, filepath.Join(dataMountPath, gitRepoName))
+		if source.Name != gitRepoName {
+			t.Fatalf("source name = %q, want %q", source.Name, gitRepoName)
+		}
+
+		if filepath.Clean(source.Path) != filepath.Join(dataMountPath, gitRepoName) {
+			t.Fatalf("path = %q, want %q", source.Path, filepath.Join(dataMountPath, gitRepoName))
 		}
 	})
 
@@ -237,20 +241,20 @@ func TestResolveManagedSourceDir(t *testing.T) {
 		t.Parallel()
 
 		// Labeled as OCI, but only the git-named directory exists on disk.
-		_, sourceType, ok := ResolveManagedSourceDir(dataMountPath, "https://github.com/owner/git-repo.git", "oci")
+		source, ok := ResolveManagedSourceDir(dataMountPath, "https://github.com/owner/git-repo.git", "oci")
 		if !ok {
 			t.Fatal("expected fallback to the git checkout to succeed")
 		}
 
-		if sourceType != config.SourceTypeGit {
-			t.Fatalf("source type = %q, want %q", sourceType, config.SourceTypeGit)
+		if source.Type != config.SourceTypeGit {
+			t.Fatalf("source type = %q, want %q", source.Type, config.SourceTypeGit)
 		}
 	})
 
 	t.Run("reports not found when neither directory exists", func(t *testing.T) {
 		t.Parallel()
 
-		_, _, ok := ResolveManagedSourceDir(dataMountPath, "https://github.com/owner/missing-repo.git", "git")
+		_, ok := ResolveManagedSourceDir(dataMountPath, "https://github.com/owner/missing-repo.git", "git")
 		if ok {
 			t.Fatal("expected not to find a checkout for a repository never deployed")
 		}
