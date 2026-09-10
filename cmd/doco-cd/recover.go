@@ -29,7 +29,7 @@ import (
 // every job is already registered by then and finishes initializing in the background.
 const recoverStateWaitBudget = 60 * time.Second
 
-// RecoverReconciliationState rebuilds in-memory reconciliation state (job registry, event
+// recoverReconciliationState rebuilds in-memory reconciliation state (job registry, event
 // listeners, unhealthy-restart suppression history) for repositories that were already
 // deployed before this process started. It relies entirely on doco-cd labels already
 // present on existing containers/services and on the Git/OCI checkout already present on
@@ -39,11 +39,7 @@ const recoverStateWaitBudget = 60 * time.Second
 // registers event listeners only; it does not run deployment startup-healing actions such as
 // restarting unhealthy containers or redeploying missing services. Those still run when the
 // next poll/webhook trigger replaces the recovered job with a fully deployed one.
-//
-// Without this, reconciliation state stays empty after a restart until the next poll cycle
-// or webhook delivery triggers a deploy for each repository (see issue: "Recover
-// reconciliation state on app re-/start").
-func RecoverReconciliationState(
+func recoverReconciliationState(
 	ctx context.Context,
 	appConfig *app.Config,
 	contexts *docker.ContextRegistry,

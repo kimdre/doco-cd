@@ -440,7 +440,7 @@ func run() error {
 	// Rebuild reconciliation state for already-deployed repositories before any trigger
 	// source (poll, scheduler, webhook/API server) starts, so a real deployment can never
 	// race with recovery and be replaced by a job built from recovered (older) state.
-	RecoverReconciliationState(ctx, c, contexts, reconciliationManager, dataMountPoint, log.Logger)
+	recoverReconciliationState(ctx, c, contexts, reconciliationManager, dataMountPoint, log.Logger)
 
 	h := orchestrationHandler{
 		appConfig:        c,
