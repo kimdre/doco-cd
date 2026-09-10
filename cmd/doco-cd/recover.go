@@ -129,17 +129,15 @@ func recoverManagedDeployment(
 	switch {
 	case errors.Is(err, context.Canceled):
 		repoLog.Debug("reconciliation state recovery canceled during shutdown", logger.ErrAttr(err))
-		return
 	case errors.Is(err, reconciliation.ErrRecoverJobNotReady), errors.Is(err, context.DeadlineExceeded):
 		// The job is registered and keeps initializing in the background; do not block startup.
-		repoLog.Warn("reconciliation state recovery is still initializing", logger.ErrAttr(err))
+		repoLog.Warn("recovered reconciliation state on startup, job is still initializing",
+			slog.Int("deploy_configs", len(deployConfigs)), logger.ErrAttr(err))
 	case err != nil:
 		repoLog.Error("failed to recover reconciliation state", logger.ErrAttr(err))
-
-		return
+	default:
+		repoLog.Info("recovered reconciliation state on startup", slog.Int("deploy_configs", len(deployConfigs)))
 	}
-
-	repoLog.Info("recovered reconciliation state on startup", slog.Int("deploy_configs", len(deployConfigs)))
 }
 
 // recoveredPayload rebuilds the webhook payload of the deployment that originally created the
