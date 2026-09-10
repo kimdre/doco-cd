@@ -113,41 +113,113 @@ func commitBoundary(repo *git.Repository, oldHash, newHash plumbing.Hash) map[pl
 	return boundary
 }
 
-// GetCommitsBetween returns commits reachable from newHash but not from oldHash,
-// newest first, capped at maxCommits.
-func GetCommitsBetween(repo *git.Repository, oldHash, newHash plumbing.Hash, maxCommits int) ([]CommitInfo, error) {
-	iter, err := repo.Log(&git.LogOptions{From: newHash, Order: git.LogOrderCommitterTime})
+// errStopWalk ends a commit log walk early.
+var errStopWalk = errors.New("stop walk")
+
+// newCommitInfo maps a commit to the shape exposed to notification templates.
+func newCommitInfo(c *object.Commit) CommitInfo {
+	subject := c.Message
+	if i := strings.IndexByte(subject, '\n'); i >= 0 {
+		subject = subject[:i]
+	}
+
+	return CommitInfo{
+		Hash:      c.Hash.String(),
+		ShortHash: c.Hash.String()[:DefaultShortSHALength],
+		Subject:   strings.TrimSpace(subject),
+		Author:    c.Author.Name,
+	}
+}
+
+// walkLog walks the commit log from newHash, newest first, and hands every commit to
+// visit until it returns false or the log ends. A non-nil pathFilter reduces the log to
+// the commits that changed a matching path, like `git log -- <paths>`.
+func walkLog(repo *git.Repository, newHash plumbing.Hash, pathFilter func(string) bool, visit func(*object.Commit) bool) error {
+	iter, err := repo.Log(&git.LogOptions{From: newHash, Order: git.LogOrderCommitterTime, PathFilter: pathFilter})
 	if err != nil {
-		return nil, fmt.Errorf("failed to read commit log from %s: %w", newHash, err)
+		return fmt.Errorf("failed to read commit log from %s: %w", newHash, err)
 	}
 	defer iter.Close()
 
-	boundary := commitBoundary(repo, oldHash, newHash)
-	commits := make([]CommitInfo, 0, maxCommits)
-
-	stop := errors.New("stop")
-
 	err = iter.ForEach(func(c *object.Commit) error {
-		if _, atBoundary := boundary[c.Hash]; atBoundary || len(commits) >= maxCommits {
-			return stop
+		if !visit(c) {
+			return errStopWalk
 		}
-
-		subject := c.Message
-		if i := strings.IndexByte(subject, '\n'); i >= 0 {
-			subject = subject[:i]
-		}
-
-		commits = append(commits, CommitInfo{
-			Hash:      c.Hash.String(),
-			ShortHash: c.Hash.String()[:DefaultShortSHALength],
-			Subject:   strings.TrimSpace(subject),
-			Author:    c.Author.Name,
-		})
 
 		return nil
 	})
-	if err != nil && !errors.Is(err, stop) {
-		return nil, fmt.Errorf("failed to walk commit log: %w", err)
+	if err != nil && !errors.Is(err, errStopWalk) {
+		return fmt.Errorf("failed to walk commit log: %w", err)
+	}
+
+	return nil
+}
+
+// GetCommitsBetween returns commits reachable from newHash but not from oldHash,
+// newest first, capped at maxCommits.
+//
+// A non-nil pathFilter keeps only the commits that changed a path it matches, so a stack
+// gets a changelog of its own files instead of everything that happened in the repository.
+// Paths are relative to the root of the repository. The cap counts the commits that pass
+// the filter, and a nil filter returns the whole range.
+func GetCommitsBetween(repo *git.Repository, oldHash, newHash plumbing.Hash, maxCommits int, pathFilter func(string) bool) ([]CommitInfo, error) {
+	boundary := commitBoundary(repo, oldHash, newHash)
+	commits := make([]CommitInfo, 0, maxCommits)
+
+	if pathFilter == nil {
+		err := walkLog(repo, newHash, nil, func(c *object.Commit) bool {
+			if _, atBoundary := boundary[c.Hash]; atBoundary || len(commits) >= maxCommits {
+				return false
+			}
+
+			commits = append(commits, newCommitInfo(c))
+
+			return true
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return commits, nil
+	}
+
+	// go-git filters paths by dropping the non-matching commits from the log iterator,
+	// the boundary commit included. The walk would then miss where to stop and run
+	// through the whole history, so the range is taken from the unfiltered log first and
+	// the filtered log is limited to it. Walking the range twice only reads commit
+	// objects, the tree diffs of the filtered walk dominate either way.
+	inRange := make(map[plumbing.Hash]struct{})
+
+	err := walkLog(repo, newHash, nil, func(c *object.Commit) bool {
+		if _, atBoundary := boundary[c.Hash]; atBoundary {
+			return false
+		}
+
+		inRange[c.Hash] = struct{}{}
+
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(inRange) == 0 {
+		return commits, nil
+	}
+
+	err = walkLog(repo, newHash, pathFilter, func(c *object.Commit) bool {
+		// The filtered log is a subsequence of the unfiltered one, so the first commit
+		// outside the range also ends it.
+		if _, ok := inRange[c.Hash]; !ok {
+			return false
+		}
+
+		commits = append(commits, newCommitInfo(c))
+
+		return len(commits) < maxCommits
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return commits, nil

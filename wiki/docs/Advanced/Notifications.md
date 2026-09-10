@@ -127,7 +127,7 @@ The following fields are available:
 | `.AffectedActorKind`  | `container` or `service`                                                 |
 | `.AffectedActorID`    | Affected container/service ID                                            |
 | `.AffectedActorName`  | Affected container/service name                                          |
-| `.Commits`            | Commits deployed since the last deploy (see [Commit changelog](#commit-changelog)) |
+| `.Commits`            | Commits that changed this stack since the last deploy (see [Commit changelog](#commit-changelog)) |
 | `.Duration`           | Time the deployment (or destroy) took, from job start to the notification, e.g. `12.483s`. Zero where no deployment ran (reconciliation restarts, scheduled jobs); hide it with `{{if .Duration}}...{{end}}` |
 | `.ChangedServices`    | Sorted names of the services changed by this deploy: force-recreated ones (changed mounted/referenced files or a changed auto-discovery label) plus services whose image digest changed in the registry (detected with [`force_image_pull`](../Deploy-Settings.md)). Empty when the whole stack is (re)deployed for other reasons, e.g. a compose config change (including image tag changes in the compose file), state drift or `force_recreate` |
 
@@ -165,7 +165,9 @@ Printing an entry directly (`{{ . }}`) gives `shortHash subject`.
         {{ end }}
     ```
 
-Up to 50 commits are listed. After a rebase or force-push the list starts from the point where the histories diverged.
+Only commits that changed a file of the stack are listed, like `git log -- <paths>`. The paths are the ones the compose project resolves to: the compose files, `configs:`, `secrets:`, `env_file:`, bind mount sources and build contexts. A repository that holds several stacks therefore gets a changelog per stack instead of everything that happened in the repository. Where the stack resolves to no path inside the repository, or covers the repository root, all commits of the range are listed.
+
+Up to 50 commits are listed, counted after that filtering. After a rebase or force-push the list starts from the point where the histories diverged.
 
 The changelog is best-effort: with a small `GIT_CLONE_DEPTH` the previously deployed commit may sit beyond the shallow boundary, in which case the list is truncated or omitted. It never blocks the notification.
 
