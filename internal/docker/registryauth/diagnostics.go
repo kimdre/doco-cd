@@ -201,7 +201,7 @@ func BuildFailureHint(cfg *configfile.ConfigFile, imageRefs []string, failure er
 
 // imageRegistries returns a sorted list of unique registry domains extracted from the provided image references.
 func imageRegistries(imageRefs []string) []string {
-	unique := set.Set[string]{}
+	unique := set.New[string]()
 
 	for _, ref := range imageRefs {
 		namedRef, err := distReference.ParseNormalizedNamed(ref)
@@ -217,14 +217,7 @@ func imageRegistries(imageRefs []string) []string {
 		unique.Add(registry)
 	}
 
-	registries := make([]string, 0, len(unique))
-	for registry := range unique {
-		registries = append(registries, registry)
-	}
-
-	sort.Strings(registries)
-
-	return registries
+	return set.SortedSlice(unique)
 }
 
 // registriesWithoutConfigAuth returns a list of registries for which the provided Docker config file

@@ -282,13 +282,7 @@ func gitSourceIdentities(sourceURLs ...string) set.Set[string] {
 
 // identitySetsOverlap reports whether two repository identity sets intersect.
 func identitySetsOverlap(left, right set.Set[string]) bool {
-	for identity := range left {
-		if right.Contains(identity) {
-			return true
-		}
-	}
-
-	return false
+	return left.Intersects(right)
 }
 
 // referencesMatch reports whether configured and webhook references identify the same branch or tag.

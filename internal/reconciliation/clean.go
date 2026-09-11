@@ -152,7 +152,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 // isCleanupTargetMatch checks if the stack's config target matches any of the run config targets.
 func isCleanupTargetMatch(runConfigTargets set.Set[string], stackConfigTarget string) bool {
 	// Backward compatibility: if no run target context is available, keep legacy behavior.
-	if runConfigTargets.Len() == 0 {
+	if runConfigTargets.IsEmpty() {
 		return true
 	}
 
@@ -168,7 +168,7 @@ func isCleanupTargetMatch(runConfigTargets set.Set[string], stackConfigTarget st
 }
 
 func sortedTargetKeys(m set.Set[string]) []string {
-	if m.Len() == 0 {
+	if m.IsEmpty() {
 		return nil
 	}
 
