@@ -20,6 +20,7 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -588,19 +589,19 @@ func getCachedConfigsFromFile(fileName string) ([]*Config, error) {
 
 // ValidateUniqueProjectNames checks if project names are unique within each Docker context.
 func ValidateUniqueProjectNames(configs []*Config) error {
-	namesByContext := make(map[string]map[string]bool)
+	namesByContext := make(map[string]set.Set[string])
 	for _, dc := range configs {
 		names, ok := namesByContext[dc.Context]
 		if !ok {
-			names = make(map[string]bool)
+			names = set.New[string]()
 			namesByContext[dc.Context] = names
 		}
 
-		if names[dc.Name] {
+		if names.Contains(dc.Name) {
 			return fmt.Errorf("%w: %s", ErrDuplicateProjectName, dc.Name)
 		}
 
-		names[dc.Name] = true
+		names.Add(dc.Name)
 	}
 
 	return nil

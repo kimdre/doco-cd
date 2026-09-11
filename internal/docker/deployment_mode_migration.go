@@ -11,6 +11,7 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -118,7 +119,7 @@ func deploymentModeLabels(ctx context.Context, dockerClient client.APIClient, st
 }
 
 // validateMigrationOwnership checks that all discovered resources are owned by this deployment source.
-func validateMigrationOwnership(labelsByService map[Service]Labels, expectedSources map[string]struct{}, mode bool, stackName string) error {
+func validateMigrationOwnership(labelsByService map[Service]Labels, expectedSources set.Set[string], mode bool, stackName string) error {
 	for service, labels := range labelsByService {
 		if labels[DocoCDLabels.Metadata.Manager] != app.Name ||
 			!migrationSourceMatches(labels, expectedSources) {
@@ -131,13 +132,13 @@ func validateMigrationOwnership(labelsByService map[Service]Labels, expectedSour
 }
 
 // migrationSourceMatches returns true if any of the source labels match the expected sources.
-func migrationSourceMatches(labels Labels, expectedSources map[string]struct{}) bool {
+func migrationSourceMatches(labels Labels, expectedSources set.Set[string]) bool {
 	for _, source := range []string{
 		labels[DocoCDLabels.Source.Name],
 		labels[DocoCDLabels.Source.URL],
 	} {
 		for candidate := range migrationSourceCandidates(source) {
-			if _, ok := expectedSources[candidate]; ok {
+			if expectedSources.Contains(candidate) {
 				return true
 			}
 		}
@@ -147,17 +148,15 @@ func migrationSourceMatches(labels Labels, expectedSources map[string]struct{}) 
 }
 
 // migrationSourceCandidates returns a set of normalized source candidates for matching against existing resources.
-func migrationSourceCandidates(source string) map[string]struct{} {
+func migrationSourceCandidates(source string) set.Set[string] {
 	normalized := normalizeRepositoryForLabelMatch(source)
-	candidates := map[string]struct{}{
-		normalized: {},
-	}
+	candidates := set.New(normalized)
 
 	source = strings.TrimSpace(source)
 	if strings.Contains(source, "://") ||
 		(strings.Contains(source, "@") && strings.Contains(source, ":")) ||
 		hasRepositoryHostPrefix(normalized) {
-		candidates[normalizeRepositoryForLabelMatch(git.GetFullName(normalized))] = struct{}{}
+		candidates.Add(normalizeRepositoryForLabelMatch(git.GetFullName(normalized)))
 	}
 
 	return candidates

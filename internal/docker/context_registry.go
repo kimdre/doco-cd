@@ -12,6 +12,7 @@ import (
 	contextstore "github.com/docker/cli/cli/context/store"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
@@ -49,7 +50,7 @@ type ContextRegistry struct {
 	options ContextRegistryOptions
 	closed  bool
 
-	available map[string]struct{}
+	available set.Set[string]
 	clients   map[string]command.Cli
 
 	listContexts func() ([]contextstore.Metadata, error)
@@ -62,7 +63,7 @@ func NewContextRegistry(baseCli command.Cli, options ContextRegistryOptions) *Co
 	registry := &ContextRegistry{
 		baseCli:   baseCli,
 		options:   options,
-		available: map[string]struct{}{"": {}},
+		available: set.New(""),
 		clients:   make(map[string]command.Cli),
 		createCli: CreateDockerCliWithContext,
 		resolveSwarm: func(ctx context.Context, dockerClient client.APIClient) (bool, error) {
@@ -120,7 +121,7 @@ func (r *ContextRegistry) Refresh() error {
 		return ErrContextRegistryClosed
 	}
 
-	available := map[string]struct{}{"": {}}
+	available := set.New("")
 
 	if listContexts != nil {
 		contexts, err := listContexts()
@@ -131,7 +132,7 @@ func (r *ContextRegistry) Refresh() error {
 		for _, metadata := range contexts {
 			name := NormalizeContextName(metadata.Name)
 			if name != "" {
-				available[name] = struct{}{}
+				available.Add(name)
 			}
 		}
 	}
@@ -233,7 +234,7 @@ func (r *ContextRegistry) clientForKnownContext(name string) (command.Cli, error
 		return nil, ErrContextRegistryClosed
 	}
 
-	if _, ok := r.available[name]; !ok {
+	if !r.available.Contains(name) {
 		return nil, fmt.Errorf("%w: %s", ErrDockerContextNotFound, DisplayContextName(name))
 	}
 

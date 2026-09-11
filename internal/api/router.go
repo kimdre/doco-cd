@@ -9,6 +9,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/swaggest/swgui/v5emb"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config/app"
 )
 
@@ -80,7 +81,7 @@ func RegisterRoutes(mux *http.ServeMux, h *Handler, mounts Mounts) ([]string, er
 
 	var enabledEndpoints []string
 
-	seenRoots := make(map[string]bool)
+	seenRoots := set.New[string]()
 
 	for _, route := range routes {
 		if route.Enabled == nil || !route.Enabled(h.appConfig) {
@@ -94,9 +95,9 @@ func RegisterRoutes(mux *http.ServeMux, h *Handler, mounts Mounts) ([]string, er
 		mux.Handle(route.Pattern, route.Handler)
 		h.log.Debug("register API endpoint", slog.String("path", route.Pattern))
 
-		if !seenRoots[route.Root] {
+		if !seenRoots.Contains(route.Root) {
 			enabledEndpoints = append(enabledEndpoints, route.Root)
-			seenRoots[route.Root] = true
+			seenRoots.Add(route.Root)
 		}
 	}
 
@@ -131,14 +132,11 @@ func RegisterRoutes(mux *http.ServeMux, h *Handler, mounts Mounts) ([]string, er
 }
 
 func routesByRoot(routes []Route, roots ...string) []Route {
-	included := make(map[string]bool, len(roots))
-	for _, root := range roots {
-		included[root] = true
-	}
+	included := set.New(roots...)
 
 	result := make([]Route, 0, len(routes))
 	for _, route := range routes {
-		if included[route.Root] && len(route.Operations) > 0 {
+		if included.Contains(route.Root) && len(route.Operations) > 0 {
 			result = append(result, route)
 		}
 	}

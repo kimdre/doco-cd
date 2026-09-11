@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -477,7 +478,7 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 // other. It returns an unlock function that releases all acquired locks;
 // callers must call it exactly once.
 func lockStacks(contextName string, stacks ...string) (unlock func()) {
-	seen := make(map[string]struct{}, len(stacks))
+	seen := set.New[string]()
 	unique := make([]string, 0, len(stacks))
 
 	for _, stack := range stacks {
@@ -487,11 +488,11 @@ func lockStacks(contextName string, stacks ...string) (unlock func()) {
 		}
 
 		key := lock.StackKey(contextName, stack)
-		if _, ok := seen[key]; ok {
+		if seen.Contains(key) {
 			continue
 		}
 
-		seen[key] = struct{}{}
+		seen.Add(key)
 		unique = append(unique, key)
 	}
 

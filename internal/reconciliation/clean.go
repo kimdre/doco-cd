@@ -9,6 +9,7 @@ import (
 
 	"github.com/docker/cli/cli/command"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -29,10 +30,10 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 	notifier notification.Sender,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
-	runConfigTargets := make(map[string]struct{})
+	runConfigTargets := set.New[string]()
 
 	for _, cfg := range deployConfigs {
-		runConfigTargets[strings.TrimSpace(cfg.Internal.ConfigTarget)] = struct{}{}
+		runConfigTargets.Add(strings.TrimSpace(cfg.Internal.ConfigTarget))
 
 		if cfg.AutoDiscovery.Enabled {
 			autoDiscoveredNames[cfg.Name] = cfg.AutoDiscovery.Delete
@@ -149,9 +150,9 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 }
 
 // isCleanupTargetMatch checks if the stack's config target matches any of the run config targets.
-func isCleanupTargetMatch(runConfigTargets map[string]struct{}, stackConfigTarget string) bool {
+func isCleanupTargetMatch(runConfigTargets set.Set[string], stackConfigTarget string) bool {
 	// Backward compatibility: if no run target context is available, keep legacy behavior.
-	if len(runConfigTargets) == 0 {
+	if runConfigTargets.Len() == 0 {
 		return true
 	}
 
@@ -160,24 +161,18 @@ func isCleanupTargetMatch(runConfigTargets map[string]struct{}, stackConfigTarge
 	// Backward compatibility for pre-label deployments: only include unlabeled stacks
 	// for default-target runs, never for custom targets.
 	if stackConfigTarget == "" {
-		_, defaultTargetRun := runConfigTargets[""]
-		return defaultTargetRun
+		return runConfigTargets.Contains("")
 	}
 
-	_, ok := runConfigTargets[stackConfigTarget]
-
-	return ok
+	return runConfigTargets.Contains(stackConfigTarget)
 }
 
-func sortedTargetKeys(m map[string]struct{}) []string {
-	if len(m) == 0 {
+func sortedTargetKeys(m set.Set[string]) []string {
+	if m.Len() == 0 {
 		return nil
 	}
 
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
+	keys := m.ToSlice()
 
 	slices.Sort(keys)
 

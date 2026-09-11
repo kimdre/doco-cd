@@ -10,6 +10,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
@@ -21,7 +22,7 @@ type runtimeStore struct {
 	states        map[string]scheduledJobState
 	runStatuses   map[string]string
 	runningStates map[string]int
-	clearing      map[string]bool
+	clearing      set.Set[string]
 	cond          *sync.Cond
 }
 
@@ -30,7 +31,7 @@ func newRuntimeStore() *runtimeStore {
 		states:        map[string]scheduledJobState{},
 		runStatuses:   map[string]string{},
 		runningStates: map[string]int{},
-		clearing:      map[string]bool{},
+		clearing:      set.New[string](),
 	}
 	store.cond = sync.NewCond(&store.mu)
 
@@ -163,7 +164,8 @@ func (s *runtimeStore) clearContextMode(contextName string, mode scheduledJobMod
 
 	partition := runtimePartitionKey(contextName, mode)
 
-	s.clearing[partition] = true
+	s.clearing.Add(partition)
+
 	for s.hasRunningStateLocked(contextName, mode) {
 		s.cond.Wait()
 	}
@@ -260,7 +262,7 @@ func (s *runtimeStore) beginRun(contextName string, mode scheduledJobMode, key s
 	partition := runtimePartitionKey(contextName, mode)
 
 	contextPartition := runtimePartitionKey(contextName, "")
-	for s.clearing[partition] || s.clearing[contextPartition] {
+	for s.clearing.Contains(partition) || s.clearing.Contains(contextPartition) {
 		s.cond.Wait()
 	}
 
