@@ -80,6 +80,70 @@ services:
         target: /etc/ssl/certs/example.crt
 ```
 
+## Full certificate chain
+
+A `pki:` or `pki-role:` reference resolves to the **leaf certificate only**. Many TLS servers
+(nginx, HAProxy, Traefik, Postgres, …) instead expect a *fullchain* bundle: the leaf certificate
+followed by the intermediate and root CA certificates that signed it, so clients can build a
+complete trust path.
+
+Every certificate reference therefore automatically exposes that bundle as an additional
+environment variable, named after the certificate's variable with a `_FULL` suffix — the same
+mechanism as the [`_KEY` suffix](#private-key-access) used for private keys. An external secret
+named `CERT` resolves to:
+
+- `CERT` &rarr; the leaf certificate PEM
+- `CERT_FULL` &rarr; the leaf certificate followed by its issuing CA chain
+- `CERT_KEY` &rarr; the matching private key PEM (`pki-role:` references only)
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets:
+  CERT: pki-role:pki:myapp-role:myapp.example.com
+```
+
+```yaml title="docker-compose.yml"
+configs:
+  myapp-fullchain.crt:
+    environment: CERT_FULL
+  myapp-cert.key:
+    environment: CERT_KEY
+
+services:
+  app:
+    image: myapp:latest
+    configs:
+      - source: myapp-fullchain.crt
+        target: /etc/ssl/certs/myapp-fullchain.crt
+      - source: myapp-cert.key
+        target: /etc/ssl/private/myapp.key
+```
+
+The `_FULL` value is a single PEM bundle, with the leaf certificate always first:
+
+```
+-----BEGIN CERTIFICATE-----   <- leaf certificate (the one issued for your common name)
+-----BEGIN CERTIFICATE-----   <- intermediate CA (if any)
+-----BEGIN CERTIFICATE-----   <- root CA
+```
+
+The chain comes from OpenBao's `ca_chain` response field, falling back to `issuing_ca` when the
+mount does not return a chain. For read-only `pki:` references whose response carries no chain,
+the mount's `<secretEngine>/cert/ca_chain` endpoint is read instead. When no chain is available at
+all, `_FULL` holds the leaf certificate on its own.
+
+!!! note
+    Use `CERT` where a leaf-only certificate is expected and `CERT_FULL` where a bundle is; both
+    are always set, so you can switch without touching the reference.
+    [Automatic certificate rotation](#automatic-certificate-rotation) covers all three entries:
+    expiry and serial tracking always read the leaf from `CERT`, and services consuming
+    `CERT_FULL` are recreated on rotation just like those consuming `CERT` or `CERT_KEY`.
+
+!!! warning
+    Because the `_FULL` and `_KEY` entries are generated, an external secret of your own may not
+    use those names. Mapping both `CERT` and `CERT_FULL` in `external_secrets` is rejected with a
+    conflict error.
+
 ## Automatic Certificate Rotation
 
 Certificates issued via a `pki-role:` reference (see above) are eligible for **automatic rotation**:
@@ -125,8 +189,10 @@ A `pki-role:` reference automatically exposes the certificate's matching private
 environment variable, named after the certificate's variable with a `_KEY` suffix. For example, an
 external secret named `CERT` referencing `pki-role:...` resolves to both:
 
-- `CERT` &rarr; the certificate PEM
+- `CERT` &rarr; the leaf certificate PEM
 - `CERT_KEY` &rarr; the matching private key PEM
+
+The [full certificate chain](#full-certificate-chain) is exposed alongside them as `CERT_FULL`.
 
 ```yaml title=".doco-cd.yml"
 name: myapp

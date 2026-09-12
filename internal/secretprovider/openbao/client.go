@@ -28,14 +28,30 @@ const (
 // expose the matching private key issued alongside the certificate (e.g. CERT -> CERT_KEY).
 const PKIRoleKeySuffix = secrettypes.PKIRoleKeySuffix
 
-// pkiRoleRefRegexp is a precompiled matcher for PKIRoleRefFormat, used where matching happens in a
-// loop (e.g. ResolveSecretReferences) to avoid recompiling the pattern on every call.
-var pkiRoleRefRegexp = regexp.MustCompile(PKIRoleRefFormat)
+// PKIFullChainSuffix is appended to the env var name of a pki or pki-role external secret
+// reference to expose the full certificate chain, i.e. the leaf certificate followed by its
+// issuing CA chain (e.g. CERT -> CERT_FULL), alongside the leaf-only certificate entry.
+const PKIFullChainSuffix = secrettypes.PKIFullChainSuffix
+
+// pkiRefRegexp and pkiRoleRefRegexp are precompiled matchers for PKIRefFormat and
+// PKIRoleRefFormat, used where matching happens in a loop (e.g. ResolveSecretReferences) to avoid
+// recompiling the patterns on every call.
+var (
+	pkiRefRegexp     = regexp.MustCompile(PKIRefFormat)
+	pkiRoleRefRegexp = regexp.MustCompile(PKIRoleRefFormat)
+)
 
 var ErrInvalidSecretReference = errors.New("invalid secret reference")
 
 type Provider struct {
 	Client *openbao.Client
+}
+
+// pkiCertValues holds the resolved values of a read-only pki reference: the leaf certificate and
+// the full chain bundle exposed alongside it under PKIFullChainSuffix.
+type pkiCertValues struct {
+	Certificate string
+	FullChain   string
 }
 
 type deployedCertState struct {
@@ -161,25 +177,43 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 // ResolveSecretReferences resolves the provided map of environment variable names to secret IDs
 // by fetching the corresponding secret values from the secret provider.
 //
-// A pki-role reference (see PKIRoleRefFormat) issues a fresh certificate and its matching private
-// key, and expands into two output entries: envVar holds the certificate PEM, and envVar + PKIRoleKeySuffix
-// (e.g. CERT_KEY) holds the private key PEM.
+// Certificate references expand into more than one output entry, all named after the env var the
+// reference is mapped to:
+//
+//   - A pki reference (see PKIRefFormat) reads an already-issued certificate and expands into two
+//     entries: envVar holds the leaf certificate PEM, and envVar + PKIFullChainSuffix (e.g.
+//     CERT_FULL) holds the leaf certificate followed by its issuing CA chain.
+//   - A pki-role reference (see PKIRoleRefFormat) issues a fresh certificate and its matching
+//     private key, and expands into three entries: envVar holds the leaf certificate PEM,
+//     envVar + PKIRoleKeySuffix (e.g. CERT_KEY) holds the private key PEM, and
+//     envVar + PKIFullChainSuffix (e.g. CERT_FULL) holds the full chain bundle.
 func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
 	plainSecrets := make(map[string]string, len(secrets))
+	pkiSecrets := make(map[string]string, len(secrets))
 	pkiRoleSecrets := make(map[string]string, len(secrets))
 
 	for envVar, ref := range secrets {
-		if pkiRoleRefRegexp.MatchString(ref) {
+		switch {
+		case pkiRoleRefRegexp.MatchString(ref):
 			pkiRoleSecrets[envVar] = ref
-			continue
+		case pkiRefRegexp.MatchString(ref):
+			pkiSecrets[envVar] = ref
+		default:
+			plainSecrets[envVar] = ref
 		}
-
-		plainSecrets[envVar] = ref
 	}
 
 	for envVar := range pkiRoleSecrets {
 		if _, exists := secrets[envVar+PKIRoleKeySuffix]; exists {
 			return nil, fmt.Errorf("external secret %q conflicts with the private key generated for pki-role secret %q", envVar+PKIRoleKeySuffix, envVar)
+		}
+	}
+
+	for _, certSecrets := range []map[string]string{pkiSecrets, pkiRoleSecrets} {
+		for envVar := range certSecrets {
+			if _, exists := secrets[envVar+PKIFullChainSuffix]; exists {
+				return nil, fmt.Errorf("external secret %q conflicts with the certificate chain generated for certificate secret %q", envVar+PKIFullChainSuffix, envVar)
+			}
 		}
 	}
 
@@ -205,6 +239,18 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 		}
 	}
 
+	if len(pkiSecrets) > 0 {
+		resolved, err := p.resolvePKICerts(ctx, pkiSecrets)
+		if err != nil {
+			return nil, err
+		}
+
+		for envVar, cert := range resolved {
+			out[envVar] = cert.Certificate
+			out[envVar+PKIFullChainSuffix] = cert.FullChain
+		}
+	}
+
 	if len(pkiRoleSecrets) > 0 {
 		issued, err := p.issuePKIRoleCerts(ctx, pkiRoleSecrets)
 		if err != nil {
@@ -214,6 +260,7 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 		for envVar, cert := range issued {
 			out[envVar] = cert.Certificate
 			out[envVar+PKIRoleKeySuffix] = cert.PrivateKey
+			out[envVar+PKIFullChainSuffix] = cert.FullChain()
 		}
 	}
 
@@ -271,6 +318,71 @@ func (p *Provider) DeploymentHasRevokedCertificate(ctx context.Context, certStat
 	}
 
 	return false, nil
+}
+
+// resolvePKICerts reads the already-issued certificate behind each read-only pki reference in
+// refs, together with its full chain bundle, keyed by the same env var name used in the input map.
+func (p *Provider) resolvePKICerts(ctx context.Context, refs map[string]string) (map[string]pkiCertValues, error) {
+	resolved := make(map[string]pkiCertValues, len(refs))
+
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+
+	for envVar, ref := range refs {
+		wg.Add(1)
+
+		go func(envVar, ref string) {
+			defer wg.Done()
+
+			fail := func(err error) {
+				select {
+				case errCh <- err:
+					cancel()
+				default:
+				}
+			}
+
+			namespace, _, engineName, commonName, _, err := parseReference(ref)
+			if err != nil {
+				fail(err)
+				return
+			}
+
+			c := p.Client.WithNamespace(namespace)
+
+			serial, err := GetCertSerial(ctx, c, engineName, commonName)
+			if err != nil {
+				fail(fmt.Errorf("failed to retrieve certificate serial for common name %s: %w", commonName, err))
+				return
+			}
+
+			cert, fullChain, err := GetCertWithFullChain(ctx, c, engineName, serial)
+			if err != nil {
+				fail(fmt.Errorf("failed to retrieve certificate with serial %s: %w", serial, err))
+				return
+			}
+
+			mu.Lock()
+			resolved[envVar] = pkiCertValues{Certificate: cert, FullChain: fullChain}
+			mu.Unlock()
+		}(envVar, ref)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	if err, ok := <-errCh; ok {
+		return nil, err
+	}
+
+	return resolved, nil
 }
 
 // issuePKIRoleCerts issues a fresh certificate/key pair for each pki-role reference in refs,

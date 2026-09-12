@@ -402,6 +402,64 @@ func TestProvider_OpenBao(t *testing.T) {
 		}
 	})
 
+	t.Run("PKIFullChain", func(t *testing.T) {
+		certRef := "pki:pki:test.example.com" // #nosec G101
+
+		resolved, err := provider.ResolveSecretReferences(t.Context(), map[string]string{"CERT": certRef})
+		if err != nil {
+			t.Fatalf("Failed to resolve pki reference: %v", err)
+		}
+
+		leaf, fullChain := resolved["CERT"], resolved["CERT_FULL"]
+
+		if got := countPEMCertificates(t, leaf); got != 1 {
+			t.Errorf("Expected the certificate entry to hold the leaf only, got %d certificates", got)
+		}
+
+		if got := countPEMCertificates(t, fullChain); got < 2 {
+			t.Errorf("Expected CERT_FULL to contain the leaf and at least one CA certificate, got %d", got)
+		}
+
+		if !strings.HasPrefix(fullChain, strings.TrimSpace(leaf)) {
+			t.Error("Expected CERT_FULL to start with the leaf certificate")
+		}
+
+		// A pki reference has no private key companion.
+		if _, exists := resolved["CERT_KEY"]; exists {
+			t.Error("Expected no CERT_KEY entry for a read-only pki reference")
+		}
+	})
+
+	t.Run("PKIRoleFullChain", func(t *testing.T) {
+		resolved, err := provider.ResolveSecretReferences(t.Context(), map[string]string{
+			"CERT": "pki-role:pki:example-dot-com:fullchain.example.com", // #nosec G101
+		})
+		if err != nil {
+			t.Fatalf("Failed to resolve pki-role reference: %v", err)
+		}
+
+		// The certificate entry stays leaf-only so the private key still pairs with it and cert
+		// rotation labels keep reading the leaf's expiry and serial.
+		validateIssuedCertificatePair(t, resolved, "full chain")
+
+		if got := countPEMCertificates(t, resolved["CERT"]); got != 1 {
+			t.Errorf("Expected the certificate entry to hold the leaf only, got %d certificates", got)
+		}
+
+		fullChain := resolved["CERT_FULL"]
+		if got := countPEMCertificates(t, fullChain); got < 2 {
+			t.Errorf("Expected CERT_FULL to contain the leaf and at least one CA certificate, got %d", got)
+		}
+
+		if !strings.HasPrefix(fullChain, strings.TrimSpace(resolved["CERT"])) {
+			t.Error("Expected CERT_FULL to start with the leaf certificate")
+		}
+
+		if got := countPEMCertificates(t, resolved["CERT_KEY"]); got != 0 {
+			t.Errorf("Expected the private key entry to hold no certificates, got %d", got)
+		}
+	})
+
 	t.Run("DeploymentHasRevokedCertificate", func(t *testing.T) {
 		ref := "pki-role:pki:example-dot-com:revoked.example.com" // #nosec G101
 
@@ -493,5 +551,60 @@ func TestResolveSecretReferences_RejectsGeneratedPrivateKeyCollision(t *testing.
 
 	if !strings.Contains(err.Error(), "CERT_KEY") {
 		t.Fatalf("expected collision error to identify CERT_KEY, got: %v", err)
+	}
+}
+
+func TestResolveSecretReferences_RejectsGeneratedFullChainCollision(t *testing.T) {
+	testCases := []struct {
+		name string
+		ref  string
+	}{
+		{
+			name: "pki-role reference",
+			ref:  "pki-role:pki:example-dot-com:issued.example.com", // #nosec G101
+		},
+		{
+			name: "read-only pki reference",
+			ref:  "pki:pki:issued.example.com", // #nosec G101
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := &Provider{}
+
+			_, err := provider.ResolveSecretReferences(t.Context(), map[string]string{
+				"CERT":      tc.ref,
+				"CERT_FULL": "kv:secret:chain:value", // #nosec G101
+			})
+			if err == nil {
+				t.Fatal("expected full chain collision to fail")
+			}
+
+			if !strings.Contains(err.Error(), "CERT_FULL") {
+				t.Fatalf("expected collision error to identify CERT_FULL, got: %v", err)
+			}
+		})
+	}
+}
+
+// countPEMCertificates returns how many PEM CERTIFICATE blocks value contains.
+func countPEMCertificates(t *testing.T, value string) int {
+	t.Helper()
+
+	count := 0
+	rest := []byte(value)
+
+	for {
+		var block *pem.Block
+
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return count
+		}
+
+		if block.Type == "CERTIFICATE" {
+			count++
+		}
 	}
 }
