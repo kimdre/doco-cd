@@ -16,7 +16,6 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 
-	"github.com/kimdre/doco-cd/internal/common/types/slice"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
@@ -204,97 +203,36 @@ func CheckDefaultComposeFiles(composeFiles []string, workingDir string) ([]strin
 // Since absolute file paths in types.Project are paths on the docker host, repoPath also needs to be the external path to the repository.
 // We use the symlink inside the container to follow the external path to the correct internal path.
 func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
-	var (
-		projectFiles   []string
-		decryptedFiles []string
-	)
+	var decryptedFiles []string
 
-	for _, s := range p.Services {
-		for _, cfg := range s.Configs {
-			if cfg.Source != "" {
-				if cfgConfig, ok := p.Configs[cfg.Source]; ok && cfgConfig.File != "" {
-					projectFiles = append(projectFiles, cfgConfig.File)
-				}
-			}
-		}
+	projectFiles, err := serviceFiles(p)
+	if err != nil {
+		return decryptedFiles, err
+	}
 
-		for _, secret := range s.Secrets {
-			if secret.Source != "" {
-				if secretConfig, ok := p.Secrets[secret.Source]; ok && secretConfig.File != "" {
-					projectFiles = append(projectFiles, secretConfig.File)
-				}
-			}
-		}
-
-		for _, v := range s.Volumes {
-			if v.Type == "bind" && v.Source != "" {
-				info, err := os.Stat(v.Source)
-				if err != nil {
-					if errors.Is(err, os.ErrNotExist) {
-						continue
-					}
-
-					return decryptedFiles, fmt.Errorf("failed to stat bind mount source '%s': %w", v.Source, err)
-				}
-
-				if info.IsDir() {
-					files, err := encryption.DecryptFilesInDirectory(repoPath, v.Source)
-					if err != nil {
-						if errors.Is(err, filesystem.ErrPathTraversal) {
-							continue
-						}
-
-						return decryptedFiles, fmt.Errorf("failed to decrypt files in bind mount directory '%s': %w", v.Source, err)
-					}
-
-					decryptedFiles = append(decryptedFiles, files...)
-
+	for _, f := range projectFiles {
+		if f.IsDir {
+			files, err := encryption.DecryptFilesInDirectory(repoPath, f.Path)
+			if err != nil {
+				if errors.Is(err, filesystem.ErrPathTraversal) {
 					continue
 				}
 
-				projectFiles = append(projectFiles, v.Source)
-			}
-		}
-
-		for _, envFile := range s.EnvFiles {
-			if envFile.Path != "" {
-				projectFiles = append(projectFiles, envFile.Path)
-			}
-		}
-
-		if s.Build != nil {
-			if s.Build.Dockerfile != "" {
-				if filepath.IsAbs(s.Build.Dockerfile) {
-					projectFiles = append(projectFiles, s.Build.Dockerfile)
-				} else {
-					projectFiles = append(projectFiles, filepath.Join(s.Build.Context, s.Build.Dockerfile))
-				}
+				return decryptedFiles, fmt.Errorf("failed to decrypt files in bind mount directory '%s': %w", f.Path, err)
 			}
 
-			for _, secret := range s.Build.Secrets {
-				if secret.Source != "" {
-					if filepath.IsAbs(secret.Source) {
-						projectFiles = append(projectFiles, secret.Source)
-					} else {
-						projectFiles = append(projectFiles, filepath.Join(s.Build.Context, secret.Source))
-					}
-				}
-			}
-		}
-	}
+			decryptedFiles = append(decryptedFiles, files...)
 
-	for _, f := range slice.Unique(projectFiles) {
-		if !filepath.IsAbs(f) {
-			f = filepath.Join(p.WorkingDir, f)
+			continue
 		}
 
-		decrypted, err := encryption.DecryptFileInPlace(f)
+		decrypted, err := encryption.DecryptFileInPlace(f.Path)
 		if err != nil {
-			return decryptedFiles, fmt.Errorf("failed to decrypt project file '%s': %w", f, err)
+			return decryptedFiles, fmt.Errorf("failed to decrypt project file '%s': %w", f.Path, err)
 		}
 
 		if decrypted {
-			decryptedFiles = append(decryptedFiles, f)
+			decryptedFiles = append(decryptedFiles, f.Path)
 		}
 	}
 

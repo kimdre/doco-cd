@@ -10,6 +10,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -53,11 +54,21 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 	metadata.ChangedServices = s.DeployState.changedServiceNames()
 
 	if s.DeployState.DeployedCommit != "" && latestCommit != "" {
+		// Only commits that touch the files of this stack belong in its changelog, so a
+		// repository with several stacks does not report the changes of all of them.
+		// A nil filter walks the log unfiltered, which is what a project without any
+		// resolvable path in the repository falls back to.
+		pathFilter, filterErr := docker.ProjectPathFilter(s.Repository.PathExternal, s.Docker.Project)
+		if filterErr != nil {
+			stageLog.Warn("failed to build changelog path filter, listing all commits", logger.ErrAttr(filterErr))
+		}
+
 		metadata.Commits, err = git.GetCommitsBetween(
 			s.Repository.Git,
 			plumbing.NewHash(s.DeployState.DeployedCommit),
 			plumbing.NewHash(latestCommit),
 			maxChangelogCommits,
+			pathFilter,
 		)
 		if err != nil {
 			// changelog is best-effort, never block the notification
