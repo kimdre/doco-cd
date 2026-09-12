@@ -13,6 +13,7 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -162,9 +163,9 @@ func servicesUsingRotatableCerts(project *types.Project, deployConfig *deploy.Co
 		return nil
 	}
 
-	valueSet := make(map[string]struct{}, len(values))
+	valueSet := set.New[string]()
 	for _, v := range values {
-		valueSet[v] = struct{}{}
+		valueSet.Add(v)
 	}
 
 	var names []string
@@ -181,28 +182,22 @@ func servicesUsingRotatableCerts(project *types.Project, deployConfig *deploy.Co
 // serviceUsesAnyValue reports whether service s consumes any value in valueSet, either directly
 // through its own environment, or indirectly through a top-level config or secret (by name,
 // resolved against project) that it references.
-func serviceUsesAnyValue(s types.ServiceConfig, project *types.Project, valueSet map[string]struct{}) bool {
+func serviceUsesAnyValue(s types.ServiceConfig, project *types.Project, valueSet set.Set[string]) bool {
 	for _, v := range s.Environment {
-		if v != nil {
-			if _, used := valueSet[*v]; used {
-				return true
-			}
+		if v != nil && valueSet.Contains(*v) {
+			return true
 		}
 	}
 
 	for _, ref := range s.Configs {
-		if cfg, ok := project.Configs[ref.Source]; ok {
-			if _, used := valueSet[cfg.Content]; used {
-				return true
-			}
+		if cfg, ok := project.Configs[ref.Source]; ok && valueSet.Contains(cfg.Content) {
+			return true
 		}
 	}
 
 	for _, ref := range s.Secrets {
-		if secret, ok := project.Secrets[ref.Source]; ok {
-			if _, used := valueSet[secret.Content]; used {
-				return true
-			}
+		if secret, ok := project.Secrets[ref.Source]; ok && valueSet.Contains(secret.Content) {
+			return true
 		}
 	}
 
@@ -210,7 +205,7 @@ func serviceUsesAnyValue(s types.ServiceConfig, project *types.Project, valueSet
 }
 
 func serviceUsesValue(s types.ServiceConfig, project *types.Project, value string) bool {
-	return serviceUsesAnyValue(s, project, map[string]struct{}{value: {}})
+	return serviceUsesAnyValue(s, project, set.New(value))
 }
 
 // certificateNotAfter parses value as a PEM-encoded X.509 certificate and returns its NotAfter
@@ -268,9 +263,9 @@ func applyCertRotationLabelsToService(labels map[string]string, service types.Se
 		return
 	}
 
-	valueSet := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		valueSet[value] = struct{}{}
+	valueSet := set.New[string]()
+	for _, v := range values {
+		valueSet.Add(v)
 	}
 
 	if serviceUsesAnyValue(service, project, valueSet) {
@@ -299,7 +294,7 @@ func deployedRotatableCertStates(service types.ServiceConfig, project *types.Pro
 	}
 
 	states := make([]deployedRotatableCertState, 0, len(deployConfig.ExternalSecrets))
-	seen := make(map[string]struct{}, len(deployConfig.ExternalSecrets))
+	seen := set.New[string]()
 
 	for envVar, ref := range deployConfig.ExternalSecrets {
 		if !strings.HasPrefix(ref.LegacyRef, pkiRoleRefPrefix) {
@@ -327,11 +322,11 @@ func deployedRotatableCertStates(service types.ServiceConfig, project *types.Pro
 		}
 
 		key := state.Ref + "\x00" + state.Serial
-		if _, exists := seen[key]; exists {
+		if seen.Contains(key) {
 			continue
 		}
 
-		seen[key] = struct{}{}
+		seen.Add(key)
 
 		states = append(states, state)
 	}

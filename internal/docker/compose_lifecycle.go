@@ -14,6 +14,7 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -113,10 +114,7 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 		return nil
 	}
 
-	serviceSet := make(map[string]struct{}, len(services))
-	for _, s := range services {
-		serviceSet[s] = struct{}{}
-	}
+	serviceSet := set.New(services...)
 
 	containers, err := GetLabeledContainers(ctx, dockerCli.Client(), api.ProjectLabel, projectName, true)
 	if err != nil {
@@ -134,7 +132,7 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 
 	for _, c := range containers {
 		svcName := c.Labels[api.ServiceLabel]
-		if _, ok := serviceSet[svcName]; !ok {
+		if !serviceSet.Contains(svcName) {
 			continue
 		}
 
@@ -170,10 +168,7 @@ func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectNam
 		return nil
 	}
 
-	serviceSet := make(map[string]struct{}, len(services))
-	for _, s := range services {
-		serviceSet[s] = struct{}{}
-	}
+	serviceSet := set.New(services...)
 
 	containers, err := GetLabeledContainers(ctx, dockerCli.Client(), api.ProjectLabel, projectName, true)
 	if err != nil {
@@ -184,7 +179,7 @@ func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectNam
 
 	for _, c := range containers {
 		svcName := c.Labels[api.ServiceLabel]
-		if _, ok := serviceSet[svcName]; !ok {
+		if !serviceSet.Contains(svcName) {
 			continue
 		}
 

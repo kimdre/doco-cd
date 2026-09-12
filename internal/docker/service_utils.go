@@ -84,10 +84,10 @@ func normalizeRepositoryForLabelMatch(repository string) string {
 // for matching by normalizing the input repository string.
 func buildRepositoryLabelCandidates(repository string) set.Set[string] {
 	if strings.TrimSpace(repository) == "" {
-		return map[string]struct{}{"": {}}
+		return set.New("")
 	}
 
-	candidates := set.Set[string]{}
+	candidates := set.New[string]()
 
 	add := func(v string) {
 		v = strings.TrimSpace(v)

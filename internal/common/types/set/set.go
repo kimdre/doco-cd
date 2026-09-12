@@ -1,5 +1,10 @@
 package set
 
+import (
+	"cmp"
+	"slices"
+)
+
 // Set represents a generic set data structure.
 type Set[T comparable] map[T]struct{}
 
@@ -31,7 +36,8 @@ func (s Set[T]) Contains(element T) bool {
 	return exists
 }
 
-// ToSlice converts the set to a slice of its elements.
+// ToSlice converts the set to a slice of its elements. The order of elements is not guaranteed;
+// use SortedSlice if a stable, ordered result is required.
 func (s Set[T]) ToSlice() []T {
 	slice := make([]T, 0, len(s))
 	for elem := range s {
@@ -54,6 +60,22 @@ func (s Set[T]) Difference(other Set[T]) Set[T] {
 	return difference
 }
 
+// Intersects reports whether s and other share at least one common element.
+func (s Set[T]) Intersects(other Set[T]) bool {
+	smaller, larger := s, other
+	if len(other) < len(s) {
+		smaller, larger = other, s
+	}
+
+	for elem := range smaller {
+		if larger.Contains(elem) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Union merges the given sets into a new set containing all unique elements from the input sets.
 func Union[T comparable](sets ...Set[T]) Set[T] {
 	result := Set[T]{}
@@ -67,6 +89,22 @@ func Union[T comparable](sets ...Set[T]) Set[T] {
 	return result
 }
 
+// Len returns the number of elements in the set.
 func (s Set[T]) Len() int {
 	return len(s)
+}
+
+// IsEmpty reports whether the set has no elements.
+func (s Set[T]) IsEmpty() bool {
+	return len(s) == 0
+}
+
+// SortedSlice converts the set to a slice sorted in ascending order.
+// It is a standalone function rather than a method because sorting requires
+// T to satisfy cmp.Ordered, a stricter constraint than Set's own comparable.
+func SortedSlice[T cmp.Ordered](s Set[T]) []T {
+	slice := s.ToSlice()
+	slices.Sort(slice)
+
+	return slice
 }

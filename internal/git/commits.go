@@ -9,6 +9,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
+
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -88,8 +90,8 @@ func (c CommitInfo) String() string {
 // oldHash plus the merge-base of old and new. On a normal fast-forward the merge-base
 // is oldHash itself; after a rebase/force-push it is the point where the histories
 // diverged, so only the genuinely new commits are returned instead of the whole branch.
-func commitBoundary(repo *git.Repository, oldHash, newHash plumbing.Hash) map[plumbing.Hash]struct{} {
-	boundary := map[plumbing.Hash]struct{}{oldHash: {}}
+func commitBoundary(repo *git.Repository, oldHash, newHash plumbing.Hash) set.Set[plumbing.Hash] {
+	boundary := set.New(oldHash)
 
 	newCommit, err := repo.CommitObject(newHash)
 	if err != nil {
@@ -107,7 +109,7 @@ func commitBoundary(repo *git.Repository, oldHash, newHash plumbing.Hash) map[pl
 	}
 
 	for _, b := range bases {
-		boundary[b.Hash] = struct{}{}
+		boundary.Add(b.Hash)
 	}
 
 	return boundary
@@ -128,7 +130,7 @@ func GetCommitsBetween(repo *git.Repository, oldHash, newHash plumbing.Hash, max
 	stop := errors.New("stop")
 
 	err = iter.ForEach(func(c *object.Commit) error {
-		if _, atBoundary := boundary[c.Hash]; atBoundary || len(commits) >= maxCommits {
+		if boundary.Contains(c.Hash) || len(commits) >= maxCommits {
 			return stop
 		}
 

@@ -123,7 +123,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 	runningServices := set.New[string]()
 
-	if autostartDisabledServices.Len() > 0 {
+	if !autostartDisabledServices.IsEmpty() {
 		containers, err := GetProjectContainers(ctx, dockerCli, project.Name)
 		if err != nil {
 			return fmt.Errorf("failed to inspect existing services before deployment: %w", err)
