@@ -13,4 +13,5 @@ type GitOptions struct {
 	HttpProxy               transport.ProxyOptions
 	GitCloneSubmodules      bool
 	GitCloneDepth           int
+	LocalOnly               bool
 }

@@ -201,6 +201,181 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 	assertBootMarkerCountStable(ctx, t, stack, logSince, 3, 6*time.Second)
 }
 
+// TestRecoverJob_RestartsUnhealthyContainerOnStartup proves that RecoverJob's one-time
+// startup healing restarts a container that was already unhealthy before any reconciliation
+// job existed for it, simulating drift that accumulated while doco-cd was not running.
+func TestRecoverJob_RestartsUnhealthyContainerOnStartup(t *testing.T) {
+	requireDockerIntegrationTestGate(t)
+
+	ctx := t.Context()
+	stackName := internaltest.ConvertTestName(t.Name())
+	repositoryName := "kimdre/doco-cd_tests"
+
+	stack := internaltest.ComposeUp(ctx, t,
+		internaltest.WithName(stackName),
+		internaltest.WithYAML(unhealthyOnDemandComposeYAML()),
+		internaltest.WithWaitTimeout(reconciliationIntegrationWaitTimeout),
+		internaltest.WithCustomLabel(map[string]string{
+			docker.DocoCDLabels.Metadata.Manager: app.Name,
+			docker.DocoCDLabels.Source.Name:      repositoryName,
+			docker.DocoCDLabels.Deployment.Name:  stackName,
+		}),
+	)
+
+	containerID := stack.ServiceContainerID(ctx, t, "app")
+
+	// Make the container unhealthy before any reconciliation job watches it, simulating
+	// drift that accumulated while the process was down.
+	if exitCode, _ := stack.Exec(ctx, t, "app", []string{"sh", "-c", "rm -f /tmp/healthy"}); exitCode != 0 {
+		t.Fatalf("expected health-trigger command to succeed, got exit code %d", exitCode)
+	}
+
+	waitForContainerHealthStatus(ctx, t, stack.Client, containerID, "unhealthy", 20*time.Second)
+
+	startedBefore := containerStartedAt(ctx, t, stack.Client, containerID)
+
+	dc := deployConfig.New(stackName, "main")
+	dc.Reconciliation.Enabled = true
+	dc.Reconciliation.Events = []string{"unhealthy"}
+
+	manager := newTestManagerWithDependencies(t, Dependencies{DockerCLI: stack.DockerCli})
+	t.Cleanup(manager.Close)
+
+	err := manager.RecoverJob(ctx, DeployRequest{
+		Logger:        logger.New(slog.LevelError).Logger,
+		Metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-recover-job"},
+		JobTrigger:    stages.JobTriggerWebhook,
+		Repository:    stages.RepositoryData{SourceUrl: "https://github.com/" + repositoryName + ".git", Name: repositoryName},
+		Payload:       &webhook.ParsedPayload{FullName: repositoryName},
+		DeployConfigs: []*deployConfig.Config{dc},
+	})
+	if err != nil {
+		t.Fatalf("RecoverJob returned an error: %v", err)
+	}
+
+	waitForContainerRestartedAfter(ctx, t, stack.Client, containerID, startedBefore, 20*time.Second)
+}
+
+// TestRecoverJob_RestartsStoppedContainerOnStartup proves that RecoverJob's one-time startup
+// healing restarts a container that was stopped (e.g. via "docker stop") before any
+// reconciliation job existed for it, simulating a stop that happened while doco-cd was not
+// running and therefore could never be observed as a live "stop" Docker event.
+func TestRecoverJob_RestartsStoppedContainerOnStartup(t *testing.T) {
+	requireDockerIntegrationTestGate(t)
+
+	ctx := t.Context()
+	stackName := internaltest.ConvertTestName(t.Name())
+	repositoryName := "kimdre/doco-cd_tests"
+
+	stack := internaltest.ComposeUp(ctx, t,
+		internaltest.WithName(stackName),
+		internaltest.WithYAML(runningServiceComposeYAML()),
+		internaltest.WithWaitTimeout(reconciliationIntegrationWaitTimeout),
+		internaltest.WithCustomLabel(map[string]string{
+			docker.DocoCDLabels.Metadata.Manager: app.Name,
+			docker.DocoCDLabels.Source.Name:      repositoryName,
+			docker.DocoCDLabels.Deployment.Name:  stackName,
+		}),
+	)
+
+	containerID := stack.ServiceContainerID(ctx, t, "app")
+	startedBefore := containerStartedAt(ctx, t, stack.Client, containerID)
+
+	// Stop the container before any reconciliation job watches it, simulating a plain
+	// "docker stop" that happened while doco-cd itself was not running.
+	stopTimeout := 1
+
+	if _, err := stack.Client.ContainerStop(ctx, containerID, client.ContainerStopOptions{Timeout: &stopTimeout}); err != nil {
+		t.Fatalf("failed to stop container %s: %v", containerID, err)
+	}
+
+	dc := deployConfig.New(stackName, "main")
+	dc.Reconciliation.Enabled = true
+	dc.Reconciliation.Events = []string{"stop"}
+
+	manager := newTestManagerWithDependencies(t, Dependencies{DockerCLI: stack.DockerCli})
+	t.Cleanup(manager.Close)
+
+	err := manager.RecoverJob(ctx, DeployRequest{
+		Logger:        logger.New(slog.LevelError).Logger,
+		Metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-recover-job"},
+		JobTrigger:    stages.JobTriggerWebhook,
+		Repository:    stages.RepositoryData{SourceUrl: "https://github.com/" + repositoryName + ".git", Name: repositoryName},
+		Payload:       &webhook.ParsedPayload{FullName: repositoryName},
+		DeployConfigs: []*deployConfig.Config{dc},
+	})
+	if err != nil {
+		t.Fatalf("RecoverJob returned an error: %v", err)
+	}
+
+	waitForContainerRestartedAfter(ctx, t, stack.Client, containerID, startedBefore, 20*time.Second)
+}
+
+func waitForContainerHealthStatus(ctx context.Context, t *testing.T, cli client.APIClient, containerID, wantStatus string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	for {
+		result, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+		if err == nil && result.Container.State != nil && result.Container.State.Health != nil &&
+			strings.EqualFold(string(result.Container.State.Health.Status), wantStatus) {
+			return
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for container %s to report health status %q", containerID, wantStatus)
+		}
+
+		time.Sleep(reconciliationIntegrationPollInterval)
+	}
+}
+
+func containerStartedAt(ctx context.Context, t *testing.T, cli client.APIClient, containerID string) string {
+	t.Helper()
+
+	result, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatalf("failed to inspect container %s: %v", containerID, err)
+	}
+
+	if result.Container.State == nil {
+		t.Fatalf("container %s has no state", containerID)
+	}
+
+	return result.Container.State.StartedAt
+}
+
+func waitForContainerRestartedAfter(ctx context.Context, t *testing.T, cli client.APIClient, containerID, startedBefore string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	var (
+		lastStartedAt string
+		lastErr       error
+	)
+
+	for {
+		result, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+		if err == nil && result.Container.State != nil {
+			lastStartedAt = result.Container.State.StartedAt
+			if lastStartedAt != "" && lastStartedAt != startedBefore {
+				return
+			}
+		} else {
+			lastErr = err
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for container %s to be restarted (started_before=%s, last_started=%s, last err=%v)",
+				containerID, startedBefore, lastStartedAt, lastErr)
+		}
+
+		time.Sleep(reconciliationIntegrationPollInterval)
+	}
+}
+
 func TestCleanupObsoleteAutoDiscoveredContainers_EmptyDiscoveredConfigs_RemovesStack(t *testing.T) {
 	requireDockerIntegrationTestGate(t)
 

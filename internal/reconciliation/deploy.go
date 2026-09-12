@@ -55,6 +55,65 @@ func (m *Manager) Deploy(ctx context.Context, req DeployRequest) error {
 	return err
 }
 
+// recoverJobReadyTimeout bounds how long RecoverJob waits for a recovered job's event
+// listeners. Recovery runs on the application startup path, so an unreachable or slow
+// Docker context must delay startup only briefly; the job keeps initializing in the
+// background after the timeout.
+const recoverJobReadyTimeout = 30 * time.Second
+
+// ErrRecoverJobNotReady is returned by RecoverJob when the recovered job was registered
+// but its event listeners did not become ready in time. The job stays registered and
+// continues to initialize in the background.
+var ErrRecoverJobNotReady = errors.New("recovered reconciliation job did not become ready in time")
+
+// RecoverJob registers a long-lived reconciliation job for req without running the normal
+// deployment pipeline: there is no source preparation, so req.DeployConfigs must already be
+// reloaded from an existing local checkout by the caller. It rebuilds the in-memory state
+// (job registry, event listeners, unhealthy-restart suppression history) of a repository
+// deployed in a previous process lifetime. Like a normally deployed job, it first runs the
+// one-time startup healing, which can reach the network when it redeploys a missing stack.
+func (m *Manager) RecoverJob(ctx context.Context, req DeployRequest) error {
+	if m == nil {
+		return errors.New("reconciliation manager is required")
+	}
+
+	if err := m.beginDeploy(); err != nil {
+		return err
+	}
+	defer m.deployWG.Done()
+
+	if err := validation.Validate(req); err != nil {
+		return fmt.Errorf("validate deploy request: %w", err)
+	}
+
+	if req.Payload == nil {
+		return errors.New("recover reconciliation job: payload is required")
+	}
+
+	if strings.TrimSpace(req.Metadata.Repository) == "" {
+		return errors.New("recover reconciliation job: metadata repository is required")
+	}
+
+	recoveredJob := m.addJob(ctx, req)
+	if recoveredJob == nil {
+		return nil
+	}
+
+	readyTimer := time.NewTimer(recoverJobReadyTimeout)
+	defer readyTimer.Stop()
+
+	select {
+	case <-recoveredJob.readyChan:
+		return nil
+	case <-recoveredJob.doneChan:
+		return errors.New("recovered reconciliation job exited before its event listeners became ready")
+	case <-readyTimer.C:
+		return ErrRecoverJobNotReady
+	case <-ctx.Done():
+		return fmt.Errorf("wait for recovered reconciliation job readiness: %w", ctx.Err())
+	}
+}
+
 func (m *Manager) deploy(ctx context.Context, req DeployRequest) error {
 	if req.Repository.Source == config.SourceTypeOCI && !req.Repository.OCITrusted {
 		return fmt.Errorf("%w: refusing to run reconciliation cleanup before trust-policy verification", ErrOCIArtifactNotVerified)

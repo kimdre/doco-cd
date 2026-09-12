@@ -152,6 +152,7 @@ type job struct {
 	closeChan                chan struct{}
 	cancel                   context.CancelFunc
 	readyChan                chan struct{}
+	doneChan                 chan struct{}
 	readyOnce                sync.Once
 	closeOnce                sync.Once
 	// contextCLIs maps context name (empty string = default) to its Docker CLI and metadata.
@@ -168,6 +169,7 @@ func newJob(manager *Manager, info DeployRequest, deployConfigGroupByEvent map[s
 		restartSuppressUntil:     make(map[string]time.Time),
 		closeChan:                make(chan struct{}),
 		readyChan:                make(chan struct{}),
+		doneChan:                 make(chan struct{}),
 	}
 }
 
@@ -272,6 +274,20 @@ func (r *jobRegistry) removeAll() []*job {
 	r.closed = true
 
 	return jobs
+}
+
+// HasJob reports whether a long-lived reconciliation job is currently registered for
+// repository (i.e. it has been added via Deploy or RecoverJob and not since replaced/removed).
+// It is mainly intended for tests and diagnostics.
+func (m *Manager) HasJob(repository string) bool {
+	if m == nil {
+		return false
+	}
+
+	m.jobs.mu.Lock()
+	defer m.jobs.mu.Unlock()
+
+	return m.jobs.jobs[repository] != nil
 }
 
 func (m *Manager) beginDeploy() error {
@@ -463,10 +479,10 @@ func (r *deploymentTracker) isInProgress(repository, context, stack string) bool
 	return r.stacks[key] > 0
 }
 
-func (m *Manager) addJob(ctx context.Context, req DeployRequest) {
+func (m *Manager) addJob(ctx context.Context, req DeployRequest) *job {
 	cfg := getDeployConfigGroupByEvent(req.DeployConfigs)
 	if len(cfg) == 0 {
-		return
+		return nil
 	}
 
 	newJob := newJob(m, req, cfg)
@@ -478,7 +494,7 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest) {
 		m.jobs.mu.Unlock()
 		newJob.close()
 
-		return
+		return nil
 	}
 
 	m.jobWG.Add(1)
@@ -491,6 +507,7 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest) {
 	jobLog := req.Logger
 
 	go func() {
+		defer close(newJob.doneChan)
 		defer func() {
 			if r := recover(); r != nil {
 				jobLog.Error("reconciliation job panicked", slog.Any("recover", r))
@@ -501,6 +518,8 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest) {
 
 		newJob.run(jobCtx)
 	}()
+
+	return newJob
 }
 
 func getDeployConfigGroupByEvent(dcs []*deployConfig.Config) map[string][]*deployConfig.Config {
