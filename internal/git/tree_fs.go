@@ -175,7 +175,7 @@ type treeDirHandle struct {
 
 func (d *treeDirHandle) Stat() (fs.FileInfo, error) { return d.info, nil }
 func (d *treeDirHandle) Read([]byte) (int, error)   { return 0, io.EOF }
-func (d *treeDirHandle) Close() error                { return nil }
+func (d *treeDirHandle) Close() error               { return nil }
 
 // treeFileHandle implements fs.File for a regular file.
 type treeFileHandle struct {
@@ -185,7 +185,7 @@ type treeFileHandle struct {
 
 func (f *treeFileHandle) Stat() (fs.FileInfo, error) { return f.info, nil }
 func (f *treeFileHandle) Read(p []byte) (int, error) { return f.r.Read(p) }
-func (f *treeFileHandle) Close() error                { return f.r.Close() }
+func (f *treeFileHandle) Close() error               { return f.r.Close() }
 
 // treeDirEntry implements fs.DirEntry for a single object.TreeEntry.
 type treeDirEntry struct {
