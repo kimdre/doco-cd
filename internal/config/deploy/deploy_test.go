@@ -990,6 +990,11 @@ auto_discovery:
 		t.Fatal(err)
 	}
 
+	headBefore, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Test with auto-discovery enabled on feature branch
 	configs, err := GetConfigs(repoRoot, ".", "", "refs/heads/feature-branch", nil)
 	if err != nil {
@@ -1006,6 +1011,38 @@ auto_discovery:
 
 	if !configs[0].AutoDiscovery.Enabled {
 		t.Errorf("expected AutoDiscovery.Enabled to be true, got false")
+	}
+
+	// GetConfigs must never mutate the shared working tree: HEAD must be
+	// unchanged and the worktree must remain clean.
+	headAfter, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if headAfter.Hash() != headBefore.Hash() || headAfter.Name() != headBefore.Name() {
+		t.Errorf("expected HEAD to be unchanged, got %v -> %v", headBefore, headAfter)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := wt.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, s := range status {
+		if path == t.Name() || strings.HasPrefix(path, t.Name()+"/") || path == ".doco-cd.yaml" {
+			// Files created by this test itself as untracked fixtures are expected.
+			continue
+		}
+
+		if s.Worktree != git.Unmodified || s.Staging != git.Unmodified {
+			t.Errorf("expected worktree to be clean, but %q has status %+v", path, s)
+		}
 	}
 }
 
@@ -1206,7 +1243,7 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1271,7 +1308,7 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1329,7 +1366,7 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 	}
 	baseConfig.AutoDiscovery.ScanDepth = 2
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1371,7 +1408,7 @@ func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1409,7 +1446,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 		Profiles:         []string{"prod"},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}

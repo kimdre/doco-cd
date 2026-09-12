@@ -18,6 +18,7 @@ import (
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -110,7 +111,16 @@ func resolveDeploymentMetricsDeploymentLabel(deployName string) string {
 type DeployRequest struct {
 	JobLog           *slog.Logger `validate:"required,nostructlevel"`
 	ExternalRepoPath string       `validate:"required"`
-	DockerCLI        command.Cli  `validate:"required,nostructlevel"`
+	// InternalRepoPath is the repository's path inside doco-cd's own
+	// container, i.e. the same path source.Prepare locks via
+	// sourcecache.AcquirePathLock while cloning/fetching. DeployStack takes
+	// the same lock around loading the Compose project (which decrypts
+	// files in place) so a concurrent Prepare call for the same repository
+	// cannot mutate the working tree mid-load. Optional: when empty (e.g. in
+	// tests that only exercise the host/external path), ExternalRepoPath is
+	// used as the lock key instead.
+	InternalRepoPath string
+	DockerCLI        command.Cli `validate:"required,nostructlevel"`
 	Payload          *webhook.ParsedPayload
 	DeployConfig     *deploy.Config `validate:"required,nostructlevel"`
 	DetectedChanges  []Change
@@ -179,6 +189,19 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	if project == nil {
 		deploymentPhase.Set("loading compose configuration")
 
+		// Lock the same path source.Prepare locks while cloning/fetching
+		// this repository: LoadCompose decrypts SOPS-encrypted files in
+		// place, and must not race with a concurrent Prepare call mutating
+		// the same working tree (e.g. a webhook/poll/scheduled-job trigger
+		// for the same repository arriving while this deployment is loading
+		// its Compose project).
+		lockKey := req.InternalRepoPath
+		if lockKey == "" {
+			lockKey = req.ExternalRepoPath
+		}
+
+		unlockSource := sourcecache.AcquirePathLock(lockKey)
+
 		project, err = LoadCompose(
 			ctx,
 			req.DockerCLI,
@@ -191,6 +214,9 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 			req.DeployConfig.Internal.Environment,
 			req.ComposeLoad,
 		)
+
+		unlockSource()
+
 		if err != nil {
 			return fmt.Errorf("failed to load compose config: %w", err)
 		}
