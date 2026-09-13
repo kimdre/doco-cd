@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
 	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
@@ -389,9 +389,11 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 		DeploymentConfigFileNames = DefaultDeploymentConfigFileNames
 	}
 
-	// Get repo and change to reference in c.Reference if it is different to the current reference in the repoRoot,
-	// otherwise it will cause issues with the auto-discovery.
-	// For non-git sources (e.g. OCI), the directory is not a git repository, so we skip git operations.
+	// baseRepo is used only for read-only reference resolution (e.g. finding
+	// the tree of a different reference than the one checked out) and is
+	// never checked out or otherwise mutated, to avoid racing with concurrent
+	// readers/writers of the shared working tree at repoRoot. Non-git sources
+	// (e.g. OCI) skip git operations entirely.
 	baseRepo, err := git.PlainOpen(repoRoot)
 	isGitRepo := true
 
@@ -401,31 +403,6 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 		}
 
 		isGitRepo = false
-	}
-
-	if isGitRepo {
-		// Compare the resolved reference with the current HEAD reference, if they are different then skip the auto-discovery for this deployment config
-		headRef, err := baseRepo.Head()
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", gitInternal.ErrGetHeadFailed, err)
-		}
-
-		// Checkout repo to different reference
-		w, err := baseRepo.Worktree()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get git worktree: %w", err)
-		}
-
-		// Defer checkout back to original HEAD reference after the deployment is done
-		defer func(branch plumbing.ReferenceName) {
-			err = w.Checkout(&git.CheckoutOptions{
-				Branch: branch,
-				Keep:   true,
-			})
-			if err != nil {
-				slog.Error("failed to checkout back to original HEAD reference after deployment", "error", err)
-			}
-		}(headRef.Name())
 	}
 
 	var configs []*Config
@@ -460,7 +437,10 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 			repoDir := repoRoot
 			// Check for configs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
 			if c.AutoDiscovery.Enabled {
-				if c.RepositoryUrl != "" {
+				var discoveredConfigs []*Config
+
+				switch {
+				case c.RepositoryUrl != "":
 					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), opts.SSHPrivateKey, opts.SSHPrivateKeyPassphrase, opts.GitAccessToken)
 					if err != nil {
 						return nil, fmt.Errorf("failed to get auth method: %w", err)
@@ -468,30 +448,76 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 
 					repoDir = path.Join(path.Dir(repoRoot), gitInternal.GetRepoName(string(c.RepositoryUrl)))
 
-					// Synchronize the repository once, whether it already exists or must be cloned.
-					_, err = gitInternal.SyncRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth))
-					if err != nil {
+					// SyncRepository holds repoDir's path lock for the duration of
+					// the sync, whether cloning or updating.
+					if _, err = gitInternal.SyncRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth)); err != nil {
 						return nil, fmt.Errorf("failed to synchronize repository: %w", err)
 					}
-				} else if isGitRepo {
-					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), opts.SSHPrivateKey, opts.SSHPrivateKeyPassphrase, opts.GitAccessToken)
+
+					// Re-lock repoDir across resolving HEAD and scanning: it may be
+					// shared with another AutoDiscovery config or concurrent
+					// GetConfigs call, and a sync racing with our scan could mutate
+					// the tree mid-walk.
+					discoveredConfigs, err = func() ([]*Config, error) {
+						unlock := gitInternal.AcquirePathLock(repoDir)
+						defer unlock()
+
+						remoteRepo, err := git.PlainOpen(repoDir)
+						if err != nil {
+							return nil, fmt.Errorf("failed to open synchronized repository at %s: %w", repoDir, err)
+						}
+
+						head, err := remoteRepo.Head()
+						if err != nil {
+							return nil, fmt.Errorf("%w: %w", gitInternal.ErrGetHeadFailed, err)
+						}
+
+						return autoDiscoverDeployments(os.DirFS(repoDir), repoDir, head.Hash().String(), c)
+					}()
 					if err != nil {
-						return nil, fmt.Errorf("failed to get auth method: %w", err)
+						return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
+					}
+				case isGitRepo:
+					headRef, err := baseRepo.Head()
+					if err != nil {
+						return nil, fmt.Errorf("%w: %w", gitInternal.ErrGetHeadFailed, err)
 					}
 
-					unlock := gitInternal.AcquirePathLock(repoRoot)
-					err = gitInternal.CheckoutRepository(baseRepo, c.Reference, auth, opts.GitCloneSubmodules)
-
-					unlock()
-
+					hash, err := gitInternal.ResolveReferenceCommit(baseRepo, c.Reference)
 					if err != nil {
-						return nil, fmt.Errorf("failed to checkout repository to reference %s: %w", c.Reference, err)
+						return nil, fmt.Errorf("failed to resolve reference %s: %w", c.Reference, err)
 					}
-				}
 
-				discoveredConfigs, err := autoDiscoverDeployments(repoDir, c)
-				if err != nil {
-					return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
+					var fsys fs.FS
+
+					if hash == headRef.Hash() {
+						// Already at the target reference: read the working tree
+						// directly so submodules and locally materialized content
+						// (e.g. decrypted files) remain visible.
+						fsys = os.DirFS(repoRoot)
+					} else {
+						// Different reference: read from the object database
+						// instead of checking out, to avoid mutating the shared
+						// working tree while other readers/writers may be using it.
+						treeFS, err := gitInternal.NewTreeFSAtCommit(baseRepo, hash)
+						if err != nil {
+							return nil, fmt.Errorf("failed to open tree for reference %s: %w", c.Reference, err)
+						}
+
+						fsys = treeFS
+					}
+
+					discoveredConfigs, err = autoDiscoverDeployments(fsys, repoDir, hash.String(), c)
+					if err != nil {
+						return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
+					}
+				default:
+					var err error
+
+					discoveredConfigs, err = autoDiscoverDeployments(os.DirFS(repoRoot), repoDir, "", c)
+					if err != nil {
+						return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
+					}
 				}
 
 				// Add the discovered configs to the expanded list

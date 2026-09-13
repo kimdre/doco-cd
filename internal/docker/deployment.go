@@ -18,6 +18,7 @@ import (
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -110,7 +111,13 @@ func resolveDeploymentMetricsDeploymentLabel(deployName string) string {
 type DeployRequest struct {
 	JobLog           *slog.Logger `validate:"required,nostructlevel"`
 	ExternalRepoPath string       `validate:"required"`
-	DockerCLI        command.Cli  `validate:"required,nostructlevel"`
+	// InternalRepoPath is the repository's container-internal path, the same
+	// one source.Prepare locks via sourcecache.AcquirePathLock. DeployStack
+	// takes that lock while loading the Compose project (which decrypts
+	// files in place) to avoid racing a concurrent Prepare call.
+	// Optional: falls back to ExternalRepoPath when empty.
+	InternalRepoPath string
+	DockerCLI        command.Cli `validate:"required,nostructlevel"`
 	Payload          *webhook.ParsedPayload
 	DeployConfig     *deploy.Config `validate:"required,nostructlevel"`
 	DetectedChanges  []Change
@@ -179,6 +186,15 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	if project == nil {
 		deploymentPhase.Set("loading compose configuration")
 
+		// LoadCompose decrypts SOPS-encrypted files in place, so lock the same
+		// path source.Prepare uses to avoid racing a concurrent clone/fetch.
+		lockKey := req.InternalRepoPath
+		if lockKey == "" {
+			lockKey = req.ExternalRepoPath
+		}
+
+		unlockSource := sourcecache.AcquirePathLock(lockKey)
+
 		project, err = LoadCompose(
 			ctx,
 			req.DockerCLI,
@@ -191,6 +207,9 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 			req.DeployConfig.Internal.Environment,
 			req.ComposeLoad,
 		)
+
+		unlockSource()
+
 		if err != nil {
 			return fmt.Errorf("failed to load compose config: %w", err)
 		}

@@ -36,6 +36,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 	err = docker.DeployStack(ctx, docker.DeployRequest{
 		JobLog:           stageLog,
 		ExternalRepoPath: s.Repository.PathExternal,
+		InternalRepoPath: s.Repository.PathInternal,
 		DockerCLI:        s.Docker.Cmd,
 		Payload:          s.Payload,
 		DeployConfig:     s.DeployConfig,
