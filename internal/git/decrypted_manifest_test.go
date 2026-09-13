@@ -36,6 +36,38 @@ func TestDecryptedFilesManifest_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestDecryptedFilesManifest_SecondWriteMergesWithFirst(t *testing.T) {
+	t.Parallel()
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+
+	// Two independent stacks in the same repository each decrypt their own
+	// files for the same commit; the second write must not drop the first
+	// stack's entry.
+	if err := git.WriteDecryptedFilesManifest(repoPath, []string{"stack-a/secrets.env"}); err != nil {
+		t.Fatalf("WriteDecryptedFilesManifest() error = %v", err)
+	}
+
+	if err := git.WriteDecryptedFilesManifest(repoPath, []string{"stack-b/secrets.env"}); err != nil {
+		t.Fatalf("WriteDecryptedFilesManifest() error = %v", err)
+	}
+
+	recorded := git.ReadDecryptedFilesManifest(repo)
+
+	if !recorded.Contains("stack-a/secrets.env") {
+		t.Errorf("second write dropped the first stack's file, got %v", recorded)
+	}
+
+	if !recorded.Contains("stack-b/secrets.env") {
+		t.Errorf("recorded manifest missing second stack's file: %v", recorded)
+	}
+
+	if recorded.Len() != 2 {
+		t.Errorf("recorded manifest length = %d, want 2 (%v)", recorded.Len(), recorded)
+	}
+}
+
 func TestDecryptedFilesManifest_StaleAfterNewCommit(t *testing.T) {
 	t.Parallel()
 

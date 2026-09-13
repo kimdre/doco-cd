@@ -32,6 +32,14 @@ type decryptedFilesManifest struct {
 // be absolute or repoRoot-relative; they are normalized to slash-separated
 // repoRoot-relative paths. It is a no-op when repoRoot isn't a Git working
 // tree with a resolvable HEAD.
+//
+// Multiple deploy configs (stacks) in the same repository each call this
+// independently for their own subset of decrypted files. To avoid one
+// stack's write discarding another's, the new files are merged (union) with
+// any existing manifest already recorded for the same commit, rather than
+// replacing it outright. Callers must hold the same source-path lock used
+// around LoadCompose/source.Prepare for this repository so the read-modify-
+// write below isn't itself racy.
 func WriteDecryptedFilesManifest(repoRoot string, files []string) error {
 	repo, err := git.PlainOpen(repoRoot)
 	if err != nil {
@@ -48,7 +56,7 @@ func WriteDecryptedFilesManifest(repoRoot string, files []string) error {
 		return nil //nolint:nilerr // not filesystem-backed storage: nowhere to persist the manifest
 	}
 
-	relFiles := make([]string, 0, len(files))
+	fileSet := set.New[string]()
 
 	for _, f := range files {
 		rel := f
@@ -60,9 +68,16 @@ func WriteDecryptedFilesManifest(repoRoot string, files []string) error {
 			}
 		}
 
-		relFiles = append(relFiles, filepath.ToSlash(rel))
+		fileSet.Add(filepath.ToSlash(rel))
 	}
 
+	// Merge with whatever is already recorded for this exact commit, so a
+	// later write for one stack doesn't drop another stack's entries.
+	for existing := range ReadDecryptedFilesManifest(repo) {
+		fileSet.Add(existing)
+	}
+
+	relFiles := fileSet.ToSlice()
 	sort.Strings(relFiles)
 
 	data, err := json.Marshal(decryptedFilesManifest{Commit: head.Hash().String(), Files: relFiles})
