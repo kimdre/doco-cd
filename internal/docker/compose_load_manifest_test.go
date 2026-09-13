@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
-	gogitplumbing "github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -27,7 +27,7 @@ func initGitRepoWithFiles(t *testing.T, repoPath string, files map[string][]byte
 		t.Fatalf("failed to init test repo: %v", err)
 	}
 
-	if err := repo.Storer.SetReference(gogitplumbing.NewSymbolicReference(gogitplumbing.HEAD, gogitplumbing.NewBranchReferenceName("main"))); err != nil {
+	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))); err != nil {
 		t.Fatalf("failed to set HEAD to main: %v", err)
 	}
 
