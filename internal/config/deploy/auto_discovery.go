@@ -117,9 +117,8 @@ func expandInlineAutoDiscoverConfigs(repoRoot string, deployments []*Config) ([]
 }
 
 // revisionKeyForRepoRoot returns the current HEAD commit hash for repoRoot,
-// or "" when repoRoot is not a git repository (e.g. an OCI-sourced
-// deployment). A "" key disables the auto-discovery cache for the call,
-// matching the previous cacheable=false behavior for non-git sources.
+// or "" if repoRoot is not a git repository (e.g. an OCI source), which
+// disables the auto-discovery cache for the call.
 func revisionKeyForRepoRoot(repoRoot string) string {
 	repo, err := git.PlainOpen(repoRoot)
 	if err != nil {
@@ -137,20 +136,15 @@ func revisionKeyForRepoRoot(repoRoot string) string {
 // autoDiscoverDeployments scans for subdirectories containing docker-compose files
 // and generates Config entries for each.
 //
-// fsys is the filesystem to scan, rooted at repoRoot: either the repository's
-// on-disk working tree (os.DirFS) or a read-only view of a single commit's
-// tree (*gitInternal.TreeFS) when the target reference differs from the one
-// currently checked out. Scanning never checks a repository out to a
-// different reference, so it cannot race with concurrent readers/writers of
-// a shared working tree.
+// fsys is the filesystem to scan, rooted at repoRoot: either the working tree
+// (os.DirFS) or a read-only view of a single commit's tree (*gitInternal.TreeFS)
+// when the target reference differs from the one checked out. This never
+// checks the repository out, so it cannot race with concurrent readers/
+// writers of a shared working tree.
 //
-// repoRoot is the absolute path to the repository root; it is used only for
-// labeling (cache keys, metrics, and matching baseConfig.Name against the
-// repository's own directory name) and is never used for I/O directly.
-//
-// revisionKey identifies the exact content snapshot fsys exposes (a git
-// commit SHA, or "" when the snapshot cannot be identified, which disables
-// caching for that call). baseConfig.WorkingDirectory is treated as
+// repoRoot is used only for labeling (cache keys, metrics, matching
+// baseConfig.Name); revisionKey identifies the content snapshot fsys exposes
+// (a commit SHA, or "" to disable caching). baseConfig.WorkingDirectory is
 // repo-root-relative.
 func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfig *Config) ([]*Config, error) {
 	repositoryLabel := filepath.Base(filepath.Clean(repoRoot))
@@ -183,9 +177,8 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 			return err
 		}
 
-		// Calculate the depth of the current path relative to the search path.
-		// fs.WalkDir paths are always "/"-separated and rooted at fsys, so a
-		// simple prefix trim replaces filepath.Rel here.
+		// fs.WalkDir paths are "/"-separated and rooted at fsys, so a simple
+		// prefix trim gives the depth relative to searchPath.
 		rel := "."
 		if p != searchPath {
 			rel = strings.TrimPrefix(p, searchPath+"/")
@@ -223,10 +216,9 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 
 		c := clone.New(baseConfig)
 
-		// Get the stack name from the directory name where the compose file is
-		// located. At the search root with no configured WorkingDirectory, p is
-		// "." (fs.FS has no notion of the repository's own directory name), so
-		// fall back to the repository label computed from repoRoot.
+		// Stack name is the compose file's directory name. At the search root
+		// with no WorkingDirectory, p is "." (fs.FS has no repo dir name), so
+		// fall back to repositoryLabel.
 		stackDirName := path.Base(p)
 		if p == "." {
 			stackDirName = repositoryLabel
@@ -299,9 +291,8 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 
 // autoDiscoveryCacheKey generates a unique cache key for the auto-discovery
 // results. revisionKey identifies the exact content snapshot that was
-// scanned (e.g. a resolved git commit SHA); an empty revisionKey means the
-// snapshot cannot be identified reliably, so caching is disabled rather than
-// risking a cache key collision between different content.
+// scanned (e.g. a resolved commit SHA); an empty revisionKey disables
+// caching rather than risk a collision between different content.
 func autoDiscoveryCacheKey(repoRoot, revisionKey string, baseConfig *Config) (string, bool) {
 	if revisionKey == "" {
 		return "", false

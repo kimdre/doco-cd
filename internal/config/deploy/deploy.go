@@ -389,15 +389,11 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 		DeploymentConfigFileNames = DefaultDeploymentConfigFileNames
 	}
 
-	// baseRepo is used only for read-only reference resolution below, e.g. to
-	// find the tree of a different reference than the one currently checked
-	// out. It is intentionally never checked out or otherwise mutated here:
-	// doing so used to race with concurrent readers/writers of the shared
-	// working tree at repoRoot (e.g. a scheduled Compose service reload or a
-	// certificate-rotation redeploy calling GetConfigs while a deployment is
-	// in flight, neither of which holds any lock on repoRoot).
-	// For non-git sources (e.g. OCI), the directory is not a git repository,
-	// so we skip git operations.
+	// baseRepo is used only for read-only reference resolution (e.g. finding
+	// the tree of a different reference than the one checked out) and is
+	// never checked out or otherwise mutated, to avoid racing with concurrent
+	// readers/writers of the shared working tree at repoRoot. Non-git sources
+	// (e.g. OCI) skip git operations entirely.
 	baseRepo, err := git.PlainOpen(repoRoot)
 	isGitRepo := true
 
@@ -452,18 +448,16 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 
 					repoDir = path.Join(path.Dir(repoRoot), gitInternal.GetRepoName(string(c.RepositoryUrl)))
 
-					// Synchronize the repository once, whether it already exists or
-					// must be cloned. SyncRepository holds repoDir's path lock for
-					// the duration of the sync itself.
+					// SyncRepository holds repoDir's path lock for the duration of
+					// the sync, whether cloning or updating.
 					if _, err = gitInternal.SyncRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth)); err != nil {
 						return nil, fmt.Errorf("failed to synchronize repository: %w", err)
 					}
 
-					// Re-acquire the same path lock across resolving HEAD and
-					// scanning the directory: repoDir is a path shared with any
-					// other AutoDiscovery config (or concurrent GetConfigs call)
-					// referencing the same RepositoryUrl, and a sync racing with
-					// our scan could otherwise mutate the tree mid-walk.
+					// Re-lock repoDir across resolving HEAD and scanning: it may be
+					// shared with another AutoDiscovery config or concurrent
+					// GetConfigs call, and a sync racing with our scan could mutate
+					// the tree mid-walk.
 					discoveredConfigs, err = func() ([]*Config, error) {
 						unlock := gitInternal.AcquirePathLock(repoDir)
 						defer unlock()
@@ -497,19 +491,14 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 					var fsys fs.FS
 
 					if hash == headRef.Hash() {
-						// Already checked out at the target reference: read the
-						// working tree directly so submodules and any locally
-						// materialized content (e.g. already-decrypted files)
-						// remain visible to auto-discovery.
+						// Already at the target reference: read the working tree
+						// directly so submodules and locally materialized content
+						// (e.g. decrypted files) remain visible.
 						fsys = os.DirFS(repoRoot)
 					} else {
-						// A different reference is requested. Read straight from
-						// the object database instead of checking the repository
-						// out to it: checking out here used to mutate the shared
-						// working tree and raced with concurrent readers/writers
-						// of the same repoRoot (e.g. scheduled Compose service
-						// reloads and certificate-rotation redeploys, neither of
-						// which holds a lock on repoRoot).
+						// Different reference: read from the object database
+						// instead of checking out, to avoid mutating the shared
+						// working tree while other readers/writers may be using it.
 						treeFS, err := gitInternal.NewTreeFSAtCommit(baseRepo, hash)
 						if err != nil {
 							return nil, fmt.Errorf("failed to open tree for reference %s: %w", c.Reference, err)

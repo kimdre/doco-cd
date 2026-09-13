@@ -14,11 +14,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// TreeFS is a read-only fs.FS view over a single commit's tree. It lets
-// callers inspect a reference's contents (directory listings and file
-// contents) without checking it out into the repository's working tree,
-// so read-only consumers such as auto-discovery no longer need to mutate
-// (and race on) the shared working tree to look at a different reference.
+// TreeFS is a read-only fs.FS view over a single commit's tree, letting
+// callers inspect a reference's contents without checking it out and
+// mutating (or racing on) the shared working tree.
 type TreeFS struct {
 	tree   *object.Tree
 	commit plumbing.Hash

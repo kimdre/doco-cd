@@ -6,10 +6,9 @@ import (
 	"github.com/go-git/go-git/v5"
 )
 
-// ResetTrackedFiles resets all tracked files in the worktree To their last committed state
-// while leaving untracked files intact. A file that was decrypted in place for the exact
-// commit currently checked out (recorded via WriteDecryptedFilesManifest) is left alone
-// instead of being reset back to its encrypted committed form.
+// ResetTrackedFiles resets tracked files to their last committed state,
+// leaving untracked files intact. Files decrypted in place for the current
+// commit (per WriteDecryptedFilesManifest) are left alone.
 func ResetTrackedFiles(repo *git.Repository) error {
 	worktree, err := repo.Worktree()
 	if err != nil {

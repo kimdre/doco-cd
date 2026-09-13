@@ -133,11 +133,10 @@ func resolveCheckoutCommitHash(repo *git.Repository, hash plumbing.Hash) (plumbi
 	}
 }
 
-// ResolveReferenceCommit resolves ref to the concrete commit hash it points
-// to, without touching the repository's working tree or HEAD. It mirrors the
-// resolution rules CheckoutRepository applies (branch/remote-tracking
-// preference, annotated tag dereferencing, direct commit SHAs) so read-only
-// callers land on exactly the commit a checkout of the same ref would.
+// ResolveReferenceCommit resolves ref to the commit hash it points to,
+// without touching the working tree or HEAD. It mirrors CheckoutRepository's
+// resolution rules so read-only callers land on the same commit a checkout
+// would.
 func ResolveReferenceCommit(repo *git.Repository, ref string) (plumbing.Hash, error) {
 	refSet, err := GetReferenceSet(repo, ref)
 	if err != nil {
@@ -171,10 +170,9 @@ func ResolveReferenceCommit(repo *git.Repository, ref string) (plumbing.Hash, er
 			return resolveCheckoutCommitHash(repo, remoteHash)
 		}
 
-		// No remote hash available (e.g. offline/local-only branch); fall back
-		// to whatever the local branch currently points at, mirroring
-		// CheckoutRepository's "update existing local branch" path when there
-		// is nothing newer to move it to.
+		// No remote hash (e.g. offline/local-only branch); fall back to the
+		// local branch's current commit, like CheckoutRepository does when
+		// there's nothing newer to move it to.
 		localRef, localErr := repo.Reference(desiredLocal, true)
 		if localErr != nil {
 			return plumbing.ZeroHash, fmt.Errorf("failed to resolve local reference %s: %w", desiredLocal, localErr)

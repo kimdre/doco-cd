@@ -15,29 +15,23 @@ import (
 )
 
 // decryptedManifestFileName is stored inside the repository's Git directory
-// (never the working tree), so it is never visible to compose auto-discovery
-// or decrypt scans, and is removed automatically whenever the repository
-// directory itself is removed (e.g. on re-clone).
+// (never the working tree), so it's invisible to auto-discovery/decrypt
+// scans and is removed automatically when the repo directory is removed.
 const decryptedManifestFileName = "doco-cd-decrypted-manifest.json"
 
-// decryptedFilesManifest is the on-disk representation of the set of
-// repository-root-relative files that were decrypted in place, tagged with
-// the commit the working tree was at when they were decrypted. Keying by
-// commit means a checkout to a different commit automatically invalidates
-// the manifest: see ReadDecryptedFilesManifest.
+// decryptedFilesManifest is the on-disk record of repository-root-relative
+// files decrypted in place, tagged with the commit at decryption time.
+// Keying by commit means a checkout to another commit auto-invalidates it.
 type decryptedFilesManifest struct {
 	Commit string   `json:"commit"`
 	Files  []string `json:"files"`
 }
 
 // WriteDecryptedFilesManifest records which files under repoRoot were
-// decrypted in place (by internal/docker's Compose loader), tagged with
-// repoRoot's current HEAD commit. files may be absolute or repoRoot-relative;
-// they are normalized to slash-separated repoRoot-relative paths.
-//
-// It is a no-op (returns nil) when repoRoot is not a Git working tree or has
-// no resolvable HEAD, since the manifest is only ever consulted by
-// ResetTrackedFiles for Git-managed repositories.
+// decrypted in place, tagged with repoRoot's current HEAD commit. files may
+// be absolute or repoRoot-relative; they are normalized to slash-separated
+// repoRoot-relative paths. It is a no-op when repoRoot isn't a Git working
+// tree with a resolvable HEAD.
 func WriteDecryptedFilesManifest(repoRoot string, files []string) error {
 	repo, err := git.PlainOpen(repoRoot)
 	if err != nil {
@@ -108,11 +102,10 @@ func WriteDecryptedFilesManifest(repoRoot string, files []string) error {
 }
 
 // ReadDecryptedFilesManifest returns the set of repository-root-relative
-// files recorded as decrypted in place for repo, provided the manifest was
-// recorded for the exact commit currently at repo's HEAD. Any other
-// situation - no manifest, a manifest recorded for a different commit, or a
-// read/parse error - returns an empty set: the caller should treat that
-// identically to "nothing recorded" and fall back to resetting everything.
+// files recorded as decrypted for repo, if the manifest matches repo's
+// current HEAD commit. Any other case (missing, stale, or unreadable
+// manifest) returns an empty set, so the caller falls back to resetting
+// everything.
 func ReadDecryptedFilesManifest(repo *git.Repository) set.Set[string] {
 	head, err := repo.Head()
 	if err != nil {
@@ -141,11 +134,10 @@ func ReadDecryptedFilesManifest(repo *git.Repository) set.Set[string] {
 	return set.New(manifest.Files...)
 }
 
-// decryptedManifestPath returns the manifest path for repo, resolved inside
-// its Git directory. Using the Storer's resolved filesystem (rather than
-// naively joining ".git" onto the worktree root) transparently handles linked
-// worktrees and submodules, whose ".git" is a file pointing elsewhere:
-// go-git already resolves that indirection when the repository is opened.
+// decryptedManifestPath returns the manifest path resolved inside repo's Git
+// directory. Using the Storer's resolved filesystem (rather than joining
+// ".git" onto the worktree root) handles linked worktrees/submodules, whose
+// ".git" is a file pointing elsewhere.
 func decryptedManifestPath(repo *git.Repository) (string, error) {
 	storage, ok := repo.Storer.(*gitfs.Storage)
 	if !ok {

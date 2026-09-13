@@ -36,13 +36,10 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 		decryptedFiles  []string
 	)
 
-	// Persist whichever files were decrypted in place, tagged with repoPath's
-	// current HEAD commit, regardless of how this function returns. This is
-	// what lets ResetTrackedFiles (internal/git/worktree.go) skip resetting
-	// decrypted files on the next checkout without re-deriving that
-	// information by re-decrypting every changed file. Writing is a no-op for
-	// non-Git sources (e.g. OCI artifacts), since only Git checkouts call
-	// ResetTrackedFiles.
+	// Persist decrypted files tagged with repoPath's current HEAD commit, on
+	// every return path. This lets ResetTrackedFiles skip resetting them on
+	// the next checkout without re-decrypting to re-derive that state; it is
+	// a no-op for non-Git sources.
 	defer func() {
 		if manifestErr := gitInternal.WriteDecryptedFilesManifest(repoPath, decryptedFiles); manifestErr != nil {
 			slog.Error("failed to persist decrypted-files manifest",

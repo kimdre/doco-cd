@@ -111,14 +111,11 @@ func resolveDeploymentMetricsDeploymentLabel(deployName string) string {
 type DeployRequest struct {
 	JobLog           *slog.Logger `validate:"required,nostructlevel"`
 	ExternalRepoPath string       `validate:"required"`
-	// InternalRepoPath is the repository's path inside doco-cd's own
-	// container, i.e. the same path source.Prepare locks via
-	// sourcecache.AcquirePathLock while cloning/fetching. DeployStack takes
-	// the same lock around loading the Compose project (which decrypts
-	// files in place) so a concurrent Prepare call for the same repository
-	// cannot mutate the working tree mid-load. Optional: when empty (e.g. in
-	// tests that only exercise the host/external path), ExternalRepoPath is
-	// used as the lock key instead.
+	// InternalRepoPath is the repository's container-internal path, the same
+	// one source.Prepare locks via sourcecache.AcquirePathLock. DeployStack
+	// takes that lock while loading the Compose project (which decrypts
+	// files in place) to avoid racing a concurrent Prepare call. Optional:
+	// falls back to ExternalRepoPath when empty.
 	InternalRepoPath string
 	DockerCLI        command.Cli `validate:"required,nostructlevel"`
 	Payload          *webhook.ParsedPayload
@@ -189,12 +186,8 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	if project == nil {
 		deploymentPhase.Set("loading compose configuration")
 
-		// Lock the same path source.Prepare locks while cloning/fetching
-		// this repository: LoadCompose decrypts SOPS-encrypted files in
-		// place, and must not race with a concurrent Prepare call mutating
-		// the same working tree (e.g. a webhook/poll/scheduled-job trigger
-		// for the same repository arriving while this deployment is loading
-		// its Compose project).
+		// LoadCompose decrypts SOPS-encrypted files in place, so lock the same
+		// path source.Prepare uses to avoid racing a concurrent clone/fetch.
 		lockKey := req.InternalRepoPath
 		if lockKey == "" {
 			lockKey = req.ExternalRepoPath
