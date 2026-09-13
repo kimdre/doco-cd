@@ -1046,6 +1046,118 @@ auto_discovery:
 	}
 }
 
+func TestGetConfigs_WithAutoDiscovery_OnDifferentBranch_UsesObjectDatabase(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+
+	repo := createTestRepo(t, repoRoot)
+
+	// Create and commit a compose file on a feature branch only, then switch
+	// back to main so HEAD differs from the branch the config targets. The
+	// compose file must never touch disk on main: if GetConfigs fell back to
+	// reading the working tree (or checked it out) instead of resolving the
+	// feature branch's committed tree via TreeFS, it would find nothing here.
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName("feature-branch"),
+		Create: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stackDir := "feature-only-stack"
+
+	err = os.MkdirAll(filepath.Join(repoRoot, stackDir), 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = createTestFile(t, filepath.Join(repoRoot, stackDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = worktree.Add(stackDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = worktree.Commit("add feature-only stack", &git.CommitOptions{
+		Author: &object.Signature{Name: "Test Author", Email: "test@example.com", When: time.Now()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	featureHead, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ref := plumbing.NewHashReference("refs/remotes/origin/feature-branch", featureHead.Hash())
+	if err = repo.Storer.SetReference(ref); err != nil {
+		t.Fatal(err)
+	}
+
+	// Switch back to main: the feature-only stack directory must not exist
+	// on disk from here on.
+	err = worktree.Checkout(&git.CheckoutOptions{Branch: plumbing.ReferenceName(DefaultReference)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repoRoot, stackDir)); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s to be absent from the main worktree, stat err = %v", stackDir, statErr)
+	}
+
+	dc := fmt.Sprintf(`name: %s
+reference: refs/heads/feature-branch
+auto_discovery:
+  enabled: true
+`, t.Name())
+
+	if err = createTestFile(t, filepath.Join(repoRoot, ".doco-cd.yaml"), dc); err != nil {
+		t.Fatal(err)
+	}
+
+	headBefore, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetConfigs(repoRoot, ".", "", DefaultReference, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config discovered from the feature branch's committed tree, got %d", len(configs))
+	}
+
+	if configs[0].Name != stackDir {
+		t.Errorf("expected name to be %v, got %s", stackDir, configs[0].Name)
+	}
+
+	headAfter, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if headAfter.Hash() != headBefore.Hash() || headAfter.Name() != headBefore.Name() {
+		t.Errorf("expected HEAD to remain on main, got %v -> %v", headBefore, headAfter)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repoRoot, stackDir)); !os.IsNotExist(statErr) {
+		t.Errorf("expected %s to still be absent from the main worktree after GetConfigs, stat err = %v", stackDir, statErr)
+	}
+}
+
 func TestGetConfigs_WithAutoDiscovery_WithRemoteUrl(t *testing.T) {
 	t.Parallel()
 

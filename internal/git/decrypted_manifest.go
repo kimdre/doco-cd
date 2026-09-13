@@ -27,19 +27,10 @@ type decryptedFilesManifest struct {
 	Files  []string `json:"files"`
 }
 
-// WriteDecryptedFilesManifest records which files under repoRoot were
-// decrypted in place, tagged with repoRoot's current HEAD commit. files may
-// be absolute or repoRoot-relative; they are normalized to slash-separated
-// repoRoot-relative paths. It is a no-op when repoRoot isn't a Git working
-// tree with a resolvable HEAD.
-//
-// Multiple deploy configs (stacks) in the same repository each call this
-// independently for their own subset of decrypted files. To avoid one
-// stack's write discarding another's, the new files are merged (union) with
-// any existing manifest already recorded for the same commit, rather than
-// replacing it outright. Callers must hold the same source-path lock used
-// around LoadCompose/source.Prepare for this repository so the read-modify-
-// write below isn't itself racy.
+// WriteDecryptedFilesManifest records decrypted files by commit, merging with
+// any existing manifest for the same commit (multiple stacks may write
+// independently). Callers must hold the source-path lock to make this
+// read-modify-write race-free.
 func WriteDecryptedFilesManifest(repoRoot string, files []string) error {
 	repo, err := git.PlainOpen(repoRoot)
 	if err != nil {
