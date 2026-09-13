@@ -167,7 +167,16 @@ Printing an entry directly (`{{ . }}`) gives `shortHash subject`.
 
 Only commits that changed a file of the stack are listed, like `git log -- <paths>`. The paths are the ones the compose project resolves to: the compose files, `configs:`, `secrets:`, `env_file:`, bind mount sources and build contexts. A repository that holds several stacks therefore gets a changelog per stack instead of everything that happened in the repository. Where the stack resolves to no path inside the repository, or covers the repository root, all commits of the range are listed.
 
-Up to 50 commits are listed, counted after that filtering. After a rebase or force-push the list starts from the point where the histories diverged.
+A few changes cannot be attributed to a stack and are therefore not listed:
+
+- Files pulled in with `include:` or `extends: file:`, because Compose resolves them away and the loaded project no longer names them.
+- The deploy config (`.doco-cd.yml`) itself, it is not part of the compose project.
+- Services of a profile that is not active, their files do not belong to the deployed stack.
+- Stacks that live in a Git submodule, a submodule bump only changes the submodule path in the parent repository.
+
+A build context matches everything below it, so a second stack placed inside the build context of another one shows up in both changelogs.
+
+Up to 50 commits are listed, counted after that filtering. A walk reads at most 5000 commits, so a stack that was not touched for a very long time gets a truncated list and a warning in the log. After a rebase or force-push the list starts from the point where the histories diverged.
 
 The changelog is best-effort: with a small `GIT_CLONE_DEPTH` the previously deployed commit may sit beyond the shallow boundary, in which case the list is truncated or omitted. It never blocks the notification.
 

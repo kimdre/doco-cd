@@ -64,6 +64,7 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		}
 
 		metadata.Commits, err = git.GetCommitsBetween(
+			stageLog,
 			s.Repository.Git,
 			plumbing.NewHash(s.DeployState.DeployedCommit),
 			plumbing.NewHash(latestCommit),

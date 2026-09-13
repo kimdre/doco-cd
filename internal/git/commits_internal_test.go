@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/storage/memory"
 )
+
+// testLogger returns a logger that drops everything, GetCommitsBetween only warns.
+func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 // commitN creates n empty commits and returns their hashes oldest-first.
 func commitN(t *testing.T, wt *gogit.Worktree, n int) []plumbing.Hash {
@@ -52,7 +56,7 @@ func TestGetCommitsBetween(t *testing.T) {
 	h := commitN(t, wt, 4) // h[0] oldest .. h[3] newest
 
 	// commits after h[0] up to h[3]: h[3], h[2], h[1] (newest first)
-	got, err := GetCommitsBetween(repo, h[0], h[3], 50, nil)
+	got, err := GetCommitsBetween(testLogger(), repo, h[0], h[3], 50, nil)
 	if err != nil {
 		t.Fatalf("GetCommitsBetween: %v", err)
 	}
@@ -70,7 +74,7 @@ func TestGetCommitsBetween(t *testing.T) {
 	}
 
 	// same old==new -> empty
-	empty, err := GetCommitsBetween(repo, h[3], h[3], 50, nil)
+	empty, err := GetCommitsBetween(testLogger(), repo, h[3], h[3], 50, nil)
 	if err != nil {
 		t.Fatalf("GetCommitsBetween equal: %v", err)
 	}
@@ -80,7 +84,7 @@ func TestGetCommitsBetween(t *testing.T) {
 	}
 
 	// cap is honoured
-	capped, err := GetCommitsBetween(repo, plumbing.ZeroHash, h[3], 2, nil)
+	capped, err := GetCommitsBetween(testLogger(), repo, plumbing.ZeroHash, h[3], 2, nil)
 	if err != nil {
 		t.Fatalf("GetCommitsBetween capped: %v", err)
 	}
@@ -113,7 +117,7 @@ func TestGetCommitsBetween_DivergedHistory(t *testing.T) {
 
 	d := commitN(t, wt, 2) // d and newTip=e(d[1]) are both parented on b
 
-	got, err := GetCommitsBetween(repo, h[2], d[1], 50, nil)
+	got, err := GetCommitsBetween(testLogger(), repo, h[2], d[1], 50, nil)
 	if err != nil {
 		t.Fatalf("GetCommitsBetween: %v", err)
 	}
@@ -243,7 +247,7 @@ func TestGetCommitsBetween_PathFilter(t *testing.T) {
 	// Stack A deployed at stackB and now deploys stackAEnv: only its own commit is new.
 	// The boundary commit (stackB) touches stack B only, so the path filter drops it from
 	// the log. The walk still has to stop there instead of reaching back to stackA.
-	got, err := GetCommitsBetween(repo, stackB, stackAEnv, 50, stackPathFilter("stacks/a"))
+	got, err := GetCommitsBetween(testLogger(), repo, stackB, stackAEnv, 50, stackPathFilter("stacks/a"))
 	if err != nil {
 		t.Fatalf("GetCommitsBetween: %v", err)
 	}
@@ -253,7 +257,7 @@ func TestGetCommitsBetween_PathFilter(t *testing.T) {
 	}
 
 	// Unfiltered, the same range also carries the commit of stack B.
-	unfiltered, err := GetCommitsBetween(repo, stackB, stackAEnv, 50, nil)
+	unfiltered, err := GetCommitsBetween(testLogger(), repo, stackB, stackAEnv, 50, nil)
 	if err != nil {
 		t.Fatalf("GetCommitsBetween unfiltered: %v", err)
 	}
@@ -263,7 +267,7 @@ func TestGetCommitsBetween_PathFilter(t *testing.T) {
 	}
 
 	// A stack whose files did not change at all gets an empty changelog.
-	none, err := GetCommitsBetween(repo, stackBEnv, stackAEnv, 50, stackPathFilter("stacks/c"))
+	none, err := GetCommitsBetween(testLogger(), repo, stackBEnv, stackAEnv, 50, stackPathFilter("stacks/c"))
 	if err != nil {
 		t.Fatalf("GetCommitsBetween no match: %v", err)
 	}
@@ -273,7 +277,7 @@ func TestGetCommitsBetween_PathFilter(t *testing.T) {
 	}
 
 	// A filter matching a single file only takes the commits that changed that file.
-	single, err := GetCommitsBetween(repo, first, stackAEnv, 50, func(p string) bool {
+	single, err := GetCommitsBetween(testLogger(), repo, first, stackAEnv, 50, func(p string) bool {
 		return p == "stacks/a/compose.yaml"
 	})
 	if err != nil {
@@ -315,7 +319,7 @@ func TestGetCommitsBetween_PathFilterCap(t *testing.T) {
 		}
 	}
 
-	got, err := GetCommitsBetween(repo, first, wanted[len(wanted)-1], 2, stackPathFilter("stacks/a"))
+	got, err := GetCommitsBetween(testLogger(), repo, first, wanted[len(wanted)-1], 2, stackPathFilter("stacks/a"))
 	if err != nil {
 		t.Fatalf("GetCommitsBetween: %v", err)
 	}
@@ -326,5 +330,44 @@ func TestGetCommitsBetween_PathFilterCap(t *testing.T) {
 
 	if got[0].Hash != wanted[2].String() || got[1].Hash != wanted[1].String() {
 		t.Fatalf("expected the two newest stack A commits, got %+v", got)
+	}
+}
+
+func TestGetCommitsBetween_ScanLimit(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	h := commitN(t, wt, 10)
+
+	original := maxScannedCommits
+	maxScannedCommits = 4
+
+	t.Cleanup(func() { maxScannedCommits = original })
+
+	// Nothing matches the filter, so the walk only ends at the scan limit.
+	got, err := GetCommitsBetween(testLogger(), repo, h[0], h[9], 50, func(string) bool { return false })
+	if err != nil {
+		t.Fatalf("GetCommitsBetween: %v", err)
+	}
+
+	if len(got) != 0 {
+		t.Fatalf("expected no commits, got %d", len(got))
+	}
+
+	// Without the limit the unfiltered walk would return all 9 commits of the range.
+	got, err = GetCommitsBetween(testLogger(), repo, h[0], h[9], 50, nil)
+	if err != nil {
+		t.Fatalf("GetCommitsBetween: %v", err)
+	}
+
+	if len(got) != maxScannedCommits {
+		t.Fatalf("expected %d commits, got %d", maxScannedCommits, len(got))
 	}
 }

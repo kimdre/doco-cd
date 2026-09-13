@@ -151,6 +151,9 @@ func serviceFiles(p *types.Project) ([]projectFile, error) {
 // resolvedProjectFiles returns the full file set of a compose project: the compose files,
 // everything serviceFiles resolves and the build contexts. A change has to touch one of
 // these paths to affect the stack.
+//
+// Files reached through `include:` or `extends: file:` are missing: compose-go resolves
+// both away and types.Project does not name them any more.
 func resolvedProjectFiles(p *types.Project) ([]projectFile, error) {
 	deployFiles, err := serviceFiles(p)
 	if err != nil {
@@ -179,13 +182,56 @@ func resolvedProjectFiles(p *types.Project) ([]projectFile, error) {
 				continue
 			}
 
-			// Additional contexts also take non-path values like docker-image://alpine,
-			// which simply never match a path in the repository.
-			files.add(p, ctx, filesystem.IsDir(absProjectPath(p, ctx)))
+			// A context that does not exist yet is treated as a directory, so files that
+			// appear under it later still match. Additional contexts also take non-path
+			// values like docker-image://alpine, which never match a path in the
+			// repository either way.
+			files.add(p, ctx, !filesystem.IsFile(absProjectPath(p, ctx)))
 		}
 	}
 
 	return files.list(), nil
+}
+
+// projectRepoPaths converts the file set of a compose project to paths relative to the
+// root of the repository, the form go-git reports in a commit log. Paths outside the
+// repository, e.g. a host path or a remote include, are dropped.
+//
+// repoPath is the path to the repository on the docker host, like the absolute paths in
+// types.Project. coversRepoRoot reports that the stack owns the whole repository, which
+// makes every path of it relevant.
+func projectRepoPaths(repoPath string, p *types.Project) (files, dirs []string, coversRepoRoot bool, err error) {
+	projectFiles, err := resolvedProjectFiles(p)
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	for _, f := range projectFiles {
+		if !filesystem.InBasePath(repoPath, f.Path) {
+			continue
+		}
+
+		rel, relErr := filepath.Rel(filepath.Clean(repoPath), f.Path)
+		if relErr != nil {
+			continue
+		}
+
+		rel = filepath.ToSlash(rel)
+
+		if !f.IsDir {
+			files = append(files, rel)
+
+			continue
+		}
+
+		if rel == "." {
+			return nil, nil, true, nil
+		}
+
+		dirs = append(dirs, rel)
+	}
+
+	return files, dirs, false, nil
 }
 
 // ProjectPathFilter builds a filter for git.LogOptions.PathFilter that matches the file
@@ -204,45 +250,20 @@ func ProjectPathFilter(repoPath string, p *types.Project) (func(string) bool, er
 		return nil, nil
 	}
 
-	projectFiles, err := resolvedProjectFiles(p)
+	filePaths, dirPaths, coversRepoRoot, err := projectRepoPaths(repoPath, p)
 	if err != nil {
 		return nil, err
 	}
 
-	var (
-		files = set.New[string]()
-		dirs  []string
-	)
-
-	for _, f := range projectFiles {
-		if !filesystem.InBasePath(repoPath, f.Path) {
-			// Outside the repository, e.g. a host path or a remote include.
-			continue
-		}
-
-		rel, err := filepath.Rel(filepath.Clean(repoPath), f.Path)
-		if err != nil {
-			continue
-		}
-
-		rel = filepath.ToSlash(rel)
-
-		if !f.IsDir {
-			files.Add(rel)
-
-			continue
-		}
-
-		if rel == "." {
-			// The stack owns the whole repository, every path is relevant.
-			return nil, nil
-		}
-
-		dirs = append(dirs, rel+"/")
+	if coversRepoRoot || (len(filePaths) == 0 && len(dirPaths) == 0) {
+		return nil, nil
 	}
 
-	if len(files) == 0 && len(dirs) == 0 {
-		return nil, nil
+	files := set.New(filePaths...)
+
+	prefixes := make([]string, 0, len(dirPaths))
+	for _, d := range dirPaths {
+		prefixes = append(prefixes, d+"/")
 	}
 
 	return func(path string) bool {
@@ -250,8 +271,8 @@ func ProjectPathFilter(repoPath string, p *types.Project) (func(string) bool, er
 			return true
 		}
 
-		for _, dir := range dirs {
-			if strings.HasPrefix(path, dir) {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(path, prefix) {
 				return true
 			}
 		}
