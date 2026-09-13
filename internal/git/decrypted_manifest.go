@@ -14,13 +14,12 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
-// decryptedManifestFileName is stored inside the repository's Git directory
-// (never the working tree), so it's invisible to auto-discovery/decrypt
-// scans and is removed automatically when the repo directory is removed.
 const (
-	// docoCDGitDir is the subdirectory inside the repo's .git directory.
+	// docoCDGitDir groups doco-cd's own state inside the repo's Git directory
+	// (never the working tree), so it stays invisible to auto-discovery and
+	// decrypt scans, and is removed together with the repo directory.
 	docoCDGitDir = "doco-cd"
-	// decryptedManifestFileName is the file inside docoCDGitDir that records which files have been decrypted in place.
+	// decryptedManifestFileName records which files were decrypted in place.
 	decryptedManifestFileName = "decrypted-manifest.json"
 )
 

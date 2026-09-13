@@ -122,6 +122,38 @@ func TestDecryptedFilesManifest_NonGitRepoRootIsANoOp(t *testing.T) {
 	}
 }
 
+func TestDecryptedFilesManifest_IsStoredInGitDirNotWorktree(t *testing.T) {
+	t.Parallel()
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+
+	if err := git.WriteDecryptedFilesManifest(repoPath, []string{"secrets.env"}); err != nil {
+		t.Fatalf("WriteDecryptedFilesManifest() error = %v", err)
+	}
+
+	manifestPath := filepath.Join(repoPath, ".git", "doco-cd", "decrypted-manifest.json")
+	if _, err := os.Stat(manifestPath); err != nil {
+		t.Fatalf("expected manifest at %s, stat error = %v", manifestPath, err)
+	}
+
+	// The manifest must stay invisible to working-tree scans, so writing it
+	// must not make the worktree dirty.
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("failed to get worktree: %v", err)
+	}
+
+	status, err := wt.Status()
+	if err != nil {
+		t.Fatalf("failed to get worktree status: %v", err)
+	}
+
+	if !status.IsClean() {
+		t.Errorf("expected a clean worktree after writing the manifest, got %v", status)
+	}
+}
+
 func TestResetTrackedFiles_SkipsFilesRecordedInDecryptedManifest(t *testing.T) {
 	t.Parallel()
 
