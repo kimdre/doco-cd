@@ -114,8 +114,8 @@ type DeployRequest struct {
 	// InternalRepoPath is the repository's container-internal path, the same
 	// one source.Prepare locks via sourcecache.AcquirePathLock. DeployStack
 	// takes that lock while loading the Compose project (which decrypts
-	// files in place) to avoid racing a concurrent Prepare call. Optional:
-	// falls back to ExternalRepoPath when empty.
+	// files in place) to avoid racing a concurrent Prepare call.
+	// Optional: falls back to ExternalRepoPath when empty.
 	InternalRepoPath string
 	DockerCLI        command.Cli `validate:"required,nostructlevel"`
 	Payload          *webhook.ParsedPayload
