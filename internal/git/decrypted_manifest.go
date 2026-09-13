@@ -17,7 +17,10 @@ import (
 // decryptedManifestFileName is stored inside the repository's Git directory
 // (never the working tree), so it's invisible to auto-discovery/decrypt
 // scans and is removed automatically when the repo directory is removed.
-const decryptedManifestFileName = "doco-cd-decrypted-manifest.json"
+const (
+	docoCDGitDir              = "doco-cd" // docoCDGitDir is the subdirectory inside the repo's .git directory
+	decryptedManifestFileName = "decrypted-manifest.json"
+)
 
 // decryptedFilesManifest is the on-disk record of repository-root-relative
 // files decrypted in place, tagged with the commit at decryption time.
@@ -77,6 +80,9 @@ func WriteDecryptedFilesManifest(repoRoot string, files []string) error {
 	}
 
 	dir := filepath.Dir(manifestPath)
+	if err = os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("create decrypted-files manifest directory: %w", err)
+	}
 
 	tmp, err := os.CreateTemp(dir, ".decrypted-manifest-*")
 	if err != nil {
@@ -150,5 +156,5 @@ func decryptedManifestPath(repo *git.Repository) (string, error) {
 		return "", errors.New("repository storage is not filesystem-backed")
 	}
 
-	return filepath.Join(storage.Filesystem().Root(), decryptedManifestFileName), nil
+	return filepath.Join(storage.Filesystem().Root(), docoCDGitDir, decryptedManifestFileName), nil
 }
