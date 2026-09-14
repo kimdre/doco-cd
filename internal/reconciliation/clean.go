@@ -65,7 +65,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 		stackLog := jobLog.With(slog.String("stack", stackName))
 
-		labelUrl := docker.SourceCloneURLFromLabels(labels)
+		labelUrl := strings.TrimSpace(labels[docker.DocoCDLabels.Source.URL])
 
 		// cloneUrl may not be in the same format as labelUrl
 		//  (e.g., "https://github.com/kimdre/doco-cd.git" vs. "https://github.com/kimdre/doco-cd")

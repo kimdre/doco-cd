@@ -404,7 +404,7 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 	// deployed before CloneURL existed, then to the "name" label, which only
 	// holds the short "owner/repo" form and cannot be used to reconstruct a
 	// host-qualified repository path via git.GetRepoName().
-	repositoryURL := SourceCloneURLFromLabels(labels)
+	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 	if repositoryURL == "" {
 		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])
 	}
@@ -444,7 +444,7 @@ func composeScheduledServiceRefFromSwarmLabels(labels map[string]string) (compos
 		)
 	}
 
-	repositoryURL := SourceCloneURLFromLabels(labels)
+	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 	if repositoryURL == "" {
 		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])
 	}

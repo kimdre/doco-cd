@@ -45,8 +45,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
 			DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 			DocoCDLabels.Source.Name:                    payload.FullName,
-			DocoCDLabels.Source.URL:                     payload.WebURL,
-			DocoCDLabels.Source.CloneURL:                resolveSourceCloneURLLabel(sourceURL, payload),
+			DocoCDLabels.Source.URL:                     resolveSourceURLLabel(sourceURL, payload),
 
 			api.ProjectLabel:      project.Name,
 			api.ServiceLabel:      s.Name,
@@ -103,8 +102,7 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config,
 			DocoCDLabels.Deployment.CommitSHA:    latestCommit,
 			DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 			DocoCDLabels.Source.Name:             payload.FullName,
-			DocoCDLabels.Source.URL:              payload.WebURL,
-			DocoCDLabels.Source.CloneURL:         resolveSourceCloneURLLabel(sourceURL, payload),
+			DocoCDLabels.Source.URL:              resolveSourceURLLabel(sourceURL, payload),
 			api.ProjectLabel:                     project.Name,
 			api.VolumeLabel:                      v.Name,
 			api.VersionLabel:                     composeVersion,
@@ -113,9 +111,10 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config,
 	}
 }
 
-// resolveSourceCloneURLLabel returns the resolved URL used to fetch/name the source
-// containing the deploy config, falling back to payload.WebURL for legacy callers.
-func resolveSourceCloneURLLabel(sourceURL string, payload *webhook.ParsedPayload) string {
+// resolveSourceURLLabel returns the resolved URL used to fetch/name the source
+// containing the deploy config, falling back to payload.WebURL for legacy callers
+// that don't yet resolve a dedicated sourceURL (e.g. very old label readers).
+func resolveSourceURLLabel(sourceURL string, payload *webhook.ParsedPayload) string {
 	if strings.TrimSpace(sourceURL) != "" {
 		return sourceURL
 	}

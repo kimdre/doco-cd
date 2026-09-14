@@ -172,8 +172,7 @@ func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, d
 		DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
 		DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 		DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
-		DocoCDLabels.Source.URL:                     payload.WebURL,
-		DocoCDLabels.Source.CloneURL:                resolveSourceCloneURLLabel(sourceURL, payload),
+		DocoCDLabels.Source.URL:                     resolveSourceURLLabel(sourceURL, payload),
 	}
 
 	maps.Copy(sharedServiceSpecLabels, stableLabels)
@@ -238,8 +237,7 @@ func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 		DocoCDLabels.Deployment.TargetRef:  ExtractOciArtifactTag(deployConfig.Reference),
 		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 		DocoCDLabels.Source.Name:           payload.FullName,
-		DocoCDLabels.Source.URL:            payload.WebURL,
-		DocoCDLabels.Source.CloneURL:       resolveSourceCloneURLLabel(sourceURL, payload),
+		DocoCDLabels.Source.URL:            resolveSourceURLLabel(sourceURL, payload),
 	}
 
 	for i, c := range stack.Configs {
@@ -267,8 +265,7 @@ func addSwarmSecretLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 		DocoCDLabels.Deployment.TargetRef:  ExtractOciArtifactTag(deployConfig.Reference),
 		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 		DocoCDLabels.Source.Name:           payload.FullName,
-		DocoCDLabels.Source.URL:            payload.WebURL,
-		DocoCDLabels.Source.CloneURL:       resolveSourceCloneURLLabel(sourceURL, payload),
+		DocoCDLabels.Source.URL:            resolveSourceURLLabel(sourceURL, payload),
 	}
 
 	for i, s := range stack.Secrets {

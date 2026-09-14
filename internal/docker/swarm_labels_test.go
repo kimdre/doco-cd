@@ -53,7 +53,7 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 	addSwarmServiceLabels(stack, nil, deployConfig, payload, "", "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
 
 	// Labels that may differ between deployments of the same stack must never end up
-	// in the task template. Source.URL/CloneURL are included because they can differ
+	// in the task template. Source.URL is included because it can differ
 	// between webhook and poll triggers for the same repository.
 	unstableLabels := []string{
 		DocoCDLabels.Metadata.Version,
@@ -65,7 +65,6 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 		DocoCDLabels.Deployment.AutoDiscovery,
 		DocoCDLabels.Deployment.AutoDiscoveryConfig,
 		DocoCDLabels.Source.URL,
-		DocoCDLabels.Source.CloneURL,
 	}
 
 	// Stable labels keep the containers identifiable on worker nodes.
@@ -201,7 +200,6 @@ func TestAddSwarmVolumeLabels_OmitsUnstableLabels(t *testing.T) {
 		DocoCDLabels.Deployment.Trigger,
 		DocoCDLabels.Metadata.Version,
 		DocoCDLabels.Source.URL,
-		DocoCDLabels.Source.CloneURL,
 	} {
 		if _, ok := labels[label]; ok {
 			t.Errorf("label %q must not be set on volumes, it changes between deployments", label)

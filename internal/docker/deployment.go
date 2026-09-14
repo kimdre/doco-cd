@@ -123,8 +123,9 @@ type DeployRequest struct {
 	// the deploy config. It may differ from Payload.WebURL when a Git host
 	// serves HTTP(S) and SSH on different hosts/ports, and from the active
 	// deployment source when repository_url selects another repository.
-	// It is recorded as cd.doco.source.clone_url so consumers can reconstruct
-	// the config source path without relying on the browsable URL.
+	// It is recorded as cd.doco.source.url so consumers can reconstruct
+	// the config source path without relying on the transient webhook/poll
+	// payload URL.
 	SourceURL       string
 	DeployConfig    *deploy.Config `validate:"required,nostructlevel"`
 	DetectedChanges []Change
