@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
+
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
 // ParseTrustedProxyNetworks normalizes a comma-separated list of trusted proxy CIDR ranges.
 func ParseTrustedProxyNetworks(value string) ([]netip.Prefix, error) {
 	networks := make([]netip.Prefix, 0)
-	seen := map[string]struct{}{}
+	seen := set.New[string]()
 
 	for entry := range strings.SplitSeq(value, ",") {
 		entry = strings.TrimSpace(entry)
@@ -25,11 +27,11 @@ func ParseTrustedProxyNetworks(value string) ([]netip.Prefix, error) {
 		normalized := prefix.Masked()
 
 		key := normalized.String()
-		if _, ok := seen[key]; ok {
+		if seen.Contains(key) {
 			continue
 		}
 
-		seen[key] = struct{}{}
+		seen.Add(key)
 
 		networks = append(networks, normalized)
 	}

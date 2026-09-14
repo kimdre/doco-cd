@@ -177,8 +177,7 @@ func getRunningScheduledJobServices(
 		}
 	}
 
-	running := runningSet.ToSlice()
-	slices.Sort(running)
+	running := set.SortedSlice(runningSet)
 
 	return running, nil
 }
@@ -444,7 +443,7 @@ func waitForStartedServicesWith(ctx context.Context, listContainers projectConta
 	startServices []string, jobServices set.Set[string], timeout time.Duration,
 ) error {
 	nonJobServices := getNonJobServices(startServices, jobServices)
-	if nonJobServices.Len() == 0 {
+	if nonJobServices.IsEmpty() {
 		return nil
 	}
 

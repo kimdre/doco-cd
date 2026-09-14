@@ -165,3 +165,51 @@ func TestSet_Len(t *testing.T) {
 		t.Fatalf("Len() on empty set = %d, want 0", got)
 	}
 }
+
+func TestSet_IsEmpty(t *testing.T) {
+	t.Parallel()
+
+	if !New[string]().IsEmpty() {
+		t.Errorf("expected empty set to report IsEmpty() = true")
+	}
+
+	if New("apple").IsEmpty() {
+		t.Errorf("expected non-empty set to report IsEmpty() = false")
+	}
+}
+
+func TestSet_Intersects(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		s     Set[string]
+		other Set[string]
+		want  bool
+	}{
+		{name: "overlap", s: New("apple", "banana"), other: New("banana", "cherry"), want: true},
+		{name: "no overlap", s: New("apple"), other: New("banana"), want: false},
+		{name: "empty sets", s: New[string](), other: New[string](), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.s.Intersects(tt.other); got != tt.want {
+				t.Errorf("Intersects() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSortedSlice(t *testing.T) {
+	t.Parallel()
+
+	got := SortedSlice(New(3, 1, 2))
+	want := []int{1, 2, 3}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SortedSlice() = %v, want %v", got, want)
+	}
+}

@@ -13,6 +13,7 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
@@ -97,7 +98,7 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 	}
 
 	jobByKey := make(map[string]scheduledJob)
-	runningEphemeralByKey := make(map[string]bool)
+	runningEphemeralByKey := set.New[string]()
 
 	for _, c := range containers.Items {
 		// A Swarm task is represented as a container too. On a Swarm manager it
@@ -115,7 +116,7 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 		// currently executing.
 		if isEphemeralScheduledContainer(c.Labels) {
 			if c.State == container.StateRunning {
-				runningEphemeralByKey[key] = true
+				runningEphemeralByKey.Add(key)
 			}
 
 			continue
@@ -145,7 +146,7 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 
 	result := make([]scheduledJob, 0, len(jobByKey))
 	for key, job := range jobByKey {
-		job.running = runningEphemeralByKey[key]
+		job.running = runningEphemeralByKey.Contains(key)
 		result = append(result, job)
 	}
 

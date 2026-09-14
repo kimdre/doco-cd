@@ -14,6 +14,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/id"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -267,12 +268,12 @@ func matchingInlineWebhookDeployments(
 }
 
 // gitSourceIdentities returns stable repository identities for Git source URLs.
-func gitSourceIdentities(sourceURLs ...string) map[string]struct{} {
-	identities := make(map[string]struct{}, len(sourceURLs))
+func gitSourceIdentities(sourceURLs ...string) set.Set[string] {
+	identities := set.New[string]()
 
 	for _, sourceURL := range sourceURLs {
 		if identity := git.GetRepoName(config.NormalizeGitURL(sourceURL)); identity != "" && identity != "." {
-			identities[identity] = struct{}{}
+			identities.Add(identity)
 		}
 	}
 
@@ -280,14 +281,8 @@ func gitSourceIdentities(sourceURLs ...string) map[string]struct{} {
 }
 
 // identitySetsOverlap reports whether two repository identity sets intersect.
-func identitySetsOverlap(left, right map[string]struct{}) bool {
-	for identity := range left {
-		if _, ok := right[identity]; ok {
-			return true
-		}
-	}
-
-	return false
+func identitySetsOverlap(left, right set.Set[string]) bool {
+	return left.Intersects(right)
 }
 
 // referencesMatch reports whether configured and webhook references identify the same branch or tag.

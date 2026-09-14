@@ -18,6 +18,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	gitInternal "github.com/kimdre/doco-cd/internal/git"
 )
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
@@ -31,7 +32,19 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 	var (
 		absComposeFiles []string
 		err             error
+		decryptedFiles  []string
 	)
+
+	// Persist decrypted files tagged with repoPath's current HEAD commit, on
+	// every return path. This lets ResetTrackedFiles skip resetting them on
+	// the next checkout without re-decrypting to re-derive that state; it is
+	// a no-op for non-Git sources.
+	defer func() {
+		if manifestErr := gitInternal.WriteDecryptedFilesManifest(repoPath, decryptedFiles); manifestErr != nil {
+			slog.Error("failed to persist decrypted-files manifest",
+				slog.String("repo_path", repoPath), slog.Any("error", manifestErr))
+		}
+	}()
 
 	// Resolve compose file paths to absolute paths relative to workingDir.
 	// This is necessary because the compose-go library's LoadConfigFiles internally
@@ -75,8 +88,6 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 			absEnvFiles = append(absEnvFiles, filepath.Join(workingDir, f))
 		}
 	}
-
-	var decryptedFiles []string
 
 	decryptFiles := slices.Concat(absComposeFiles, absEnvFiles)
 	for _, file := range decryptFiles {

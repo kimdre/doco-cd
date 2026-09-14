@@ -23,6 +23,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
@@ -247,6 +248,23 @@ func loadComposeScheduledProject(
 	secretProvider secretprovider.SecretProvider,
 	opts ScheduledComposeOptions,
 ) (*types.Project, error) {
+	// Validate required labels before resolving/locking a source path: an incomplete ref
+	// (e.g. a container missing its doco-cd labels) has no meaningful source path to lock.
+	if err := validateComposeScheduledRefMetadata(ref); err != nil {
+		return nil, err
+	}
+
+	// Lock the same cached-source path source.Prepare/recreateManagedProject use: reloading
+	// the project here decrypts files in place and must not race a concurrent Prepare or
+	// managed-recreate for the same repository.
+	sourceRepoPath, _, err := resolveScheduledSourceRepo(ref, opts.ComposeLoad.DataMountPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve cached source for project %s: %w", ref.Project, err)
+	}
+
+	unlockSource := sourcecache.AcquirePathLock(sourceRepoPath)
+	defer unlockSource()
+
 	project, _, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, opts)
 	if err != nil {
 		return nil, err
@@ -258,6 +276,22 @@ func loadComposeScheduledProject(
 	}
 
 	return project, nil
+}
+
+// validateComposeScheduledRefMetadata reports ErrComposeScheduledMetadataUnavailable if ref is
+// missing labels that loadComposeScheduledProjectAll/loadComposeScheduledDeployConfig require.
+// Checked here too so an incomplete ref fails before resolveScheduledSourceRepo, which needs a
+// real repository URL to compute a meaningful path.
+func validateComposeScheduledRefMetadata(ref composeScheduledServiceRef) error {
+	if ref.WorkingDir == "" {
+		return fmt.Errorf("%w: missing %q label", ErrComposeScheduledMetadataUnavailable, api.WorkingDirLabel)
+	}
+
+	if strings.TrimSpace(ref.RepositoryURL) == "" || strings.TrimSpace(ref.DeploymentName) == "" {
+		return fmt.Errorf("%w: missing deployment repository and/or name label", ErrComposeScheduledMetadataUnavailable)
+	}
+
+	return nil
 }
 
 // loadComposeScheduledProjectAll reloads the deploy config referenced by ref and builds the full
@@ -363,10 +397,13 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 		)
 	}
 
-	// Prefer the full source URL label to reconstruct a host-qualified
-	// repository path (e.g. "github.com/owner/repo") via git.GetRepoName().
-	// The source "name" label only holds the short "owner/repo" form and
-	// cannot be used for this, since it does not carry the host segment.
+	// Prefer the source URL label to reconstruct a host-qualified repository
+	// path (e.g. "github.com/owner/repo") via git.GetRepoName(). It holds the
+	// URL actually used to fetch/name the on-disk source, which may differ
+	// from the triggering payload's browsable URL when a Git host serves
+	// HTTP(S) and SSH on different hosts/ports. The source "name" label only
+	// holds the short "owner/repo" form and cannot be used for this, since it
+	// does not carry the host segment.
 	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 	if repositoryURL == "" {
 		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])

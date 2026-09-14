@@ -16,6 +16,7 @@ import (
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
@@ -50,13 +51,13 @@ func DecryptContent(content []byte, format formats.Format) ([]byte, error) {
 
 // DecryptFilesInDirectory walks through the specified directory and decrypts all SOPS-encrypted files.
 func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
-	return decryptFilesInDirectory(repoPath, dirPath, make(map[string]struct{}))
+	return decryptFilesInDirectory(repoPath, dirPath, set.New[string]())
 }
 
 // decryptFilesInDirectory is the recursive implementation of DecryptFilesInDirectory.
 // The visited set tracks already-processed real paths to prevent infinite recursion
 // caused by symlink loops (e.g. a symlink pointing to an ancestor directory).
-func decryptFilesInDirectory(repoPath, dirPath string, visited map[string]struct{}) ([]string, error) {
+func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string]) ([]string, error) {
 	if !filesystem.InBasePath(repoPath, dirPath) {
 		return nil, fmt.Errorf("%w: %s is outside the repository root %s", filesystem.ErrPathTraversal, dirPath, repoPath)
 	}
@@ -67,11 +68,11 @@ func decryptFilesInDirectory(repoPath, dirPath string, visited map[string]struct
 		realPath = filepath.Clean(dirPath)
 	}
 
-	if _, ok := visited[realPath]; ok {
+	if visited.Contains(realPath) {
 		return nil, nil
 	}
 
-	visited[realPath] = struct{}{}
+	visited.Add(realPath)
 
 	var decryptedFiles []string
 

@@ -11,6 +11,7 @@ import (
 
 	openbao "github.com/openbao/openbao/api/v2"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
@@ -237,7 +238,7 @@ func (p *Provider) DeploymentHasRevokedCertificate(ctx context.Context, certStat
 		engine    string
 	}
 
-	revokedByMount := make(map[mountKey]map[string]struct{}, len(deployed))
+	revokedByMount := make(map[mountKey]set.Set[string], len(deployed))
 
 	for _, cert := range deployed {
 		namespace, engineType, engineName, _, _, err := parseReference(cert.Ref)
@@ -257,15 +258,15 @@ func (p *Provider) DeploymentHasRevokedCertificate(ctx context.Context, certStat
 				return false, fmt.Errorf("list revoked certificates for %s/%s: %w", namespace, engineName, err)
 			}
 
-			revoked := make(map[string]struct{}, len(serials))
+			revoked := set.New[string]()
 			for _, serial := range serials {
-				revoked[normalizeCertSerial(serial)] = struct{}{}
+				revoked.Add(normalizeCertSerial(serial))
 			}
 
 			revokedByMount[key] = revoked
 		}
 
-		if _, revoked := revokedByMount[key][normalizeCertSerial(cert.Serial)]; revoked {
+		if revokedByMount[key].Contains(normalizeCertSerial(cert.Serial)) {
 			return true, nil
 		}
 	}

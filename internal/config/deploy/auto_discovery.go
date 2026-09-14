@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -94,13 +96,16 @@ func (c *AutoDiscoveryConfig) UnmarshalJSON(data []byte) error {
 func expandInlineAutoDiscoverConfigs(repoRoot string, deployments []*Config) ([]*Config, error) {
 	expanded := make([]*Config, 0, len(deployments))
 
+	fsys := os.DirFS(repoRoot)
+	revisionKey := revisionKeyForRepoRoot(repoRoot)
+
 	for _, deployment := range deployments {
 		if !deployment.AutoDiscovery.Enabled {
 			expanded = append(expanded, deployment)
 			continue
 		}
 
-		discoveredConfigs, err := autoDiscoverDeployments(repoRoot, deployment)
+		discoveredConfigs, err := autoDiscoverDeployments(fsys, repoRoot, revisionKey, deployment)
 		if err != nil {
 			return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 		}
@@ -111,14 +116,40 @@ func expandInlineAutoDiscoverConfigs(repoRoot string, deployments []*Config) ([]
 	return expanded, nil
 }
 
+// revisionKeyForRepoRoot returns the current HEAD commit hash for repoRoot,
+// or "" if repoRoot is not a git repository (e.g. an OCI source), which
+// disables the auto-discovery cache for the call.
+func revisionKeyForRepoRoot(repoRoot string) string {
+	repo, err := git.PlainOpen(repoRoot)
+	if err != nil {
+		return ""
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return ""
+	}
+
+	return head.Hash().String()
+}
+
 // autoDiscoverDeployments scans for subdirectories containing docker-compose files
 // and generates Config entries for each.
-// repoRoot is the absolute path to the repository root.
-// baseConfig.WorkingDirectory is treated as repo-root-relative.
-func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, error) {
+//
+// fsys is the filesystem to scan, rooted at repoRoot: either the working tree
+// (os.DirFS) or a read-only view of a single commit's tree (*gitInternal.TreeFS)
+// when the target reference differs from the one checked out. This never
+// checks the repository out, so it cannot race with concurrent readers/
+// writers of a shared working tree.
+//
+// repoRoot is used only for labeling (cache keys, metrics, matching
+// baseConfig.Name); revisionKey identifies the content snapshot fsys exposes
+// (a commit SHA, or "" to disable caching). baseConfig.WorkingDirectory is
+// repo-root-relative.
+func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfig *Config) ([]*Config, error) {
 	repositoryLabel := filepath.Base(filepath.Clean(repoRoot))
 
-	cacheKey, cacheable := autoDiscoveryCacheKey(repoRoot, baseConfig)
+	cacheKey, cacheable := autoDiscoveryCacheKey(repoRoot, revisionKey, baseConfig)
 	if cacheable {
 		autoDiscoveryCache.mu.RLock()
 		cached, ok := autoDiscoveryCache.entries[cacheKey]
@@ -134,33 +165,38 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 
 	var configs []*Config
 
-	searchPath := filepath.Join(repoRoot, baseConfig.WorkingDirectory)
+	searchPath := path.Clean(baseConfig.WorkingDirectory)
+	if searchPath == "" {
+		searchPath = "."
+	}
+
 	composeFileNames := set.New(baseConfig.ComposeFiles...)
 
-	err := filepath.WalkDir(searchPath, func(p string, d os.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, searchPath, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Calculate the depth of the current path relative to the search path
-		rel, err := filepath.Rel(searchPath, p)
-		if err != nil {
-			return err
+		// fs.WalkDir paths are "/"-separated and rooted at fsys, so a simple
+		// prefix trim gives the depth relative to searchPath.
+		rel := "."
+		if p != searchPath {
+			rel = strings.TrimPrefix(p, searchPath+"/")
 		}
 
 		depth := 0
 		if rel != "." {
-			depth = len(strings.Split(rel, string(os.PathSeparator)))
+			depth = strings.Count(rel, "/") + 1
 		}
 
 		// Skip directories that exceed the maximum depth if ScanDepth is set greater than 0
 		if d.IsDir() && depth > baseConfig.AutoDiscovery.ScanDepth && baseConfig.AutoDiscovery.ScanDepth > 0 {
-			return filepath.SkipDir
+			return fs.SkipDir
 		}
 
 		if d.IsDir() {
 			if filesystem.IsIgnoredDir(d.Name()) && p != searchPath {
-				return filepath.SkipDir
+				return fs.SkipDir
 			}
 		}
 
@@ -168,8 +204,8 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 			return nil
 		}
 
-		// Read directory entries once, avoiding one os.Stat syscall per candidate compose filename.
-		dirEntries, err := os.ReadDir(p)
+		// Read directory entries once, avoiding one stat per candidate compose filename.
+		dirEntries, err := fs.ReadDir(fsys, p)
 		if err != nil {
 			return err
 		}
@@ -180,19 +216,21 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 
 		c := clone.New(baseConfig)
 
-		stackDirName := filepath.Base(p)    // Get the stack name from the directory name where the compose file is located
-		repoName := filepath.Base(repoRoot) // Get the repository name from the repo root path
+		// Stack name is the compose file's directory name. At the search root
+		// with no WorkingDirectory, p is "." (fs.FS has no repo dir name), so
+		// fall back to repositoryLabel.
+		stackDirName := path.Base(p)
+		if p == "." {
+			stackDirName = repositoryLabel
+		}
 
-		if baseConfig.Name != "" && stackDirName == repoName {
+		if baseConfig.Name != "" && stackDirName == repositoryLabel {
 			c.Name = baseConfig.Name
 		} else {
 			c.Name = stackDirName
 		}
 
-		c.WorkingDirectory, err = filepath.Rel(repoRoot, p)
-		if err != nil {
-			return err
-		}
+		c.WorkingDirectory = p
 
 		// Check for a nested .doco-cd config file alongside the compose file and
 		// merge any overridable fields from it on top of the base config copy.
@@ -202,9 +240,14 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 				continue
 			}
 
-			localCfgPath := filepath.Join(p, cfgName)
+			localCfgPath := path.Join(p, cfgName)
 
-			localConfigs, parseErr := GetConfigFromYAML(localCfgPath, false)
+			b, readErr := fs.ReadFile(fsys, localCfgPath)
+			if readErr != nil {
+				return fmt.Errorf("failed to read nested .doco-cd config at %s: %w", localCfgPath, readErr)
+			}
+
+			localConfigs, parseErr := getConfigFromYAMLBytes(b, localCfgPath, false)
 			if parseErr != nil {
 				return fmt.Errorf("failed to parse nested .doco-cd config at %s: %w", localCfgPath, parseErr)
 			}
@@ -246,15 +289,12 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 	return configs, nil
 }
 
-// autoDiscoveryCacheKey generates a unique cache key for the auto-discovery results based on the repository root.
-func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
-	repo, err := git.PlainOpen(repoRoot)
-	if err != nil {
-		return "", false
-	}
-
-	head, err := repo.Head()
-	if err != nil {
+// autoDiscoveryCacheKey generates a unique cache key for the auto-discovery
+// results. revisionKey identifies the exact content snapshot that was
+// scanned (e.g. a resolved commit SHA); an empty revisionKey disables
+// caching rather than risk a collision between different content.
+func autoDiscoveryCacheKey(repoRoot, revisionKey string, baseConfig *Config) (string, bool) {
+	if revisionKey == "" {
 		return "", false
 	}
 
@@ -265,7 +305,7 @@ func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
 
 	return strings.Join([]string{
 		repoRoot,
-		head.Hash().String(),
+		revisionKey,
 		configHash,
 		baseConfig.Internal.File,
 		baseConfig.Internal.ConfigTarget,

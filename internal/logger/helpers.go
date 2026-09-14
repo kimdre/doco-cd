@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
 var durationType = reflect.TypeFor[time.Duration]()
@@ -16,25 +18,19 @@ var durationType = reflect.TypeFor[time.Duration]()
 //
 // Matches both Go field names and yaml tag names at each level.
 func BuildLogValue(v any, ignore ...string) slog.Value {
-	ignoreSet := make(map[string]struct{}, len(ignore))
-	for _, p := range ignore {
-		ignoreSet[p] = struct{}{}
-	}
+	ignoreSet := set.New(ignore...)
 
 	return slog.AnyValue(buildPlain(reflect.ValueOf(v), "", ignoreSet))
 }
 
 // BuildSliceLogValue maps any slice/array to a slog.Value, applying nested ignore paths.
 func BuildSliceLogValue(slice any, ignore ...string) slog.Value {
-	ignoreSet := make(map[string]struct{}, len(ignore))
-	for _, p := range ignore {
-		ignoreSet[p] = struct{}{}
-	}
+	ignoreSet := set.New(ignore...)
 
 	return slog.AnyValue(buildPlain(reflect.ValueOf(slice), "", ignoreSet))
 }
 
-func buildPlain(rv reflect.Value, prefix string, ignoreSet map[string]struct{}) any {
+func buildPlain(rv reflect.Value, prefix string, ignoreSet set.Set[string]) any {
 	if !rv.IsValid() {
 		return nil
 	}
@@ -74,11 +70,11 @@ func buildPlain(rv reflect.Value, prefix string, ignoreSet map[string]struct{}) 
 			goPath := joinPath(prefix, goName)
 			yamlPath := joinPath(prefix, key)
 
-			if _, ok := ignoreSet[goPath]; ok {
+			if ignoreSet.Contains(goPath) {
 				continue
 			}
 
-			if _, ok := ignoreSet[yamlPath]; ok {
+			if ignoreSet.Contains(yamlPath) {
 				continue
 			}
 

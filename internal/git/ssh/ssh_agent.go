@@ -17,6 +17,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/logger"
 )
 
@@ -41,7 +42,7 @@ type KeyRecord struct {
 // preserving the order in which they were provided.
 func collectKeyRecords(keys ...KeyRecord) []KeyRecord {
 	collected := make([]KeyRecord, 0, len(keys))
-	seen := make(map[KeyRecord]struct{}, len(keys))
+	seen := set.New[KeyRecord]()
 
 	for _, key := range keys {
 		key.PrivateKey = strings.TrimSpace(key.PrivateKey)
@@ -49,11 +50,11 @@ func collectKeyRecords(keys ...KeyRecord) []KeyRecord {
 			continue
 		}
 
-		if _, ok := seen[key]; ok {
+		if seen.Contains(key) {
 			continue
 		}
 
-		seen[key] = struct{}{}
+		seen.Add(key)
 
 		collected = append(collected, key)
 	}

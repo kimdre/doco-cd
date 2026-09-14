@@ -1,55 +1,59 @@
 package reconciliation
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/kimdre/doco-cd/internal/common/types/set"
+)
 
 func TestIsCleanupTargetMatch(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name             string
-		runConfigTargets map[string]struct{}
+		runConfigTargets set.Set[string]
 		stackTarget      string
 		want             bool
 	}{
 		{
 			name:             "legacy mode when no run target is available",
-			runConfigTargets: map[string]struct{}{},
+			runConfigTargets: set.New[string](),
 			stackTarget:      "nas",
 			want:             true,
 		},
 		{
 			name:             "custom target matches same target",
-			runConfigTargets: map[string]struct{}{"updater": {}},
+			runConfigTargets: set.New("updater"),
 			stackTarget:      "updater",
 			want:             true,
 		},
 		{
 			name:             "custom target does not match different target",
-			runConfigTargets: map[string]struct{}{"updater": {}},
+			runConfigTargets: set.New("updater"),
 			stackTarget:      "nas",
 			want:             false,
 		},
 		{
 			name:             "custom target does not match unlabeled stack",
-			runConfigTargets: map[string]struct{}{"updater": {}},
+			runConfigTargets: set.New("updater"),
 			stackTarget:      "",
 			want:             false,
 		},
 		{
 			name:             "default target matches unlabeled stack",
-			runConfigTargets: map[string]struct{}{"": {}},
+			runConfigTargets: set.New(""),
 			stackTarget:      "",
 			want:             true,
 		},
 		{
 			name:             "default target matches default label",
-			runConfigTargets: map[string]struct{}{"": {}},
+			runConfigTargets: set.New(""),
 			stackTarget:      "  ",
 			want:             true,
 		},
 		{
 			name:             "default target does not match custom target stack",
-			runConfigTargets: map[string]struct{}{"": {}},
+			runConfigTargets: set.New(""),
 			stackTarget:      "nas",
 			want:             false,
 		},

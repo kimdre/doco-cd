@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -116,7 +117,8 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	available := make(map[string]struct{}, len(results)*2)
+	available := set.New[string]()
+
 	for _, result := range results {
 		name := docker.NormalizeContextName(result.Name)
 		if result.Err != nil {
@@ -124,7 +126,7 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 			// fails; only an actually removed context should stop them.
 			for key := range m.workers {
 				if workerContextFromKey(key) == name {
-					available[key] = struct{}{}
+					available.Add(key)
 				}
 			}
 
@@ -139,7 +141,7 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 		for _, mode := range schedulerModes(result.SwarmMode) {
 			key := schedulerWorkerKey(name, mode)
 
-			available[key] = struct{}{}
+			available.Add(key)
 
 			existing, hasWorker := m.workers[key]
 			if !workerNeedsStart(existing, hasWorker) {
@@ -161,7 +163,7 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 	}
 
 	for key, worker := range m.workers {
-		if _, ok := available[key]; ok {
+		if available.Contains(key) {
 			continue
 		}
 

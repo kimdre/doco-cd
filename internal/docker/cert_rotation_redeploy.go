@@ -17,6 +17,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -67,6 +68,18 @@ func RotateProjectCertificates(
 	lock.LockStack(stackLockKey)
 	defer lock.UnlockStack(stackLockKey)
 
+	// Lock the same cached-source path source.Prepare/recreateManagedProject use: reloading
+	// the project here decrypts files in place and must not race a concurrent Prepare or
+	// managed-recreate for the same repository.
+	sourceRepoPath, _, err := resolveScheduledSourceRepo(ref, opts.Scheduled.ComposeLoad.DataMountPath)
+	if err != nil {
+		return fmt.Errorf("%w: cannot resolve cached source for project %s: %v",
+			ErrComposeSourceRevisionConflict, ref.Project, err)
+	}
+
+	unlockSource := sourcecache.AcquirePathLock(sourceRepoPath)
+	defer unlockSource()
+
 	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, opts.Scheduled)
 	if err != nil {
 		return fmt.Errorf("reload deploy config for cert rotation of %s: %w", ref.Project, err)
@@ -95,8 +108,9 @@ func RotateProjectCertificates(
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
 	projectHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash])
+	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 
-	addComposeServiceLabels(selectedProject, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, ComposeVersion, latestCommit, projectHash)
+	addComposeServiceLabels(selectedProject, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, ComposeVersion, latestCommit, projectHash)
 
 	if err = deployCompose(ctx, dockerCli, selectedProject, deployConfig, api.RecreateForce, serviceNames, nil, func(string) {}); err != nil {
 		return fmt.Errorf("redeploy project %s for cert rotation: %w", ref.Project, err)
@@ -130,6 +144,15 @@ func rotateSwarmProjectCertificates(
 	lock.LockStack(stackLockKey)
 	defer lock.UnlockStack(stackLockKey)
 
+	sourceRepoPath, _, err := resolveScheduledSourceRepo(ref, certOpts.Scheduled.ComposeLoad.DataMountPath)
+	if err != nil {
+		return fmt.Errorf("%w: cannot resolve cached source for project %s: %v",
+			ErrComposeSourceRevisionConflict, ref.Project, err)
+	}
+
+	unlockSource := sourcecache.AcquirePathLock(sourceRepoPath)
+	defer unlockSource()
+
 	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, certOpts.Scheduled)
 	if err != nil {
 		return fmt.Errorf("reload deploy config for cert rotation of %s: %w", ref.Project, err)
@@ -140,16 +163,17 @@ func rotateSwarmProjectCertificates(
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
 	projectHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash])
+	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 
 	cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, ref.WorkingDir)
 	if err != nil {
 		return fmt.Errorf("load swarm stack for cert rotation of %s: %w", ref.Project, err)
 	}
 
-	addSwarmServiceLabels(cfg, project, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash)
+	addSwarmServiceLabels(cfg, project, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash)
 	addSwarmVolumeLabels(cfg, deployConfig, payload, ref.WorkingDir)
-	addSwarmConfigLabels(cfg, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit)
-	addSwarmSecretLabels(cfg, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit)
+	addSwarmConfigLabels(cfg, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit)
+	addSwarmSecretLabels(cfg, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit)
 
 	if err = removeMismatchedRecreatableVolumes(ctx, dockerCli.Client(), ref.Project, project); err != nil {
 		return fmt.Errorf("remove mismatched recreatable volumes for cert rotation of %s: %w", ref.Project, err)

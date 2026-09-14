@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -67,7 +68,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 			}
 		}()
 
-		if err := s.stopServicesForJob(ctx, job.mode, stackName, cfg.StopServices); err != nil {
+		if err := s.stopServicesForJob(ctx, job.mode, stackName, cfg.StopServices, stopServicesTimeoutOverride(cfg)); err != nil {
 			return fmt.Errorf("stopping services before job: %w", err)
 		}
 	}
@@ -190,8 +191,6 @@ func (s *scheduler) prepareExecutionStopPlans(ctx context.Context, job scheduled
 	return s.executions.update(*record)
 }
 
-const stopServicesTimeout = 30 * time.Second
-
 // acquireStopHold registers this run as one of the (possibly several)
 // concurrent holders of project/service being stopped, for the given mode.
 // It returns true if this is the first holder (i.e. the caller must actually
@@ -255,9 +254,30 @@ func (s *scheduler) releaseStopHold(mode scheduledJobMode, project, service stri
 	return false, replicas
 }
 
+// stopServicesTimeoutOverride converts the parsed cd.doco.job.stop_services.timeout label (seconds) into a *time.Duration
+// suitable for docker.StopProjectServices / docker.StopSwarmService.
+// Returns nil when the label was not set, so callers fall back to honoring the target's own configured grace period.
+func stopServicesTimeoutOverride(cfg docker.JobScheduleConfig) *time.Duration {
+	if cfg.StopServicesTimeout == nil {
+		return nil
+	}
+
+	d := time.Duration(*cfg.StopServicesTimeout) * time.Second
+
+	return &d
+}
+
 // stopServicesForJob stops the services listed in StopServices before a job runs.
 // For compose mode, services are grouped by project and stopped via the compose API.
 // For swarm mode, services are scaled to 0 (global-mode services are skipped with a warning).
+//
+// timeoutOverride, when non-nil, comes from the job's
+// cd.doco.job.stop_services.timeout label. Compose applies it as the container
+// stop timeout; Swarm uses it as the deadline for observing task shutdown.
+// When nil, each target's own configured grace period (container StopTimeout /
+// stop_grace_period for compose, StopGracePeriod for Swarm) is honoured,
+// falling back to docker.DefaultStopServicesTimeout only when the target has
+// none configured. See docker.StopProjectServices and docker.StopSwarmService.
 //
 // If another concurrent scheduled run already holds a given project/service
 // stopped (e.g. two jobs both list the same shared dependency), this run
@@ -269,7 +289,7 @@ func (s *scheduler) releaseStopHold(mode scheduledJobMode, project, service stri
 // attempts to stop the others, so as many of the declared services as
 // possible are quiesced before the job runs. All failures are aggregated and
 // returned together so the job is still not executed if any stop failed.
-func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMode, jobStack string, refs []docker.StopServiceRef) error {
+func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMode, jobStack string, refs []docker.StopServiceRef, timeoutOverride *time.Duration) error {
 	var errs []string
 
 	switch mode {
@@ -306,7 +326,7 @@ func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMod
 				slog.Any("services", toStop),
 			)
 
-			if err := docker.StopProjectServices(ctx, s.dockerCli, project, toStop, stopServicesTimeout); err != nil {
+			if err := docker.StopProjectServices(ctx, s.dockerCli, project, toStop, timeoutOverride); err != nil {
 				errs = append(errs, fmt.Sprintf("project %q services %v: %v", project, toStop, err))
 			}
 		}
@@ -328,7 +348,7 @@ func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMod
 				continue
 			}
 
-			replicas, err := docker.StopSwarmService(ctx, s.dockerCli, fullName, stopServicesTimeout)
+			replicas, err := docker.StopSwarmService(ctx, s.dockerCli, fullName, timeoutOverride)
 
 			switch {
 			case errors.Is(err, docker.ErrGlobalSwarmServiceNotScalable):
@@ -477,7 +497,7 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 // other. It returns an unlock function that releases all acquired locks;
 // callers must call it exactly once.
 func lockStacks(contextName string, stacks ...string) (unlock func()) {
-	seen := make(map[string]struct{}, len(stacks))
+	seen := set.New[string]()
 	unique := make([]string, 0, len(stacks))
 
 	for _, stack := range stacks {
@@ -487,11 +507,11 @@ func lockStacks(contextName string, stacks ...string) (unlock func()) {
 		}
 
 		key := lock.StackKey(contextName, stack)
-		if _, ok := seen[key]; ok {
+		if seen.Contains(key) {
 			continue
 		}
 
-		seen[key] = struct{}{}
+		seen.Add(key)
 		unique = append(unique, key)
 	}
 

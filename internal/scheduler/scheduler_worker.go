@@ -10,6 +10,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -72,7 +73,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 		return now.Add(schedulerRefreshRetryDelay), true
 	}
 
-	active := make(map[string]struct{}, len(jobs))
+	active := set.New[string]()
 	discoveredByKey := make(map[string]scheduledJob, len(jobs))
 
 	var nearestNextRun time.Time
@@ -95,7 +96,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 			continue
 		}
 
-		active[job.key] = struct{}{}
+		active.Add(job.key)
 
 		fingerprint := getScheduleFingerprint(cfg)
 
@@ -155,7 +156,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 	}
 
 	for key := range s.states {
-		if _, exists := active[key]; !exists {
+		if !active.Contains(key) {
 			if job, ok := discoveredByKey[key]; ok {
 				s.log.Info("job unscheduled",
 					slog.String("job", job.name),

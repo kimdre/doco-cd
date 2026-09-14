@@ -163,6 +163,19 @@ func TestMigrationSourceMatches(t *testing.T) {
 			labels:         Labels{DocoCDLabels.Source.Name: "someone-else/repo"},
 			want:           false,
 		},
+		// Regression test for https://github.com/kimdre/doco-cd/issues/1850: the
+		// resolved source used for matching (Source.URL) may be an SSH clone URL
+		// even though the webhook/poll payload's browsable URL used transiently
+		// for commit statuses is HTTP(S). Ownership matching must succeed against
+		// the actually-resolved source recorded in the label.
+		{
+			name:           "matches ssh clone url recorded in source url label",
+			expectedSource: "ssh://git@gits.example.com:222/owner/repo.git",
+			labels: Labels{
+				DocoCDLabels.Source.URL: "ssh://git@gits.example.com:222/owner/repo.git",
+			},
+			want: true,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			expectedSources := migrationSourceCandidates(tt.expectedSource)

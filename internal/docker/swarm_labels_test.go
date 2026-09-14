@@ -50,11 +50,11 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 		WebURL:    "https://github.com/kimdre/doco-cd_tests",
 	}
 
-	addSwarmServiceLabels(stack, nil, deployConfig, payload, "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
+	addSwarmServiceLabels(stack, nil, deployConfig, payload, "", "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
 
 	// Labels that may differ between deployments of the same stack must never end up
-	// in the task template. Source.URL is included because it differs between webhook
-	// and poll triggers for the same repository.
+	// in the task template. Source.URL is included because it can differ
+	// between webhook and poll triggers for the same repository.
 	unstableLabels := []string{
 		DocoCDLabels.Metadata.Version,
 		DocoCDLabels.Deployment.Timestamp,
@@ -149,7 +149,7 @@ func TestAddSwarmServiceLabels_ScopesCertLabelsPerService(t *testing.T) {
 		FullName:  "kimdre/doco-cd_tests",
 	}
 
-	addSwarmServiceLabels(stack, project, deployConfig, payload, "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
+	addSwarmServiceLabels(stack, project, deployConfig, payload, "", "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
 
 	byName := make(map[string]composetypes.ServiceConfig, len(stack.Services))
 	for _, s := range stack.Services {

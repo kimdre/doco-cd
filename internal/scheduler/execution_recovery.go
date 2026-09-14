@@ -224,11 +224,11 @@ func (s *scheduler) claimRecovery(runID string) bool {
 	s.recoveryMu.Lock()
 	defer s.recoveryMu.Unlock()
 
-	if _, exists := s.recovering[runID]; exists {
+	if s.recovering.Contains(runID) {
 		return false
 	}
 
-	s.recovering[runID] = struct{}{}
+	s.recovering.Add(runID)
 
 	return true
 }

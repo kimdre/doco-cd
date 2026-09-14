@@ -229,3 +229,27 @@ func TestGetScheduledRunMetricLabels_IncludesContext(t *testing.T) {
 		t.Fatalf("getScheduledRunMetricLabels() = %v, want %v", got, want)
 	}
 }
+
+func TestStopServicesTimeoutOverride(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil when label unset", func(t *testing.T) {
+		t.Parallel()
+
+		got := stopServicesTimeoutOverride(docker.JobScheduleConfig{})
+		if got != nil {
+			t.Fatalf("stopServicesTimeoutOverride() = %v, want nil", *got)
+		}
+	})
+
+	t.Run("converts configured seconds to duration", func(t *testing.T) {
+		t.Parallel()
+
+		secs := 180
+
+		got := stopServicesTimeoutOverride(docker.JobScheduleConfig{StopServicesTimeout: &secs})
+		if got == nil || *got != 180*time.Second {
+			t.Fatalf("stopServicesTimeoutOverride() = %v, want 180s", got)
+		}
+	})
+}

@@ -360,7 +360,7 @@ environment:
 		},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +412,7 @@ func TestAutoDiscoverDeployments_WithNestedConfig_EnvironmentOnly_DoesNotOverrid
 		Environment:      map[string]string{"BASE": "root"},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +475,7 @@ external_secrets:
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	_, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	_, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err == nil {
 		t.Fatal("expected error for multiple YAML documents in nested config, got nil")
 	}
@@ -506,7 +506,7 @@ func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T
 		Timeout:          300,
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -559,7 +559,7 @@ func TestAutoDiscoverDeployments_SkipHeavyDirectories(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +602,7 @@ func TestAutoDiscoverDeployments_CacheKeyedByHeadAndSettings(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	first, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	first, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +615,7 @@ func TestAutoDiscoverDeployments_CacheKeyedByHeadAndSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	second, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +630,7 @@ func TestAutoDiscoverDeployments_CacheKeyedByHeadAndSettings(t *testing.T) {
 
 	baseConfig.Swarm.Enabled = new(false)
 
-	modeChanged, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	modeChanged, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +655,7 @@ func TestAutoDiscoverDeployments_CacheKeyedByHeadAndSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	third, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	third, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -695,7 +695,7 @@ func TestAutoDiscoverDeployments_CacheSeparatesFullBaseConfig(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	production, err := autoDiscoverDeployments(repoRoot, productionConfig)
+	production, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), productionConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -711,7 +711,7 @@ func TestAutoDiscoverDeployments_CacheSeparatesFullBaseConfig(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	nas, err := autoDiscoverDeployments(repoRoot, nasConfig)
+	nas, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), nasConfig)
 	if err != nil {
 		t.Fatal(err)
 	}

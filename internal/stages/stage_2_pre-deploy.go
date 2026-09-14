@@ -21,6 +21,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 func shouldSkipDeployment(retryAfterFailure bool,
@@ -440,10 +441,22 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 		return "", fmt.Errorf("failed to check for default compose files: %w", err)
 	}
 
+	// LoadCompose decrypts SOPS-encrypted files in place, so lock the same path
+	// source.Prepare uses to avoid racing a concurrent clone/fetch of this repository.
+	lockKey := s.Repository.PathInternal
+	if lockKey == "" {
+		lockKey = s.Repository.PathExternal
+	}
+
+	unlockSource := sourcecache.AcquirePathLock(lockKey)
+
 	s.Docker.Project, err = docker.LoadCompose(
 		ctx, s.Docker.Cmd, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
 		s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles,
 		s.DeployConfig.Profiles, s.DeployConfig.Internal.Environment, docker.NewComposeLoadOptions(s.AppConfig))
+
+	unlockSource()
+
 	if err != nil {
 		return "", fmt.Errorf("failed to load compose project: %w", err)
 	}

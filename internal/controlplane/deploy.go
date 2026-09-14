@@ -212,13 +212,14 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 	}
 
 	repoData := stages.RepositoryData{
-		Source:       result.SourceType,
-		SourceUrl:    req.SourceRef,
-		Name:         result.RepoName,
-		PathInternal: result.PathInternal,
-		PathExternal: result.PathExternal,
-		Revision:     result.Revision,
-		OCITrusted:   result.OCITrusted,
+		Source:          result.SourceType,
+		SourceUrl:       req.SourceRef,
+		ConfigSourceUrl: req.SourceRef,
+		Name:            result.RepoName,
+		PathInternal:    result.PathInternal,
+		PathExternal:    result.PathExternal,
+		Revision:        result.Revision,
+		OCITrusted:      result.OCITrusted,
 	}
 
 	if err := d.reconciler.Deploy(ctx, reconciliation.DeployRequest{

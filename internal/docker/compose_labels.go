@@ -18,7 +18,7 @@ This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
 func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
+	sourceURL, workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {
 	for i, s := range project.Services {
 		// Extract service dependencies (depends_on)
@@ -45,7 +45,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
 			DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 			DocoCDLabels.Source.Name:                    payload.FullName,
-			DocoCDLabels.Source.URL:                     payload.WebURL,
+			DocoCDLabels.Source.URL:                     resolveSourceURLLabel(sourceURL, payload),
 			api.ProjectLabel:                            project.Name,
 			api.ServiceLabel:                            s.Name,
 			api.WorkingDirLabel:                         project.WorkingDir,
@@ -86,7 +86,7 @@ func composeServiceTrackingLabels(labels map[string]string, serviceName string, 
 }
 
 func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	appVersion, timestamp, composeVersion, latestCommit, projectHash string,
+	sourceURL, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
@@ -101,13 +101,26 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config,
 			DocoCDLabels.Deployment.CommitSHA:    latestCommit,
 			DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 			DocoCDLabels.Source.Name:             payload.FullName,
-			DocoCDLabels.Source.URL:              payload.WebURL,
+			DocoCDLabels.Source.URL:              resolveSourceURLLabel(sourceURL, payload),
 			api.ProjectLabel:                     project.Name,
 			api.VolumeLabel:                      v.Name,
 			api.VersionLabel:                     composeVersion,
 		}
 		project.Volumes[i] = v
 	}
+}
+
+// resolveSourceURLLabel returns the resolved URL used to fetch/name the source
+// containing the deploy config, which is recorded as the Source.URL label.
+// It falls back to the payload's browsable URL when no source URL was resolved,
+// so the label is never written empty (an empty label would leave the scheduler
+// and auto-discovery unable to identify the deployment's source at all).
+func resolveSourceURLLabel(sourceURL string, payload *webhook.ParsedPayload) string {
+	if strings.TrimSpace(sourceURL) != "" {
+		return sourceURL
+	}
+
+	return payload.WebURL
 }
 
 // hasIPv6NetworkWithoutExplicitSubnet reports whether a project enables IPv6 on

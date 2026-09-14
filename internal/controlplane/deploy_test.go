@@ -353,13 +353,14 @@ func TestDeploy_Success_AdaptsResultAndInvokesObserver(t *testing.T) {
 	got := reconciler.lastReq.Repository
 
 	want := stages.RepositoryData{
-		Source:       config.SourceTypeGit,
-		SourceUrl:    req.SourceRef,
-		Name:         "owner/repo",
-		PathInternal: "/dst/owner/repo",
-		PathExternal: "/src/owner/repo",
-		Revision:     "deadbeef",
-		OCITrusted:   true,
+		Source:          config.SourceTypeGit,
+		SourceUrl:       req.SourceRef,
+		ConfigSourceUrl: req.SourceRef,
+		Name:            "owner/repo",
+		PathInternal:    "/dst/owner/repo",
+		PathExternal:    "/src/owner/repo",
+		Revision:        "deadbeef",
+		OCITrusted:      true,
 	}
 	if got != want {
 		t.Fatalf("Repository = %+v, want %+v", got, want)

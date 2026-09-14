@@ -990,6 +990,11 @@ auto_discovery:
 		t.Fatal(err)
 	}
 
+	headBefore, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Test with auto-discovery enabled on feature branch
 	configs, err := GetConfigs(repoRoot, ".", "", "refs/heads/feature-branch", nil)
 	if err != nil {
@@ -1006,6 +1011,150 @@ auto_discovery:
 
 	if !configs[0].AutoDiscovery.Enabled {
 		t.Errorf("expected AutoDiscovery.Enabled to be true, got false")
+	}
+
+	// GetConfigs must never mutate the shared working tree: HEAD must be
+	// unchanged and the worktree must remain clean.
+	headAfter, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if headAfter.Hash() != headBefore.Hash() || headAfter.Name() != headBefore.Name() {
+		t.Errorf("expected HEAD to be unchanged, got %v -> %v", headBefore, headAfter)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := wt.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, s := range status {
+		if path == t.Name() || strings.HasPrefix(path, t.Name()+"/") || path == ".doco-cd.yaml" {
+			// Files created by this test itself as untracked fixtures are expected.
+			continue
+		}
+
+		if s.Worktree != git.Unmodified || s.Staging != git.Unmodified {
+			t.Errorf("expected worktree to be clean, but %q has status %+v", path, s)
+		}
+	}
+}
+
+func TestGetConfigs_WithAutoDiscovery_OnDifferentBranch_UsesObjectDatabase(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+
+	repo := createTestRepo(t, repoRoot)
+
+	// Create and commit a compose file on a feature branch only, then switch
+	// back to main so HEAD differs from the branch the config targets. The
+	// compose file must never touch disk on main: if GetConfigs fell back to
+	// reading the working tree (or checked it out) instead of resolving the
+	// feature branch's committed tree via TreeFS, it would find nothing here.
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName("feature-branch"),
+		Create: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stackDir := "feature-only-stack"
+
+	err = os.MkdirAll(filepath.Join(repoRoot, stackDir), 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = createTestFile(t, filepath.Join(repoRoot, stackDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = worktree.Add(stackDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = worktree.Commit("add feature-only stack", &git.CommitOptions{
+		Author: &object.Signature{Name: "Test Author", Email: "test@example.com", When: time.Now()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	featureHead, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ref := plumbing.NewHashReference("refs/remotes/origin/feature-branch", featureHead.Hash())
+	if err = repo.Storer.SetReference(ref); err != nil {
+		t.Fatal(err)
+	}
+
+	// Switch back to main: the feature-only stack directory must not exist
+	// on disk from here on.
+	err = worktree.Checkout(&git.CheckoutOptions{Branch: plumbing.ReferenceName(DefaultReference)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repoRoot, stackDir)); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s to be absent from the main worktree, stat err = %v", stackDir, statErr)
+	}
+
+	dc := fmt.Sprintf(`name: %s
+reference: refs/heads/feature-branch
+auto_discovery:
+  enabled: true
+`, t.Name())
+
+	if err = createTestFile(t, filepath.Join(repoRoot, ".doco-cd.yaml"), dc); err != nil {
+		t.Fatal(err)
+	}
+
+	headBefore, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetConfigs(repoRoot, ".", "", DefaultReference, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config discovered from the feature branch's committed tree, got %d", len(configs))
+	}
+
+	if configs[0].Name != stackDir {
+		t.Errorf("expected name to be %v, got %s", stackDir, configs[0].Name)
+	}
+
+	headAfter, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if headAfter.Hash() != headBefore.Hash() || headAfter.Name() != headBefore.Name() {
+		t.Errorf("expected HEAD to remain on main, got %v -> %v", headBefore, headAfter)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repoRoot, stackDir)); !os.IsNotExist(statErr) {
+		t.Errorf("expected %s to still be absent from the main worktree after GetConfigs, stat err = %v", stackDir, statErr)
 	}
 }
 
@@ -1206,7 +1355,7 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1271,7 +1420,7 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1329,7 +1478,7 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 	}
 	baseConfig.AutoDiscovery.ScanDepth = 2
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1371,7 +1520,7 @@ func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1409,7 +1558,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 		Profiles:         []string{"prod"},
 	}
 
-	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
 	if err != nil {
 		t.Fatal(err)
 	}

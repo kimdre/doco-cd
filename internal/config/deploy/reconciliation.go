@@ -8,17 +8,19 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v4"
+
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
-var supportedReconciliationEvents = map[string]struct{}{
-	"die":       {},
-	"destroy":   {},
-	"update":    {},
-	"stop":      {},
-	"kill":      {},
-	"oom":       {},
-	"unhealthy": {},
-}
+var supportedReconciliationEvents = set.New(
+	"die",
+	"destroy",
+	"update",
+	"stop",
+	"kill",
+	"oom",
+	"unhealthy",
+)
 
 // ReconciliationConfig holds settings for the reconciliation feature.
 type ReconciliationConfig struct {
@@ -88,7 +90,7 @@ func (c *Config) normalizeReconciliationEvents() error {
 	}
 
 	normalized := make([]string, 0, len(c.Reconciliation.Events))
-	seen := make(map[string]struct{}, len(c.Reconciliation.Events))
+	seen := set.New[string]()
 
 	for _, rawEvent := range c.Reconciliation.Events {
 		event := strings.ToLower(strings.TrimSpace(rawEvent))
@@ -102,15 +104,15 @@ func (c *Config) normalizeReconciliationEvents() error {
 			return fmt.Errorf("%w: reconciliation.events contains an empty event", ErrInvalidConfig)
 		}
 
-		if _, ok := supportedReconciliationEvents[event]; !ok {
+		if !supportedReconciliationEvents.Contains(event) {
 			return fmt.Errorf("%w: unsupported reconciliation event %q", ErrInvalidConfig, rawEvent)
 		}
 
-		if _, exists := seen[event]; exists {
+		if seen.Contains(event) {
 			continue
 		}
 
-		seen[event] = struct{}{}
+		seen.Add(event)
 		normalized = append(normalized, event)
 	}
 

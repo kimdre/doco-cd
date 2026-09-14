@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
 const StoreVersionV1 = "v1"
@@ -29,7 +30,7 @@ type Store struct {
 	bodyTemplate     *template.Template            `yaml:"-"`
 	headerTemplates  map[string]*template.Template `yaml:"-"`
 	jsonPathTemplate *template.Template            `yaml:"-"`
-	requiredFields   map[string]struct{}           `yaml:"-"`
+	requiredFields   set.Set[string]               `yaml:"-"`
 }
 
 func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
@@ -66,7 +67,7 @@ func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
 		return fmt.Errorf("store %q: http method %q must not define body", s.Name, s.Method)
 	}
 
-	s.requiredFields = make(map[string]struct{})
+	s.requiredFields = set.New[string]()
 	s.headerTemplates = make(map[string]*template.Template, len(s.Headers))
 
 	var err error
@@ -110,16 +111,13 @@ func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
 func (s *Store) collectRequiredFields(input string) {
 	for _, match := range remoteRefFieldPattern.FindAllStringSubmatch(input, -1) {
 		if len(match) == 2 {
-			s.requiredFields[match[1]] = struct{}{}
+			s.requiredFields.Add(match[1])
 		}
 	}
 }
 
 func (s *Store) requiredRemoteRefFields() []string {
-	result := make([]string, 0, len(s.requiredFields))
-	for field := range s.requiredFields {
-		result = append(result, field)
-	}
+	result := s.requiredFields.ToSlice()
 
 	sort.Strings(result)
 
