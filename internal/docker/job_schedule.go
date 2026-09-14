@@ -33,6 +33,12 @@ type JobScheduleConfig struct {
 	SwarmReplicas uint64
 	Enabled       bool
 	SkipRunning   bool
+	// StopServicesTimeout is an explicit, user-configured timeout (in seconds)
+	// used when stopping the targets listed in StopServices. When nil, the
+	// target's own configured grace period is honoured instead (falling back
+	// to a default if the target has none configured). See
+	// docker.DefaultStopServicesTimeout.
+	StopServicesTimeout *int
 }
 
 // StopServiceRef identifies a compose service (or swarm service) to be temporarily
@@ -157,6 +163,24 @@ func ParseJobScheduleLabels(labels map[string]string) (JobScheduleConfig, bool, 
 		}
 
 		cfg.StopServices = refs
+	}
+
+	if timeoutRaw, ok := labels[docoCDJobLabelNames.JobStopServicesTimeout]; ok {
+		timeoutSecs, parseErr := strconv.Atoi(strings.TrimSpace(timeoutRaw))
+		if parseErr != nil {
+			return cfg, false, fmt.Errorf("invalid %s label value %q", docoCDJobLabelNames.JobStopServicesTimeout, timeoutRaw)
+		}
+
+		if timeoutSecs <= 0 {
+			return cfg, false, fmt.Errorf("%s must be > 0", docoCDJobLabelNames.JobStopServicesTimeout)
+		}
+
+		maxDurationSeconds := int64(time.Duration(1<<63-1) / time.Second)
+		if int64(timeoutSecs) > maxDurationSeconds {
+			return cfg, false, fmt.Errorf("%s must be <= %d", docoCDJobLabelNames.JobStopServicesTimeout, maxDurationSeconds)
+		}
+
+		cfg.StopServicesTimeout = &timeoutSecs
 	}
 
 	return cfg, true, nil

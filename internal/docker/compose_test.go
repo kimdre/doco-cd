@@ -2203,7 +2203,7 @@ func TestStopAndStartProjectServices(t *testing.T) {
 		}
 	}
 
-	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, timeout); err != nil {
+	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, &timeout); err != nil {
 		t.Fatalf("failed to stop project service: %v", err)
 	}
 
@@ -2216,6 +2216,74 @@ func TestStopAndStartProjectServices(t *testing.T) {
 
 	assertServiceState("db", "running")
 	assertServiceState("app", "running")
+}
+
+// TestStopProjectServices_HonoursContainerStopTimeout verifies that when no
+// explicit timeout override is passed to StopProjectServices, a container
+// that declares its own stop timeout (via the compose file's
+// stop_grace_period) is detected as such, so the stop request leaves the
+// timeout unset for it, letting the Docker engine apply the container's own
+// value instead of the doco-cd default (see #1852).
+func TestStopProjectServices_HonoursContainerStopTimeout(t *testing.T) {
+	ctx := context.Background()
+
+	const composeYAML = `services:
+  withgrace:
+    image: nginx:latest
+    stop_grace_period: 5s
+  withoutgrace:
+    image: nginx:latest
+`
+
+	stack := test.ComposeUp(ctx, t, test.WithYAML(composeYAML))
+
+	c, err := app.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	containers, err := GetProjectContainers(ctx, dockerCli, stack.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(containers) != 2 {
+		t.Fatalf("expected 2 containers, got %d", len(containers))
+	}
+
+	for _, cont := range containers {
+		svcName := cont.Labels[api.ServiceLabel]
+
+		hasTimeout, err := containerHasConfiguredStopTimeout(ctx, dockerCli, cont.ID)
+		if err != nil {
+			t.Fatalf("containerHasConfiguredStopTimeout(%q): %v", svcName, err)
+		}
+
+		switch svcName {
+		case "withgrace":
+			if !hasTimeout {
+				t.Fatalf("expected service %q (stop_grace_period: 5s) to have a configured stop timeout", svcName)
+			}
+		case "withoutgrace":
+			if hasTimeout {
+				t.Fatalf("expected service %q (no stop_grace_period) to have no configured stop timeout", svcName)
+			}
+		default:
+			t.Fatalf("unexpected service %q", svcName)
+		}
+	}
+
+	// StopProjectServices with no override must still succeed end-to-end for
+	// both containers (one relying on its own configured timeout, one on the
+	// default fallback).
+	if err = StopProjectServices(ctx, dockerCli, stack.Name, []string{"withgrace", "withoutgrace"}, nil); err != nil {
+		t.Fatalf("failed to stop project services: %v", err)
+	}
 }
 
 func TestStopAndStartProjectServices_SchedulerSequence_WithDependsOn(t *testing.T) {
@@ -2286,7 +2354,7 @@ func TestStopAndStartProjectServices_SchedulerSequence_WithDependsOn(t *testing.
 	t.Log("Stopping db service to simulate scheduler pre-run hook")
 
 	// 1) Scheduler pre-run hook: stop selected services (db).
-	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, timeout); err != nil {
+	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, &timeout); err != nil {
 		t.Fatalf("failed to stop project service: %v", err)
 	}
 

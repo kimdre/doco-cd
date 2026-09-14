@@ -463,3 +463,70 @@ func TestSetSecretHashPrefixes_NameAtLimit(t *testing.T) {
 		t.Fatalf("expected final secret name to keep base+hash suffix, got %q", got)
 	}
 }
+
+func TestResolveSwarmStopWaitTimeout(t *testing.T) {
+	t.Parallel()
+
+	grace := func(d time.Duration) *swarmTypes.ContainerSpec {
+		return &swarmTypes.ContainerSpec{StopGracePeriod: &d}
+	}
+
+	override5s := 5 * time.Second
+	override10s := 10 * time.Second
+
+	tests := []struct {
+		name            string
+		timeoutOverride *time.Duration
+		containerSpec   *swarmTypes.ContainerSpec
+		want            time.Duration
+	}{
+		{
+			name:            "explicit override wins over configured grace period",
+			timeoutOverride: &override5s,
+			containerSpec:   grace(120 * time.Second),
+			want:            5 * time.Second,
+		},
+		{
+			name:            "explicit override wins when no grace period configured",
+			timeoutOverride: &override10s,
+			containerSpec:   nil,
+			want:            10 * time.Second,
+		},
+		{
+			name:          "long configured grace period is honoured",
+			containerSpec: grace(120 * time.Second),
+			want:          120*time.Second + swarmStopWaitBuffer,
+		},
+		{
+			name:          "short configured grace period is honoured",
+			containerSpec: grace(5 * time.Second),
+			want:          5*time.Second + swarmStopWaitBuffer,
+		},
+		{
+			name:          "zero configured grace period still gets observation buffer",
+			containerSpec: grace(0),
+			want:          swarmStopWaitBuffer,
+		},
+		{
+			name:          "no container spec falls back to default",
+			containerSpec: nil,
+			want:          DefaultStopServicesTimeout,
+		},
+		{
+			name:          "container spec with nil grace period falls back to default",
+			containerSpec: &swarmTypes.ContainerSpec{},
+			want:          DefaultStopServicesTimeout,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := resolveSwarmStopWaitTimeout(tt.timeoutOverride, tt.containerSpec)
+			if got != tt.want {
+				t.Fatalf("resolveSwarmStopWaitTimeout() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
