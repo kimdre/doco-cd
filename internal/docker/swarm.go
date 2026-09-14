@@ -725,9 +725,8 @@ func StopSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName st
 	return replicas, nil
 }
 
-// resolveSwarmStopWaitTimeout determines the wait deadline used by
-// waitForSwarmServiceTasksStopped: an explicit override always wins; failing
-// that, the service's own configured StopGracePeriod plus a small observation
+// resolveSwarmStopWaitTimeout determines the wait deadline used by waitForSwarmServiceTasksStopped:
+// an explicit override always wins; failing that, the service's own configured StopGracePeriod plus a small observation
 // buffer is used, falling back to DefaultStopServicesTimeout when unset.
 func resolveSwarmStopWaitTimeout(timeoutOverride *time.Duration, containerSpec *swarmTypes.ContainerSpec) time.Duration {
 	if timeoutOverride != nil {

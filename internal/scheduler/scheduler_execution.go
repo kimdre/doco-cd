@@ -254,11 +254,9 @@ func (s *scheduler) releaseStopHold(mode scheduledJobMode, project, service stri
 	return false, replicas
 }
 
-// stopServicesTimeoutOverride converts the parsed
-// cd.doco.job.stop_services.timeout label (seconds) into a *time.Duration
-// suitable for docker.StopProjectServices / docker.StopSwarmService. Returns
-// nil when the label was not set, so callers fall back to honouring the
-// target's own configured grace period.
+// stopServicesTimeoutOverride converts the parsed cd.doco.job.stop_services.timeout label (seconds) into a *time.Duration
+// suitable for docker.StopProjectServices / docker.StopSwarmService.
+// Returns nil when the label was not set, so callers fall back to honoring the target's own configured grace period.
 func stopServicesTimeoutOverride(cfg docker.JobScheduleConfig) *time.Duration {
 	if cfg.StopServicesTimeout == nil {
 		return nil
