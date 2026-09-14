@@ -91,3 +91,50 @@ func TestExtractOciArtifactTag(t *testing.T) {
 		})
 	}
 }
+
+// TestSourceCloneURLFromLabels verifies that the resolved-clone-URL label is
+// preferred over the browsable Source.URL label, and that containers deployed
+// before the CloneURL label existed (i.e. carrying only Source.URL) still
+// resolve correctly. Regression coverage for
+// https://github.com/kimdre/doco-cd/issues/1850.
+func TestSourceCloneURLFromLabels(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels map[string]string
+		want   string
+	}{
+		{
+			name: "prefers clone url label when both are present and diverge",
+			labels: map[string]string{
+				DocoCDLabels.Source.URL:      "https://git.example.com/owner/repo",
+				DocoCDLabels.Source.CloneURL: "ssh://git@gits.example.com:222/owner/repo.git",
+			},
+			want: "ssh://git@gits.example.com:222/owner/repo.git",
+		},
+		{
+			name: "falls back to url label when clone url label is absent",
+			labels: map[string]string{
+				DocoCDLabels.Source.URL: "https://git.example.com/owner/repo",
+			},
+			want: "https://git.example.com/owner/repo",
+		},
+		{
+			name:   "returns empty string when neither label is present",
+			labels: map[string]string{},
+			want:   "",
+		},
+		{
+			name:   "returns empty string for nil labels",
+			labels: nil,
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SourceCloneURLFromLabels(tt.labels); got != tt.want {
+				t.Errorf("SourceCloneURLFromLabels(%v) = %q, want %q", tt.labels, got, tt.want)
+			}
+		})
+	}
+}

@@ -127,7 +127,7 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 // labels). Labels may only be added here if they change together with a change that
 // legitimately recreates the tasks anyway (e.g. a renamed deployment or a re-pointed
 // reference). Labels that differ between deployments of the same stack, such as the
-// timestamp, the commit SHA or the source URL (which differs between webhook and poll
+// timestamp, the commit SHA or the source/clone URL (which differ between webhook and poll
 // triggers for the same repository), must never be added: swarm would recreate all
 // tasks of every service on each deployment, see
 // https://github.com/kimdre/doco-cd/issues/1153.
@@ -159,7 +159,7 @@ func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.Par
 // applyCertRotationLabelsToService, so only services actually using a rotated certificate carry
 // them. project resolves those references and may be nil, in which case no cert labels are added.
 func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	repoDir, appVersion, timestamp, latestCommit, projectHash string,
+	sourceURL, repoDir, appVersion, timestamp, latestCommit, projectHash string,
 ) {
 	stableLabels := stableSwarmMetadataLabels(deployConfig, payload, repoDir)
 
@@ -173,6 +173,7 @@ func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, d
 		DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 		DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
 		DocoCDLabels.Source.URL:                     payload.WebURL,
+		DocoCDLabels.Source.CloneURL:                resolveSourceCloneURLLabel(sourceURL, payload),
 	}
 
 	maps.Copy(sharedServiceSpecLabels, stableLabels)
@@ -224,7 +225,7 @@ func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 
 // addSwarmConfigLabels adds custom labels to the configs in a Docker Swarm stack.
 func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	repoDir, appVersion, timestamp, latestCommit string,
+	sourceURL, repoDir, appVersion, timestamp, latestCommit string,
 ) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:      app.Name,
@@ -238,6 +239,7 @@ func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 		DocoCDLabels.Source.Name:           payload.FullName,
 		DocoCDLabels.Source.URL:            payload.WebURL,
+		DocoCDLabels.Source.CloneURL:       resolveSourceCloneURLLabel(sourceURL, payload),
 	}
 
 	for i, c := range stack.Configs {
@@ -252,7 +254,7 @@ func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 }
 
 func addSwarmSecretLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	repoDir, appVersion, timestamp, latestCommit string,
+	sourceURL, repoDir, appVersion, timestamp, latestCommit string,
 ) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:      app.Name,
@@ -266,6 +268,7 @@ func addSwarmSecretLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 		DocoCDLabels.Source.Name:           payload.FullName,
 		DocoCDLabels.Source.URL:            payload.WebURL,
+		DocoCDLabels.Source.CloneURL:       resolveSourceCloneURLLabel(sourceURL, payload),
 	}
 
 	for i, s := range stack.Secrets {

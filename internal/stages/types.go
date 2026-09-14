@@ -126,14 +126,15 @@ type Stages struct {
 
 // RepositoryData holds information about the triggering repository.
 type RepositoryData struct {
-	Source       types2.SourceType // Source backend used for this deployment (git or oci)
-	SourceUrl    string            // Repository or OCI artifact URL (e.g., "https://github.com/user/my-repo.git" or "ghcr.io/org/repo:tag")
-	Name         string            // Repository name (e.g., "user/my-repo")
-	PathInternal string            // Path to the repository inside the container
-	PathExternal string            // Path to the repository on the host machine
-	Git          *git.Repository   // Git repository instance
-	Revision     string            // Resolved immutable revision (commit SHA or digest)
-	OCITrusted   bool              // True when the OCI artifact passed trust-policy verification before reconciliation/cleanup
+	Source          types2.SourceType // Source backend used for this deployment (git or oci)
+	SourceUrl       string            // Repository or OCI artifact URL used for the deployment
+	ConfigSourceUrl string            // Resolved URL of the repository or artifact containing the deploy config
+	Name            string            // Repository name (e.g., "user/my-repo")
+	PathInternal    string            // Path to the repository inside the container
+	PathExternal    string            // Path to the repository on the host machine
+	Git             *git.Repository   // Git repository instance
+	Revision        string            // Resolved immutable revision (commit SHA or digest)
+	OCITrusted      bool              // True when the OCI artifact passed trust-policy verification before reconciliation/cleanup
 }
 
 // Docker holds the Docker CLI and client instances along with the data mount point.

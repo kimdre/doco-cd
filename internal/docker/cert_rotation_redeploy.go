@@ -109,7 +109,7 @@ func RotateProjectCertificates(
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
 	projectHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash])
 
-	addComposeServiceLabels(selectedProject, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, ComposeVersion, latestCommit, projectHash)
+	addComposeServiceLabels(selectedProject, deployConfig, payload, SourceCloneURLFromLabels(labels), ref.WorkingDir, app.Version, timestamp, ComposeVersion, latestCommit, projectHash)
 
 	if err = deployCompose(ctx, dockerCli, selectedProject, deployConfig, api.RecreateForce, serviceNames, nil, func(string) {}); err != nil {
 		return fmt.Errorf("redeploy project %s for cert rotation: %w", ref.Project, err)
@@ -168,10 +168,10 @@ func rotateSwarmProjectCertificates(
 		return fmt.Errorf("load swarm stack for cert rotation of %s: %w", ref.Project, err)
 	}
 
-	addSwarmServiceLabels(cfg, project, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash)
+	addSwarmServiceLabels(cfg, project, deployConfig, payload, SourceCloneURLFromLabels(labels), ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash)
 	addSwarmVolumeLabels(cfg, deployConfig, payload, ref.WorkingDir)
-	addSwarmConfigLabels(cfg, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit)
-	addSwarmSecretLabels(cfg, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit)
+	addSwarmConfigLabels(cfg, deployConfig, payload, SourceCloneURLFromLabels(labels), ref.WorkingDir, app.Version, timestamp, latestCommit)
+	addSwarmSecretLabels(cfg, deployConfig, payload, SourceCloneURLFromLabels(labels), ref.WorkingDir, app.Version, timestamp, latestCommit)
 
 	if err = removeMismatchedRecreatableVolumes(ctx, dockerCli.Client(), ref.Project, project); err != nil {
 		return fmt.Errorf("remove mismatched recreatable volumes for cert rotation of %s: %w", ref.Project, err)

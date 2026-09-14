@@ -163,6 +163,25 @@ func TestMigrationSourceMatches(t *testing.T) {
 			labels:         Labels{DocoCDLabels.Source.Name: "someone-else/repo"},
 			want:           false,
 		},
+		// Regression test for https://github.com/kimdre/doco-cd/issues/1850: the
+		// resolved source used for matching (e.g. the SSH clone URL) may diverge
+		// from the browsable Source.URL label. CloneURL must be preferred so
+		// ownership matching still succeeds against the actually-resolved source.
+		{
+			name:           "clone URL label preferred over diverging source URL label",
+			expectedSource: "ssh://git@gits.example.com:222/owner/repo.git",
+			labels: Labels{
+				DocoCDLabels.Source.URL:      "https://git.example.com/owner/repo",
+				DocoCDLabels.Source.CloneURL: "ssh://git@gits.example.com:222/owner/repo.git",
+			},
+			want: true,
+		},
+		{
+			name:           "clone URL label falls back to source URL label when absent",
+			expectedSource: "https://git.example.com/owner/repo",
+			labels:         Labels{DocoCDLabels.Source.URL: "https://git.example.com/owner/repo"},
+			want:           true,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			expectedSources := migrationSourceCandidates(tt.expectedSource)

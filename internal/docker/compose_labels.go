@@ -18,7 +18,7 @@ This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
 func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
+	sourceURL, workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {
 	for i, s := range project.Services {
 		// Extract service dependencies (depends_on)
@@ -46,13 +46,15 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 			DocoCDLabels.Source.Name:                    payload.FullName,
 			DocoCDLabels.Source.URL:                     payload.WebURL,
-			api.ProjectLabel:                            project.Name,
-			api.ServiceLabel:                            s.Name,
-			api.WorkingDirLabel:                         project.WorkingDir,
-			api.ConfigFilesLabel:                        strings.Join(project.ComposeFiles, ","),
-			api.VersionLabel:                            composeVersion,
-			api.OneoffLabel:                             "False", // default, will be overridden by docker compose
-			api.DependenciesLabel:                       strings.Join(dependencies, ","),
+			DocoCDLabels.Source.CloneURL:                resolveSourceCloneURLLabel(sourceURL, payload),
+
+			api.ProjectLabel:      project.Name,
+			api.ServiceLabel:      s.Name,
+			api.WorkingDirLabel:   project.WorkingDir,
+			api.ConfigFilesLabel:  strings.Join(project.ComposeFiles, ","),
+			api.VersionLabel:      composeVersion,
+			api.OneoffLabel:       "False", // default, will be overridden by docker compose
+			api.DependenciesLabel: strings.Join(dependencies, ","),
 		}
 
 		applyCertRotationLabelsToService(s.CustomLabels, s, project, deployConfig)
@@ -86,7 +88,7 @@ func composeServiceTrackingLabels(labels map[string]string, serviceName string, 
 }
 
 func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	appVersion, timestamp, composeVersion, latestCommit, projectHash string,
+	sourceURL, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
@@ -102,12 +104,23 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config,
 			DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 			DocoCDLabels.Source.Name:             payload.FullName,
 			DocoCDLabels.Source.URL:              payload.WebURL,
+			DocoCDLabels.Source.CloneURL:         resolveSourceCloneURLLabel(sourceURL, payload),
 			api.ProjectLabel:                     project.Name,
 			api.VolumeLabel:                      v.Name,
 			api.VersionLabel:                     composeVersion,
 		}
 		project.Volumes[i] = v
 	}
+}
+
+// resolveSourceCloneURLLabel returns the resolved URL used to fetch/name the source
+// containing the deploy config, falling back to payload.WebURL for legacy callers.
+func resolveSourceCloneURLLabel(sourceURL string, payload *webhook.ParsedPayload) string {
+	if strings.TrimSpace(sourceURL) != "" {
+		return sourceURL
+	}
+
+	return payload.WebURL
 }
 
 // hasIPv6NetworkWithoutExplicitSubnet reports whether a project enables IPv6 on

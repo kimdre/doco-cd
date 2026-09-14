@@ -33,7 +33,19 @@ type docoCdLabelNamesDeployment struct {
 type docoCdLabelNamesSource struct {
 	Type string // Source type (git or oci)
 	Name string // Repository or artifact name
-	URL  string // Repository or artifact URL
+	// URL is the repository or artifact URL as reported by the webhook/poll
+	// payload (e.g. the webhook's browsable "html_url"/"web_url"). It is
+	// used for display and commit-status purposes and may differ from the
+	// URL actually used to clone/name the on-disk source (see CloneURL),
+	// e.g. when a Git host serves HTTP(S) and SSH on different hosts/ports.
+	URL string
+	// CloneURL is the resolved URL used to fetch and name the source directory
+	// containing the deploy config. This intentionally remains the triggering
+	// source when repository_url selects a different deployment repository.
+	// Consumers that need to reconstruct the config source path or verify its
+	// identity must prefer this label over URL, falling back to URL only for
+	// containers deployed by doco-cd versions that predate this label.
+	CloneURL string
 }
 
 // docoCdLabelNames contains the labels used by DocoCD to identify deployed containers and their metadata.
@@ -69,9 +81,10 @@ var DocoCDLabels = docoCdLabelNames{
 		CertState:            "cd.doco.deployment.cert.state",
 	},
 	Source: docoCdLabelNamesSource{
-		Type: "cd.doco.source",
-		Name: "cd.doco.source.name",
-		URL:  "cd.doco.source.url",
+		Type:     "cd.doco.source",
+		Name:     "cd.doco.source.name",
+		URL:      "cd.doco.source.url",
+		CloneURL: "cd.doco.source.clone_url",
 	},
 }
 
@@ -188,4 +201,15 @@ func SourceTypeLabelValue(primary, fallback string) string {
 	}
 
 	return "git"
+}
+
+// SourceCloneURLFromLabels returns the resolved URL used to fetch and name the
+// source directory containing the deploy config, preferring CloneURL and falling
+// back to the browsable URL label for deployments that predate CloneURL.
+func SourceCloneURLFromLabels(labels map[string]string) string {
+	if v := strings.TrimSpace(labels[DocoCDLabels.Source.CloneURL]); v != "" {
+		return v
+	}
+
+	return strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 }

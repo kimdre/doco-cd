@@ -397,11 +397,14 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 		)
 	}
 
-	// Prefer the full source URL label to reconstruct a host-qualified
-	// repository path (e.g. "github.com/owner/repo") via git.GetRepoName().
-	// The source "name" label only holds the short "owner/repo" form and
-	// cannot be used for this, since it does not carry the host segment.
-	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
+	// Prefer the CloneURL label (the URL actually used to fetch/name the
+	// on-disk source), since it may differ from the URL label (e.g. the
+	// webhook's browsable URL) when a Git host serves HTTP(S) and SSH on
+	// different hosts/ports. Fall back to the URL label for containers
+	// deployed before CloneURL existed, then to the "name" label, which only
+	// holds the short "owner/repo" form and cannot be used to reconstruct a
+	// host-qualified repository path via git.GetRepoName().
+	repositoryURL := SourceCloneURLFromLabels(labels)
 	if repositoryURL == "" {
 		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])
 	}
@@ -441,7 +444,7 @@ func composeScheduledServiceRefFromSwarmLabels(labels map[string]string) (compos
 		)
 	}
 
-	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
+	repositoryURL := SourceCloneURLFromLabels(labels)
 	if repositoryURL == "" {
 		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])
 	}

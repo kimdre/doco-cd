@@ -119,17 +119,24 @@ type DeployRequest struct {
 	InternalRepoPath string
 	DockerCLI        command.Cli `validate:"required,nostructlevel"`
 	Payload          *webhook.ParsedPayload
-	DeployConfig     *deploy.Config `validate:"required,nostructlevel"`
-	DetectedChanges  []Change
-	NeedSignal       []SignalService
-	LatestCommit     string
-	AppVersion       string `validate:"required"`
-	ComposeLoad      ComposeLoadOptions
-	SwarmRetention   SwarmRetentionOptions
-	SwarmMode        bool
-	HashNormMap      map[string]string
-	Project          *types.Project
-	ProjectHash      string
+	// SourceURL is the resolved URL used to fetch/name the source containing
+	// the deploy config. It may differ from Payload.WebURL when a Git host
+	// serves HTTP(S) and SSH on different hosts/ports, and from the active
+	// deployment source when repository_url selects another repository.
+	// It is recorded as cd.doco.source.clone_url so consumers can reconstruct
+	// the config source path without relying on the browsable URL.
+	SourceURL       string
+	DeployConfig    *deploy.Config `validate:"required,nostructlevel"`
+	DetectedChanges []Change
+	NeedSignal      []SignalService
+	LatestCommit    string
+	AppVersion      string `validate:"required"`
+	ComposeLoad     ComposeLoadOptions
+	SwarmRetention  SwarmRetentionOptions
+	SwarmMode       bool
+	HashNormMap     map[string]string
+	Project         *types.Project
+	ProjectHash     string
 }
 
 type runtimeDeployRequest struct {

@@ -122,6 +122,53 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 		}
 	})
 
+	// Regression test for https://github.com/kimdre/doco-cd/issues/1850: when the Git
+	// host serves HTTP(S) and SSH on different hostnames, the browsable Source.URL
+	// label (webhook html_url) can diverge from the URL actually used to clone/name
+	// the on-disk source. The dedicated Source.CloneURL label must be preferred so the
+	// reconstructed RepositoryURL matches the on-disk directory, not the browsable URL.
+	t.Run("prefers clone url label over source url label when they diverge", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
+			api.ProjectLabel:             "project-a",
+			api.ServiceLabel:             "backup",
+			DocoCDLabels.Source.Name:     "owner/repo",
+			DocoCDLabels.Source.URL:      "https://git.example.com/owner/repo",
+			DocoCDLabels.Source.CloneURL: "ssh://git@gits.example.com:222/owner/repo.git",
+			DocoCDLabels.Deployment.Name: "stack-a",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if ref.RepositoryURL != "ssh://git@gits.example.com:222/owner/repo.git" {
+			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
+		}
+	})
+
+	// Backward compatibility: containers deployed before the CloneURL label existed
+	// only carry the Source.URL label, which must still be used to resolve the on-disk
+	// path until the container is redeployed and picks up the new label.
+	t.Run("falls back to source url label when clone url label is missing", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
+			api.ProjectLabel:             "project-a",
+			api.ServiceLabel:             "backup",
+			DocoCDLabels.Source.Name:     "owner/repo",
+			DocoCDLabels.Source.URL:      "https://git.example.com/owner/repo",
+			DocoCDLabels.Deployment.Name: "stack-a",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if ref.RepositoryURL != "https://git.example.com/owner/repo" {
+			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
+		}
+	})
+
 	t.Run("fails on nil label map", func(t *testing.T) {
 		t.Parallel()
 
@@ -245,6 +292,26 @@ func TestComposeScheduledServiceRefFromSwarmLabels(t *testing.T) {
 		}
 
 		if ref.RepositoryURL != "owner/repo" {
+			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
+		}
+	})
+
+	// Regression test for https://github.com/kimdre/doco-cd/issues/1850, see the
+	// equivalent case in TestComposeScheduledServiceRefFromLabels for details.
+	t.Run("prefers clone url label over source url label when they diverge", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := composeScheduledServiceRefFromSwarmLabels(map[string]string{
+			DocoCDLabels.Deployment.Name: "stack-a",
+			DocoCDLabels.Source.Name:     "owner/repo",
+			DocoCDLabels.Source.URL:      "https://git.example.com/owner/repo",
+			DocoCDLabels.Source.CloneURL: "ssh://git@gits.example.com:222/owner/repo.git",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if ref.RepositoryURL != "ssh://git@gits.example.com:222/owner/repo.git" {
 			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
 		}
 	})

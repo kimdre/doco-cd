@@ -39,6 +39,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		InternalRepoPath: s.Repository.PathInternal,
 		DockerCLI:        s.Docker.Cmd,
 		Payload:          s.Payload,
+		SourceURL:        sourceURLForLabels(s.Repository),
 		DeployConfig:     s.DeployConfig,
 		DetectedChanges:  s.DeployState.changedServices,
 		NeedSignal:       s.DeployState.ignoredInfo.NeedSendSignal,
@@ -56,4 +57,17 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 	}
 
 	return nil
+}
+
+func sourceURLForLabels(repository *RepositoryData) string {
+	if repository == nil {
+		return ""
+	}
+
+	if repository.ConfigSourceUrl != "" {
+		return repository.ConfigSourceUrl
+	}
+
+	// Preserve compatibility with callers that construct RepositoryData directly.
+	return repository.SourceUrl
 }
