@@ -340,17 +340,19 @@ func recreateManagedProject(
 	}
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
+	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 	payload := &webhook.ParsedPayload{
 		Source:   webhook.PayloadSource(SourceTypeLabelValue(string(sourceType), labels[DocoCDLabels.Source.Type])),
 		Trigger:  "api.recreate",
 		FullName: strings.TrimSpace(labels[DocoCDLabels.Source.Name]),
-		WebURL:   strings.TrimSpace(labels[DocoCDLabels.Source.URL]),
+		WebURL:   sourceURL,
 	}
 
 	addComposeServiceLabels(
 		project,
 		deployConfig,
 		payload,
+		sourceURL,
 		ref.WorkingDir,
 		app.Version,
 		timestamp,
@@ -362,6 +364,7 @@ func recreateManagedProject(
 		project,
 		deployConfig,
 		payload,
+		sourceURL,
 		app.Version,
 		timestamp,
 		ComposeVersion,

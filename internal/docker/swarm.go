@@ -159,7 +159,7 @@ func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.Par
 // applyCertRotationLabelsToService, so only services actually using a rotated certificate carry
 // them. project resolves those references and may be nil, in which case no cert labels are added.
 func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	repoDir, appVersion, timestamp, latestCommit, projectHash string,
+	sourceURL, repoDir, appVersion, timestamp, latestCommit, projectHash string,
 ) {
 	stableLabels := stableSwarmMetadataLabels(deployConfig, payload, repoDir)
 
@@ -172,7 +172,7 @@ func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, d
 		DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
 		DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 		DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
-		DocoCDLabels.Source.URL:                     payload.WebURL,
+		DocoCDLabels.Source.URL:                     resolveSourceURLLabel(sourceURL, payload),
 	}
 
 	maps.Copy(sharedServiceSpecLabels, stableLabels)
@@ -224,7 +224,7 @@ func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 
 // addSwarmConfigLabels adds custom labels to the configs in a Docker Swarm stack.
 func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	repoDir, appVersion, timestamp, latestCommit string,
+	sourceURL, repoDir, appVersion, timestamp, latestCommit string,
 ) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:      app.Name,
@@ -237,7 +237,7 @@ func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 		DocoCDLabels.Deployment.TargetRef:  ExtractOciArtifactTag(deployConfig.Reference),
 		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 		DocoCDLabels.Source.Name:           payload.FullName,
-		DocoCDLabels.Source.URL:            payload.WebURL,
+		DocoCDLabels.Source.URL:            resolveSourceURLLabel(sourceURL, payload),
 	}
 
 	for i, c := range stack.Configs {
@@ -252,7 +252,7 @@ func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 }
 
 func addSwarmSecretLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	repoDir, appVersion, timestamp, latestCommit string,
+	sourceURL, repoDir, appVersion, timestamp, latestCommit string,
 ) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:      app.Name,
@@ -265,7 +265,7 @@ func addSwarmSecretLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 		DocoCDLabels.Deployment.TargetRef:  ExtractOciArtifactTag(deployConfig.Reference),
 		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 		DocoCDLabels.Source.Name:           payload.FullName,
-		DocoCDLabels.Source.URL:            payload.WebURL,
+		DocoCDLabels.Source.URL:            resolveSourceURLLabel(sourceURL, payload),
 	}
 
 	for i, s := range stack.Secrets {

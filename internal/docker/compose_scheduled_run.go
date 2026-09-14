@@ -397,10 +397,13 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 		)
 	}
 
-	// Prefer the full source URL label to reconstruct a host-qualified
-	// repository path (e.g. "github.com/owner/repo") via git.GetRepoName().
-	// The source "name" label only holds the short "owner/repo" form and
-	// cannot be used for this, since it does not carry the host segment.
+	// Prefer the source URL label to reconstruct a host-qualified repository
+	// path (e.g. "github.com/owner/repo") via git.GetRepoName(). It holds the
+	// URL actually used to fetch/name the on-disk source, which may differ
+	// from the triggering payload's browsable URL when a Git host serves
+	// HTTP(S) and SSH on different hosts/ports. The source "name" label only
+	// holds the short "owner/repo" form and cannot be used for this, since it
+	// does not carry the host segment.
 	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 	if repositoryURL == "" {
 		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])

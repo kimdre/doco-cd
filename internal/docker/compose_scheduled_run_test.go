@@ -122,6 +122,31 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 		}
 	})
 
+	// Regression test for https://github.com/kimdre/doco-cd/issues/1850: when the Git
+	// host serves HTTP(S) and SSH on different hostnames, the resolved URL used to
+	// clone/name the on-disk source (recorded in Source.URL) can be an SSH URL even
+	// though the webhook/poll payload's browsable URL used for commit statuses is
+	// HTTP(S). The reconstructed RepositoryURL must match the on-disk directory, i.e.
+	// come from Source.URL as recorded at deploy time, regardless of scheme.
+	t.Run("resolves repository url from source url label even when it is an ssh clone url", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
+			api.ProjectLabel:             "project-a",
+			api.ServiceLabel:             "backup",
+			DocoCDLabels.Source.Name:     "owner/repo",
+			DocoCDLabels.Source.URL:      "ssh://git@gits.example.com:222/owner/repo.git",
+			DocoCDLabels.Deployment.Name: "stack-a",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if ref.RepositoryURL != "ssh://git@gits.example.com:222/owner/repo.git" {
+			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
+		}
+	})
+
 	t.Run("fails on nil label map", func(t *testing.T) {
 		t.Parallel()
 
@@ -245,6 +270,25 @@ func TestComposeScheduledServiceRefFromSwarmLabels(t *testing.T) {
 		}
 
 		if ref.RepositoryURL != "owner/repo" {
+			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
+		}
+	})
+
+	// Regression test for https://github.com/kimdre/doco-cd/issues/1850, see the
+	// equivalent case in TestComposeScheduledServiceRefFromLabels for details.
+	t.Run("resolves repository url from source url label even when it is an ssh clone url", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := composeScheduledServiceRefFromSwarmLabels(map[string]string{
+			DocoCDLabels.Deployment.Name: "stack-a",
+			DocoCDLabels.Source.Name:     "owner/repo",
+			DocoCDLabels.Source.URL:      "ssh://git@gits.example.com:222/owner/repo.git",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if ref.RepositoryURL != "ssh://git@gits.example.com:222/owner/repo.git" {
 			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
 		}
 	})

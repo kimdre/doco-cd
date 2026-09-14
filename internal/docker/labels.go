@@ -33,7 +33,16 @@ type docoCdLabelNamesDeployment struct {
 type docoCdLabelNamesSource struct {
 	Type string // Source type (git or oci)
 	Name string // Repository or artifact name
-	URL  string // Repository or artifact URL
+	// URL is the resolved URL used to fetch and name the on-disk source
+	// directory containing the deploy config. It intentionally remains the
+	// config-containing source when repository_url selects a different
+	// deployment repository. It may differ from the webhook/poll payload's
+	// browsable URL (used only transiently for commit-status posting during
+	// the triggering run), e.g. when a Git host serves HTTP(S) and SSH on
+	// different hosts/ports. Consumers that reconstruct the config source
+	// path or verify its identity (scheduler, auto-discovery, migration)
+	// must use this label.
+	URL string
 }
 
 // docoCdLabelNames contains the labels used by DocoCD to identify deployed containers and their metadata.
