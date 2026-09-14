@@ -1,7 +1,6 @@
 package docker
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -9,10 +8,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/kimdre/doco-cd/internal/git"
 )
@@ -22,11 +24,8 @@ type layoutStep struct {
 	msg    string
 	write  map[string]string
 	remove []string
-	// git runs raw git commands instead of a write/commit, for histories a plain commit
-	// cannot express, e.g. a merge.
-	git [][]string
-	// fn builds the step itself, for layouts that need a second repository.
-	fn func(t *testing.T, repoDir string, n int)
+	// fn builds the step itself, for histories a single commit cannot express.
+	fn func(t *testing.T, r *layoutRepo)
 }
 
 // changelogLayout is one repository layout the changelog filter is checked against.
@@ -47,38 +46,130 @@ type changelogLayout struct {
 	note string
 }
 
-func runGit(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-
-	return runGitAt(t, dir, 0, args...)
+// layoutRepo is the repository of a layout, built with go-git.
+//
+// It lives on the real filesystem instead of memfs, because the compose loader reads the
+// compose files, env files and bind mount sources of the stack through the OS filesystem.
+type layoutRepo struct {
+	t        *testing.T
+	repo     *gogit.Repository
+	wt       *gogit.Worktree
+	dir      string
+	baseline plumbing.Hash
+	// commits counts the commits made so far and gives every commit its own timestamp, so
+	// the committer time order of the history is deterministic.
+	commits int
 }
 
-// runGitAt runs a git command with the author and committer date derived from n, so the
-// committer time order of a built history is deterministic.
-func runGitAt(t *testing.T, dir string, n int, args ...string) string {
+func newLayoutRepo(t *testing.T) *layoutRepo {
 	t.Helper()
 
-	date := fmt.Sprintf("2026-01-01T%02d:00:00+00:00", n)
-
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-
-	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@example.com",
-		"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@example.com",
-		"GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date,
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-	)
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	dir := t.TempDir()
+	// macOS hands out /var/... symlinks, compose resolves paths to /private/var/...
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
 	}
 
-	return string(out)
+	repo, err := gogit.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	// Point HEAD at "main" before the first commit so it lands there directly.
+	headRef := plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))
+	if err = repo.Storer.SetReference(headRef); err != nil {
+		t.Fatalf("set HEAD to main: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	return &layoutRepo{t: t, repo: repo, wt: wt, dir: dir}
 }
 
-func writeTree(t *testing.T, dir string, files map[string]string) {
+// write writes the files and stages them.
+func (r *layoutRepo) write(files map[string]string) {
+	r.t.Helper()
+
+	writeFiles(r.t, r.dir, files)
+
+	for rel := range files {
+		if _, err := r.wt.Add(rel); err != nil {
+			r.t.Fatalf("add %s: %v", rel, err)
+		}
+	}
+}
+
+// remove deletes the paths from the worktree and the index.
+func (r *layoutRepo) remove(paths []string) {
+	r.t.Helper()
+
+	for _, rel := range paths {
+		if _, err := r.wt.Remove(rel); err != nil {
+			r.t.Fatalf("remove %s: %v", rel, err)
+		}
+	}
+}
+
+// commit commits the index. Without parents the commit goes on top of HEAD.
+func (r *layoutRepo) commit(msg string, parents ...plumbing.Hash) plumbing.Hash {
+	r.t.Helper()
+
+	r.commits++
+
+	when := time.Date(2026, 1, 1, 0, r.commits, 0, 0, time.UTC)
+	sig := &object.Signature{Name: "Test", Email: "test@example.com", When: when}
+
+	hash, err := r.wt.Commit(msg, &gogit.CommitOptions{
+		AllowEmptyCommits: true,
+		Author:            sig,
+		Committer:         sig,
+		Parents:           parents,
+	})
+	if err != nil {
+		r.t.Fatalf("commit %q: %v", msg, err)
+	}
+
+	return hash
+}
+
+func (r *layoutRepo) head() plumbing.Hash {
+	r.t.Helper()
+
+	ref, err := r.repo.Head()
+	if err != nil {
+		r.t.Fatalf("head: %v", err)
+	}
+
+	return ref.Hash()
+}
+
+// setGitlink points the index entry of a submodule path at a commit of the submodule.
+// go-git cannot add a submodule, so the gitlink is written directly.
+func (r *layoutRepo) setGitlink(path string, sub plumbing.Hash) {
+	r.t.Helper()
+
+	idx, err := r.repo.Storer.Index()
+	if err != nil {
+		r.t.Fatalf("read index: %v", err)
+	}
+
+	entry, err := idx.Entry(path)
+	if err != nil {
+		entry = idx.Add(path)
+	}
+
+	entry.Hash = sub
+	entry.Mode = filemode.Submodule
+
+	if err = r.repo.Storer.SetIndex(idx); err != nil {
+		r.t.Fatalf("write index: %v", err)
+	}
+}
+
+func writeFiles(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
 
 	for rel, content := range files {
@@ -93,61 +184,29 @@ func writeTree(t *testing.T, dir string, files map[string]string) {
 	}
 }
 
-// buildLayoutRepo creates a repository for the layout and returns its path, the baseline
-// commit and HEAD.
-func buildLayoutRepo(t *testing.T, l changelogLayout) (string, plumbing.Hash, plumbing.Hash) {
+// buildLayoutRepo creates the repository of the layout and returns it together with the
+// baseline commit and HEAD.
+func buildLayoutRepo(t *testing.T, l changelogLayout) (*layoutRepo, plumbing.Hash, plumbing.Hash) {
 	t.Helper()
 
-	dir := t.TempDir()
-	// macOS hands out /var/... symlinks, compose resolves paths to /private/var/...
-	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
-		dir = resolved
-	}
+	r := newLayoutRepo(t)
 
-	runGit(t, dir, "init", "-b", "main", "-q")
-	writeTree(t, dir, l.files)
-	runGit(t, dir, "add", "-A")
-	commitAll(t, dir, "baseline", 0)
+	r.write(l.files)
+	r.baseline = r.commit("baseline")
 
-	baseline := plumbing.NewHash(strings.TrimSpace(runGit(t, dir, "rev-parse", "HEAD")))
-
-	for i, step := range l.steps {
+	for _, step := range l.steps {
 		if step.fn != nil {
-			step.fn(t, dir, i+1)
+			step.fn(t, r)
 
 			continue
 		}
 
-		if len(step.git) > 0 {
-			for _, args := range step.git {
-				runGitAt(t, dir, i+1, args...)
-			}
-
-			continue
-		}
-
-		writeTree(t, dir, step.write)
-
-		for _, rel := range step.remove {
-			if err := os.RemoveAll(filepath.Join(dir, rel)); err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		runGit(t, dir, "add", "-A")
-		commitAll(t, dir, step.msg, i+1)
+		r.write(step.write)
+		r.remove(step.remove)
+		r.commit(step.msg)
 	}
 
-	head := plumbing.NewHash(strings.TrimSpace(runGit(t, dir, "rev-parse", "HEAD")))
-
-	return dir, baseline, head
-}
-
-// commitAll commits the index with the date derived from n.
-func commitAll(t *testing.T, dir, msg string, n int) {
-	t.Helper()
-
-	runGitAt(t, dir, n, "commit", "-q", "--allow-empty", "-m", msg)
+	return r, r.baseline, r.head()
 }
 
 func loadLayoutProject(t *testing.T, repoDir string, l changelogLayout) *types.Project {
@@ -172,6 +231,109 @@ func loadLayoutProject(t *testing.T, repoDir string, l changelogLayout) *types.P
 	}
 
 	return project
+}
+
+// mergeStackBranch commits a change of stack a on a side branch and merges it into main,
+// so the range contains a merge commit.
+func mergeStackBranch(t *testing.T, r *layoutRepo) {
+	t.Helper()
+
+	mainHead := r.head()
+	branchChange := map[string]string{"stacks/a/compose.yaml": stackACompose + "# a\n"}
+
+	err := r.wt.Checkout(&gogit.CheckoutOptions{
+		Hash:   r.baseline,
+		Branch: plumbing.NewBranchReferenceName("feature"),
+		Create: true,
+	})
+	if err != nil {
+		t.Fatalf("checkout feature: %v", err)
+	}
+
+	r.write(branchChange)
+	featureHead := r.commit("touch a on branch")
+
+	err = r.wt.Checkout(&gogit.CheckoutOptions{Branch: plumbing.NewBranchReferenceName("main")})
+	if err != nil {
+		t.Fatalf("checkout main: %v", err)
+	}
+
+	r.write(branchChange)
+	r.commit("merge feature", mainHead, featureHead)
+}
+
+// submoduleDir is where the stack of the submodule layout lives inside the repository.
+const submoduleDir = "sub"
+
+// addSubmoduleStack creates a second repository holding the stack and records it as
+// submodule of the layout repository.
+func addSubmoduleStack(t *testing.T, r *layoutRepo) {
+	t.Helper()
+
+	subDir := filepath.Join(r.dir, submoduleDir)
+
+	subRepo, err := gogit.PlainInit(subDir, false)
+	if err != nil {
+		t.Fatalf("init submodule repo: %v", err)
+	}
+
+	subWt, err := subRepo.Worktree()
+	if err != nil {
+		t.Fatalf("submodule worktree: %v", err)
+	}
+
+	writeFiles(t, subDir, map[string]string{"stacks/a/compose.yaml": stackACompose})
+
+	if _, err = subWt.Add("stacks/a/compose.yaml"); err != nil {
+		t.Fatalf("add submodule stack: %v", err)
+	}
+
+	sig := &object.Signature{Name: "Test", Email: "test@example.com", When: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+
+	subHead, err := subWt.Commit("submodule baseline", &gogit.CommitOptions{Author: sig, Committer: sig})
+	if err != nil {
+		t.Fatalf("commit submodule baseline: %v", err)
+	}
+
+	r.write(map[string]string{
+		".gitmodules": "[submodule \"" + submoduleDir + "\"]\n\tpath = " + submoduleDir + "\n\turl = ./" + submoduleDir + "\n",
+	})
+	r.setGitlink(submoduleDir, subHead)
+	r.commit("add submodule")
+}
+
+// bumpSubmoduleStack changes the stack inside the submodule and records the new submodule
+// commit in the layout repository.
+func bumpSubmoduleStack(t *testing.T, r *layoutRepo) {
+	t.Helper()
+
+	subDir := filepath.Join(r.dir, submoduleDir)
+
+	subRepo, err := gogit.PlainOpen(subDir)
+	if err != nil {
+		t.Fatalf("open submodule repo: %v", err)
+	}
+
+	subWt, err := subRepo.Worktree()
+	if err != nil {
+		t.Fatalf("submodule worktree: %v", err)
+	}
+
+	writeFiles(t, subDir, map[string]string{"stacks/a/compose.yaml": stackACompose + "# a\n"})
+
+	if _, err = subWt.Add("stacks/a/compose.yaml"); err != nil {
+		t.Fatalf("add submodule change: %v", err)
+	}
+
+	sig := &object.Signature{Name: "Test", Email: "test@example.com", When: time.Date(2026, 1, 1, 0, 1, 0, 0, time.UTC)}
+
+	subHead, err := subWt.Commit("change stack in submodule", &gogit.CommitOptions{Author: sig, Committer: sig})
+	if err != nil {
+		t.Fatalf("commit submodule change: %v", err)
+	}
+
+	r.setGitlink(submoduleDir, subHead)
+	r.commit("bump submodule")
 }
 
 const (
@@ -474,12 +636,7 @@ secrets:
 			},
 			steps: []layoutStep{
 				{msg: "touch b on main", write: map[string]string{"stacks/b/compose.yaml": stackBCompose + "# b\n"}},
-				{git: [][]string{{"checkout", "-q", "-b", "feature", "HEAD~1"}}},
-				{msg: "touch a on branch", write: map[string]string{"stacks/a/compose.yaml": stackACompose + "# a\n"}},
-				{git: [][]string{
-					{"checkout", "-q", "main"},
-					{"merge", "-q", "--no-ff", "-m", "merge feature", "feature"},
-				}},
+				{fn: mergeStackBranch},
 			},
 			workingDir:   "stacks/a",
 			composeFiles: []string{"stacks/a/compose.yaml"},
@@ -566,7 +723,8 @@ secrets:
 func TestChangelogFilterLayouts(t *testing.T) {
 	for _, l := range changelogLayouts() {
 		t.Run(l.name, func(t *testing.T) {
-			repoDir, baseline, head := buildLayoutRepo(t, l)
+			r, baseline, head := buildLayoutRepo(t, l)
+			repoDir := r.dir
 
 			project := loadLayoutProject(t, repoDir, l)
 
@@ -580,12 +738,7 @@ func TestChangelogFilterLayouts(t *testing.T) {
 				t.Fatalf("ProjectPathFilter: %v", err)
 			}
 
-			repo, err := gogit.PlainOpen(repoDir)
-			if err != nil {
-				t.Fatalf("PlainOpen: %v", err)
-			}
-
-			commits, err := git.GetCommitsBetween(slog.New(slog.DiscardHandler), repo, baseline, head, 50, pathFilter)
+			commits, err := git.GetCommitsBetween(slog.New(slog.DiscardHandler), r.repo, baseline, head, 50, pathFilter)
 			if err != nil {
 				t.Fatalf("GetCommitsBetween: %v", err)
 			}
@@ -606,20 +759,12 @@ func TestChangelogFilterLayouts(t *testing.T) {
 				t.Errorf("changelog mismatch\n got: %v\nwant: %v", got, l.want)
 			}
 
-			// Differential check against git itself, over the same path set.
-			args := []string{"log", "--format=%s", baseline.String() + ".." + head.String()}
-			if pathFilter != nil {
-				args = append(args, "--")
-				args = append(args, filePaths...)
-				args = append(args, dirPaths...)
-			}
-
-			oracle := []string{}
-
-			for _, line := range strings.Split(strings.TrimSpace(runGit(t, repoDir, args...)), "\n") {
-				if line != "" {
-					oracle = append(oracle, line)
-				}
+			// go-git approximates `git log -- <paths>`, so the result is also compared to
+			// what git itself reports over the same path set. Only git can answer that,
+			// the check is skipped where the binary is missing.
+			oracle, args, ok := gitLogOracle(t, repoDir, baseline, head, filePaths, dirPaths, pathFilter != nil)
+			if !ok {
+				return
 			}
 
 			if !slices.Equal(got, oracle) {
@@ -629,38 +774,40 @@ func TestChangelogFilterLayouts(t *testing.T) {
 	}
 }
 
-// addSubmoduleStack creates a second repository holding the stack and adds it as
-// submodule "sub" of the layout repository.
-func addSubmoduleStack(t *testing.T, repoDir string, n int) {
+// gitLogOracle returns the commit subjects `git log <old>..<new> -- <paths>` reports, and
+// whether the git binary was available at all.
+func gitLogOracle(t *testing.T, repoDir string, oldHash, newHash plumbing.Hash, files, dirs []string, filtered bool) ([]string, []string, bool) {
 	t.Helper()
 
-	subDir := filepath.Join(filepath.Dir(repoDir), "subrepo")
-	if err := os.MkdirAll(subDir, 0o755); err != nil {
-		t.Fatal(err)
+	bin, err := exec.LookPath("git")
+	if err != nil {
+		t.Log("git binary not found, skipping the comparison against git log")
+
+		return nil, nil, false
 	}
 
-	runGit(t, subDir, "init", "-b", "main", "-q")
-	writeTree(t, subDir, map[string]string{"stacks/a/compose.yaml": stackACompose})
-	runGit(t, subDir, "add", "-A")
-	commitAll(t, subDir, "submodule baseline", n)
+	args := []string{"log", "--format=%s", oldHash.String() + ".." + newHash.String()}
+	if filtered {
+		args = append(args, "--")
+		args = append(args, files...)
+		args = append(args, dirs...)
+	}
 
-	runGitAt(t, repoDir, n, "-c", "protocol.file.allow=always", "submodule", "add", "-q", subDir, "sub")
-	runGit(t, repoDir, "add", "-A")
-	commitAll(t, repoDir, "add submodule", n)
-}
+	cmd := exec.Command(bin, args...)
+	cmd.Dir = repoDir
 
-// bumpSubmoduleStack changes the stack inside the submodule and records the new submodule
-// commit in the layout repository.
-func bumpSubmoduleStack(t *testing.T, repoDir string, n int) {
-	t.Helper()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
 
-	subDir := filepath.Join(filepath.Dir(repoDir), "subrepo")
+	subjects := []string{}
 
-	writeTree(t, subDir, map[string]string{"stacks/a/compose.yaml": stackACompose + "# a\n"})
-	runGit(t, subDir, "add", "-A")
-	commitAll(t, subDir, "change stack in submodule", n)
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			subjects = append(subjects, line)
+		}
+	}
 
-	runGitAt(t, repoDir, n, "-c", "protocol.file.allow=always", "submodule", "update", "--remote", "--recursive", "sub")
-	runGit(t, repoDir, "add", "-A")
-	commitAll(t, repoDir, "bump submodule", n)
+	return subjects, args, true
 }
