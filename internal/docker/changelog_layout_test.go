@@ -801,9 +801,9 @@ func gitLogOracle(t *testing.T, repoDir string, oldHash, newHash plumbing.Hash, 
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 
-	subjects := []string{}
+	var subjects []string
 
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		if line != "" {
 			subjects = append(subjects, line)
 		}
