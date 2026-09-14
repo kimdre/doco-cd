@@ -116,7 +116,7 @@ const DefaultStopServicesTimeout = 30 * time.Second
 // timeoutOverride, when non-nil, is used explicitly for every targeted
 // container (this is how cd.doco.job.stop_services.timeout is applied). When
 // nil, each container's own configured stop timeout (populated from the
-// compose file's stop_grace_period) is honoured by leaving the stop request's
+// compose file's stop_grace_period) is honored by leaving the stop request's
 // timeout unset, letting the Docker engine apply it; DefaultStopServicesTimeout
 // is only used explicitly as a fallback for containers that have no stop
 // timeout configured.
@@ -187,11 +187,9 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 }
 
 // containerHasConfiguredStopTimeout reports whether the container has an
-// explicit StopTimeout configured (i.e. the compose file declared a
-// explicit StopTimeout configured (i.e. the compose file declared a
-// stop_grace_period for its service). When true, callers should leave the stop
-// request's timeout unset so the Docker engine applies the container's own
-// value instead of a hardcoded default.
+// explicit StopTimeout configured (i.e. the compose file declared a stop_grace_period for its service).
+// When true, callers should leave the stop request's timeout unset so the Docker engine applies
+// the container's own value instead of a hardcoded default.
 func containerHasConfiguredStopTimeout(ctx context.Context, dockerCli command.Cli, containerID string) (bool, error) {
 	inspectResult, err := dockerCli.Client().ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {

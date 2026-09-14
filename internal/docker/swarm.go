@@ -669,7 +669,7 @@ var ErrSwarmServiceAlreadyStopped = errors.New("swarm service is already scaled 
 // timeoutOverride, when non-nil, is used explicitly as the wait deadline
 // (this is how cd.doco.job.stop_services.timeout is applied). When nil, the
 // service's own configured Spec.TaskTemplate.ContainerSpec.StopGracePeriod is
-// honoured (plus a small buffer for scheduling overhead), falling back to
+// honored (plus a small buffer for scheduling overhead), falling back to
 // DefaultStopServicesTimeout if the service has no grace period configured.
 // This prevents a service declaring a long grace period from having its
 // shutdown wait time out prematurely.

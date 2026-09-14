@@ -34,10 +34,10 @@ type JobScheduleConfig struct {
 	Enabled       bool
 	SkipRunning   bool
 	// StopServicesTimeout is an explicit, user-configured timeout (in seconds)
-	// used when stopping the targets listed in StopServices. When nil, the
-	// target's own configured grace period is honoured instead (falling back
-	// to a default if the target has none configured). See
-	// docker.DefaultStopServicesTimeout.
+	// used when stopping the targets listed in StopServices.
+	// When nil, the target's own configured grace period is honored instead
+	// (falling back to a default if the target has none configured).
+	// See docker.DefaultStopServicesTimeout.
 	StopServicesTimeout *int
 }
 
@@ -175,6 +175,8 @@ func ParseJobScheduleLabels(labels map[string]string) (JobScheduleConfig, bool, 
 			return cfg, false, fmt.Errorf("%s must be > 0", docoCDJobLabelNames.JobStopServicesTimeout)
 		}
 
+		// Prevent overflow when converting seconds to time.Duration (which is int64 nanoseconds).
+		// The maximum duration in seconds is (2^63 - 1) / 1e9, which is the maximum int64 value divided by 1 second in nanoseconds.
 		maxDurationSeconds := int64(time.Duration(1<<63-1) / time.Second)
 		if int64(timeoutSecs) > maxDurationSeconds {
 			return cfg, false, fmt.Errorf("%s must be <= %d", docoCDJobLabelNames.JobStopServicesTimeout, maxDurationSeconds)
