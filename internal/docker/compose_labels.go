@@ -46,14 +46,13 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 			DocoCDLabels.Source.Name:                    payload.FullName,
 			DocoCDLabels.Source.URL:                     resolveSourceURLLabel(sourceURL, payload),
-
-			api.ProjectLabel:      project.Name,
-			api.ServiceLabel:      s.Name,
-			api.WorkingDirLabel:   project.WorkingDir,
-			api.ConfigFilesLabel:  strings.Join(project.ComposeFiles, ","),
-			api.VersionLabel:      composeVersion,
-			api.OneoffLabel:       "False", // default, will be overridden by docker compose
-			api.DependenciesLabel: strings.Join(dependencies, ","),
+			api.ProjectLabel:                            project.Name,
+			api.ServiceLabel:                            s.Name,
+			api.WorkingDirLabel:                         project.WorkingDir,
+			api.ConfigFilesLabel:                        strings.Join(project.ComposeFiles, ","),
+			api.VersionLabel:                            composeVersion,
+			api.OneoffLabel:                             "False", // default, will be overridden by docker compose
+			api.DependenciesLabel:                       strings.Join(dependencies, ","),
 		}
 
 		applyCertRotationLabelsToService(s.CustomLabels, s, project, deployConfig)
@@ -112,8 +111,10 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config,
 }
 
 // resolveSourceURLLabel returns the resolved URL used to fetch/name the source
-// containing the deploy config, falling back to payload.WebURL for legacy callers
-// that don't yet resolve a dedicated sourceURL (e.g. very old label readers).
+// containing the deploy config, which is recorded as the Source.URL label.
+// It falls back to the payload's browsable URL when no source URL was resolved,
+// so the label is never written empty (an empty label would leave the scheduler
+// and auto-discovery unable to identify the deployment's source at all).
 func resolveSourceURLLabel(sourceURL string, payload *webhook.ParsedPayload) string {
 	if strings.TrimSpace(sourceURL) != "" {
 		return sourceURL

@@ -127,7 +127,7 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 // labels). Labels may only be added here if they change together with a change that
 // legitimately recreates the tasks anyway (e.g. a renamed deployment or a re-pointed
 // reference). Labels that differ between deployments of the same stack, such as the
-// timestamp, the commit SHA or the source/clone URL (which differ between webhook and poll
+// timestamp, the commit SHA or the source URL (which differs between webhook and poll
 // triggers for the same repository), must never be added: swarm would recreate all
 // tasks of every service on each deployment, see
 // https://github.com/kimdre/doco-cd/issues/1153.

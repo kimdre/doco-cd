@@ -135,7 +135,7 @@ func validateMigrationOwnership(labelsByService map[Service]Labels, expectedSour
 func migrationSourceMatches(labels Labels, expectedSources set.Set[string]) bool {
 	for _, source := range []string{
 		labels[DocoCDLabels.Source.Name],
-		strings.TrimSpace(labels[DocoCDLabels.Source.URL]),
+		labels[DocoCDLabels.Source.URL],
 	} {
 		for candidate := range migrationSourceCandidates(source) {
 			if expectedSources.Contains(candidate) {
