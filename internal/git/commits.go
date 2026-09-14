@@ -3,12 +3,15 @@ package git
 import (
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
@@ -115,41 +118,136 @@ func commitBoundary(repo *git.Repository, oldHash, newHash plumbing.Hash) set.Se
 	return boundary
 }
 
+// errStopWalk ends a commit log walk early.
+var errStopWalk = errors.New("stop walk")
+
+// maxScannedCommits caps how many commits a changelog walk reads. A path filter only
+// returns the commits of one stack, so a stack that was not touched for a long time can
+// otherwise pull the whole range through a tree diff before it collects maxCommits.
+// It is a variable only so tests can lower it.
+var maxScannedCommits = 5000
+
+// newCommitInfo maps a commit to the shape exposed to notification templates.
+func newCommitInfo(c *object.Commit) CommitInfo {
+	subject := c.Message
+	if i := strings.IndexByte(subject, '\n'); i >= 0 {
+		subject = subject[:i]
+	}
+
+	return CommitInfo{
+		Hash:      c.Hash.String(),
+		ShortHash: c.Hash.String()[:DefaultShortSHALength],
+		Subject:   strings.TrimSpace(subject),
+		Author:    c.Author.Name,
+	}
+}
+
+// boundedCommitIter ends a commit walk at the first boundary commit, and after
+// maxScannedCommits commits at the latest.
+//
+// The boundary commit is still passed on, because object.NewCommitPathIterFromIter diffs
+// every commit against the next commit of the source iterator. Without it the oldest
+// commit of the range would be diffed against an empty tree and always look like a change.
+// Callers drop it by the same boundary check.
+type boundedCommitIter struct {
+	src      object.CommitIter
+	boundary set.Set[plumbing.Hash]
+	scanned  int
+	done     bool
+	// truncated marks that the scan limit ended the walk before the boundary.
+	truncated bool
+}
+
+func (i *boundedCommitIter) Next() (*object.Commit, error) {
+	if i.done {
+		return nil, io.EOF
+	}
+
+	c, err := i.src.Next()
+	if err != nil {
+		return nil, err
+	}
+
+	i.scanned++
+
+	if i.boundary.Contains(c.Hash) {
+		i.done = true
+	} else if i.scanned >= maxScannedCommits {
+		i.done = true
+		i.truncated = true
+	}
+
+	return c, nil
+}
+
+func (i *boundedCommitIter) ForEach(cb func(*object.Commit) error) error {
+	for {
+		c, err := i.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if err = cb(c); err != nil {
+			if errors.Is(err, storer.ErrStop) {
+				return nil
+			}
+
+			return err
+		}
+	}
+}
+
+func (i *boundedCommitIter) Close() { i.src.Close() }
+
 // GetCommitsBetween returns commits reachable from newHash but not from oldHash,
 // newest first, capped at maxCommits.
-func GetCommitsBetween(repo *git.Repository, oldHash, newHash plumbing.Hash, maxCommits int) ([]CommitInfo, error) {
-	iter, err := repo.Log(&git.LogOptions{From: newHash, Order: git.LogOrderCommitterTime})
+//
+// A non-nil pathFilter keeps only the commits that changed a path it matches, so a stack
+// gets a changelog of its own files instead of everything that happened in the repository.
+// Paths are relative to the root of the repository. The cap counts the commits that pass
+// the filter, and a nil filter returns the whole range.
+func GetCommitsBetween(log *slog.Logger, repo *git.Repository, oldHash, newHash plumbing.Hash, maxCommits int, pathFilter func(string) bool) ([]CommitInfo, error) {
+	newCommit, err := repo.CommitObject(newHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read commit log from %s: %w", newHash, err)
 	}
-	defer iter.Close()
 
 	boundary := commitBoundary(repo, oldHash, newHash)
-	commits := make([]CommitInfo, 0, maxCommits)
 
-	stop := errors.New("stop")
+	bounded := &boundedCommitIter{
+		src:      object.NewCommitIterCTime(newCommit, nil, nil),
+		boundary: boundary,
+	}
+
+	var iter object.CommitIter = bounded
+	if pathFilter != nil {
+		iter = object.NewCommitPathIterFromIter(pathFilter, bounded, false)
+	}
+
+	defer iter.Close()
+
+	commits := make([]CommitInfo, 0, maxCommits)
 
 	err = iter.ForEach(func(c *object.Commit) error {
 		if boundary.Contains(c.Hash) || len(commits) >= maxCommits {
-			return stop
+			return errStopWalk
 		}
 
-		subject := c.Message
-		if i := strings.IndexByte(subject, '\n'); i >= 0 {
-			subject = subject[:i]
-		}
-
-		commits = append(commits, CommitInfo{
-			Hash:      c.Hash.String(),
-			ShortHash: c.Hash.String()[:DefaultShortSHALength],
-			Subject:   strings.TrimSpace(subject),
-			Author:    c.Author.Name,
-		})
+		commits = append(commits, newCommitInfo(c))
 
 		return nil
 	})
-	if err != nil && !errors.Is(err, stop) {
+	if err != nil && !errors.Is(err, errStopWalk) {
 		return nil, fmt.Errorf("failed to walk commit log: %w", err)
+	}
+
+	if bounded.truncated && len(commits) < maxCommits && log != nil {
+		log.Warn("commit changelog stopped at scan limit, older commits are left out",
+			slog.Int("scan_limit", maxScannedCommits))
 	}
 
 	return commits, nil
