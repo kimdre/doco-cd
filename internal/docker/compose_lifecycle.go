@@ -98,6 +98,13 @@ func StopProject(ctx context.Context, dockerCli command.Cli, projectName string,
 	})
 }
 
+// DefaultStopServicesTimeout is the fallback timeout used when stopping a
+// target declared via cd.doco.job.stop_services and neither an explicit
+// cd.doco.job.stop_services.timeout override nor the target's own configured
+// grace period (container StopTimeout / stop_grace_period, or Swarm service
+// StopGracePeriod) is available.
+const DefaultStopServicesTimeout = 30 * time.Second
+
 // StopProjectServices stops specific named services within a compose project.
 // Services are identified by their service name as declared in the compose file
 // (the map key under `services:`), not by container_name.
@@ -106,10 +113,18 @@ func StopProject(ctx context.Context, dockerCli command.Cli, projectName string,
 // with a services filter) to ensure only explicitly targeted services are
 // affected, without implicit dependency traversal.
 //
+// timeoutOverride, when non-nil, is used explicitly for every targeted
+// container (this is how cd.doco.job.stop_services.timeout is applied). When
+// nil, each container's own configured stop timeout (populated from the
+// compose file's stop_grace_period) is honored by leaving the stop request's
+// timeout unset, letting the Docker engine apply it; DefaultStopServicesTimeout
+// is only used explicitly as a fallback for containers that have no stop
+// timeout configured.
+//
 // This is best-effort: if stopping one container fails, the remaining
 // containers are still attempted, and all failures are aggregated into the
 // returned error.
-func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string, timeout time.Duration) error {
+func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string, timeoutOverride *time.Duration) error {
 	if len(services) == 0 {
 		return nil
 	}
@@ -119,13 +134,6 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 	containers, err := GetLabeledContainers(ctx, dockerCli.Client(), api.ProjectLabel, projectName, true)
 	if err != nil {
 		return fmt.Errorf("failed to list containers for project %q: %w", projectName, err)
-	}
-
-	timeoutSecs := int(timeout.Seconds())
-
-	stopOpts := client.ContainerStopOptions{}
-	if timeoutSecs > 0 {
-		stopOpts.Timeout = &timeoutSecs
 	}
 
 	var errs []string
@@ -140,6 +148,32 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 			continue
 		}
 
+		stopOpts := client.ContainerStopOptions{}
+
+		switch {
+		case timeoutOverride != nil:
+			secs := int(timeoutOverride.Seconds())
+			stopOpts.Timeout = &secs
+		default:
+			hasOwnTimeout, inspectErr := containerHasConfiguredStopTimeout(ctx, dockerCli, c.ID)
+			if inspectErr != nil {
+				errs = append(errs, fmt.Sprintf("container %s (service %q): %v", c.ID[:12], svcName, inspectErr))
+
+				continue
+			}
+
+			if !hasOwnTimeout {
+				// No container-configured stop timeout: fall back to the
+				// default explicitly so behavior for services without a
+				// declared stop_grace_period is unchanged.
+				secs := int(DefaultStopServicesTimeout.Seconds())
+				stopOpts.Timeout = &secs
+			}
+			// Otherwise leave stopOpts.Timeout nil, so the engine applies
+			// the container's own StopTimeout (derived from the compose
+			// file's stop_grace_period).
+		}
+
 		if _, err := dockerCli.Client().ContainerStop(ctx, c.ID, stopOpts); err != nil {
 			errs = append(errs, fmt.Sprintf("container %s (service %q): %v", c.ID[:12], svcName, err))
 		}
@@ -150,6 +184,19 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 	}
 
 	return nil
+}
+
+// containerHasConfiguredStopTimeout reports whether the container has an
+// explicit StopTimeout configured (i.e. the compose file declared a stop_grace_period for its service).
+// When true, callers should leave the stop request's timeout unset so the Docker engine applies
+// the container's own value instead of a hardcoded default.
+func containerHasConfiguredStopTimeout(ctx context.Context, dockerCli command.Cli, containerID string) (bool, error) {
+	inspectResult, err := dockerCli.Client().ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+	if err != nil {
+		return false, fmt.Errorf("inspect container %s: %w", containerID, err)
+	}
+
+	return inspectResult.Container.Config != nil && inspectResult.Container.Config.StopTimeout != nil, nil
 }
 
 // StartProjectServices starts specific named services within a compose project.

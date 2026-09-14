@@ -320,6 +320,96 @@ func TestParseJobScheduleLabels_StopServices(t *testing.T) {
 	})
 }
 
+func TestParseJobScheduleLabels_StopServicesTimeout(t *testing.T) {
+	t.Parallel()
+
+	baseLabels := func(extra map[string]string) map[string]string {
+		m := map[string]string{
+			docoCDJobLabelNames.JobEnabled:       "true",
+			docoCDJobLabelNames.JobSchedule:      "0 2 * * *",
+			docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
+			docoCDJobLabelNames.JobStopServices:  "db",
+			api.ProjectLabel:                     "myproject",
+			api.ServiceLabel:                     "backup",
+		}
+		maps.Copy(m, extra)
+
+		return m
+	}
+
+	t.Run("unset by default", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, _, err := ParseJobScheduleLabels(baseLabels(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if cfg.StopServicesTimeout != nil {
+			t.Fatalf("expected StopServicesTimeout to be unset, got %v", *cfg.StopServicesTimeout)
+		}
+	})
+
+	t.Run("valid explicit value", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServicesTimeout: "180",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if cfg.StopServicesTimeout == nil || *cfg.StopServicesTimeout != 180 {
+			t.Fatalf("expected StopServicesTimeout=180, got %+v", cfg.StopServicesTimeout)
+		}
+	})
+
+	t.Run("rejects zero value", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServicesTimeout: "0",
+		}))
+		if err == nil {
+			t.Fatal("expected error for zero stop_services timeout, got nil")
+		}
+	})
+
+	t.Run("rejects negative value", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServicesTimeout: "-1",
+		}))
+		if err == nil {
+			t.Fatal("expected error for negative stop_services timeout, got nil")
+		}
+	})
+
+	t.Run("rejects non-numeric value", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServicesTimeout: "not-a-number",
+		}))
+		if err == nil {
+			t.Fatal("expected error for non-numeric stop_services timeout, got nil")
+		}
+	})
+
+	t.Run("rejects duration overflow", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServicesTimeout: "9223372037",
+		}))
+		if err == nil {
+			t.Fatal("expected error for overflowing stop_services timeout, got nil")
+		}
+	})
+}
+
 func TestValidateStopServicesSelfReference(t *testing.T) {
 	t.Parallel()
 

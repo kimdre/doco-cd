@@ -37,6 +37,7 @@ const (
 	swarmResourceNameMaxLen = 64
 	swarmHashSuffixLen      = 8
 	swarmBaseNameMaxLen     = swarmResourceNameMaxLen - (1 + swarmHashSuffixLen) // "_" + hash
+	swarmStopWaitBuffer     = 5 * time.Second
 )
 
 var (
@@ -665,6 +666,14 @@ var ErrSwarmServiceAlreadyStopped = errors.New("swarm service is already scaled 
 // waiting the scheduled job would start while the target's containers are
 // still shutting down and flushing to disk.
 //
+// timeoutOverride, when non-nil, is used explicitly as the wait deadline
+// (this is how cd.doco.job.stop_services.timeout is applied). When nil, the
+// service's own configured Spec.TaskTemplate.ContainerSpec.StopGracePeriod is
+// honored (plus a small buffer for scheduling overhead), falling back to
+// DefaultStopServicesTimeout if the service has no grace period configured.
+// This prevents a service declaring a long grace period from having its
+// shutdown wait time out prematurely.
+//
 // Global-mode services cannot be scaled to 0; the function returns
 // (0, ErrGlobalSwarmServiceNotScalable) so the caller can skip them gracefully.
 // A replicated service that is already at 0 replicas returns
@@ -673,10 +682,8 @@ var ErrSwarmServiceAlreadyStopped = errors.New("swarm service is already scaled 
 // The serviceName must be the full swarm-scoped name (e.g. "mystack_myservice").
 // In the cd.doco.job.stop_services label, cross-stack services are expressed as
 // "stack/service" and resolved to "stack_service" before calling this function.
-func StopSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName string, timeout time.Duration) (originalReplicas uint64, err error) {
-	result, err := dockerCLI.Client().ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
-		InsertDefaults: true,
-	})
+func StopSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName string, timeoutOverride *time.Duration) (originalReplicas uint64, err error) {
+	result, err := dockerCLI.Client().ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("inspect service %s: %w", serviceName, err)
 	}
@@ -709,11 +716,28 @@ func StopSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName st
 		return 0, fmt.Errorf("scale service %s to 0: %w", serviceName, err)
 	}
 
-	if err := waitForSwarmServiceTasksStopped(ctx, dockerCLI, svc.ID, serviceName, timeout); err != nil {
+	waitTimeout := resolveSwarmStopWaitTimeout(timeoutOverride, svc.Spec.TaskTemplate.ContainerSpec)
+
+	if err := waitForSwarmServiceTasksStopped(ctx, dockerCLI, svc.ID, serviceName, waitTimeout); err != nil {
 		return replicas, err
 	}
 
 	return replicas, nil
+}
+
+// resolveSwarmStopWaitTimeout determines the wait deadline used by waitForSwarmServiceTasksStopped:
+// an explicit override always wins; failing that, the service's own configured StopGracePeriod plus a small observation
+// buffer is used, falling back to DefaultStopServicesTimeout when unset.
+func resolveSwarmStopWaitTimeout(timeoutOverride *time.Duration, containerSpec *swarmTypes.ContainerSpec) time.Duration {
+	if timeoutOverride != nil {
+		return *timeoutOverride
+	}
+
+	if containerSpec != nil && containerSpec.StopGracePeriod != nil {
+		return *containerSpec.StopGracePeriod + swarmStopWaitBuffer
+	}
+
+	return DefaultStopServicesTimeout
 }
 
 // waitForSwarmServiceTasksStopped blocks until the given service has no tasks
@@ -724,7 +748,7 @@ func StopSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName st
 // and therefore returns before the tasks have actually shut down.
 func waitForSwarmServiceTasksStopped(ctx context.Context, dockerCLI command.Cli, serviceID, serviceName string, timeout time.Duration) error {
 	if timeout <= 0 {
-		timeout = 30 * time.Second
+		timeout = DefaultStopServicesTimeout
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
