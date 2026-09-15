@@ -599,12 +599,24 @@ func prepareComposeScheduledDeployConfig(
 			return fmt.Errorf("load local env files for scheduled service %s: %w", deployConfig.Name, err)
 		}
 
+		if err := deploy.LoadExternalSecretsFiles(deployConfig, sourceRepoPath); err != nil {
+			return fmt.Errorf("load local external secrets files for scheduled service %s: %w", deployConfig.Name, err)
+		}
+
 		if err := deploy.LoadLocalDotEnv(deployConfig, filepath.Join(repoPath, deployConfig.WorkingDirectory)); err != nil {
 			return fmt.Errorf("load remote env files for scheduled service %s: %w", deployConfig.Name, err)
+		}
+
+		if err := deploy.LoadExternalSecretsFiles(deployConfig, filepath.Join(repoPath, deployConfig.WorkingDirectory)); err != nil {
+			return fmt.Errorf("load remote external secrets files for scheduled service %s: %w", deployConfig.Name, err)
 		}
 	} else {
 		if err := deploy.LoadLocalDotEnv(deployConfig, filepath.Join(sourceRepoPath, deployConfig.WorkingDirectory)); err != nil {
 			return fmt.Errorf("load env files for scheduled service %s: %w", deployConfig.Name, err)
+		}
+
+		if err := deploy.LoadExternalSecretsFiles(deployConfig, filepath.Join(sourceRepoPath, deployConfig.WorkingDirectory)); err != nil {
+			return fmt.Errorf("load external secrets files for scheduled service %s: %w", deployConfig.Name, err)
 		}
 	}
 
@@ -613,6 +625,7 @@ func prepareComposeScheduledDeployConfig(
 	}
 
 	maps.Copy(deployConfig.Internal.Environment, deployConfig.Environment)
+	deploy.MergeExternalSecretsFromFiles(deployConfig)
 
 	if secretProvider == nil || len(deployConfig.ExternalSecrets) == 0 {
 		return nil

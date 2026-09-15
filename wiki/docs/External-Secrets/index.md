@@ -113,3 +113,33 @@ If `PROJECT_STAGE` is not set, the default `prod` is used.
 
 !!! info "Only use with trusted external secret references"
     Enable this option only when the external secret references are trusted, because referenced process environment variables are included in provider requests.
+
+### Defining External Secrets in a File
+
+Instead of (or in addition to) declaring `external_secrets` inline in your `.doco-cd.yml`, you can set `external_secrets_files` to a list of YAML files, each holding a map of env var name to external secret reference using the same shape as `external_secrets`:
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets_files:
+  - secrets.doco-cd.yaml
+```
+
+```yaml title="secrets.doco-cd.yaml"
+DB_PASSWORD: a8f1e4eb-d76d-47b4-aa3c-103733e77fce
+LABEL_SECRET: cfd0c4a9-16d4-44c8-9a80-c6143a7c7b71
+```
+
+File paths are resolved relative to the same directory as [dotenv files](Deploy-Settings.md#dotenv-file-format). Like `env_files`, you can use the `remote:<filepath>` syntax to load a file from the remote repository when `repository_url` is also specified:
+
+```yaml title=".doco-cd.yml"
+name: myapp
+repository_url: https://github.com/example/other-repo.git
+external_secrets_files:
+  - remote:secrets.doco-cd.yaml
+```
+
+Files can also be [SOPS-encrypted](https://github.com/getsops/sops), the same way encrypted dotenv files are supported.
+
+!!! note "Inline entries take precedence"
+    `external_secrets_files` are merged first, then `external_secrets` entries are applied on top. If the same name is defined in both, the inline value from `external_secrets` wins.
+
