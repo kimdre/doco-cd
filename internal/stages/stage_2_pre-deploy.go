@@ -146,6 +146,11 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to resolve external secrets: %w", err)
 		}
 
+		resolvedSecrets, err = secrettypes.InterpolateResolvedSecrets(resolvedSecrets, s.AppConfig.InterpolateResolvedSecrets)
+		if err != nil {
+			return fmt.Errorf("failed to interpolate resolved secrets: %w", err)
+		}
+
 		if s.DeployConfig.Internal.Environment == nil {
 			s.DeployConfig.Internal.Environment = make(map[string]string)
 		}

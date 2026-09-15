@@ -248,3 +248,103 @@ func TestInterpolateExternalSecretRefs(t *testing.T) {
 		})
 	}
 }
+
+func TestInterpolateResolvedSecrets(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     map[string]string
+		enabled   bool
+		want      map[string]string
+		wantError bool
+	}{
+		{
+			name: "chained reference resolved",
+			input: map[string]string{
+				"DB_PASSWORD": "hunter2",
+				"DB_HOST":     "db.internal",
+				"DB_URL":      "postgres://user:${DB_PASSWORD}@${DB_HOST}/mydb",
+			},
+			enabled: true,
+			want: map[string]string{
+				"DB_PASSWORD": "hunter2",
+				"DB_HOST":     "db.internal",
+				"DB_URL":      "postgres://user:hunter2@db.internal/mydb",
+			},
+		},
+		{
+			name: "multi-level chain",
+			input: map[string]string{
+				"A": "${B}-value",
+				"B": "${C}-mid",
+				"C": "leaf",
+			},
+			enabled: true,
+			want: map[string]string{
+				"A": "leaf-mid-value",
+				"B": "leaf-mid",
+				"C": "leaf",
+			},
+		},
+		{
+			name: "unshielded process env is left untouched",
+			input: map[string]string{
+				"DB_URL": "postgres://user@${PATH}/mydb",
+			},
+			enabled: true,
+			want: map[string]string{
+				"DB_URL": "postgres://user@${PATH}/mydb",
+			},
+		},
+		{
+			name: "escaped dollar preserved",
+			input: map[string]string{
+				"SECRET": "hunter2",
+				"VALUE":  "price: $$5 secret: ${SECRET}",
+			},
+			enabled: true,
+			want: map[string]string{
+				"SECRET": "hunter2",
+				"VALUE":  "price: $5 secret: hunter2",
+			},
+		},
+		{
+			name: "circular reference errors",
+			input: map[string]string{
+				"A": "${B}",
+				"B": "${A}",
+			},
+			enabled:   true,
+			wantError: true,
+		},
+		{
+			name: "disabled leaves values untouched",
+			input: map[string]string{
+				"DB_PASSWORD": "hunter2",
+				"DB_URL":      "postgres://user:${DB_PASSWORD}@host/mydb",
+			},
+			enabled: false,
+			want: map[string]string{
+				"DB_PASSWORD": "hunter2",
+				"DB_URL":      "postgres://user:${DB_PASSWORD}@host/mydb",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := InterpolateResolvedSecrets(tt.input, tt.enabled)
+
+			if (err != nil) != tt.wantError {
+				t.Fatalf("unexpected error state: %v", err)
+			}
+
+			if tt.wantError {
+				return
+			}
+
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("got %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
