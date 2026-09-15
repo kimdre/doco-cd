@@ -635,6 +635,11 @@ func prepareComposeScheduledDeployConfig(
 		return fmt.Errorf("resolve external secrets for scheduled service %s: %w", deployConfig.Name, err)
 	}
 
+	resolvedSecrets, err = secrettypes.InterpolateResolvedSecrets(resolvedSecrets, opts.InterpolateResolvedSecrets)
+	if err != nil {
+		return fmt.Errorf("interpolate resolved secrets for scheduled service %s: %w", deployConfig.Name, err)
+	}
+
 	maps.Copy(deployConfig.Internal.Environment, resolvedSecrets)
 
 	return nil

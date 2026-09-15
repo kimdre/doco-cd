@@ -113,3 +113,25 @@ If `PROJECT_STAGE` is not set, the default `prod` is used.
 
 !!! info "Only use with trusted external secret references"
     Enable this option only when the external secret references are trusted, because referenced process environment variables are included in provider requests.
+
+### Referencing Other Resolved Secrets
+
+A resolved secret's value can itself reference another external secret by name, letting you compose one secret from others without duplicating values in your Compose file.
+Set `INTERPOLATE_RESOLVED_SECRETS=true` to enable this feature. It is disabled by default:
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets:
+  DB_PASSWORD: <secret-ref-a>
+  DB_HOST: <secret-ref-b>
+  DB_URL: <secret-ref-c> # resolves to: postgres://user:${DB_PASSWORD}@${DB_HOST}/mydb
+```
+
+With `INTERPOLATE_RESOLVED_SECRETS=true`, if the secret provider returns `postgres://user:${DB_PASSWORD}@${DB_HOST}/mydb` for `DB_URL`, doco-cd substitutes `${DB_PASSWORD}` and `${DB_HOST}` with the values of the other resolved external secrets before the value is made available to the Compose file. References can be chained across multiple secrets.
+
+!!! note "Only other external secrets are used"
+    Unlike [reference interpolation](#with-interpolation), this only substitutes names that match another entry in `external_secrets`. The doco-cd process environment is never consulted, so an unrelated `${VAR}` left in a secret's value (e.g. matching an OS environment variable) is left untouched.
+
+!!! warning "Circular references fail the deployment"
+    If secret `A`'s value references secret `B`, and `B`'s value references `A`, doco-cd returns an error instead of interpolating.
+
