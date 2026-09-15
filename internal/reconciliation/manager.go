@@ -324,6 +324,19 @@ func (m *Manager) UnmarkSchedulerStopHeld(contextName, project, service string) 
 	m.schedulerHolds.unmark(contextName, project, service)
 }
 
+// IsSchedulerStopHeld reports whether the given Compose service is currently
+// held stopped by the job scheduler, including the post-release grace period.
+// The pre-deploy stage uses it to tell doco-cd's own stop window apart from
+// real drift, so a poll tick landing inside that window does not deploy a stack
+// that is about to be started again anyway.
+func (m *Manager) IsSchedulerStopHeld(contextName, project, service string) bool {
+	if m == nil {
+		return false
+	}
+
+	return m.schedulerHolds.isServiceHeld(contextName, project, service)
+}
+
 func schedulerHeldServiceKey(contextName, project, service string) string {
 	contextName = docker.NormalizeContextName(contextName)
 	return contextName + "/" + project + "/" + service
@@ -379,8 +392,15 @@ func (r *schedulerHoldRegistry) isHeld(contextName string, attrs map[string]stri
 		return false
 	}
 
-	project := strings.TrimSpace(attrs[api.ProjectLabel])
-	service := strings.TrimSpace(attrs[api.ServiceLabel])
+	return r.isServiceHeld(contextName, attrs[api.ProjectLabel], attrs[api.ServiceLabel])
+}
+
+// isServiceHeld reports whether the given Compose project/service on the given
+// Docker context is currently held stopped by the job scheduler, including the
+// post-release grace period.
+func (r *schedulerHoldRegistry) isServiceHeld(contextName, project, service string) bool {
+	project = strings.TrimSpace(project)
+	service = strings.TrimSpace(service)
 
 	if project == "" || service == "" {
 		return false
