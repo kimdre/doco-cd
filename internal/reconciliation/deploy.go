@@ -253,6 +253,7 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 			AppConfig:      m.appConfig,
 			SecretProvider: m.secretProvider,
 			Notifier:       m.notifier,
+			SchedulerHolds: m,
 		},
 		stages.RunInput{
 			Log:        deployLog,
