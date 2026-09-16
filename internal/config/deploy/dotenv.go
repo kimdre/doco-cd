@@ -38,7 +38,7 @@ func LoadLocalDotEnv(config *Config, basePath string) error {
 	for _, f := range config.EnvFiles {
 		// Process any env-files that are local and not in the remote repository (see repository_url)
 		if !strings.HasPrefix(f, remotePrefix) {
-			absPath := filepath.Join(basePath, f)
+			absPath := filepath.Clean(filepath.Join(basePath, f))
 
 			// Decrypt file if needed
 			isEncrypted, err := encryption.IsEncryptedFile(absPath)
