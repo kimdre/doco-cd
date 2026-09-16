@@ -318,6 +318,11 @@ func (t *deploymentRunTracker) List(limit int, trigger string, status string) []
 		limit = 50
 	}
 
+	const maxLimit = 200
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
 	t.cleanup(time.Now().UTC())
 
 	t.mu.RLock()
