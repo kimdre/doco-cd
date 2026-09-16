@@ -193,6 +193,22 @@ func resolvedProjectFiles(p *types.Project) ([]projectFile, error) {
 	return files.list(), nil
 }
 
+// repoRelativePath converts an absolute path on the docker host to the repository-relative,
+// slash-separated form go-git reports in a commit log. ok is false when the path is not
+// inside the repository, which is how a host path or a remote include is dropped.
+func repoRelativePath(repoPath, absPath string) (rel string, ok bool) {
+	if !filesystem.InBasePath(repoPath, absPath) {
+		return "", false
+	}
+
+	rel, err := filepath.Rel(filepath.Clean(repoPath), absPath)
+	if err != nil {
+		return "", false
+	}
+
+	return filepath.ToSlash(rel), true
+}
+
 // projectRepoPaths converts the file set of a compose project to paths relative to the
 // root of the repository, the form go-git reports in a commit log. Paths outside the
 // repository, e.g. a host path or a remote include, are dropped.
@@ -207,16 +223,10 @@ func projectRepoPaths(repoPath string, p *types.Project) (files, dirs []string, 
 	}
 
 	for _, f := range projectFiles {
-		if !filesystem.InBasePath(repoPath, f.Path) {
+		rel, ok := repoRelativePath(repoPath, f.Path)
+		if !ok {
 			continue
 		}
-
-		rel, relErr := filepath.Rel(filepath.Clean(repoPath), f.Path)
-		if relErr != nil {
-			continue
-		}
-
-		rel = filepath.ToSlash(rel)
 
 		if !f.IsDir {
 			files = append(files, rel)
@@ -245,7 +255,7 @@ func projectRepoPaths(repoPath string, p *types.Project) (files, dirs []string, 
 // The returned filter is nil when the project covers the repository root or resolves to no
 // path inside the repository. Both match every path, so filtering would only cost tree
 // diffs, and callers read a nil filter as "do not filter".
-func ProjectPathFilter(repoPath string, p *types.Project) (func(string) bool, error) {
+func ProjectPathFilter(repoPath string, p *types.Project, extraPaths ...string) (func(string) bool, error) {
 	if p == nil {
 		return nil, nil
 	}
@@ -253,6 +263,21 @@ func ProjectPathFilter(repoPath string, p *types.Project) (func(string) bool, er
 	filePaths, dirPaths, coversRepoRoot, err := projectRepoPaths(repoPath, p)
 	if err != nil {
 		return nil, err
+	}
+
+	// Files that belong to the stack without being part of the compose project. The
+	// deployment configuration is the motivating case: it is what declares the stack and
+	// carries its image tags, so a commit that changes only it is the reason this deploy
+	// happened — but it is not a compose file, so the project never names it and its
+	// commit was dropped from the changelog.
+	// Paths outside the repository are ignored, the same as project files.
+	for _, extra := range extraPaths {
+		rel, ok := repoRelativePath(repoPath, extra)
+		if !ok {
+			continue
+		}
+
+		filePaths = append(filePaths, rel)
 	}
 
 	if coversRepoRoot || (len(filePaths) == 0 && len(dirPaths) == 0) {

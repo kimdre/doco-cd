@@ -40,6 +40,10 @@ type changelogLayout struct {
 	composeFiles []string
 	envFiles     []string
 	profiles     []string
+	// deployConfig is the deployment configuration file of the stack, relative to the repo
+	// root. It is not part of the compose project, so it is passed to ProjectPathFilter
+	// separately, the way the post-deploy stage passes Config.Internal.File.
+	deployConfig string
 	// want are the commit subjects the changelog of the stack should have, newest first.
 	want []string
 	// note documents why a layout behaves the way it does.
@@ -542,8 +546,27 @@ secrets:
 			},
 			workingDir:   "stacks/a",
 			composeFiles: []string{"stacks/a/compose.yaml"},
+			deployConfig: ".doco-cd.yml",
+			want:         []string{"change deploy config"},
+			note:         "the deploy config is not part of the compose project, so it is matched via the extra paths ProjectPathFilter takes",
+		},
+		{
+			name: "deploy config of another stack is not reported",
+			files: map[string]string{
+				".doco-cd.yml":          "name: a\nworking_dir: stacks/a\n",
+				".doco-cd.other.yml":    "name: b\nworking_dir: stacks/b\n",
+				"stacks/a/compose.yaml": stackACompose,
+				"stacks/b/compose.yaml": stackBCompose,
+			},
+			steps: []layoutStep{
+				{msg: "touch b", write: map[string]string{"stacks/b/compose.yaml": stackBCompose + "# b\n"}},
+				{msg: "change other deploy config", write: map[string]string{".doco-cd.other.yml": "name: b\nworking_dir: stacks/b\nforce_recreate: true\n"}},
+			},
+			workingDir:   "stacks/a",
+			composeFiles: []string{"stacks/a/compose.yaml"},
+			deployConfig: ".doco-cd.yml",
 			want:         []string{},
-			note:         "GAP: the deploy config is not part of the compose project, so its own change is not reported",
+			note:         "only THIS stack's deploy config is matched, not every deploy config in the repository",
 		},
 		{
 			name: "include of another compose file",
@@ -733,7 +756,12 @@ func TestChangelogFilterLayouts(t *testing.T) {
 				t.Fatalf("projectRepoPaths: %v", err)
 			}
 
-			pathFilter, err := ProjectPathFilter(repoDir, project)
+			var extraPaths []string
+			if l.deployConfig != "" {
+				extraPaths = append(extraPaths, filepath.Join(repoDir, l.deployConfig))
+			}
+
+			pathFilter, err := ProjectPathFilter(repoDir, project, extraPaths...)
 			if err != nil {
 				t.Fatalf("ProjectPathFilter: %v", err)
 			}
@@ -762,7 +790,14 @@ func TestChangelogFilterLayouts(t *testing.T) {
 			// go-git approximates `git log -- <paths>`, so the result is also compared to
 			// what git itself reports over the same path set. Only git can answer that,
 			// the check is skipped where the binary is missing.
-			oracle, args, ok := gitLogOracle(t, repoDir, baseline, head, filePaths, dirPaths, pathFilter != nil)
+			// The deploy config is part of the path set the filter matches, so git has to
+			// be given it too or the two disagree by construction.
+			oraclePaths := filePaths
+			if l.deployConfig != "" {
+				oraclePaths = append(slices.Clone(filePaths), l.deployConfig)
+			}
+
+			oracle, args, ok := gitLogOracle(t, repoDir, baseline, head, oraclePaths, dirPaths, pathFilter != nil)
 			if !ok {
 				return
 			}
