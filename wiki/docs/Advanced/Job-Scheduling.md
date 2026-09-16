@@ -252,6 +252,9 @@ Behavior:
 
     If two scheduled jobs happen to list the same target service (e.g. two backup jobs sharing a cache), the target is only actually restarted once every job that stopped it has finished. It will not be brought back up prematurely while another job still needs it stopped.
 
+??? note "Stop window is not drift"
+    A service held stopped by a running job is doco-cd's own doing, so it is not treated as drift: reconciliation does not restart it, and a poll or webhook landing inside the stop window does not redeploy its stack because of the missing replicas. The suppression stays active for a short grace period after the service is started again.
+
 #### Stop timeout behavior
 
 By default, doco-cd honors each target's own configured shutdown grace period instead of a fixed timeout:

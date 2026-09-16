@@ -137,6 +137,17 @@ type RepositoryData struct {
 	OCITrusted      bool              // True when the OCI artifact passed trust-policy verification before reconciliation/cleanup
 }
 
+// SchedulerStopHolds reports whether a Compose service is currently held
+// stopped by doco-cd's own job scheduler, i.e. a scheduled job listed it in
+// cd.doco.job.stop_services and has not restarted it yet (the post-release
+// grace period counts as held too).
+//
+// Holds are only registered for Compose-mode jobs, keyed by Docker context,
+// Compose project and service name.
+type SchedulerStopHolds interface {
+	IsSchedulerStopHeld(contextName, project, service string) bool
+}
+
 // Docker holds the Docker CLI and client instances along with the data mount point.
 type Docker struct {
 	Cmd            command.Cli
@@ -190,6 +201,8 @@ type StageManager struct {
 	SecretProvider secretprovider.SecretProvider
 	Notifier       notification.Sender
 	Metadata       notification.Metadata // Notification metadata (may include reconciliation event info)
+	// SchedulerHolds is optional; a nil value means no scheduler stop holds are tracked.
+	SchedulerHolds SchedulerStopHolds
 }
 
 // Dependencies holds the stable services shared by every StageManager run in a process:
@@ -199,6 +212,10 @@ type Dependencies struct {
 	AppConfig      *app.Config `validate:"required,nostructlevel"`
 	SecretProvider secretprovider.SecretProvider
 	Notifier       notification.Sender `validate:"required,nostructlevel"`
+	// SchedulerHolds lets the pre-deploy stage ask whether a service is
+	// intentionally stopped by a running scheduled job. A nil value disables
+	// the check.
+	SchedulerHolds SchedulerStopHolds
 }
 
 // RunInput holds the per-deployment input for a single StageManager run: the job identity and
@@ -238,6 +255,7 @@ func NewStageManager(dependencies Dependencies, run RunInput) (*StageManager, er
 		Repository:     run.Repository,
 		SecretProvider: dependencies.SecretProvider,
 		Notifier:       dependencies.Notifier,
+		SchedulerHolds: dependencies.SchedulerHolds,
 		Metadata:       run.Metadata,
 		Stages: &Stages{
 			Init: &InitStageData{

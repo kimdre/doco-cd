@@ -372,6 +372,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		mismatchServices := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus, s.Docker.Project.Services)
+		mismatchServices = s.dropSchedulerHeldMismatches(mismatchServices, stageLog)
 
 		if s.DeployConfig.ForceRecreate {
 			stageLog.Debug("force recreate enabled, proceeding with deployment",
@@ -419,6 +420,57 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	}
 
 	return nil
+}
+
+// dropSchedulerHeldMismatches removes service mismatches that doco-cd caused
+// itself: a scheduled job with cd.doco.job.stop_services stops its targets
+// before the job runs and starts them again afterwards. A poll tick landing
+// inside that window sees zero running replicas, reports drift and deploys a
+// stack that is already about to come back, which costs a full deploy cycle and
+// a "Deployment completed" notification for nothing.
+//
+// Same suppression the reconciliation event listener already does, and with the
+// same scope: holds are registered for Compose-mode jobs only, so Swarm
+// deployments are left alone.
+func (s *StageManager) dropSchedulerHeldMismatches(mismatches []docker.ServiceMismatch, stageLog *slog.Logger) []docker.ServiceMismatch {
+	if len(mismatches) == 0 || s.SchedulerHolds == nil {
+		return mismatches
+	}
+
+	if s.Docker == nil || s.Docker.SwarmMode || s.Docker.Project == nil || s.Docker.Project.Name == "" {
+		return mismatches
+	}
+
+	contextName := ""
+	if s.DeployConfig != nil {
+		contextName = s.DeployConfig.Context
+	}
+
+	kept := make([]docker.ServiceMismatch, 0, len(mismatches))
+
+	var held []string
+
+	for _, mismatch := range mismatches {
+		if s.SchedulerHolds.IsSchedulerStopHeld(contextName, s.Docker.Project.Name, mismatch.ServiceName) {
+			held = append(held, mismatch.ServiceName)
+			continue
+		}
+
+		kept = append(kept, mismatch)
+	}
+
+	if len(held) > 0 && stageLog != nil {
+		stageLog.Debug("ignoring service mismatch for services intentionally held stopped by job scheduler",
+			slog.String("project", s.Docker.Project.Name),
+			slog.Any("services", held),
+		)
+	}
+
+	if len(kept) == 0 {
+		return nil
+	}
+
+	return kept
 }
 
 func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, error) {

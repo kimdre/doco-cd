@@ -644,3 +644,156 @@ func TestLoadComposeProjectHashCachesProjectAndHash(t *testing.T) {
 		t.Fatalf("cached project hash = %q, returned %q", manager.Docker.ProjectHash, got)
 	}
 }
+
+// fakeSchedulerHolds is a SchedulerStopHolds stub keyed by context/project/service.
+type fakeSchedulerHolds struct {
+	held  map[string]bool
+	calls int
+}
+
+func (f *fakeSchedulerHolds) IsSchedulerStopHeld(contextName, project, service string) bool {
+	f.calls++
+
+	return f.held[contextName+"/"+project+"/"+service]
+}
+
+// TestDropSchedulerHeldMismatches_SkipsDeploymentDuringJobStopWindow reproduces #1856:
+// a scheduled job stops its cd.doco.job.stop_services targets, a poll tick lands inside
+// that stop window, and the stopped service reports 0 running replicas. Without the
+// scheduler-hold check the replicas mismatch makes shouldSkipDeployment return false and
+// doco-cd runs a full deploy cycle for a service it stopped itself.
+func TestDropSchedulerHeldMismatches_SkipsDeploymentDuringJobStopWindow(t *testing.T) {
+	project := &types.Project{
+		Name: "db",
+		Services: types.Services{
+			"db": types.ServiceConfig{
+				Name:    "db",
+				Restart: "unless-stopped",
+			},
+		},
+	}
+
+	// Service is present but stopped, so no container counts as a running replica.
+	deployedStatus := map[docker.Service]docker.ServiceStatus{
+		"db": {Labels: docker.Labels{}},
+	}
+
+	mismatches := docker.CheckServiceMismatch(false, deployedStatus, project.Services)
+	if len(mismatches) != 1 {
+		t.Fatalf("expected the stopped service to report a mismatch, got %v", mismatches)
+	}
+
+	if shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, mismatches) {
+		t.Fatal("expected an unfiltered replicas mismatch to force a deployment")
+	}
+
+	holds := &fakeSchedulerHolds{held: map[string]bool{"/db/db": true}}
+
+	s := &StageManager{
+		Docker:         &Docker{Project: project},
+		DeployConfig:   &deploy.Config{Name: "db"},
+		SchedulerHolds: holds,
+	}
+
+	filtered := s.dropSchedulerHeldMismatches(mismatches, nil)
+	if len(filtered) != 0 {
+		t.Fatalf("expected mismatch of scheduler-held service to be dropped, got %v", filtered)
+	}
+
+	if !shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, filtered) {
+		t.Fatal("expected deployment to be skipped while the job scheduler holds the service stopped")
+	}
+}
+
+func TestDropSchedulerHeldMismatches(t *testing.T) {
+	mismatches := []docker.ServiceMismatch{
+		{ServiceName: "db", Reasons: []docker.ServiceMismatchReason{{Reason: docker.ServiceMismatchReasonReplicas, Want: 1, Got: uint64(0)}}},
+		{ServiceName: "web", Reasons: []docker.ServiceMismatchReason{{Reason: docker.ServiceMismatchReasonReplicas, Want: 1, Got: uint64(0)}}},
+	}
+
+	project := &types.Project{
+		Name: "stack",
+		Services: types.Services{
+			"db":  types.ServiceConfig{Name: "db", Restart: "unless-stopped"},
+			"web": types.ServiceConfig{Name: "web", Restart: "unless-stopped"},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		swarmMode bool
+		context   string
+		holds     *fakeSchedulerHolds
+		want      []string
+		wantCalls bool
+	}{
+		{
+			name:      "held service is dropped, others stay",
+			holds:     &fakeSchedulerHolds{held: map[string]bool{"/stack/db": true}},
+			want:      []string{"web"},
+			wantCalls: true,
+		},
+		{
+			name:      "nothing held keeps every mismatch",
+			holds:     &fakeSchedulerHolds{held: map[string]bool{}},
+			want:      []string{"db", "web"},
+			wantCalls: true,
+		},
+		{
+			name:      "holds are keyed by docker context",
+			context:   "remote",
+			holds:     &fakeSchedulerHolds{held: map[string]bool{"/stack/db": true}},
+			want:      []string{"db", "web"},
+			wantCalls: true,
+		},
+		{
+			// Holds are only registered for compose-mode jobs, same scope as the
+			// reconciliation event listener uses.
+			name:      "swarm deployments are untouched",
+			swarmMode: true,
+			holds:     &fakeSchedulerHolds{held: map[string]bool{"/stack/db": true}},
+			want:      []string{"db", "web"},
+			wantCalls: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &StageManager{
+				Docker:         &Docker{Project: project, SwarmMode: tc.swarmMode},
+				DeployConfig:   &deploy.Config{Name: "stack", Context: tc.context},
+				SchedulerHolds: tc.holds,
+			}
+
+			got := s.dropSchedulerHeldMismatches(mismatches, nil)
+
+			names := make([]string, 0, len(got))
+			for _, m := range got {
+				names = append(names, m.ServiceName)
+			}
+
+			if !slices.Equal(names, tc.want) {
+				t.Fatalf("expected remaining mismatches %v, got %v", tc.want, names)
+			}
+
+			if tc.wantCalls != (tc.holds.calls > 0) {
+				t.Fatalf("expected scheduler holds queried=%v, got %d calls", tc.wantCalls, tc.holds.calls)
+			}
+		})
+	}
+}
+
+// TestDropSchedulerHeldMismatches_NoTracker covers deployments created without a
+// scheduler hold tracker, e.g. from tests or an embedding that does not run a scheduler.
+func TestDropSchedulerHeldMismatches_NoTracker(t *testing.T) {
+	mismatches := []docker.ServiceMismatch{{ServiceName: "db"}}
+
+	s := &StageManager{
+		Docker:       &Docker{Project: &types.Project{Name: "stack"}},
+		DeployConfig: &deploy.Config{Name: "stack"},
+	}
+
+	if got := s.dropSchedulerHeldMismatches(mismatches, nil); len(got) != 1 {
+		t.Fatalf("expected mismatches to pass through unchanged, got %v", got)
+	}
+}

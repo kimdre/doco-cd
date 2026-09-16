@@ -182,3 +182,52 @@ func TestStackDeploymentKey_NormalizesDefaultContext(t *testing.T) {
 		t.Fatalf("stackDeploymentKey() produced the same key %q for different contexts", defaultKey)
 	}
 }
+
+// TestIsSchedulerStopHeld covers the exported query used by the pre-deploy stage
+// (#1856) so a poll tick landing inside a scheduled job's stop window does not read
+// doco-cd's own stop as drift.
+func TestIsSchedulerStopHeld(t *testing.T) {
+	r := newTestManager(t)
+
+	if r.IsSchedulerStopHeld("", "proj", "db") {
+		t.Fatal("expected no hold before the scheduler stopped anything")
+	}
+
+	r.MarkSchedulerStopHeld("", "proj", "db")
+
+	if !r.IsSchedulerStopHeld("", "proj", "db") {
+		t.Fatal("expected held service to be reported as held")
+	}
+
+	if r.IsSchedulerStopHeld("", "proj", "web") {
+		t.Fatal("expected untouched service in the same project to not be held")
+	}
+
+	if r.IsSchedulerStopHeld("remote", "proj", "db") {
+		t.Fatal("expected hold to be scoped to its docker context")
+	}
+
+	// The grace period keeps the hold alive shortly after the restart, which is what
+	// covers a poll that starts while the service is still coming back up.
+	r.UnmarkSchedulerStopHeld("", "proj", "db")
+
+	if !r.IsSchedulerStopHeld("", "proj", "db") {
+		t.Fatal("expected hold to stay active during the post-release grace period")
+	}
+}
+
+// TestIsSchedulerStopHeldEmptyNames guards against empty project/service names
+// matching an unrelated hold key.
+func TestIsSchedulerStopHeldEmptyNames(t *testing.T) {
+	r := newTestManager(t)
+
+	r.MarkSchedulerStopHeld("", "proj", "db")
+
+	if r.IsSchedulerStopHeld("", "", "") {
+		t.Fatal("expected empty project/service to never be held")
+	}
+
+	if r.IsSchedulerStopHeld("", "proj", "") {
+		t.Fatal("expected empty service name to never be held")
+	}
+}
