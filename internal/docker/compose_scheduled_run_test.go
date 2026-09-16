@@ -842,6 +842,161 @@ external_secrets:
 	}
 }
 
+// TestLoadComposeScheduledProject_ResolvesExternalSecretsFromFile proves that
+// external secrets declared via external_secrets_files (rather than inline
+// external_secrets) are loaded and resolved correctly when a scheduled job
+// reloads its deploy config at run time, exercising the
+// deploy.LoadExternalSecretsFiles/MergeExternalSecretsFromFiles wiring added
+// to prepareComposeScheduledDeployConfig.
+func TestLoadComposeScheduledProject_ResolvesExternalSecretsFromFile(t *testing.T) {
+	dataMountPath := t.TempDir()
+	opts := ScheduledComposeOptions{
+		ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir: "/",
+	}
+
+	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
+
+	workingDir := filepath.Join(repoRoot, "stacks", "nas", "backup")
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(workingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	composePath := filepath.Join(workingDir, "compose.yml")
+	createComposeFile(t, composePath, `services:
+  backup:
+    image: busybox:latest
+    environment:
+      MY_SECRET: ${MY_SECRET}
+`)
+
+	createComposeFile(t, filepath.Join(workingDir, "secrets.doco-cd.yaml"), `MY_SECRET:
+  store_ref: bitwarden-login
+  remote_ref:
+    key: my-bitwarden-item-id
+    property: password
+`)
+
+	createComposeFile(t, filepath.Join(repoRoot, ".doco-cd.yml"), `name: backup-job
+reference: refs/heads/main
+working_dir: stacks/nas/backup
+compose_files:
+  - compose.yml
+external_secrets_files:
+  - secrets.doco-cd.yaml
+`)
+
+	project, err := loadComposeScheduledProject(context.Background(), nil, composeScheduledServiceRef{
+		Project:        "backup-job",
+		Service:        "backup",
+		WorkingDir:     workingDir,
+		ConfigFiles:    []string{composePath},
+		RepositoryURL:  "https://example.com/owner/repo",
+		DeploymentName: "backup-job",
+		Reference:      "refs/heads/main",
+	}, newStubProvider(map[string]string{"MY_SECRET": "resolved-from-file"}, nil), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	svc, err := project.GetService("backup")
+	if err != nil {
+		t.Fatalf("failed to get backup service: %v", err)
+	}
+
+	if svc.Environment == nil || svc.Environment["MY_SECRET"] == nil {
+		t.Fatal("expected MY_SECRET to be present in service environment")
+	}
+
+	if *svc.Environment["MY_SECRET"] != "resolved-from-file" {
+		t.Fatalf("expected MY_SECRET to be resolved from external_secrets_files, got %q", *svc.Environment["MY_SECRET"])
+	}
+}
+
+// TestLoadComposeScheduledProject_InlineExternalSecretsWinOverFile proves that
+// when the same env var is defined both in external_secrets_files and inline
+// external_secrets, the inline value is what actually reaches the resolved
+// compose service environment, through the full prepareComposeScheduledDeployConfig
+// wiring (not just the isolated MergeExternalSecretsFromFiles unit test).
+func TestLoadComposeScheduledProject_InlineExternalSecretsWinOverFile(t *testing.T) {
+	dataMountPath := t.TempDir()
+	opts := ScheduledComposeOptions{
+		ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir: "/",
+	}
+
+	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
+
+	workingDir := filepath.Join(repoRoot, "stacks", "nas", "backup")
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(workingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	composePath := filepath.Join(workingDir, "compose.yml")
+	createComposeFile(t, composePath, `services:
+  backup:
+    image: busybox:latest
+    environment:
+      MY_SECRET: ${MY_SECRET}
+`)
+
+	createComposeFile(t, filepath.Join(workingDir, "secrets.doco-cd.yaml"), `MY_SECRET:
+  store_ref: file-store
+  remote_ref:
+    key: file-item-id
+    property: password
+`)
+
+	createComposeFile(t, filepath.Join(repoRoot, ".doco-cd.yml"), `name: backup-job
+reference: refs/heads/main
+working_dir: stacks/nas/backup
+compose_files:
+  - compose.yml
+external_secrets_files:
+  - secrets.doco-cd.yaml
+external_secrets:
+  MY_SECRET:
+    store_ref: bitwarden-login
+    remote_ref:
+      key: my-bitwarden-item-id
+      property: password
+`)
+
+	project, err := loadComposeScheduledProject(context.Background(), nil, composeScheduledServiceRef{
+		Project:        "backup-job",
+		Service:        "backup",
+		WorkingDir:     workingDir,
+		ConfigFiles:    []string{composePath},
+		RepositoryURL:  "https://example.com/owner/repo",
+		DeploymentName: "backup-job",
+		Reference:      "refs/heads/main",
+	}, newStubProvider(map[string]string{"MY_SECRET": "resolved-inline"}, nil), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	svc, err := project.GetService("backup")
+	if err != nil {
+		t.Fatalf("failed to get backup service: %v", err)
+	}
+
+	if svc.Environment == nil || svc.Environment["MY_SECRET"] == nil {
+		t.Fatal("expected MY_SECRET to be present in service environment")
+	}
+
+	if *svc.Environment["MY_SECRET"] != "resolved-inline" {
+		t.Fatalf("expected MY_SECRET to be resolved from inline external_secrets (taking precedence over the file), got %q", *svc.Environment["MY_SECRET"])
+	}
+}
+
 // TestLoadComposeScheduledProject_InterpolateExternalSecretsHonoredIndependentOfEnvVar
 // proves that legacy external secret reference interpolation is controlled solely by
 // ScheduledComposeOptions.InterpolateExternalSecrets, not by reading the

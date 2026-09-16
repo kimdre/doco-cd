@@ -68,6 +68,11 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		if err != nil {
 			return fmt.Errorf("failed to parse local env files: %w", err)
 		}
+
+		err = deploy.LoadExternalSecretsFiles(s.DeployConfig, s.Repository.PathInternal)
+		if err != nil {
+			return fmt.Errorf("failed to parse local external secrets files: %w", err)
+		}
 	}
 
 	s.Repository.PathInternal, err = filesystem.VerifyAndSanitizePath(filepath.Join(s.Docker.DataMountPoint.Destination, s.Repository.Name), s.Docker.DataMountPoint.Destination) // Path inside the container
@@ -101,7 +106,13 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			return fmt.Errorf("failed to parse env files from OCI artifact: %w", err)
 		}
 
+		err = deploy.LoadExternalSecretsFiles(s.DeployConfig, filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory))
+		if err != nil {
+			return fmt.Errorf("failed to parse external secrets files from OCI artifact: %w", err)
+		}
+
 		mergeDeploymentEnvironment(s.DeployConfig)
+		deploy.MergeExternalSecretsFromFiles(s.DeployConfig)
 
 		s.Log = s.Log.With(
 			slog.String("stack", s.DeployConfig.Name),
@@ -180,9 +191,16 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		if err != nil {
 			return fmt.Errorf("failed to parse remote env files: %w", err)
 		}
+
+		// Now also load remote external secrets files.
+		err = deploy.LoadExternalSecretsFiles(s.DeployConfig, filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory))
+		if err != nil {
+			return fmt.Errorf("failed to parse remote external secrets files: %w", err)
+		}
 	}
 
 	mergeDeploymentEnvironment(s.DeployConfig)
+	deploy.MergeExternalSecretsFromFiles(s.DeployConfig)
 
 	if s.DeployConfig.Destroy.Enabled {
 		// Skip deployment if another project with the same name already exists
