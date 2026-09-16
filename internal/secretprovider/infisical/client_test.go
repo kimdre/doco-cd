@@ -87,6 +87,51 @@ func TestProvider_GetSecret_Infisical(t *testing.T) {
 	}
 }
 
+func TestSecretReferencePattern(t *testing.T) {
+	testCases := []struct {
+		name        string
+		secretValue string
+		wantMatch   bool
+	}{
+		{
+			name:        "fully resolved value",
+			secretValue: "postgres://user:pass@db.internal/mydb",
+			wantMatch:   false,
+		},
+		{
+			name:        "unresolved local reference",
+			secretValue: "postgres://user@${DB_HOST}/mydb",
+			wantMatch:   true,
+		},
+		{
+			name:        "unresolved cross-environment reference",
+			secretValue: "postgres://user@${dev.DB_HOST}/mydb",
+			wantMatch:   true,
+		},
+		{
+			name:        "unresolved cross-environment and folder reference",
+			secretValue: "postgres://user@${prod.frontend.DB_HOST}/mydb",
+			wantMatch:   true,
+		},
+		{
+			name:        "empty value",
+			secretValue: "",
+			wantMatch:   false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := secretReferencePattern.MatchString(tc.secretValue)
+			if got != tc.wantMatch {
+				t.Errorf("MatchString(%q) = %v, want %v", tc.secretValue, got, tc.wantMatch)
+			}
+		})
+	}
+}
+
 func TestProvider_ResolveSecretReferences_Infisical(t *testing.T) {
 	skipWrongProvider(t)
 
