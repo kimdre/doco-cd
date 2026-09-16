@@ -58,7 +58,14 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		// repository with several stacks does not report the changes of all of them.
 		// A nil filter walks the log unfiltered, which is what a project without any
 		// resolvable path in the repository falls back to.
-		pathFilter, filterErr := docker.ProjectPathFilter(s.Repository.PathExternal, s.Docker.Project)
+		// The deployment configuration is passed alongside the project because it is not
+		// part of it: it declares the stack and holds its image tags, so a commit that
+		// touches only it is precisely the commit that caused this deploy.
+		pathFilter, filterErr := docker.ProjectPathFilter(
+			s.Repository.PathExternal,
+			s.Docker.Project,
+			s.DeployConfig.Internal.File,
+		)
 		if filterErr != nil {
 			stageLog.Warn("failed to build changelog path filter, listing all commits", logger.ErrAttr(filterErr))
 		}
