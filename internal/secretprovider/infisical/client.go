@@ -19,6 +19,23 @@ const (
 
 var ErrInvalidSecretReference = errors.New("invalid secret reference")
 
+// ErrUnresolvedSecretReference indicates that the value returned by Infisical still contains an
+// Infisical secret-reference expression (e.g. "${DB_HOST}" or "${dev.DB_HOST}").
+// Infisical's backend only replaces a reference when the referenced secret exists; when it doesn't
+// (wrong key, wrong path, or deleted), the literal placeholder is left untouched in the returned value
+// instead of failing the request (missing read permissions fail the request outright and are
+// already surfaced as an error). The SDK does not expose a separate "fully resolved" status for
+// this case, so doco-cd must detect it itself instead of silently injecting the unresolved
+// placeholder text into the deployment.
+// See https://github.com/Infisical/infisical/blob/main/backend/src/services/secret-v2-bridge/secret-reference-fns.ts.
+var ErrUnresolvedSecretReference = errors.New("secret value contains an unresolved Infisical secret reference")
+
+// secretReferencePattern matches Infisical's secret-reference syntax,
+// e.g. "${KEY}", "${dev.KEY}", "${prod.frontend.KEY}" or the cross-project "${@project-slug.prod.KEY}".
+// The character class mirrors Infisical's own INTERPOLATION_PATTERN_STRING so that hyphenated
+// environment/project slugs and cross-project references are detected too.
+var secretReferencePattern = regexp.MustCompile(`\$\{[A-Za-z0-9\-_.@]+}`)
+
 type Provider struct {
 	Client infisical.InfisicalClientInterface
 }
@@ -63,6 +80,10 @@ func (p *Provider) GetSecret(_ context.Context, ref string) (string, error) {
 	})
 	if err != nil {
 		return "", err
+	}
+
+	if secretReferencePattern.MatchString(secret.SecretValue) {
+		return "", fmt.Errorf("%w: %s", ErrUnresolvedSecretReference, ref)
 	}
 
 	return secret.SecretValue, nil
