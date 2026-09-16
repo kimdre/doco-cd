@@ -33,9 +33,7 @@ func DecryptFile(path string) ([]byte, error) {
 		return nil, errSopsKeyNotSet
 	}
 
-	path = filepath.Clean(path)
-
-	content, err := os.ReadFile(path) // #nosec G304
+	content, err := os.ReadFile(filepath.Clean(path)) // #nosec G304
 	if err != nil {
 		return nil, err
 	}
@@ -155,9 +153,7 @@ func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string]) 
 
 // IsEncryptedFile checks if the file at the given path is a SOPS-encrypted file.
 func IsEncryptedFile(path string) (bool, error) {
-	path = filepath.Clean(path)
-
-	content, err := os.ReadFile(path) // #nosec G304
+	content, err := os.ReadFile(filepath.Clean(path)) // #nosec G304
 	if err != nil {
 		return false, err
 	}
@@ -240,7 +236,7 @@ func DecryptFileInPlace(path string) (bool, error) {
 
 	// Read and detect once, as calling IsEncryptedFile and DecryptFile would read
 	// and parse the same file twice for every file visited during a repository walk.
-	content, err := os.ReadFile(path) // #nosec G304
+	content, err := os.ReadFile(filepath.Clean(path)) // #nosec G304
 	if err != nil {
 		return false, fmt.Errorf("failed to read file %s: %w", path, err)
 	}
