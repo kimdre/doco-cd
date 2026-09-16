@@ -68,7 +68,13 @@ by reading the stack name(s) straight from the fixture's `.doco-cd.yml`
    `WaitForContainerRecreate`, `RepoPush` and `ReplaceInWorktree` into the
    flow you want to prove. Use `LogMark` with `WaitForLogAfter` for multi-phase
    scenarios so old log entries cannot satisfy later assertions.
-3. `go test -tags e2e ./test/e2e/... -run Test<Name> -v`.
+3. Files a later commit should add, rather than edit in place, go in a sibling
+   directory of `fixture/` (e.g. `scenarios/<name>/update/`) and are overlaid
+   onto the worktree with `CopyScenarioDir("update")`. Stack cleanup reads
+   every `.doco-cd.yml` under `scenarios/<name>/`, so stacks added that way are
+   torn down too. `SetEnv` adds environment variables to the daemon before
+   `Start`, e.g. `SOPS_AGE_KEY` for a scenario with encrypted fixtures.
+4. `go test -tags e2e ./test/e2e/... -run Test<Name> -v`.
 
 Keep scenarios independent: every scenario gets a fresh daemon, a fresh data
 volume and a fresh repo. Harness containers remain running until the e2e suite
