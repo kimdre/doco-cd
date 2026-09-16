@@ -50,6 +50,7 @@ type Harness struct {
 	pollInterval time.Duration
 	dataVolume   string
 	volumes      []string
+	stacks       []string
 
 	wt     *git.Worktree
 	docker *client.Client
@@ -123,6 +124,13 @@ func (h *Harness) EnableRemoteContext() {
 func (h *Harness) TrackVolume(name string) {
 	h.t.Helper()
 	h.volumes = append(h.volumes, name)
+}
+
+// TrackStack registers a stack for teardown that the scenario adds at
+// runtime, so it is not discoverable from the fixture's deploy config.
+func (h *Harness) TrackStack(name string) {
+	h.t.Helper()
+	h.stacks = append(h.stacks, name)
 }
 
 // SetPollInterval sets the poll interval for the test daemon.

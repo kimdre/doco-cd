@@ -24,6 +24,7 @@ import (
 	"github.com/moby/moby/client"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
@@ -108,6 +109,23 @@ func (h *Harness) ReplaceInWorktree(relPath, old, replacement string) {
 	}
 
 	if err := os.WriteFile(path, []byte(updated), 0o600); err != nil { //nolint:gosec // path is constructed from a test-controlled worktree dir and caller-supplied relative path
+		h.t.Fatalf("write %s: %v", relPath, err)
+	}
+}
+
+// WriteInWorktree writes content to a file under the scenario worktree,
+// creating parent directories, for scenarios that add files instead of
+// mutating the fixture in place.
+func (h *Harness) WriteInWorktree(relPath, content string) {
+	h.t.Helper()
+
+	path := filepath.Join(h.worktree, relPath)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		h.t.Fatalf("create parent directory of %s: %v", relPath, err)
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil { //nolint:gosec // path is constructed from a test-controlled worktree dir and caller-supplied relative path
 		h.t.Fatalf("write %s: %v", relPath, err)
 	}
 }
@@ -481,11 +499,20 @@ func (h *Harness) WaitForContainerRemoval(project, service string, timeout time.
 // modes between test runs.
 //
 // Stack names are read straight from the fixture's .doco-cd.yml files
-// (their top-level "name" field, the same one doco-cd itself uses as the
-// compose project name) instead of a separately maintained list, so there is
-// a single source of truth for a scenario's stack names.
+// (the top-level "name" field of every document, the same one doco-cd itself
+// uses as the compose project name) instead of a separately maintained list,
+// so there is a single source of truth for a scenario's stack names. Stacks a
+// scenario only adds at runtime are registered with TrackStack.
 func (h *Harness) cleanupStacks() {
-	for _, stack := range h.fixtureStackNames() {
+	cleaned := set.New[string]()
+
+	for _, stack := range append(h.fixtureStackNames(), h.stacks...) {
+		if cleaned.Contains(stack) {
+			continue
+		}
+
+		cleaned.Add(stack)
+
 		h.removeComposeResources(stack)
 		h.removeSwarmStack(stack)
 	}
@@ -580,12 +607,22 @@ func (h *Harness) fixtureStackNames() []string {
 			return nil //nolint:nilerr // skip unreadable files, continue walking
 		}
 
-		var cfg struct {
-			Name string `yaml:"name"`
-		}
+		// Every document, not just the first: a deploy config may declare
+		// several stacks, and each one needs cleaning up.
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
 
-		if yaml.Unmarshal(data, &cfg) == nil && cfg.Name != "" {
-			names = append(names, cfg.Name)
+		for {
+			var cfg struct {
+				Name string `yaml:"name"`
+			}
+
+			if err := decoder.Decode(&cfg); err != nil {
+				break
+			}
+
+			if cfg.Name != "" {
+				names = append(names, cfg.Name)
+			}
 		}
 
 		return nil

@@ -65,9 +65,11 @@ by reading the stack name(s) straight from the fixture's `.doco-cd.yml`
    files. Prefix stack names with `e2e-`.
 2. Write `<name>_test.go`: call `NewHarness(t, "<name>")`, `Start()`, then
    combine `WaitFor`, `ContainerID`, `ContainerImage`,
-   `WaitForContainerRecreate`, `RepoPush` and `ReplaceInWorktree` into the
-   flow you want to prove. Use `LogMark` with `WaitForLogAfter` for multi-phase
-   scenarios so old log entries cannot satisfy later assertions.
+   `WaitForContainerRecreate`, `RepoPush`, `ReplaceInWorktree` and
+   `WriteInWorktree` into the flow you want to prove. Use `LogMark` with
+   `WaitForLogAfter` for multi-phase scenarios so old log entries cannot
+   satisfy later assertions. A stack the scenario only adds at runtime is not
+   in the fixture, so register it with `TrackStack` to get it cleaned up.
 3. `go test -tags e2e ./test/e2e/... -run Test<Name> -v`.
 
 Keep scenarios independent: every scenario gets a fresh daemon, a fresh data
