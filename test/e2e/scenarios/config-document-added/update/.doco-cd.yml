@@ -1,0 +1,5 @@
+name: e2e-config-document-added-first
+working_dir: deploy/first
+---
+name: e2e-config-document-added-second
+working_dir: deploy/second

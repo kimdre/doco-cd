@@ -9,6 +9,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
@@ -50,7 +51,7 @@ type Harness struct {
 	pollInterval time.Duration
 	dataVolume   string
 	volumes      []string
-	stacks       []string
+	env          map[string]string
 
 	wt     *git.Worktree
 	docker *client.Client
@@ -126,11 +127,16 @@ func (h *Harness) TrackVolume(name string) {
 	h.volumes = append(h.volumes, name)
 }
 
-// TrackStack registers a stack for teardown that the scenario adds at
-// runtime, so it is not discoverable from the fixture's deploy config.
-func (h *Harness) TrackStack(name string) {
+// SetEnv adds an environment variable to the test daemon, overriding the
+// harness default of the same name. Call before Start.
+func (h *Harness) SetEnv(key, value string) {
 	h.t.Helper()
-	h.stacks = append(h.stacks, name)
+
+	if h.env == nil {
+		h.env = map[string]string{}
+	}
+
+	h.env[key] = value
 }
 
 // SetPollInterval sets the poll interval for the test daemon.
@@ -147,7 +153,7 @@ func (h *Harness) Start() {
 
 	h.logf("preparing scenario %q", h.scenario)
 
-	fixtureDir := filepath.Join(repoDir, "test", "e2e", "scenarios", h.scenario, "fixture")
+	fixtureDir := filepath.Join(scenarioDir(h.scenario), "fixture")
 	if _, err := os.Stat(fixtureDir); err != nil {
 		h.t.Fatalf("unknown scenario %q: %v", h.scenario, err)
 	}
@@ -264,12 +270,7 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 			Image:    image,
 			Name:     h.containerName("doco-cd"),
 			Networks: []string{h.net.Name},
-			Env: map[string]string{
-				"TZ":               "Etc/UTC",
-				"LOG_LEVEL":        "debug",
-				"POLL_CONFIG_FILE": "/config/poll.yaml",
-				"DOCKER_CONFIG":    "/root/.docker",
-			},
+			Env:      h.daemonEnv(),
 			Mounts: testcontainers.ContainerMounts{
 				{Source: testcontainers.GenericVolumeMountSource{Name: h.dataVolume}, Target: "/data"},
 			},
@@ -296,6 +297,21 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 
 	h.daemon = daemon
 	h.logContainerStart("doco-cd", daemon)
+}
+
+// daemonEnv returns the daemon container environment: the harness defaults
+// with anything SetEnv added layered on top.
+func (h *Harness) daemonEnv() map[string]string {
+	env := map[string]string{
+		"TZ":               "Etc/UTC",
+		"LOG_LEVEL":        "debug",
+		"POLL_CONFIG_FILE": "/config/poll.yaml",
+		"DOCKER_CONFIG":    "/root/.docker",
+	}
+
+	maps.Copy(env, h.env)
+
+	return env
 }
 
 func (h *Harness) startRemoteDocker() {

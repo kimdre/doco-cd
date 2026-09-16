@@ -1,0 +1,5 @@
+name: e2e-config-document-added-sops-existing-first
+working_dir: deploy/first
+---
+name: e2e-config-document-added-sops-existing-second
+working_dir: deploy/second

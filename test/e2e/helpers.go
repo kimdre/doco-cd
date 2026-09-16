@@ -70,6 +70,24 @@ func (h *Harness) copyFixture(fixtureDir string) {
 	}
 }
 
+// CopyScenarioDir overlays scenarios/<scenario>/<name>/ onto the worktree,
+// for a scenario whose later commits add files rather than edit the fixture
+// in place. Keeping that content as real files next to "fixture" means an
+// encrypted or binary payload stays reviewable and re-generatable, instead of
+// living as a string literal in the test.
+func (h *Harness) CopyScenarioDir(name string) {
+	h.t.Helper()
+
+	dir := filepath.Join(scenarioDir(h.scenario), name)
+	if _, err := os.Stat(dir); err != nil {
+		h.t.Fatalf("unknown scenario directory %q: %v", name, err)
+	}
+
+	if err := copyDir(dir, h.worktree); err != nil {
+		h.t.Fatalf("copy scenario directory %s: %v", name, err)
+	}
+}
+
 // RepoPush stages and commits everything currently in the scenario worktree.
 // Since the repo's storage is the same directory the gitserver container
 // mounts, the commit is immediately visible to the daemon's next poll - no
@@ -109,23 +127,6 @@ func (h *Harness) ReplaceInWorktree(relPath, old, replacement string) {
 	}
 
 	if err := os.WriteFile(path, []byte(updated), 0o600); err != nil { //nolint:gosec // path is constructed from a test-controlled worktree dir and caller-supplied relative path
-		h.t.Fatalf("write %s: %v", relPath, err)
-	}
-}
-
-// WriteInWorktree writes content to a file under the scenario worktree,
-// creating parent directories, for scenarios that add files instead of
-// mutating the fixture in place.
-func (h *Harness) WriteInWorktree(relPath, content string) {
-	h.t.Helper()
-
-	path := filepath.Join(h.worktree, relPath)
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		h.t.Fatalf("create parent directory of %s: %v", relPath, err)
-	}
-
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil { //nolint:gosec // path is constructed from a test-controlled worktree dir and caller-supplied relative path
 		h.t.Fatalf("write %s: %v", relPath, err)
 	}
 }
@@ -498,21 +499,12 @@ func (h *Harness) WaitForContainerRemoval(project, service string, timeout time.
 // for this scenario. Both are cleaned because a local Docker daemon can switch
 // modes between test runs.
 //
-// Stack names are read straight from the fixture's .doco-cd.yml files
-// (the top-level "name" field of every document, the same one doco-cd itself
-// uses as the compose project name) instead of a separately maintained list,
-// so there is a single source of truth for a scenario's stack names. Stacks a
-// scenario only adds at runtime are registered with TrackStack.
+// Stack names are read straight from the scenario's .doco-cd.yml files (the
+// top-level "name" field of every document, the same one doco-cd itself uses
+// as the compose project name) instead of a separately maintained list, so
+// there is a single source of truth for a scenario's stack names.
 func (h *Harness) cleanupStacks() {
-	cleaned := set.New[string]()
-
-	for _, stack := range append(h.fixtureStackNames(), h.stacks...) {
-		if cleaned.Contains(stack) {
-			continue
-		}
-
-		cleaned.Add(stack)
-
+	for stack := range h.scenarioStackNames() {
 		h.removeComposeResources(stack)
 		h.removeSwarmStack(stack)
 	}
@@ -585,15 +577,14 @@ func (h *Harness) isSwarmMode() bool {
 	return result.Info.Swarm.ControlAvailable
 }
 
-// fixtureStackNames walks the scenario's fixture directory and collects the
-// "name" field of every .doco-cd.yml found, in case a fixture defines
-// multiple deploy targets.
-func (h *Harness) fixtureStackNames() []string {
-	fixtureDir := filepath.Join(repoDir, "test", "e2e", "scenarios", h.scenario, "fixture")
+// scenarioStackNames walks the scenario's whole directory and collects the
+// "name" of every document of every .doco-cd.yml found. Walking past
+// "fixture" matters because a scenario's later commits can add stacks, and
+// those stacks still need cleaning up.
+func (h *Harness) scenarioStackNames() set.Set[string] {
+	names := set.New[string]()
 
-	var names []string
-
-	_ = filepath.WalkDir(fixtureDir, func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(scenarioDir(h.scenario), func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -602,33 +593,46 @@ func (h *Harness) fixtureStackNames() []string {
 			return nil
 		}
 
-		data, readErr := os.ReadFile(path) //nolint:gosec // path comes from trusted WalkDir over the fixture dir; os.ReadDir basenames exclude traversal
+		data, readErr := os.ReadFile(path) //nolint:gosec // path comes from trusted WalkDir over the scenario dir; os.ReadDir basenames exclude traversal
 		if readErr != nil {
 			return nil //nolint:nilerr // skip unreadable files, continue walking
 		}
 
-		// Every document, not just the first: a deploy config may declare
-		// several stacks, and each one needs cleaning up.
-		decoder := yaml.NewDecoder(bytes.NewReader(data))
-
-		for {
-			var cfg struct {
-				Name string `yaml:"name"`
-			}
-
-			if err := decoder.Decode(&cfg); err != nil {
-				break
-			}
-
-			if cfg.Name != "" {
-				names = append(names, cfg.Name)
-			}
-		}
+		names.Add(stackNamesFromConfig(data)...)
 
 		return nil
 	})
 
 	return names
+}
+
+// stackNamesFromConfig returns the "name" of every document in a deploy
+// config, not just the first: one config can declare several stacks and each
+// of them needs cleaning up.
+func stackNamesFromConfig(data []byte) []string {
+	var names []string
+
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+
+	for {
+		var cfg struct {
+			Name string `yaml:"name"`
+		}
+
+		if decoder.Decode(&cfg) != nil {
+			return names
+		}
+
+		if cfg.Name != "" {
+			names = append(names, cfg.Name)
+		}
+	}
+}
+
+// scenarioDir returns the on-disk directory holding a scenario's fixture and
+// any additional content its later commits copy in.
+func scenarioDir(scenario string) string {
+	return filepath.Join(repoDir, "test", "e2e", "scenarios", scenario)
 }
 
 // copyDir recursively copies src into dst (dst must already exist).
