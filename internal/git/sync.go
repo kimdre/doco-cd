@@ -413,6 +413,7 @@ func updateRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts
 			slog.String("path", path),
 			slog.Int("requested_depth", depth))
 
+		path = filepath.Clean(path)
 		if err := os.RemoveAll(path); err != nil {
 			return nil, fmt.Errorf("failed to remove repository for re-clone: %w", err)
 		}
@@ -579,6 +580,7 @@ func cloneRepositoryForSyncLocked(path, url, ref string, skipTLSVerify bool, pro
 		}
 
 		focusedErr = errors.Join(focusedErr, err)
+		path = filepath.Clean(path)
 		if removeErr := os.RemoveAll(path); removeErr != nil {
 			return nil, errors.Join(focusedErr, fmt.Errorf("failed to clean up focused clone: %w", removeErr))
 		}
@@ -603,6 +605,7 @@ func cloneRepositoryWithReferenceLocked(
 	cloneSubmodules bool,
 	depth int,
 ) (*git.Repository, error) {
+	path = filepath.Clean(path)
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -663,6 +666,7 @@ func cloneRepositoryWithReferenceLocked(
 			}
 
 			// Remove path and retry clone once
+			path = filepath.Clean(path)
 			_ = os.RemoveAll(path)
 
 			repo, err = cloneWithRetry(path, opts)
@@ -723,6 +727,7 @@ func cloneWithRetry(path string, opts *git.CloneOptions) (*git.Repository, error
 // needsReclone returns true when the on-disk repository shallow state does not
 // match the requested depth, indicating a transition (e.g. full→shallow or shallow→full).
 func needsReclone(repoPath string, depth int) bool {
+	repoPath = filepath.Clean(repoPath)
 	shallowFile := filepath.Join(repoPath, ".git", "shallow")
 
 	_, err := os.Stat(shallowFile)
