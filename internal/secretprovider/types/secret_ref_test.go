@@ -268,7 +268,7 @@ func TestInterpolateResolvedSecrets(t *testing.T) {
 			want: map[string]string{
 				"DB_PASSWORD": "hunter2",
 				"DB_HOST":     "db.internal",
-				"DB_URL":      "postgres://user:hunter2@db.internal/mydb",
+				"DB_URL":      "postgres://user:hunter2@db.internal/mydb", // #nosec G101
 			},
 		},
 		{
