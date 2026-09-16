@@ -29,19 +29,20 @@ var probedFormats = []formats.Format{formats.Binary, formats.Json, formats.Doten
 
 // DecryptFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
 func DecryptFile(path string) ([]byte, error) {
-if !SopsKeyIsSet() {
-	return nil, errSopsKeyNotSet
-}
+	if !SopsKeyIsSet() {
+		return nil, errSopsKeyNotSet
+	}
 
-path = filepath.Clean(path)
-content, err := os.ReadFile(path) // #nosec G304
-if err != nil {
-	return nil, err
-}
+	path = filepath.Clean(path)
 
-format, _ := DetectFormat(content, path)
+	content, err := os.ReadFile(path) // #nosec G304
+	if err != nil {
+		return nil, err
+	}
 
-return DecryptContent(content, format)
+	format, _ := DetectFormat(content, path)
+
+	return DecryptContent(content, format)
 }
 
 // DecryptContent decrypts SOPS-encrypted content using the supplied format.
@@ -154,15 +155,16 @@ func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string]) 
 
 // IsEncryptedFile checks if the file at the given path is a SOPS-encrypted file.
 func IsEncryptedFile(path string) (bool, error) {
-path = filepath.Clean(path)
-content, err := os.ReadFile(path) // #nosec G304
-if err != nil {
-	return false, err
-}
+	path = filepath.Clean(path)
 
-_, encrypted := DetectFormat(content, path)
+	content, err := os.ReadFile(path) // #nosec G304
+	if err != nil {
+		return false, err
+	}
 
-return encrypted, nil
+	_, encrypted := DetectFormat(content, path)
+
+	return encrypted, nil
 }
 
 // DetectFormat returns the SOPS format that parses the content as an encrypted document,
