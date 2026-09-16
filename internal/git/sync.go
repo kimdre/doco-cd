@@ -580,6 +580,7 @@ func cloneRepositoryForSyncLocked(path, url, ref string, skipTLSVerify bool, pro
 		}
 
 		focusedErr = errors.Join(focusedErr, err)
+
 		path = filepath.Clean(path)
 		if removeErr := os.RemoveAll(path); removeErr != nil {
 			return nil, errors.Join(focusedErr, fmt.Errorf("failed to clean up focused clone: %w", removeErr))
@@ -606,6 +607,7 @@ func cloneRepositoryWithReferenceLocked(
 	depth int,
 ) (*git.Repository, error) {
 	path = filepath.Clean(path)
+
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
