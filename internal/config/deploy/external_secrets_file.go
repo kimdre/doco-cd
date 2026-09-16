@@ -29,8 +29,8 @@ func LoadExternalSecretsFiles(config *Config, basePath string) error {
 	}
 
 	for _, f := range config.ExternalSecretsFiles {
-		if strings.HasPrefix(f, remotePrefix) {
-			remoteFiles = append(remoteFiles, strings.TrimPrefix(f, remotePrefix))
+		if after, ok := strings.CutPrefix(f, remotePrefix); ok {
+			remoteFiles = append(remoteFiles, after)
 			continue
 		}
 
