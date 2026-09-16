@@ -88,35 +88,57 @@ func TestProvider_GetSecret_Infisical(t *testing.T) {
 }
 
 func TestSecretReferencePattern(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
-		name        string
-		secretValue string
-		wantMatch   bool
+		name      string
+		value     string
+		wantMatch bool
 	}{
 		{
-			name:        "fully resolved value",
-			secretValue: "postgres://user:pass@db.internal/mydb",
-			wantMatch:   false,
+			name:      "fully resolved value",
+			value:     "host=db.internal port=5432",
+			wantMatch: false,
 		},
 		{
-			name:        "unresolved local reference",
-			secretValue: "postgres://user@${DB_HOST}/mydb",
-			wantMatch:   true,
+			name:      "unresolved local reference",
+			value:     "host=${DB_HOST} port=5432",
+			wantMatch: true,
 		},
 		{
-			name:        "unresolved cross-environment reference",
-			secretValue: "postgres://user@${dev.DB_HOST}/mydb",
-			wantMatch:   true,
+			name:      "unresolved cross-environment reference",
+			value:     "host=${dev.DB_HOST} port=5432",
+			wantMatch: true,
 		},
 		{
-			name:        "unresolved cross-environment and folder reference",
-			secretValue: "postgres://user@${prod.frontend.DB_HOST}/mydb",
-			wantMatch:   true,
+			name:      "unresolved cross-environment and folder reference",
+			value:     "host=${prod.frontend.DB_HOST} port=5432",
+			wantMatch: true,
 		},
 		{
-			name:        "empty value",
-			secretValue: "",
-			wantMatch:   false,
+			name:      "unresolved reference with hyphenated environment slug",
+			value:     "host=${my-env.DB_HOST} port=5432",
+			wantMatch: true,
+		},
+		{
+			name:      "unresolved cross-project reference",
+			value:     "host=${@backend-api.prod.DB_HOST} port=5432",
+			wantMatch: true,
+		},
+		{
+			name:      "compose style default expression is not an Infisical reference",
+			value:     "host=${DB_HOST:-localhost} port=5432",
+			wantMatch: false,
+		},
+		{
+			name:      "literal dollar without braces",
+			value:     "price is $5 and $HOME stays",
+			wantMatch: false,
+		},
+		{
+			name:      "empty value",
+			value:     "",
+			wantMatch: false,
 		},
 	}
 
@@ -124,9 +146,9 @@ func TestSecretReferencePattern(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := secretReferencePattern.MatchString(tc.secretValue)
+			got := secretReferencePattern.MatchString(tc.value)
 			if got != tc.wantMatch {
-				t.Errorf("MatchString(%q) = %v, want %v", tc.secretValue, got, tc.wantMatch)
+				t.Errorf("MatchString(%q) = %v, want %v", tc.value, got, tc.wantMatch)
 			}
 		})
 	}

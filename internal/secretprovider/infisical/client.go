@@ -31,8 +31,10 @@ var ErrInvalidSecretReference = errors.New("invalid secret reference")
 var ErrUnresolvedSecretReference = errors.New("secret value contains an unresolved Infisical secret reference")
 
 // secretReferencePattern matches Infisical's secret-reference syntax,
-// e.g. "${KEY}", "${dev.KEY}" or "${prod.frontend.KEY}".
-var secretReferencePattern = regexp.MustCompile(`\$\{[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*}`)
+// e.g. "${KEY}", "${dev.KEY}", "${prod.frontend.KEY}" or the cross-project "${@project-slug.prod.KEY}".
+// The character class mirrors Infisical's own INTERPOLATION_PATTERN_STRING so that hyphenated
+// environment/project slugs and cross-project references are detected too.
+var secretReferencePattern = regexp.MustCompile(`\$\{[A-Za-z0-9\-_.@]+}`)
 
 type Provider struct {
 	Client infisical.InfisicalClientInterface

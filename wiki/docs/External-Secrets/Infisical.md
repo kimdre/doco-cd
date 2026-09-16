@@ -68,7 +68,8 @@ Infisical resolves `${DB_HOST}`server-side before doco-cd injects `DATABASE_URL`
     Infisical secret-reference expansion requires access to every secret in the reference chain. 
     Missing permissions fail the request outright (doco-cd surfaces this as an error).
     If a referenced secret doesn't exist (wrong key, wrong path, or deleted), Infisical's server 
-    leaves the literal placeholder (e.g. `${DB_HOST}`, `${dev.DB_HOST}` or `${prod.frontend.DB_HOST}`) 
+    leaves the literal placeholder (e.g. `${DB_HOST}`, `${dev.DB_HOST}`, `${prod.frontend.DB_HOST}` 
+    or the cross-project `${@project-slug.prod.DB_HOST}`) 
     untouched in the returned value instead of failing the request. 
     Since the SDK does not expose a separate "fully resolved" status for this case, doco-cd inspects the returned value 
     itself and fails the deployment if it still contains a reference expression, rather than injecting the unresolved 
