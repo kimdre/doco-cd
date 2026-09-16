@@ -33,6 +33,7 @@ func DecryptFile(path string) ([]byte, error) {
 		return nil, errSopsKeyNotSet
 	}
 
+	path = filepath.Clean(path)
 	content, err := os.ReadFile(path) // #nosec G304
 	if err != nil {
 		return nil, err
@@ -153,6 +154,7 @@ func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string]) 
 
 // IsEncryptedFile checks if the file at the given path is a SOPS-encrypted file.
 func IsEncryptedFile(path string) (bool, error) {
+	path = filepath.Clean(path)
 	content, err := os.ReadFile(path) // #nosec G304
 	if err != nil {
 		return false, err

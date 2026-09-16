@@ -34,7 +34,7 @@ func LoadExternalSecretsFiles(config *Config, basePath string) error {
 			continue
 		}
 
-		absPath := filepath.Join(basePath, f)
+		absPath := filepath.Clean(filepath.Join(basePath, f))
 
 		isEncrypted, err := encryption.IsEncryptedFile(absPath)
 		if err != nil {
