@@ -195,11 +195,11 @@ func (g *gitResourceLoader) Load(ctx context.Context, resource string) (string, 
 	// The cache is keyed by remote and ref so that concurrently loaded includes
 	// of the same repository never switch the checkout under each other.
 	repoPath := filepath.Join(g.cacheDirectory, cacheKey(ref.Remote, ref.Ref))
-	
+
 	if !filesystem.InBasePath(g.cacheDirectory, repoPath) {
 		return "", fmt.Errorf("%w: cache path escape detected %s", filesystem.ErrPathTraversal, repoPath)
 	}
-	
+
 	slog.Debug("resolved git include cache path", slog.String("cache_path", repoPath))
 
 	lock, _ := gitIncludeLocks.LoadOrStore(repoPath, &sync.Mutex{})
