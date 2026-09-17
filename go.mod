@@ -25,7 +25,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.15.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.8.0+incompatible
+	github.com/docker/cli v29.8.1+incompatible
 	github.com/docker/compose/v5 v5.5.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getkin/kin-openapi v0.149.0

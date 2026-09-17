@@ -72,10 +72,34 @@ func WriteDecryptedFilesManifest(repoRoot string, files []string) error {
 		fileSet.Add(existing)
 	}
 
-	relFiles := fileSet.ToSlice()
+	return writeManifest(manifestPath, head.Hash().String(), fileSet)
+}
+
+// replaceDecryptedFilesManifest records files as the complete set of decrypted
+// files for repo's current HEAD, discarding anything recorded before. Callers
+// that have just re-established the decrypted state of the whole worktree use
+// this instead of WriteDecryptedFilesManifest's merge, so that entries which no
+// longer hold do not survive.
+func replaceDecryptedFilesManifest(repo *git.Repository, files set.Set[string]) error {
+	head, err := repo.Head()
+	if err != nil {
+		return nil //nolint:nilerr // no resolvable HEAD (e.g. an empty repository): nothing to record
+	}
+
+	manifestPath, err := decryptedManifestPath(repo)
+	if err != nil {
+		return nil //nolint:nilerr // not filesystem-backed storage: nowhere to persist the manifest
+	}
+
+	return writeManifest(manifestPath, head.Hash().String(), files)
+}
+
+// writeManifest atomically persists commit and files to manifestPath.
+func writeManifest(manifestPath, commit string, files set.Set[string]) error {
+	relFiles := files.ToSlice()
 	sort.Strings(relFiles)
 
-	data, err := json.Marshal(decryptedFilesManifest{Commit: head.Hash().String(), Files: relFiles})
+	data, err := json.Marshal(decryptedFilesManifest{Commit: commit, Files: relFiles})
 	if err != nil {
 		return fmt.Errorf("marshal decrypted-files manifest: %w", err)
 	}
@@ -125,26 +149,46 @@ func ReadDecryptedFilesManifest(repo *git.Repository) set.Set[string] {
 		return set.New[string]()
 	}
 
-	manifestPath, err := decryptedManifestPath(repo)
-	if err != nil {
-		return set.New[string]()
-	}
-
-	data, err := os.ReadFile(manifestPath) // #nosec G304 -- manifestPath is derived from the repository's own resolved Git directory
-	if err != nil {
-		return set.New[string]()
-	}
-
-	var manifest decryptedFilesManifest
-	if err = json.Unmarshal(data, &manifest); err != nil {
-		return set.New[string]()
-	}
-
-	if manifest.Commit != head.Hash().String() {
+	manifest, ok := readDecryptedFilesManifest(repo)
+	if !ok || manifest.Commit != head.Hash().String() {
 		return set.New[string]()
 	}
 
 	return set.New(manifest.Files...)
+}
+
+// ReadDecryptedFilesManifestAny returns the recorded files regardless of which
+// commit they were recorded for. A checkout invalidates the commit tag but not
+// the knowledge that those paths hold decrypted content, which is what lets
+// ResetTrackedFiles re-decrypt them instead of leaving ciphertext behind.
+func ReadDecryptedFilesManifestAny(repo *git.Repository) set.Set[string] {
+	manifest, ok := readDecryptedFilesManifest(repo)
+	if !ok {
+		return set.New[string]()
+	}
+
+	return set.New(manifest.Files...)
+}
+
+// readDecryptedFilesManifest loads and parses the manifest of repo, reporting
+// whether a usable manifest was found.
+func readDecryptedFilesManifest(repo *git.Repository) (decryptedFilesManifest, bool) {
+	manifestPath, err := decryptedManifestPath(repo)
+	if err != nil {
+		return decryptedFilesManifest{}, false
+	}
+
+	data, err := os.ReadFile(manifestPath) // #nosec G304 -- manifestPath is derived from the repository's own resolved Git directory
+	if err != nil {
+		return decryptedFilesManifest{}, false
+	}
+
+	var manifest decryptedFilesManifest
+	if err = json.Unmarshal(data, &manifest); err != nil {
+		return decryptedFilesManifest{}, false
+	}
+
+	return manifest, true
 }
 
 // decryptedManifestPath returns the manifest path resolved inside repo's Git
