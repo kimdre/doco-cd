@@ -19,9 +19,12 @@ import (
 )
 
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
+// When the project contains this doco-cd instance it hands over to a self-update
+// strategy instead, because compose would otherwise stop this process halfway
+// through its own recreate.
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *deploy.Config, recreateMode string, services []string,
-	needSignal []SignalService, setPhase func(string),
+	needSignal []SignalService, setPhase func(string), self *SelfDeployInput,
 ) error {
 	var (
 		err          error
@@ -106,6 +109,19 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	err = service.Build(ctx, project, buildOpts)
 	if err != nil {
 		return err
+	}
+
+	// The project contains this doco-cd instance: deploy every other service
+	// normally, then hand the self service to a strategy that survives its own
+	// container being replaced. Images were pulled above, so the handover window
+	// stays short.
+	var selfStep func() error
+
+	if target := selfUpdateFor(project, deployConfig.Context); target != nil {
+		project, services, selfStep, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, target, services, self)
+		if err != nil {
+			return err
+		}
 	}
 
 	createOpts := api.CreateOptions{
@@ -218,6 +234,10 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		if err != nil {
 			return fmt.Errorf("failed to prune images: %w", err)
 		}
+	}
+
+	if selfStep != nil {
+		return selfStep()
 	}
 
 	return nil

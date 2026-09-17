@@ -13,7 +13,8 @@ bin/
 *.dll
 *.so
 *.dylib
-doco-cd
+# anchored: a bare "doco-cd" also ignores the cmd/doco-cd/ directory
+/doco-cd
 
 # Test binary, built with `go test -c`
 *.test
@@ -50,3 +51,6 @@ git-auth-domains.yaml
 issue.md
 .github/AGENTS.md
 .github/mcp.json
+
+# e2e harness scratch dir
+test/e2e/.work/

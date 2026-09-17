@@ -18,6 +18,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/test"
 )
@@ -164,6 +165,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 		successCount    int
 		skipCount       int
 		filterSkipCount int
+		handoverCount   int
 	)
 
 	for e := range resultCh {
@@ -182,11 +184,20 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 			continue
 		}
 
+		if errors.Is(e, selfupdate.ErrHandover) {
+			handoverCount++
+			continue
+		}
+
 		errs = append(errs, e)
 	}
 
 	if len(errs) > 0 {
 		return errors.Join(errs...)
+	}
+
+	if handoverCount > 0 {
+		return selfupdate.ErrHandover
 	}
 
 	if successCount == 0 && len(req.DeployConfigs) > 0 {

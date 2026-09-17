@@ -44,6 +44,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/profiling"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
@@ -194,6 +195,10 @@ func run() error {
 	// Set the actual log level
 	log = logger.New(logLevel)
 
+	if len(os.Args) > 1 && os.Args[1] == "apply-self" {
+		return runApplySelf(ctx, log, c, os.Args[2:])
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		scheme := "http"
 		if c.HttpTLSEnabled {
@@ -338,6 +343,22 @@ func run() error {
 		return err
 	}
 
+	selfUpdateStore := selfupdate.NewStore(c.DataMountPath)
+	selfIdentity := resolveSelfIdentity(ctx, log, dockerClient)
+
+	docker.ConfigureSelfUpdate(docker.SelfUpdateOptions{
+		Enabled:       c.SelfUpdateEnabled,
+		Identity:      selfIdentity,
+		Strategy:      selfupdate.Strategy(c.SelfUpdateStrategy),
+		Store:         selfUpdateStore,
+		DataMountPath: c.DataMountPath,
+		AppVersion:    app.Version,
+	})
+
+	if c.SelfUpdateEnabled && !selfIdentity.OK {
+		log.Warn("self-update is enabled but this process does not run in a compose-managed container, disabling it")
+	}
+
 	var wg sync.WaitGroup
 
 	graceful.SafeGo(&wg, log.Logger,
@@ -464,6 +485,36 @@ func run() error {
 		return err
 	}
 
+	// Lifecycle work is cancelled on its own before the process hands over, so a
+	// successor never competes with a scheduler that is still running here.
+	workCtx, stopLifecycleWork := context.WithCancel(ctx)
+	defer stopLifecycleWork()
+
+	if selfIdentity.OK {
+		finalizeHandover, err := finalizeSelfUpdate(ctx, log, dockerClient, notifier, selfUpdateStore, selfIdentity)
+		if err != nil {
+			log.Critical("failed to finalize a pending self-update", logger.ErrAttr(err))
+
+			return err
+		}
+
+		if finalizeHandover != nil {
+			graceful.SafeGo(&wg, log.Logger, finalizeHandover)
+		}
+
+		graceful.SafeGo(&wg, log.Logger, func() {
+			runSelfUpdateCoordinator(ctx, log, selfUpdateCoordinatorDeps{
+				appConfig: c,
+				client:    dockerClient,
+				store:     selfUpdateStore,
+				identity:  selfIdentity,
+				runs:      controlPlaneRuns,
+				notifier:  notifier,
+				stopWork:  stopLifecycleWork,
+			})
+		})
+	}
+
 	if len(c.PollConfig) > 0 {
 		log.Info(
 			"poll configuration found, scheduling polling jobs",
@@ -482,7 +533,7 @@ func run() error {
 
 	if c.SchedulerEnabled {
 		graceful.SafeGo(&wg, log.Logger, func() {
-			schedulerManager.Start(ctx)
+			schedulerManager.Start(workCtx)
 		})
 	} else {
 		log.Info("scheduler disabled by configuration")
@@ -498,7 +549,7 @@ func run() error {
 			watcher := certrotation.New(contexts, log.Logger, h.secretProvider, c.CertRotationThreshold, c.CertRotationCheckInterval, docker.NewCertificateRotationOptions(c))
 
 			graceful.SafeGo(&wg, log.Logger, func() {
-				watcher.Start(ctx)
+				watcher.Start(workCtx)
 			})
 		}
 	} else if c.SecretProvider == openbao.Name {

@@ -76,6 +76,30 @@ by reading the stack name(s) straight from the fixture's `.doco-cd.yml`
    `Start`, e.g. `SOPS_AGE_KEY` for a scenario with encrypted fixtures.
 4. `go test -tags e2e ./test/e2e/... -run Test<Name> -v`.
 
+## Self-update scenarios
+
+Scenarios that call `EnableSelfUpdate(stack, service)` do not start doco-cd with
+testcontainers. They run `doco-cd apply-self --bootstrap` in a throwaway
+container, which deploys the fixture's own doco-cd stack. The container under
+test is then a real member of a compose project doco-cd reconciles, which is
+what a self-update needs.
+
+Consequences for scenario code:
+
+- `LogMark` / `WaitForLogAfter` follow a succession of containers, not one.
+  Marks are per container, so a container appearing later cannot shift an
+  older offset. A background collector snapshots logs every 250ms, because a
+  handover deletes containers within seconds and their output is the only
+  record of what happened.
+- `SelfContainers`, `SelfAppliers`, `SelfContainerID` and `RunsSelfImage` query
+  by label instead of holding a container handle.
+- The fixture image is tagged `<scenario>:v1` and `:v2` from the same build, so
+  bumping the tag in the fixture is a pure config change with no rebuild. Use
+  `pull_policy: never` for it: the tag exists only on the local daemon.
+- `SELF_UPDATE_CRASH_AT=<journal state>` makes the process exit once at that
+  point of the handover. It is a test-only hook; the marker file on the data
+  volume makes it fire once so the restarted actor can make progress.
+
 Keep scenarios independent: every scenario gets a fresh daemon, a fresh data
 volume and a fresh repo. Harness containers remain running until the e2e suite
 finishes; deployed stacks are still cleaned up after each test.

@@ -289,6 +289,8 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 		return err
 	}
 
+	// A handover reaches the cache only once the successor reports, so an
+	// interrupted self-update is retried instead of being marked deployed.
 	deploymentPhase.Set("finalizing deployment status")
 
 	setDeployStatusToCache(gitInternal.GetRepoName(deploymentRepositoryKey(req.Payload)), req.DeployConfig.Name,
