@@ -308,6 +308,44 @@ func TestInterpolateResolvedSecrets(t *testing.T) {
 			},
 		},
 		{
+			name: "unbraced reference resolved",
+			input: map[string]string{
+				"DB_HOST": "db.internal",
+				"DB_URL":  "postgres://$DB_HOST/mydb",
+			},
+			enabled: true,
+			want: map[string]string{
+				"DB_HOST": "db.internal",
+				"DB_URL":  "postgres://db.internal/mydb",
+			},
+		},
+		{
+			name: "unbraced reference takes the longest name",
+			input: map[string]string{
+				"DB":      "short",
+				"DB_HOST": "db.internal",
+				"DB_URL":  "host=$DB_HOST",
+			},
+			enabled: true,
+			want: map[string]string{
+				"DB":      "short",
+				"DB_HOST": "db.internal",
+				"DB_URL":  "host=db.internal",
+			},
+		},
+		{
+			name: "raw NUL byte in secret value is preserved",
+			input: map[string]string{
+				"SECRET": "hunter2",
+				"VALUE":  "binary: \x00 ref: ${SECRET} escaped: $$5",
+			},
+			enabled: true,
+			want: map[string]string{
+				"SECRET": "hunter2",
+				"VALUE":  "binary: \x00 ref: hunter2 escaped: $5",
+			},
+		},
+		{
 			name: "circular reference errors",
 			input: map[string]string{
 				"A": "${B}",

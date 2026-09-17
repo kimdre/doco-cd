@@ -182,15 +182,19 @@ func InterpolateExternalSecretRefs(in map[string]ExternalSecretRef, enabled bool
 // resolved external secrets, so the placeholder is left untouched rather than substituted.
 var errUnknownResolvedSecretRef = errors.New("not an external secret")
 
-// resolvedSecretRefPattern matches ${NAME} or $NAME, used to find references to other resolved
-// external secrets inside an already-resolved secret value.
-var resolvedSecretRefPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
+// resolvedSecretRefPattern matches $$ (an escaped literal dollar sign), ${NAME}, or $NAME, used to
+// find references to other resolved external secrets inside an already-resolved secret value. $$
+// is matched here (rather than pre- / post-processed with a placeholder byte) so that raw secret
+// values containing arbitrary bytes, including NUL, are never mistaken for an escape marker.
+var resolvedSecretRefPattern = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
 
 // InterpolateResolvedSecrets expands references to other resolved external secrets (e.g. a
 // secret DB_URL containing ${DB_PASSWORD}) within already-resolved secret values, when enabled.
 // Only names present in resolvedSecrets are substituted; unknown names (including the doco-cd
 // process environment) are left untouched. Chains of references are followed recursively.
 // A circular reference (e.g. A referencing B, and B referencing A) returns an error.
+// A literal dollar sign must be escaped as $$, which is unescaped to a single $ in the result,
+// so callers must not enable this for secret values carrying unescaped literal $ characters.
 func InterpolateResolvedSecrets(resolvedSecrets map[string]string, enabled bool) (map[string]string, error) {
 	if !enabled || len(resolvedSecrets) == 0 {
 		return resolvedSecrets, nil
@@ -217,15 +221,15 @@ func InterpolateResolvedSecrets(resolvedSecrets map[string]string, enabled bool)
 
 		visiting[name] = true
 
-		const escapedDollar = "\x00"
-
-		escaped := strings.ReplaceAll(raw, "$$", escapedDollar)
-
 		var resolveErr error
 
-		expanded := resolvedSecretRefPattern.ReplaceAllStringFunc(escaped, func(match string) string {
+		expanded := resolvedSecretRefPattern.ReplaceAllStringFunc(raw, func(match string) string {
 			if resolveErr != nil {
 				return match
+			}
+
+			if match == "$$" {
+				return "$"
 			}
 
 			sub := resolvedSecretRefPattern.FindStringSubmatch(match)
@@ -254,8 +258,6 @@ func InterpolateResolvedSecrets(resolvedSecrets map[string]string, enabled bool)
 		if resolveErr != nil {
 			return "", resolveErr
 		}
-
-		expanded = strings.ReplaceAll(expanded, escapedDollar, "$")
 
 		resolved[name] = expanded
 
