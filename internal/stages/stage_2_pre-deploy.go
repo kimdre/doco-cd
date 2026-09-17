@@ -495,12 +495,7 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 
 	// LoadCompose decrypts SOPS-encrypted files in place, so lock the same path
 	// source.Prepare uses to avoid racing a concurrent clone/fetch of this repository.
-	lockKey := s.Repository.PathInternal
-	if lockKey == "" {
-		lockKey = s.Repository.PathExternal
-	}
-
-	unlockSource := sourcecache.AcquirePathLock(lockKey)
+	unlockSource := sourcecache.AcquirePathLock(s.sourceLockKey())
 
 	s.Docker.Project, err = docker.LoadCompose(
 		ctx, s.Docker.Cmd, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
