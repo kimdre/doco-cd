@@ -30,6 +30,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -515,4 +516,35 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 
 		s.Log.Warn("failed to post commit status", slog.String("error", err.Error()))
 	}
+}
+
+// sourceLockKey returns the key used to serialize every operation that mutates
+// the prepared source tree of this deployment's repository: clones, checkouts
+// (which reset and re-decrypt tracked files) and compose loads (which decrypt in place).
+// All of them must agree on one key, or they do not exclude each other at all.
+func (s *StageManager) sourceLockKey() string {
+	if s.Repository == nil {
+		return ""
+	}
+
+	if s.Repository.PathInternal != "" {
+		return s.Repository.PathInternal
+	}
+
+	return s.Repository.PathExternal
+}
+
+// withSourceLock runs fn while holding the source lock of this deployment's repository.
+// Without a resolvable source path there is nothing to serialize on, and locking
+// the empty key would serialize unrelated repositories against each other.
+func (s *StageManager) withSourceLock(fn func() error) error {
+	key := s.sourceLockKey()
+	if key == "" {
+		return fn()
+	}
+
+	unlock := sourcecache.AcquirePathLock(key)
+	defer unlock()
+
+	return fn()
 }

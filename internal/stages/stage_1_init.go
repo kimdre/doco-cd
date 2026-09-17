@@ -130,30 +130,37 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	var syncResult *git.SyncResult
 
-	if s.DeployConfig.RepositoryUrl == "" {
-		matches, matchErr := git.MatchesHead(s.Repository.PathInternal, s.DeployConfig.Reference)
-		if matchErr != nil {
-			return fmt.Errorf("failed to check prepared repository state: %w", matchErr)
-		}
-
-		if matches && !git.RepositoryNeedsReclone(
-			s.Repository.PathInternal,
-			s.Repository.SourceUrl,
-			s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth),
-		) {
-			repo, openErr := git.OpenRepository(s.Repository.PathInternal)
-			if openErr != nil {
-				return fmt.Errorf("failed to open prepared repository: %w", openErr)
+	// A sync may check out another commit, which resets and re-decrypts tracked files repository-wide.
+	// Hold the same lock source.Prepare and LoadCompose use, so a concurrent stack cannot observe or race that transition;
+	// git.SyncRepository's own path lock does not serialize against them.
+	if err := s.withSourceLock(func() error {
+		if s.DeployConfig.RepositoryUrl == "" {
+			matches, matchErr := git.MatchesHead(s.Repository.PathInternal, s.DeployConfig.Reference)
+			if matchErr != nil {
+				return fmt.Errorf("failed to check prepared repository state: %w", matchErr)
 			}
 
-			syncResult = &git.SyncResult{Repository: repo, State: git.SyncStateCurrent}
-		}
-	}
+			if matches && !git.RepositoryNeedsReclone(
+				s.Repository.PathInternal,
+				s.Repository.SourceUrl,
+				s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth),
+			) {
+				repo, openErr := git.OpenRepository(s.Repository.PathInternal)
+				if openErr != nil {
+					return fmt.Errorf("failed to open prepared repository: %w", openErr)
+				}
 
-	if syncResult == nil {
-		auth, err := git.GetAuthMethod(s.Repository.SourceUrl, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase, s.AppConfig.GitAccessToken)
-		if err != nil {
-			return fmt.Errorf("failed to get auth method: %w", err)
+				syncResult = &git.SyncResult{Repository: repo, State: git.SyncStateCurrent}
+			}
+		}
+
+		if syncResult != nil {
+			return nil
+		}
+
+		auth, authErr := git.GetAuthMethod(s.Repository.SourceUrl, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase, s.AppConfig.GitAccessToken)
+		if authErr != nil {
+			return fmt.Errorf("failed to get auth method: %w", authErr)
 		}
 
 		var syncErr error
@@ -166,6 +173,10 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		if syncErr != nil {
 			return fmt.Errorf("failed to synchronize repository: %w", syncErr)
 		}
+
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	s.Repository.Git = syncResult.Repository

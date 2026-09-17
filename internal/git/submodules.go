@@ -50,8 +50,11 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod, depth int
 			}
 		}
 
-		// Reset tracked files in submodule
-		err = ResetTrackedFiles(submoduleRepo)
+		// Reset tracked files in submodule. The worktree has to be clean against its index here:
+		// the checkout submodule.Update performs below refuses to run with unstaged changes,
+		// and its recovery path is a blind hard reset.
+		// Decrypted files are therefore restored only after the update succeeded.
+		err = resetTrackedFilesWithoutRestore(submoduleRepo)
 		if err != nil {
 			return fmt.Errorf("failed to reset tracked files in submodule: %w", err)
 		}
@@ -126,6 +129,12 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod, depth int
 			})
 		if err != nil {
 			return err
+		}
+
+		// Restore files the submodule had decrypted before the update, now that
+		// the submodule worktree sits at its new commit.
+		if err = ResetTrackedFiles(submoduleRepo); err != nil {
+			return fmt.Errorf("failed to restore decrypted files in submodule: %w", err)
 		}
 	}
 

@@ -28,6 +28,8 @@ import (
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
+
 	"github.com/kimdre/doco-cd/internal/logger"
 )
 
@@ -450,19 +452,19 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 
 					repoDir = path.Join(path.Dir(repoRoot), gitInternal.GetRepoName(string(c.RepositoryUrl)))
 
-					// SyncRepository holds repoDir's path lock for the duration of
-					// the sync, whether cloning or updating.
-					if _, err = gitInternal.SyncRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth)); err != nil {
-						return nil, fmt.Errorf("failed to synchronize repository: %w", err)
-					}
-
-					// Re-lock repoDir across resolving HEAD and scanning: it may be
-					// shared with another AutoDiscovery config or concurrent
-					// GetConfigs call, and a sync racing with our scan could mutate
-					// the tree mid-walk.
+					// Hold repoDir's source lock across the sync, resolving HEAD and the scan:
+					// the repository may be shared with another AutoDiscovery config, a concurrent GetConfigs call or
+					// a concurrent deployment, and syncing it rewrites decrypted files and the decrypted-files manifest.
+					// repoRoot's lock is already held by our caller, so a repository_url pointing at repoRoot itself must not re-lock.
 					discoveredConfigs, err = func() ([]*Config, error) {
-						unlock := gitInternal.AcquirePathLock(repoDir)
-						defer unlock()
+						if repoDir != repoRoot {
+							unlock := sourcecache.AcquirePathLock(repoDir)
+							defer unlock()
+						}
+
+						if _, err := gitInternal.SyncRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth)); err != nil {
+							return nil, fmt.Errorf("failed to synchronize repository: %w", err)
+						}
 
 						remoteRepo, err := git.PlainOpen(repoDir)
 						if err != nil {

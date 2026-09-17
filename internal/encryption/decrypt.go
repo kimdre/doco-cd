@@ -1,6 +1,7 @@
 package encryption
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -245,8 +246,40 @@ func DecryptFileInPlace(path string) (bool, error) {
 		return false, fmt.Errorf("failed to read file %s: %w", path, err)
 	}
 
-	format, encrypted := DetectFormat(content, path)
-	if !encrypted {
+	return lockedDecryptToFile(path, content)
+}
+
+// DecryptToFile decrypts encrypted and writes the plaintext to path, without
+// ever placing the ciphertext itself on disk. It reports false and leaves path
+// untouched when encrypted carries no SOPS metadata.
+//
+// The path must be absolute so that it cannot be resolved relative to an
+// unexpected working directory.
+func DecryptToFile(path string, encrypted []byte) (bool, error) {
+	path = filepath.Clean(path)
+
+	if !filepath.IsAbs(path) {
+		return false, fmt.Errorf("%w: path must be absolute: %s", filesystem.ErrInvalidFilePath, path)
+	}
+
+	lock := acquireFileLock(path)
+	defer releaseFileLock(path, lock)
+
+	return lockedDecryptToFile(path, encrypted)
+}
+
+// lockedDecryptToFile is the shared core of DecryptFileInPlace and
+// DecryptToFile: it detects, decrypts and writes encrypted's plaintext to the
+// already-validated path. Callers must hold path's file lock, since the
+// compare-then-write below must not interleave with another decryption of the
+// same path.
+//
+// The write is skipped when path already holds exactly that plaintext, so
+// processes watching the file (e.g. a bind-mounted config consumed by a container)
+// are not woken for content that did not change.
+func lockedDecryptToFile(path string, encrypted []byte) (bool, error) {
+	format, isEncrypted := DetectFormat(encrypted, path)
+	if !isEncrypted {
 		return false, nil
 	}
 
@@ -254,15 +287,17 @@ func DecryptFileInPlace(path string) (bool, error) {
 		return false, errSopsKeyNotSet
 	}
 
-	decryptedContent, err := DecryptContent(content, format)
+	decryptedContent, err := DecryptContent(encrypted, format)
 	if err != nil {
-		return false, fmt.Errorf("failed to decrypt file %s: %w", path, err)
+		return false, fmt.Errorf("failed to decrypt content for %s: %w", path, err)
 	}
 
-	// #nosec G703 -- path is cleaned, required to be absolute and verified to be a regular
-	// file above, and is the same file that was just read.
-	err = os.WriteFile(path, decryptedContent, filesystem.PermOwner)
-	if err != nil {
+	if current, readErr := os.ReadFile(path); readErr == nil && bytes.Equal(current, decryptedContent) { // #nosec G304 -- path validated by callers
+		return true, nil
+	}
+
+	// #nosec G703 -- path is cleaned and required to be absolute by callers.
+	if err = os.WriteFile(path, decryptedContent, filesystem.PermOwner); err != nil {
 		return false, fmt.Errorf("failed to write file %s: %w", path, err)
 	}
 
