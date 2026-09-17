@@ -30,8 +30,8 @@ func CloneOrUpdateRepository(log *slog.Logger,
 	}
 
 	if auth != nil {
-		log.Debug("Using auth method",
-			slog.String("name", auth.Name()),
+		log.Debug("Using auth method: "+auth.Name(),
+			slog.String("method", auth.Name()),
 		)
 	} else {
 		log.Debug("No auth method configured, using anonymous access")
