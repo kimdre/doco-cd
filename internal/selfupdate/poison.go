@@ -43,8 +43,9 @@ func (s *Store) loadPoison() (map[string]Poison, error) {
 
 	entries := map[string]Poison{}
 	if err = json.Unmarshal(data, &entries); err != nil {
-		// A corrupt poison file must not block deployments forever.
-		return map[string]Poison{}, nil
+		// A corrupt poison file must not block deployments forever: treat it as
+		// empty and let the next failure rewrite it.
+		return map[string]Poison{}, nil // nolint:nilerr
 	}
 
 	return entries, nil

@@ -316,8 +316,9 @@ func waitForApplier(ctx context.Context, log *logger.Logger, apiClient client.AP
 	for time.Now().Before(deadline) {
 		result, err := apiClient.ContainerInspect(ctx, record.Applier.ID, client.ContainerInspectOptions{})
 		if err != nil {
-			// A removed applier cannot report anything more.
-			return nil
+			// A removed applier cannot report anything more, so there is
+			// nothing left to wait for and nothing to propagate.
+			return nil // nolint:nilerr
 		}
 
 		if result.Container.State == nil || !result.Container.State.Running {

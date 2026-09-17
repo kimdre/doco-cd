@@ -314,7 +314,7 @@ func run() error {
 					return appContainerID, err
 				},
 				func(containerID, destination string) (container.MountPoint, error) {
-					return docker.GetMountPointByDestination(dockerClient, containerID, destination)
+					return docker.GetMountPointByDestination(ctx, dockerClient, containerID, destination)
 				},
 			)
 		},

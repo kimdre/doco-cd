@@ -43,6 +43,7 @@ func TestSelfUpdatePoisonedSkipsOnlyTheFailedCommit(t *testing.T) {
 	store := selfupdate.NewStore(t.TempDir())
 
 	previous := docker.SelfUpdateConfig()
+
 	t.Cleanup(func() { docker.ConfigureSelfUpdate(previous) })
 
 	docker.ConfigureSelfUpdate(docker.SelfUpdateOptions{
@@ -98,6 +99,7 @@ func TestSelfUpdatePoisonedIgnoresOtherStacks(t *testing.T) {
 	store := selfupdate.NewStore(t.TempDir())
 
 	previous := docker.SelfUpdateConfig()
+
 	t.Cleanup(func() { docker.ConfigureSelfUpdate(previous) })
 
 	docker.ConfigureSelfUpdate(docker.SelfUpdateOptions{

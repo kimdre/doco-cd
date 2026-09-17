@@ -7,11 +7,12 @@ import (
 	"log/slog"
 
 	"github.com/docker/cli/cli/command"
+	"github.com/moby/moby/api/types/container"
+
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
@@ -46,14 +47,14 @@ func parseApplySelfArgs(args []string) (bootstrap bool, journalID string, err er
 func runApplySelf(ctx context.Context, log *logger.Logger, c *app.Config, args []string) error {
 	bootstrap, journalID, err := parseApplySelfArgs(args)
 	if err != nil {
-		log.Critical("invalid apply-self arguments", logger.ErrAttr(err))
+		log.Log(ctx, logger.LevelCritical, "invalid apply-self arguments", logger.ErrAttr(err))
 
 		return err
 	}
 
 	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
-		log.Critical("failed to create docker client", logger.ErrAttr(err))
+		log.Log(ctx, logger.LevelCritical, "failed to create docker client", logger.ErrAttr(err))
 
 		return err
 	}
@@ -66,7 +67,7 @@ func runApplySelf(ctx context.Context, log *logger.Logger, c *app.Config, args [
 		return runSelfBootstrap(ctx, log, c, dockerCli)
 	}
 
-	dataMountPoint, err := bootstrapDataMountPoint(c, dockerCli)
+	dataMountPoint, err := bootstrapDataMountPoint(ctx, c, dockerCli)
 	if err != nil {
 		return err
 	}
@@ -79,7 +80,7 @@ func runApplySelf(ctx context.Context, log *logger.Logger, c *app.Config, args [
 
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, app.Version)
 	if err != nil {
-		log.Critical("failed to initialize the secret provider", logger.ErrAttr(err))
+		log.Log(ctx, logger.LevelCritical, "failed to initialize the secret provider", logger.ErrAttr(err))
 
 		return err
 	}
@@ -140,7 +141,7 @@ func runSelfBootstrap(ctx context.Context, log *logger.Logger, c *app.Config, do
 		defer secretProvider.Close()
 	}
 
-	dataMountPoint, err := bootstrapDataMountPoint(c, dockerCli)
+	dataMountPoint, err := bootstrapDataMountPoint(ctx, c, dockerCli)
 	if err != nil {
 		return err
 	}
@@ -199,7 +200,7 @@ func runSelfBootstrap(ctx context.Context, log *logger.Logger, c *app.Config, do
 // bootstrapDataMountPoint resolves the data volume the way the main process
 // does, so a bootstrap run writes to the same place the long-lived instance
 // will read from.
-func bootstrapDataMountPoint(c *app.Config, dockerCli command.Cli) (container.MountPoint, error) {
+func bootstrapDataMountPoint(ctx context.Context, c *app.Config, dockerCli command.Cli) (container.MountPoint, error) {
 	return resolveDataMountPoint(
 		c.DataHostPath,
 		c.DataMountPath,
@@ -208,7 +209,7 @@ func bootstrapDataMountPoint(c *app.Config, dockerCli command.Cli) (container.Mo
 				c.DataMountPath,
 				getAppContainerID,
 				func(containerID, destination string) (container.MountPoint, error) {
-					return docker.GetMountPointByDestination(dockerCli.Client(), containerID, destination)
+					return docker.GetMountPointByDestination(ctx, dockerCli.Client(), containerID, destination)
 				},
 			)
 		},

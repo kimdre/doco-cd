@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -85,7 +86,7 @@ func restoreSelfPredecessor(
 	}
 
 	if !ok {
-		return selfupdate.ContainerRef{}, fmt.Errorf("no snapshot to restore the previous container from")
+		return selfupdate.ContainerRef{}, errors.New("no snapshot to restore the previous container from")
 	}
 
 	// The old container is gone, so free its name before recreating it.

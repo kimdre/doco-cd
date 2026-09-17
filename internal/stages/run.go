@@ -127,6 +127,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 		outcome := "success"
 		if err != nil {
 			outcome = "failure"
+
 			switch {
 			case errors.Is(err, selfupdate.ErrHandover):
 				outcome = "handover"
