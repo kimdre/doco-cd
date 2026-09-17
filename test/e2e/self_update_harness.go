@@ -46,6 +46,13 @@ const (
 func (h *Harness) EnableSelfUpdate(stack, service string) {
 	h.t.Helper()
 
+	// Swarm replaces a service through a rolling update performed by the swarm
+	// manager, so doco-cd already updates itself there and self-update refuses
+	// to run. There is nothing for these scenarios to prove.
+	if h.isSwarmMode() {
+		h.t.Skip("self-update does not apply to Docker Swarm, which rolls services itself")
+	}
+
 	h.selfUpdate = true
 	h.selfStack = stack
 	h.selfService = service
@@ -56,6 +63,13 @@ func (h *Harness) EnableSelfUpdate(stack, service string) {
 	// scenario ends. Harnesses otherwise live until suite teardown, and eight
 	// collectors polling for the whole run slow every other scenario down.
 	h.t.Cleanup(h.stopSelfLogCollector)
+
+	// Release this scenario's network at the end of the test instead of at the
+	// end of the suite. Docker's default address pools fit only a few dozen
+	// networks, and holding one per self-update scenario for the whole run
+	// starves the scenarios that come later. Cleanups run last-in-first-out, so
+	// a scenario's own dump cleanup still sees the containers.
+	h.t.Cleanup(h.teardownInternal)
 }
 
 // SelfImageRepo is the per-scenario image repository the fixture refers to.

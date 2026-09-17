@@ -346,9 +346,20 @@ func TestSelfUpdateRollback(t *testing.T) {
 				"E2E_GENERATION: \"2\"\n      HTTP_PORT: \"99999\"")
 			h.RepoPush("break the doco-cd config")
 
-			h.WaitForLogAfter("self-update: strategy selected", mark, 3*time.Minute)
+			// Prove the strategy by state: a second container only appears
+			// under scale_out, an applier container only under applier. The
+			// log line comes from the container being replaced, so it can be
+			// gone before it is read; check it only when it was captured.
+			h.WaitFor(3*time.Minute, "the chosen strategy starts its container", func() bool {
+				if tt.wantStrategy == "applier" {
+					return len(h.SelfAppliers(true)) == 1
+				}
 
-			if logs := h.logsSince(mark); !strings.Contains(logs, `"strategy":"`+tt.wantStrategy+`"`) {
+				return len(h.SelfContainers(true)) == 2
+			})
+
+			if logs := h.logsSince(mark); strings.Contains(logs, "self-update: strategy selected") &&
+				!strings.Contains(logs, `"strategy":"`+tt.wantStrategy+`"`) {
 				t.Errorf("wanted the %s strategy, log says otherwise", tt.wantStrategy)
 			}
 
