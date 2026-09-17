@@ -163,3 +163,8 @@ With `INTERPOLATE_RESOLVED_SECRETS=true`, if the secret provider returns `postgr
 
 !!! warning "Circular references fail the deployment"
     If secret `A`'s value references secret `B`, and `B`'s value references `A`, doco-cd returns an error instead of interpolating.
+
+!!! warning "Literal `$` characters must be escaped as `$$`"
+    While enabled, secret values are parsed for Compose-style variables, so a literal `$` must be written as `$$`.
+    A value of `pa$$word` is delivered as `pa$word`, and a value of `$DB_HOST` is replaced when another external secret is named `DB_HOST`.
+    If any of your secret values contain literal `$` characters that you cannot escape at the source, leave this option disabled.
