@@ -178,6 +178,101 @@ func InterpolateExternalSecretRefs(in map[string]ExternalSecretRef, enabled bool
 	return out, nil
 }
 
+// errUnknownResolvedSecretRef is an internal sentinel: the referenced name is not one of the
+// resolved external secrets, so the placeholder is left untouched rather than substituted.
+var errUnknownResolvedSecretRef = errors.New("not an external secret")
+
+// resolvedSecretRefPattern matches $$ (an escaped literal dollar sign), ${NAME}, or $NAME, used to
+// find references to other resolved external secrets inside an already-resolved secret value. $$
+// is matched here (rather than pre- / post-processed with a placeholder byte) so that raw secret
+// values containing arbitrary bytes, including NUL, are never mistaken for an escape marker.
+var resolvedSecretRefPattern = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
+
+// InterpolateResolvedSecrets expands references to other resolved external secrets (e.g. a
+// secret DB_URL containing ${DB_PASSWORD}) within already-resolved secret values, when enabled.
+// Only names present in resolvedSecrets are substituted; unknown names (including the doco-cd
+// process environment) are left untouched. Chains of references are followed recursively.
+// A circular reference (e.g. A referencing B, and B referencing A) returns an error.
+// A literal dollar sign must be escaped as $$, which is unescaped to a single $ in the result,
+// so callers must not enable this for secret values carrying unescaped literal $ characters.
+func InterpolateResolvedSecrets(resolvedSecrets map[string]string, enabled bool) (map[string]string, error) {
+	if !enabled || len(resolvedSecrets) == 0 {
+		return resolvedSecrets, nil
+	}
+
+	resolved := make(map[string]string, len(resolvedSecrets))
+	visiting := make(map[string]bool, len(resolvedSecrets))
+
+	var resolve func(name string) (string, error)
+
+	resolve = func(name string) (string, error) {
+		if v, ok := resolved[name]; ok {
+			return v, nil
+		}
+
+		raw, ok := resolvedSecrets[name]
+		if !ok {
+			return "", errUnknownResolvedSecretRef
+		}
+
+		if visiting[name] {
+			return "", fmt.Errorf("circular reference detected while interpolating resolved secret %q", name)
+		}
+
+		visiting[name] = true
+
+		var resolveErr error
+
+		expanded := resolvedSecretRefPattern.ReplaceAllStringFunc(raw, func(match string) string {
+			if resolveErr != nil {
+				return match
+			}
+
+			if match == "$$" {
+				return "$"
+			}
+
+			sub := resolvedSecretRefPattern.FindStringSubmatch(match)
+
+			refName := sub[1]
+			if refName == "" {
+				refName = sub[2]
+			}
+
+			value, err := resolve(refName)
+			if err != nil {
+				if errors.Is(err, errUnknownResolvedSecretRef) {
+					return match
+				}
+
+				resolveErr = err
+
+				return match
+			}
+
+			return value
+		})
+
+		delete(visiting, name)
+
+		if resolveErr != nil {
+			return "", resolveErr
+		}
+
+		resolved[name] = expanded
+
+		return expanded, nil
+	}
+
+	for name := range resolvedSecrets {
+		if _, err := resolve(name); err != nil {
+			return nil, err
+		}
+	}
+
+	return resolved, nil
+}
+
 // requireExternalSecretVariables rewrites unguarded variables as requiredCompose variables
 // while preserving defaults, presence operators, and escapes.
 func requireExternalSecretVariables(ref string) string {

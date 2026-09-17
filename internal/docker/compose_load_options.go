@@ -74,6 +74,9 @@ type ScheduledComposeOptions struct {
 	// InterpolateExternalSecrets enables Compose-style interpolation in legacy external secret
 	// references using the doco-cd process environment.
 	InterpolateExternalSecrets bool
+	// InterpolateResolvedSecrets enables Compose-style interpolation of one resolved external
+	// secret's value referencing another. Only other external secrets are consulted.
+	InterpolateResolvedSecrets bool
 }
 
 // NewScheduledComposeOptions builds ScheduledComposeOptions from the application configuration.
@@ -87,6 +90,7 @@ func NewScheduledComposeOptions(c *app.Config) ScheduledComposeOptions {
 		ComposeLoad:                NewComposeLoadOptions(c),
 		DeployConfigBaseDir:        c.DeployConfigBaseDir,
 		InterpolateExternalSecrets: c.InterpolateExternalSecrets,
+		InterpolateResolvedSecrets: c.InterpolateResolvedSecrets,
 	}
 }
 
