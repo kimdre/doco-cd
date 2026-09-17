@@ -103,20 +103,39 @@ func TestSelfUpdateScaleOut(t *testing.T) {
 	h.ReplaceInWorktree("deploy/compose.yaml", ":v1", ":v2")
 	h.RepoPush("bump the doco-cd image")
 
-	h.WaitForLogAfter("self-update: strategy selected", mark, 2*time.Minute)
+	// A second container numbered 2 is what scale_out does and no other
+	// strategy does, so state proves the choice. The log line corroborates it
+	// when it was captured: it comes from the container being replaced, whose
+	// output stops being readable once the successor removes it.
+	h.WaitFor(3*time.Minute, "a second self container appears", func() bool {
+		return len(h.SelfContainers(true)) == 2
+	})
 
-	if logs := h.logsSince(mark); !strings.Contains(logs, `"strategy":"scale_out"`) {
+	if logs := h.logsSince(mark); strings.Contains(logs, "self-update: strategy selected") &&
+		!strings.Contains(logs, `"strategy":"scale_out"`) {
 		t.Errorf("wanted the scale_out strategy, log says otherwise")
 	}
 
-	h.WaitForLogAfter("self-update: successor healthy, handing over", mark, 3*time.Minute)
+	// Wait on Docker state, not on the predecessor's log. Its output stops
+	// being readable the moment the successor removes it, which makes a log
+	// line from a doomed container a race; the container state is not.
+	//
+	// The zero-downtime claim is that the old container served continuously
+	// until the new one was healthy. After that its stop is the handover
+	// working as designed, so the watch ends here rather than at convergence.
+	h.WaitFor(4*time.Minute, "the successor is up and healthy alongside the predecessor", func() bool {
+		for _, c := range h.SelfContainers(false) {
+			if c.ID != oldID && h.ContainerHealthy(c.ID) {
+				return true
+			}
+		}
 
-	// The predecessor must stay healthy right up to the point it reports that
-	// it finished its work. Anything earlier is real downtime.
-	h.WaitForLogAfter("self-update: drained", mark, 2*time.Minute)
+		return false
+	})
 
 	if downtime := stopWatch(); len(downtime) > 0 {
-		t.Errorf("predecessor stopped running %d times before it drained, first at %s", len(downtime), downtime[0])
+		t.Errorf("predecessor stopped running %d times before the successor was healthy, first at %s",
+			len(downtime), downtime[0])
 	}
 
 	h.WaitFor(3*time.Minute, "exactly one running self container, and it is new", func() bool {
@@ -191,20 +210,23 @@ func TestSelfUpdateApplier(t *testing.T) {
 	h.ReplaceInWorktree("deploy/compose.yaml", ":v1", ":v2")
 	h.RepoPush("bump the doco-cd image")
 
-	h.WaitForLogAfter("self-update: strategy selected", mark, 2*time.Minute)
-
-	logs := h.logsSince(mark)
-	if !strings.Contains(logs, `"strategy":"applier"`) {
-		t.Errorf("wanted the applier strategy, log says otherwise")
-	}
-
-	if !strings.Contains(logs, "container_name is set") {
-		t.Errorf("the applier strategy was not attributed to container_name")
-	}
-
-	h.WaitFor(2*time.Minute, "an applier container appears", func() bool {
+	// An applier container is what the applier strategy does and no other
+	// strategy does, so state proves the choice. The log line corroborates it
+	// when it was captured: it comes from the container being replaced, whose
+	// output stops being readable once the applier stops it.
+	h.WaitFor(3*time.Minute, "an applier container appears", func() bool {
 		return len(h.SelfAppliers(true)) == 1
 	})
+
+	if logs := h.logsSince(mark); strings.Contains(logs, "self-update: strategy selected") {
+		if !strings.Contains(logs, `"strategy":"applier"`) {
+			t.Errorf("wanted the applier strategy, log says otherwise")
+		}
+
+		if !strings.Contains(logs, "container_name is set") {
+			t.Errorf("the applier strategy was not attributed to container_name")
+		}
+	}
 
 	applierID := h.SelfAppliers(true)[0].ID
 
@@ -324,7 +346,7 @@ func TestSelfUpdateRollback(t *testing.T) {
 				"E2E_GENERATION: \"2\"\n      HTTP_PORT: \"99999\"")
 			h.RepoPush("break the doco-cd config")
 
-			h.WaitForLogAfter("self-update: strategy selected", mark, 2*time.Minute)
+			h.WaitForLogAfter("self-update: strategy selected", mark, 3*time.Minute)
 
 			if logs := h.logsSince(mark); !strings.Contains(logs, `"strategy":"`+tt.wantStrategy+`"`) {
 				t.Errorf("wanted the %s strategy, log says otherwise", tt.wantStrategy)

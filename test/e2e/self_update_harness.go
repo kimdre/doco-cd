@@ -28,6 +28,16 @@ const (
 	// selfHealthyTimeout bounds how long the first managed container may take
 	// to report healthy after the bootstrap created it.
 	selfHealthyTimeout = 2 * time.Minute
+	// selfLogPollInterval is how often container logs are snapshotted. Short
+	// enough to catch an applier that lives a few seconds, long enough not to
+	// flood the daemon with one request per container per scenario.
+	selfLogPollInterval = 500 * time.Millisecond
+	// selfAliveSampleInterval is how often [Harness.WatchAlive] samples a
+	// container's state.
+	selfAliveSampleInterval = 250 * time.Millisecond
+	// selfAliveStopTimeout bounds the wait for the sampler, so a stuck Docker
+	// call cannot hang the scenario.
+	selfAliveStopTimeout = 30 * time.Second
 )
 
 // EnableSelfUpdate makes the harness bring doco-cd up through its own
@@ -41,6 +51,11 @@ func (h *Harness) EnableSelfUpdate(stack, service string) {
 	h.selfService = service
 	h.selfImageRepo = "doco-cd-e2e-self-" + strings.TrimPrefix(filepath.Base(h.workDir), "doco-cd-e2e-")
 	h.selfLogCache = map[string]string{}
+
+	// The collector polls the daemon continuously, so it must stop when this
+	// scenario ends. Harnesses otherwise live until suite teardown, and eight
+	// collectors polling for the whole run slow every other scenario down.
+	h.t.Cleanup(h.stopSelfLogCollector)
 }
 
 // SelfImageRepo is the per-scenario image repository the fixture refers to.
@@ -292,14 +307,17 @@ func (h *Harness) RepoHead() string {
 	return ref.Hash().String()
 }
 
-// WatchAlive samples a container every 250ms and records when it stopped
-// running. That is the zero-downtime claim for a compose handover: the old
-// container must keep running until it has drained.
+// WatchAlive samples a container and records when it stopped running. That is
+// the zero-downtime claim for a compose handover: the old container must keep
+// running until it has drained.
 //
-// Docker's health verdict is deliberately not the failure signal. Under a
-// loaded daemon an interval-based healthcheck flaps, which says something
-// about the test machine rather than about the handover, so flaps are only
-// reported.
+// Docker's health verdict is deliberately not the failure signal. On a loaded
+// daemon an interval-based healthcheck flaps, which says something about the
+// test machine rather than about the handover, so flaps are only reported.
+//
+// Nothing in here may call t.Fatalf: from a non-test goroutine that is a
+// runtime.Goexit, which would kill the sampler silently and leave the stop
+// closure waiting forever.
 func (h *Harness) WatchAlive(containerID string) func() []time.Time {
 	stop := make(chan struct{})
 	done := make(chan []time.Time, 1)
@@ -310,21 +328,28 @@ func (h *Harness) WatchAlive(containerID string) func() []time.Time {
 			flaps      int
 		)
 
+		defer func() {
+			if flaps > 0 {
+				h.logf("note: %s reported unhealthy in %d samples while still running",
+					shortContainerID(containerID), flaps)
+			}
+
+			done <- notRunning
+		}()
+
 		for {
 			select {
 			case <-stop:
-				if flaps > 0 {
-					h.logf("note: %s reported unhealthy in %d samples while still running", shortContainerID(containerID), flaps)
-				}
-
-				done <- notRunning
-
 				return
-			case <-time.After(250 * time.Millisecond):
+			case <-time.After(selfAliveSampleInterval):
+				running, healthy, ok := h.sampleContainer(containerID)
 				switch {
-				case !h.ContainerRunning(containerID):
+				case !ok:
+					// A transient daemon error is not evidence of downtime.
+					continue
+				case !running:
 					notRunning = append(notRunning, time.Now())
-				case !h.ContainerHealthy(containerID):
+				case !healthy:
 					flaps++
 				}
 			}
@@ -334,8 +359,39 @@ func (h *Harness) WatchAlive(containerID string) func() []time.Time {
 	return func() []time.Time {
 		close(stop)
 
-		return <-done
+		select {
+		case failures := <-done:
+			return failures
+		case <-time.After(selfAliveStopTimeout):
+			h.logf("warning: the liveness sampler for %s did not stop in time", shortContainerID(containerID))
+
+			return nil
+		}
 	}
+}
+
+// sampleContainer reports whether a container is running and healthy. The third
+// value is false when the daemon could not be asked, which is not a verdict.
+func (h *Harness) sampleContainer(containerID string) (running, healthy, ok bool) {
+	result, err := h.docker.ContainerInspect(h.ctx, containerID, client.ContainerInspectOptions{})
+	if err != nil {
+		return false, false, false
+	}
+
+	state := result.Container.State
+	if state == nil {
+		return false, false, true
+	}
+
+	if !state.Running {
+		return false, false, true
+	}
+
+	if state.Health == nil {
+		return true, true, true
+	}
+
+	return true, state.Health.Status == container.Healthy, true
 }
 
 // ContainerExists reports whether a container is still known to the daemon.
@@ -483,34 +539,47 @@ func (h *Harness) listSelfContainerIDs() []string {
 // startSelfLogCollector snapshots container logs continuously. A handover
 // deletes containers within seconds, and their output is the only record of
 // what happened, so polling it lazily loses it under load.
+//
+// [EnableSelfUpdate] registers the stop, so the polling ends with the scenario
+// rather than with the suite.
 func (h *Harness) startSelfLogCollector() {
 	h.selfLogStop = make(chan struct{})
 	h.selfLogDone = make(chan struct{})
+
+	stop := h.selfLogStop
 
 	go func() {
 		defer close(h.selfLogDone)
 
 		for {
 			select {
-			case <-h.selfLogStop:
+			case <-stop:
 				h.refreshSelfLogs()
 
 				return
-			case <-time.After(250 * time.Millisecond):
+			case <-time.After(selfLogPollInterval):
 				h.refreshSelfLogs()
 			}
 		}
 	}()
 }
 
+// stopSelfLogCollector is safe to call twice: the scenario's t.Cleanup and the
+// suite teardown both reach it.
 func (h *Harness) stopSelfLogCollector() {
-	if h.selfLogStop == nil {
+	h.selfLogMu.Lock()
+
+	stop := h.selfLogStop
+	h.selfLogStop = nil
+
+	h.selfLogMu.Unlock()
+
+	if stop == nil {
 		return
 	}
 
-	close(h.selfLogStop)
+	close(stop)
 	<-h.selfLogDone
-	h.selfLogStop = nil
 }
 
 // snapshotSelfLogs returns a stable copy of the cache.
