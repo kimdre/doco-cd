@@ -1,23 +1,18 @@
-# Deploy config for the shop-dev host. Its doco-cd instance polls this repo
-# with `target: shop-dev` and reads ONLY this file.
-#
-# RULE: every service this host runs has its version pinned HERE. Our images
-# by git sha (rolled by app-repo CI bump jobs), third-party by exact tag.
-# Nothing floats. A version change is a commit.
-name: shop
-working_dir: shop/shop-dev
+# The shop-dev host polls this repo with `target: shop-dev` and reads only this file.
+# It lists the stacks the host runs and pins every version they use.
+name: app
+working_dir: shop-dev/app
 environment:
-  ENV_NAME: "dev"
-  DOMAIN: "dev.shop.example.com"
-  REGISTRY: "ghcr.io/example"
-  # --- compose pin (app repo's deploy/compose.yaml at this sha)
-  SHOP_COMPOSE_SHA: "b3e21007ad8c2ac1223537d7d5f7c1e2ef51be77"
-  # --- our images
+  SHOP_COMPOSE_SHA: "b3e21007ad8c2ac1223537d7d5f7c1e2ef51be77" # app repo's deploy/
   SHOP_BE_TAG: "dd5c00230acc348c4b0524730a848ff592189b16"
-  # --- third-party
-  REDIS_TAG: "7.2-alpine"
-# Dropped services must not linger as orphans. An orphaned crashlooper keeps
-# the drift-redeploy loop alive.
+  REGISTRY: "ghcr.io/example"
+  DOMAIN: "dev.shop.example.com"
 remove_orphans: true
 reconciliation:
-  events: [unhealthy] # never `die`, one-shot/post_start exits would loop it
+  events: [unhealthy] # not `die` — one-shot/post_start exits would loop it
+---
+name: db
+working_dir: shop-dev/db
+environment:
+  DB_COMPOSE_SHA: "9cfc981a28aa46d4510a520768960140039c4ef0" # this repo's shared/db
+  POSTGRES_TAG: "17.2-alpine"

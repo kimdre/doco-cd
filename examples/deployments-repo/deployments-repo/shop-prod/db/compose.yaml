@@ -1,0 +1,4 @@
+# Pulls in shared/db from this repo at a pinned sha.
+include:
+  - path: https://github.com/example/deployments.git#${DB_COMPOSE_SHA}:shared/db
+    project_directory: .
