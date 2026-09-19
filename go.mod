@@ -42,7 +42,7 @@ require (
 	github.com/moby/buildkit v0.33.0
 	github.com/moby/moby/api v1.56.0
 	github.com/moby/moby/client v0.6.0
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/openbao/openbao/api/v2 v2.7.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
