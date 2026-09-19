@@ -13,6 +13,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
 type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
@@ -126,7 +127,11 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 		outcome := "success"
 		if err != nil {
 			outcome = "failure"
-			if errors.Is(err, ErrSkipDeployment) || errors.Is(err, ErrWebhookFilterMismatch) {
+
+			switch {
+			case errors.Is(err, selfupdate.ErrHandover):
+				outcome = "handover"
+			case errors.Is(err, ErrSkipDeployment), errors.Is(err, ErrWebhookFilterMismatch):
 				outcome = "skipped"
 			}
 		}
@@ -145,7 +150,9 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 				slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
 			// Skip outcomes propagate without failure reporting so callers can
 			// distinguish an intentional no-op from a successful deployment.
-			if errors.Is(err, ErrSkipDeployment) {
+			// A handover does the same: the successor reports the result once it
+			// has proven itself, so recording a failure here would be wrong.
+			if errors.Is(err, ErrSkipDeployment) || errors.Is(err, selfupdate.ErrHandover) {
 				return err
 			}
 
@@ -186,6 +193,15 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 // handleStageFailure preserves retry safety for interrupted deploys without
 // reporting the process's own shutdown as an operator-actionable failure.
 func (s *StageManager) handleStageFailure(ctx context.Context, stageName StageName, stageLog *slog.Logger, err error) error {
+	// A handover is not a failure: the successor reports the deployment once it
+	// is healthy. Recording one here would make the next poll force-recreate the
+	// stack and fight the handover it is part of.
+	if errors.Is(err, selfupdate.ErrHandover) {
+		stageLog.Info("self-update handover in progress", slog.String("stage", string(stageName)))
+
+		return err
+	}
+
 	s.recordDeploymentFailure(stageName, err)
 
 	if lifecycle.IsCanceled(err) {

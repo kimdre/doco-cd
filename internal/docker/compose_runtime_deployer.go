@@ -2,12 +2,14 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/docker/compose/v5/pkg/api"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
 // deployComposeRuntime deploys a project as specified by the Docker Compose specification (LoadCompose).
@@ -76,12 +78,39 @@ func deployComposeRuntime(ctx context.Context, req runtimeDeployRequest) error {
 		forcedServices.ToSlice(),
 		req.request.NeedSignal,
 		req.phase.Set,
+		req.selfDeployInput(),
 	)
 	if err != nil {
+		if errors.Is(err, selfupdate.ErrHandover) {
+			return err
+		}
+
 		req.recordError()
 
 		return fmt.Errorf("failed to deploy stack: %w", err)
 	}
 
 	return nil
+}
+
+// selfDeployInput carries the deploy context a successor needs to report a
+// deployment that was handed over mid-flight.
+func (req runtimeDeployRequest) selfDeployInput() *SelfDeployInput {
+	in := &SelfDeployInput{
+		SourceURL:      req.request.SourceURL,
+		SourceType:     string(req.request.DeployConfig.Source),
+		Reference:      req.request.DeployConfig.Reference,
+		ConfigTarget:   req.request.DeployConfig.Internal.ConfigTarget,
+		CommitSHA:      req.request.LatestCommit,
+		ProjectHash:    req.projectHash,
+		TimeoutSeconds: req.request.DeployConfig.Timeout,
+		Log:            req.stackLog,
+	}
+
+	if req.request.Payload != nil {
+		in.RepoName = req.request.Payload.Name
+		in.FullName = req.request.Payload.FullName
+	}
+
+	return in
 }

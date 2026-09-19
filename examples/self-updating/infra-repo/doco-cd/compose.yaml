@@ -1,0 +1,37 @@
+services:
+  doco-cd:
+    # Pin by tag + digest and let Renovate open the bump PR. A moving tag turns
+    # every restart into an unreviewed upgrade.
+    image: ghcr.io/kimdre/doco-cd:0.118.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    restart: unless-stopped
+
+    # No container_name and no host ports: both force the applier strategy,
+    # which restarts doco-cd instead of handing over without downtime.
+    # Reach the API through a reverse proxy on this network instead.
+
+    environment:
+      TZ: Europe/Berlin
+      SELF_UPDATE_ENABLED: "true"
+      SELF_UPDATE_STRATEGY: auto
+      GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN}
+      POLL_CONFIG: |
+        - url: https://github.com/example/infra.git
+          reference: main
+          interval: 300
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - data:/data
+
+    # The health gate decides whether the new version is kept. Without a
+    # healthcheck doco-cd falls back to running `doco-cd healthcheck` inside
+    # the new container, which is slower and less precise.
+    healthcheck:
+      test: ["CMD", "/doco-cd", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  data:

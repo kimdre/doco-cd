@@ -106,6 +106,8 @@ type Config struct {
 	CertRotationEnabled           bool                   `env:"CERT_ROTATION_ENABLED,notEmpty" envDefault:"false"`                                               // CertRotationEnabled enables the built-in watcher that automatically rotates certificates issued through rotation-capable external secret providers (e.g. OpenBao PKI roles)
 	CertRotationThreshold         time.Duration          `env:"CERT_ROTATION_THRESHOLD,notEmpty" envDefault:"72h" validate:"min=1"`                              // CertRotationThreshold is how far ahead of a certificate's expiry doco-cd triggers a rotation
 	CertRotationCheckInterval     time.Duration          `env:"CERT_ROTATION_CHECK_INTERVAL,notEmpty" envDefault:"1h" validate:"min=1"`                          // CertRotationCheckInterval is how often the certificate rotation watcher checks deployed certificates for upcoming expiry
+	SelfUpdateEnabled             bool                   `env:"SELF_UPDATE_ENABLED,notEmpty" envDefault:"false"`                                                 // SelfUpdateEnabled lets doco-cd deploy the stack that contains its own container. Without it such a deployment is refused instead of killing this process mid-deploy.
+	SelfUpdateStrategy            string                 `env:"SELF_UPDATE_STRATEGY,notEmpty" envDefault:"auto" validate:"oneof=auto scale_out applier"`         // SelfUpdateStrategy is how doco-cd replaces its own container: scale_out starts a second container and hands over, applier delegates to a throwaway clone, auto picks scale_out unless the compose file rules it out
 }
 
 // GetConfig returns the app Config.

@@ -59,6 +59,17 @@ type Harness struct {
 	gitSrv testcontainers.Container
 	daemon testcontainers.Container
 
+	selfUpdate    bool
+	selfStack     string
+	selfService   string
+	selfImageRepo string
+	bootstrap     testcontainers.Container
+	selfLogCache  map[string]string
+	selfLogMarks  []map[string]int
+	selfLogMu     sync.Mutex
+	selfLogStop   chan struct{}
+	selfLogDone   chan struct{}
+
 	remoteContext    bool
 	contextConfigDir string
 	remoteDaemon     testcontainers.Container
@@ -162,14 +173,21 @@ func (h *Harness) Start() {
 
 	h.initRepo()
 	h.copyFixture(fixtureDir)
-	h.RepoPush("e2e: initial fixture")
 
+	// The network exists before the first commit so a self-update fixture can
+	// join it by name through the generated .env file.
 	net, err := tcnetwork.New(h.ctx)
 	if err != nil {
 		h.t.Fatalf("create network: %v", err)
 	}
 
 	h.net = net
+
+	if h.selfUpdate {
+		h.prepareSelfUpdateFixture()
+	}
+
+	h.RepoPush("e2e: initial fixture")
 
 	h.logf("starting gitserver")
 	h.startGitServer()
@@ -182,6 +200,14 @@ func (h *Harness) Start() {
 
 	pollPath := h.writePollConfig()
 	h.pollConfig = pollPath
+
+	if h.selfUpdate {
+		h.logf("bootstrapping the self-managed daemon")
+		h.startSelfBootstrap(pollPath)
+
+		return
+	}
+
 	h.logf("starting daemon")
 	h.startDaemon(pollPath)
 }
@@ -568,6 +594,11 @@ func (h *Harness) teardownInternal() {
 	h.teardownOnce.Do(func() {
 		if h.daemon != nil {
 			h.terminateContainer(h.daemon)
+		}
+
+		if h.selfUpdate {
+			h.stopSelfLogCollector()
+			h.cleanupSelfUpdate()
 		}
 
 		h.cleanupStacks()
