@@ -18,6 +18,7 @@ import (
 
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	dockerClient "github.com/moby/moby/client"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -50,6 +51,154 @@ var (
 	ErrGlobalSwarmServiceNotScalable = errors.New("global-mode swarm service cannot be scaled")
 )
 
+// writeResolvedComposeFile marshals the already-resolved project (with any Git/OCI
+// includes merged in) to a temporary compose file and returns its path along with a
+// cleanup function that removes it.
+func writeResolvedComposeFile(project *types.Project) (string, func(), error) {
+	// MarshalYAML (rather than MarshalJSON) is required here: fields such as
+	// Command/Entrypoint can't use `omitempty` for JSON (compose-go needs to
+	// distinguish an explicitly empty value from an unset one across file
+	// merges), so unset commands would round-trip as a literal JSON `null`,
+	// which the Docker CLI's stack schema rejects. YAML marshaling honors
+	// each field's IsZero()/omitempty and simply omits unset fields instead.
+	content, err := project.MarshalYAML()
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to marshal resolved compose project: %w", err)
+	}
+
+	content, err = normalizeComposeForSwarmSchema(content)
+	if err != nil {
+		return "", nil, err
+	}
+
+	file, err := os.CreateTemp("", "doco-cd-swarm-compose-*.yaml")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create resolved compose file: %w", err)
+	}
+
+	cleanup := func() {
+		_ = os.Remove(file.Name())
+	}
+
+	if _, err = file.Write(content); err != nil {
+		_ = file.Close()
+
+		cleanup()
+
+		return "", nil, fmt.Errorf("failed to write resolved compose file: %w", err)
+	}
+
+	if err = file.Close(); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("failed to close resolved compose file: %w", err)
+	}
+
+	return file.Name(), cleanup, nil
+}
+
+// normalizeComposeForSwarmSchema adapts a compose-go-marshaled project document so
+// it passes the Docker CLI's older, stricter stack-file JSON schema (used only by
+// the Swarm deploy path), without changing its meaning:
+//
+//   - Drops top-level keys the schema doesn't recognize (e.g. "name", which
+//     compose-go always sets on a resolved *types.Project but which has no
+//     equivalent/effect in a Swarm stack deployment).
+//   - Rewrites each service's "env_file" entries back into their plain-string
+//     short form. compose-go always marshals env_file entries as
+//     {path: ..., required: ..., format: ...} objects, but the Docker CLI's
+//     stack schema (unlike its configs/secrets schema) only accepts a string
+//     or a list of strings, so the object form would otherwise fail
+//     validation. The "required" and "format" long-form options have no
+//     equivalent in that legacy schema, so they're dropped; that's an
+//     existing Swarm limitation, not something introduced by resolving
+//     includes.
+func normalizeComposeForSwarmSchema(content []byte) ([]byte, error) {
+	var doc map[string]any
+
+	if err := yaml.Unmarshal(content, &doc); err != nil {
+		return nil, fmt.Errorf("failed to parse resolved compose project: %w", err)
+	}
+
+	// Only "version", "services", "networks", "volumes", "secrets", "configs"
+	// and "x-*" extension fields are valid at the document root in the legacy
+	// stack-file schema.
+	for key := range doc {
+		switch {
+		case key == "version" || key == "services" || key == "networks" ||
+			key == "volumes" || key == "secrets" || key == "configs":
+			continue
+		case strings.HasPrefix(key, "x-"):
+			continue
+		default:
+			delete(doc, key)
+		}
+	}
+
+	services, ok := doc["services"].(map[string]any)
+	if !ok {
+		return content, nil
+	}
+
+	for name, rawService := range services {
+		service, ok := rawService.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		envFiles, ok := service["env_file"].([]any)
+		if !ok {
+			continue
+		}
+
+		for i, rawEntry := range envFiles {
+			entry, ok := rawEntry.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			if path, ok := entry["path"].(string); ok {
+				envFiles[i] = path
+			}
+		}
+
+		service["env_file"] = envFiles
+		services[name] = service
+	}
+
+	doc["services"] = services
+
+	normalized, err := yaml.Marshal(doc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-marshal resolved compose project: %w", err)
+	}
+
+	return normalized, nil
+}
+
+// composeFilesUseInclude reports whether any of the given compose files declares
+// a top-level "include" key. It parses each file's raw YAML directly (not the
+// already-resolved project, which no longer has an "include" key once resolved)
+// and ignores read/parse errors so the regular compose loader can surface them.
+func composeFilesUseInclude(files []string) bool {
+	for _, file := range files {
+		data, err := os.ReadFile(file) //nolint:gosec // compose file paths are resolved by doco-cd itself
+		if err != nil {
+			continue
+		}
+
+		var doc map[string]any
+		if err = yaml.Unmarshal(data, &doc); err != nil {
+			continue
+		}
+
+		if _, ok := doc["include"]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 // SwarmServiceReplicas returns the desired replica count before a service is
 // scaled down. Global services return ErrGlobalSwarmServiceNotScalable.
 func SwarmServiceReplicas(ctx context.Context, dockerCLI command.Cli, serviceName string) (uint64, error) {
@@ -79,8 +228,33 @@ func SwarmServiceReplicas(ctx context.Context, dockerCLI command.Cli, serviceNam
 func LoadSwarmStack(dockerCli command.Cli, project *types.Project,
 	deployConfig *deploy.Config, externalWorkingDir string,
 ) (*composetypes.Config, *options.Deploy, error) {
+	// The Docker CLI's own stack loader used below doesn't understand the
+	// Compose Specification's "include" directive, so a file that still
+	// contains a literal "include:" key would be rejected by that loader's
+	// schema. Only when includes are actually used do we substitute the
+	// already-resolved project (with includes merged in) for the original
+	// files; the common, include-free case keeps using project.ComposeFiles
+	// directly and is unaffected by the resolved-project round trip.
+	composefiles := project.ComposeFiles
+
+	var cleanup func()
+
+	if composeFilesUseInclude(project.ComposeFiles) {
+		resolvedComposeFile, resolvedCleanup, err := writeResolvedComposeFile(project)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to write resolved compose file: %w", err)
+		}
+
+		composefiles = []string{resolvedComposeFile}
+		cleanup = resolvedCleanup
+	}
+
+	if cleanup != nil {
+		defer cleanup()
+	}
+
 	opts := options.Deploy{
-		Composefiles:     project.ComposeFiles,
+		Composefiles:     composefiles,
 		Namespace:        deployConfig.Name,
 		ResolveImage:     swarmInternal.ResolveImageAlways,
 		SendRegistryAuth: true,
