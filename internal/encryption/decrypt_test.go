@@ -369,3 +369,59 @@ func TestDecryptFilesInDirectory_GitIgnore(t *testing.T) {
 		}
 	})
 }
+
+// A repository may legitimately hold secrets encrypted for someone else; a
+// tolerant walk must skip those rather than make the whole directory fail.
+func TestDecryptFilesInDirectoryTolerant_SkipsUndecryptableFiles(t *testing.T) {
+	encrypted, err := os.ReadFile("testdata/encrypted.yaml")
+	if err != nil {
+		t.Fatalf("read testdata/encrypted.yaml: %v", err)
+	}
+
+	// No key configured, so the encrypted file below cannot be decrypted.
+	t.Setenv(age.SopsAgeKeyEnv, "")
+	t.Setenv(age.SopsAgeKeyFileEnv, "")
+
+	dir := t.TempDir()
+
+	undecryptable := filepath.Join(dir, "other-recipient.yaml")
+	// #nosec G703 -- path is built from t.TempDir() and a fixed name
+	if err = os.WriteFile(undecryptable, encrypted, filesystem.PermOwner); err != nil {
+		t.Fatalf("write encrypted fixture: %v", err)
+	}
+
+	plain := filepath.Join(dir, "compose.yaml")
+	if err = os.WriteFile(plain, []byte("services: {}\n"), filesystem.PermOwner); err != nil {
+		t.Fatalf("write plain file: %v", err)
+	}
+
+	if _, err = DecryptFilesInDirectory(dir, dir); err == nil {
+		t.Fatal("DecryptFilesInDirectory() error = nil, want failure on the undecryptable file")
+	}
+
+	var reported []string
+
+	decrypted, err := DecryptFilesInDirectoryTolerant(dir, dir, func(path string, _ error) {
+		reported = append(reported, path)
+	})
+	if err != nil {
+		t.Fatalf("DecryptFilesInDirectoryTolerant() error = %v, want nil", err)
+	}
+
+	if len(decrypted) != 0 {
+		t.Errorf("decrypted = %v, want none", decrypted)
+	}
+
+	if len(reported) != 1 || reported[0] != undecryptable {
+		t.Errorf("reported = %v, want [%s]", reported, undecryptable)
+	}
+
+	content, err := os.ReadFile(undecryptable)
+	if err != nil {
+		t.Fatalf("read undecryptable file after sweep: %v", err)
+	}
+
+	if string(content) != string(encrypted) {
+		t.Error("undecryptable file was modified, want it left as ciphertext")
+	}
+}

@@ -42,6 +42,22 @@ func GetServicesByLabel(ctx context.Context, apiclient client.APIClient, labelKe
 	return result.Items, nil
 }
 
+// GetServicesByLabelKey retrieves all services that carry labelKey,
+// regardless of its value. Unlike GetServicesByLabel, this does not require
+// knowing the label's value in advance - it is used for discovery scans
+// (e.g. garbage collection) that need every doco-cd-managed service
+// regardless of which value a label was stamped with.
+func GetServicesByLabelKey(ctx context.Context, apiclient client.APIClient, labelKey string) ([]swarm.Service, error) {
+	filter := make(client.Filters).Add("label", labelKey)
+
+	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{Filters: filter})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
+}
+
 func getStackNetworks(ctx context.Context, apiclient client.APIClient, namespace string) ([]network.Summary, error) {
 	result, err := apiclient.NetworkList(ctx, client.NetworkListOptions{Filters: getStackFilter(namespace)})
 	if err != nil {

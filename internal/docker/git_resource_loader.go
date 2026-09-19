@@ -22,7 +22,7 @@ import (
 	"github.com/moby/buildkit/frontend/dockerfile/dfgitutil"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
-	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
 const gitIncludeCacheDirectory = "compose-git-cache"
@@ -205,14 +205,14 @@ func (g *gitResourceLoader) Load(ctx context.Context, resource string) (string, 
 	lock, _ := gitIncludeLocks.LoadOrStore(repoPath, &sync.Mutex{})
 	repoLock := lock.(*sync.Mutex)
 	repoLock.Lock()
-	err = g.checkout(repoPath, ref.Remote, ref.Ref)
+	artifactPath, err := g.checkout(ctx, repoPath, ref.Remote, ref.Ref)
 	repoLock.Unlock()
 
 	if err != nil {
 		return "", err
 	}
 
-	localPath, err := gitIncludePath(repoPath, ref.SubDir)
+	localPath, err := gitIncludePath(artifactPath, ref.SubDir)
 	if err != nil {
 		return "", err
 	}
@@ -225,7 +225,7 @@ func (g *gitResourceLoader) Load(ctx context.Context, resource string) (string, 
 			return "", err
 		}
 
-		localPath, err = validateGitIncludePath(repoPath, localPath, localPath)
+		localPath, err = validateGitIncludePath(artifactPath, localPath, localPath)
 		if err != nil {
 			return "", err
 		}
@@ -270,25 +270,42 @@ func (g *gitResourceLoader) Dir(resource string) string {
 	return ""
 }
 
-// checkout clones or updates the Git repository at the given path.
-func (g *gitResourceLoader) checkout(path, remote, ref string) error {
-	auth, err := git.GetAuthMethod(remote, g.privateKey, g.keyPassphrase, g.accessToken)
+// checkout resolves ref against remote using a store.GitStore rooted at path, publishing
+// (or reusing an already-published) artifact for the resolved revision, and returns that artifact's directory.
+func (g *gitResourceLoader) checkout(ctx context.Context, path, remote, ref string) (string, error) {
+	gitStore, err := store.NewGitStore(store.GitStoreOptions{
+		Log:                     slog.Default(),
+		CloneURL:                remote,
+		BaseDir:                 path,
+		SSHPrivateKey:           g.privateKey,
+		SSHPrivateKeyPassphrase: g.keyPassphrase,
+		AccessToken:             g.accessToken,
+		SkipTLSVerify:           g.skipTLSVerify,
+		ProxyOptions:            g.proxyOptions,
+		CloneSubmodules:         g.cloneSubmodules,
+		Depth:                   g.cloneDepth,
+	})
 	if err != nil {
-		return fmt.Errorf("authenticate git include %q: %w", remote, err)
+		return "", fmt.Errorf("initialize git store for include %q: %w", remote, err)
 	}
 
-	syncResult, err := git.SyncRepository(path, remote, ref, g.skipTLSVerify, g.proxyOptions, auth, g.cloneSubmodules, g.cloneDepth)
+	revision, err := gitStore.Resolve(ctx, ref)
 	if err != nil {
-		return fmt.Errorf("synchronize git include %q: %w", remote, err)
+		return "", fmt.Errorf("resolve git include %q: %w", remote, err)
+	}
+
+	artifact, err := gitStore.Publish(ctx, revision)
+	if err != nil {
+		return "", fmt.Errorf("publish git include %q: %w", remote, err)
 	}
 
 	slog.Debug("synchronized git include repository",
 		slog.String("remote_host", gitRemoteHostForLog(remote)),
 		slog.String("ref", ref),
 		slog.String("cache_path", path),
-		slog.String("state", string(syncResult.State)))
+		slog.String("revision", string(revision)))
 
-	return nil
+	return artifact.Path, nil
 }
 
 // cacheKey returns a unique key for the given remote and ref, suitable for use as a directory name.

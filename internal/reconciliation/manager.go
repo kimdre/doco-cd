@@ -20,6 +20,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/migration"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
@@ -91,6 +92,10 @@ type Manager struct {
 	secretProvider secretprovider.SecretProvider
 	notifier       notification.Sender
 	runtimeQueries RuntimeQueries
+	// leftoverTracker remembers repository directories already confirmed free of legacy
+	// on-disk leftovers, so the cleanup stage can skip redundant checks for them; see
+	// migration.LeftoverTracker.
+	leftoverTracker *migration.LeftoverTracker
 }
 
 // NewManager validates dependencies and creates an isolated reconciliation manager.
@@ -108,17 +113,18 @@ func NewManager(dependencies Dependencies) (*Manager, error) {
 	}
 
 	return &Manager{
-		jobs:           jobRegistry{jobs: make(map[string]*job)},
-		deployments:    deploymentTracker{stacks: make(map[string]int)},
-		schedulerHolds: schedulerHoldRegistry{services: make(map[string]schedulerHoldEntry)},
-		limiter:        NewDeployerLimiter(dependencies.MaxConcurrentDeployments),
-		appConfig:      dependencies.AppConfig,
-		dataMountPoint: dependencies.DataMountPoint,
-		dockerCli:      dependencies.DockerCLI,
-		contexts:       dependencies.Contexts,
-		secretProvider: dependencies.SecretProvider,
-		notifier:       dependencies.Notifier,
-		runtimeQueries: dependencies.RuntimeQueries,
+		jobs:            jobRegistry{jobs: make(map[string]*job)},
+		deployments:     deploymentTracker{stacks: make(map[string]int)},
+		schedulerHolds:  schedulerHoldRegistry{services: make(map[string]schedulerHoldEntry)},
+		limiter:         NewDeployerLimiter(dependencies.MaxConcurrentDeployments),
+		appConfig:       dependencies.AppConfig,
+		dataMountPoint:  dependencies.DataMountPoint,
+		dockerCli:       dependencies.DockerCLI,
+		contexts:        dependencies.Contexts,
+		secretProvider:  dependencies.SecretProvider,
+		notifier:        dependencies.Notifier,
+		runtimeQueries:  dependencies.RuntimeQueries,
+		leftoverTracker: migration.NewLeftoverTracker(),
 	}, nil
 }
 
@@ -335,6 +341,17 @@ func (m *Manager) IsSchedulerStopHeld(contextName, project, service string) bool
 	}
 
 	return m.schedulerHolds.isServiceHeld(contextName, project, service)
+}
+
+// ValidatorValue implements the go-playground/validator Valuer interface so
+// that validating a struct holding *Manager (e.g. as stages.SchedulerHolds)
+// never lets the validator dereference into *Manager's own fields.
+// Without this, the validator's internal type unwrapping copies the whole Manager
+// struct by value to check its Kind, racing with Manager's own
+// mutex-protected state (deployments, jobs, etc.) on every concurrent
+// deployment, regardless of any "nostructlevel" struct tag.
+func (m *Manager) ValidatorValue() any {
+	return m != nil
 }
 
 func schedulerHeldServiceKey(contextName, project, service string) string {

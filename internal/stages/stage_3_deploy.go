@@ -33,6 +33,9 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		}
 	}
 
+	s.DeployConfig.Internal.ConfigSourceRevision = s.Repository.ConfigRevision
+	s.DeployConfig.Internal.ConfigSourceWorkingDir = s.Repository.ConfigPath
+
 	err = docker.DeployStack(ctx, docker.DeployRequest{
 		JobLog:           stageLog,
 		ExternalRepoPath: s.Repository.PathExternal,

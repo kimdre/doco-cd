@@ -3,6 +3,8 @@ package git_test
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"os"
@@ -31,21 +33,28 @@ func TestSSHHostKeyMismatchFailsClosed(t *testing.T) {
 		}
 	})
 
+	// CloneOrUpdateBareMirror resolves auth from key material itself (unlike
+	// FetchRepository below, which takes a pre-built transport.AuthMethod), so
+	// the mismatch must be detected via the client's real HostKeyCallback
+	// fallback to SSH_KNOWN_HOSTS rather than an explicitly injected one.
+	clientKeyPEM := newSSHPrivateKeyPEM(t)
+
 	tests := []struct {
 		name      string
 		operation func(*testing.T, string, transport.AuthMethod) error
 	}{
 		{
 			name: "clone",
-			operation: func(t *testing.T, url string, auth transport.AuthMethod) error {
-				_, err := git.CloneRepository(
-					filepath.Join(t.TempDir(), "repository"),
+			operation: func(t *testing.T, url string, _ transport.AuthMethod) error {
+				_, err := git.CloneOrUpdateBareMirror(
+					nil,
 					url,
 					git.MainBranch,
+					filepath.Join(t.TempDir(), "repository"),
+					true,
+					clientKeyPEM, "", "",
 					false,
 					transport.ProxyOptions{},
-					auth,
-					false,
 					0,
 				)
 
@@ -174,4 +183,24 @@ func newSSHSigner(t *testing.T) cryptossh.Signer {
 	}
 
 	return signer
+}
+
+// newSSHPrivateKeyPEM generates a fresh ed25519 key and PEM-encodes it
+// (PKCS#8) for use as client key material with functions that build their
+// own transport.AuthMethod from a private key string, such as
+// CloneOrUpdateBareMirror.
+func newSSHPrivateKeyPEM(t *testing.T) string {
+	t.Helper()
+
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("ed25519.GenerateKey() error = %v", err)
+	}
+
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		t.Fatalf("x509.MarshalPKCS8PrivateKey() error = %v", err)
+	}
+
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 }

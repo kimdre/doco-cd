@@ -101,6 +101,12 @@ func (s *StageManager) GetDestroyStageOrder() StageOrder {
 
 // RunStages executes the stages in the defined order.
 func (s *StageManager) RunStages(ctx context.Context) error {
+	defer func() {
+		if s.releaseGCLock != nil {
+			s.releaseGCLock()
+		}
+	}()
+
 	stageOrder := s.GetDeployStageOrder()
 	if s.DeployConfig.Destroy.Enabled {
 		stageOrder = s.GetDestroyStageOrder()

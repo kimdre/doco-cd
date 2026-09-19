@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -67,7 +69,7 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		configs, err := GetConfigs(dirName, ".", customTarget, reference, nil)
+		configs, err := GetConfigs(context.Background(), dirName, ".", customTarget, reference, "", "", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,7 +117,7 @@ compose_files:
 		t.Fatal(err)
 	}
 
-	configs, err := GetConfigs(repoRoot, ".", "", "", nil)
+	configs, err := GetConfigs(context.Background(), repoRoot, ".", "", "", "", "", nil)
 	if err != nil {
 		t.Fatalf("expected no error for non-git repo, got %v", err)
 	}
@@ -334,7 +336,7 @@ func TestGetConfigs_MissingDefaultConfigFile(t *testing.T) {
 
 	createTestRepo(t, dirName)
 
-	_, err := GetConfigs(dirName, ".", "", "", nil)
+	_, err := GetConfigs(context.Background(), dirName, ".", "", "", "", "", nil)
 	if err == nil {
 		t.Fatal("expected error when no default deployment config file exists, got nil")
 	}
@@ -355,7 +357,7 @@ func TestGetConfigs_MissingTargetConfigFile(t *testing.T) {
 
 	createTestRepo(t, dirName)
 
-	_, err := GetConfigs(dirName, ".", "nas", "", nil)
+	_, err := GetConfigs(context.Background(), dirName, ".", "nas", "", "", "", nil)
 	if err == nil {
 		t.Fatal("expected error when no target deployment config file exists, got nil")
 	}
@@ -519,7 +521,7 @@ func TestResolveConfigs_InlineOverride(t *testing.T) {
 	customTarget := ""
 	reference := "refs/heads/main"
 
-	configs, err := ResolveConfigs(deployments, customTarget, reference, dirName, ".", nil)
+	configs, err := ResolveConfigs(context.Background(), deployments, customTarget, reference, dirName, ".", "", "", nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -659,7 +661,7 @@ func TestResolveConfigsCopiesInlineDeployments(t *testing.T) {
 		ComposeFiles:     []string{"compose.yaml"},
 	}
 
-	configs, err := ResolveConfigs([]*Config{inline}, "", "main", t.TempDir(), ".", nil)
+	configs, err := ResolveConfigs(context.Background(), []*Config{inline}, "", "main", t.TempDir(), ".", "", "", nil)
 	if err != nil {
 		t.Fatalf("ResolveConfigs() error = %v", err)
 	}
@@ -680,10 +682,10 @@ func TestResolveConfigsCopiesInlineDeployments(t *testing.T) {
 func TestResolveConfigsRejectsDuplicateInlineProjectNames(t *testing.T) {
 	t.Parallel()
 
-	_, err := ResolveConfigs([]*Config{
+	_, err := ResolveConfigs(context.Background(), []*Config{
 		{Name: "app", Context: "production"},
 		{Name: "app", Context: "production"},
-	}, "", "main", t.TempDir(), ".", nil)
+	}, "", "main", t.TempDir(), ".", "", "", nil)
 	if !errors.Is(err, ErrDuplicateProjectName) {
 		t.Fatalf("expected ErrDuplicateProjectName, got %v", err)
 	}
@@ -735,7 +737,7 @@ func TestResolveConfigs_InlineAutoDiscover(t *testing.T) {
 	customTarget := ""
 	reference := "refs/heads/main"
 
-	configs, err := ResolveConfigs(deployments, customTarget, reference, repoRoot, ".", nil)
+	configs, err := ResolveConfigs(context.Background(), deployments, customTarget, reference, repoRoot, ".", "", "", nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -744,19 +746,20 @@ func TestResolveConfigs_InlineAutoDiscover(t *testing.T) {
 		t.Fatalf("expected 2 configs, got %d", len(configs))
 	}
 
-	found := map[string]bool{}
+	found := set.New[string]()
 	for _, cfg := range configs {
-		found[cfg.Name] = true
+		found.Add(cfg.Name)
+
 		if !strings.HasPrefix(cfg.WorkingDirectory, "services") {
 			t.Errorf("expected working directory to stay within services/, got %s", cfg.WorkingDirectory)
 		}
 	}
 
-	if !found["service-one"] {
+	if !found.Contains("service-one") {
 		t.Errorf("expected to discover service-one deployment")
 	}
 
-	if !found["service-two"] {
+	if !found.Contains("service-two") {
 		t.Errorf("expected to discover service-two deployment")
 	}
 }
@@ -795,7 +798,7 @@ reference: %s
 	}
 
 	// Test with subdirectory as configBaseDir
-	configs, err := GetConfigs(repoRoot, configBaseDir, customTarget, reference, nil)
+	configs, err := GetConfigs(context.Background(), repoRoot, configBaseDir, customTarget, reference, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -838,7 +841,7 @@ reference: %s
 	}
 
 	// Test with root directory as configBaseDir
-	configs, err := GetConfigs(repoRoot, configBaseDir, customTarget, reference, nil)
+	configs, err := GetConfigs(context.Background(), repoRoot, configBaseDir, customTarget, reference, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -887,7 +890,7 @@ auto_discovery:
 	}
 
 	// Test with auto-discovery enabled
-	configs, err := GetConfigs(repoRoot, ".", "", "main", nil)
+	configs, err := GetConfigs(context.Background(), repoRoot, ".", "", "main", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -920,7 +923,7 @@ func TestGetConfigs_WithAutoDiscovery_NoComposeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	configs, err := GetConfigs(repoRoot, ".", "", "main", nil)
+	configs, err := GetConfigs(context.Background(), repoRoot, ".", "", "main", "", "", nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -996,7 +999,7 @@ auto_discovery:
 	}
 
 	// Test with auto-discovery enabled on feature branch
-	configs, err := GetConfigs(repoRoot, ".", "", "refs/heads/feature-branch", nil)
+	configs, err := GetConfigs(context.Background(), repoRoot, ".", "", "refs/heads/feature-branch", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1131,7 +1134,7 @@ auto_discovery:
 		t.Fatal(err)
 	}
 
-	configs, err := GetConfigs(repoRoot, ".", "", DefaultReference, nil)
+	configs, err := GetConfigs(context.Background(), repoRoot, ".", "", DefaultReference, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1203,7 +1206,7 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 			}
 
 			// Test with auto-discovery enabled and repository URL set (should ignore repository URL for discovery)
-			configs, err := GetConfigs(subDir, ".", "", "main", nil)
+			configs, err := GetConfigs(context.Background(), subDir, ".", "", "main", "", "", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1260,7 +1263,7 @@ reference: %s
 		t.Fatal(err)
 	}
 
-	configs, err := ResolveConfigs(nil, "", reference, repoRoot, configBaseDir, nil)
+	configs, err := ResolveConfigs(context.Background(), nil, "", reference, repoRoot, configBaseDir, "", "", nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -1284,7 +1287,7 @@ func TestResolveConfigs_MissingRepositoryConfigFile(t *testing.T) {
 	repoRoot := t.TempDir()
 	createTestRepo(t, repoRoot)
 
-	_, err := ResolveConfigs(nil, "", "refs/heads/main", repoRoot, ".", nil)
+	_, err := ResolveConfigs(context.Background(), nil, "", "refs/heads/main", repoRoot, ".", "", "", nil)
 	if err == nil {
 		t.Fatal("expected error when repository deploy config file is missing, got nil")
 	}
@@ -1304,7 +1307,7 @@ func TestResolveConfigs_MissingRepositoryTargetConfigFile(t *testing.T) {
 	repoRoot := t.TempDir()
 	createTestRepo(t, repoRoot)
 
-	_, err := ResolveConfigs(nil, "nas", "refs/heads/main", repoRoot, ".", nil)
+	_, err := ResolveConfigs(context.Background(), nil, "nas", "refs/heads/main", repoRoot, ".", "", "", nil)
 	if err == nil {
 		t.Fatal("expected error when repository target deploy config file is missing, got nil")
 	}
@@ -1688,20 +1691,20 @@ auto_discovery:
 		t.Fatal(err)
 	}
 
-	configs, err := GetConfigs(repoRoot, ".", "", "main", nil)
+	configs, err := GetConfigs(context.Background(), repoRoot, ".", "", "main", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expected := map[string]struct{}{
-		"test-deploy@main": {},
-		"test-deploy1@" + remoteAutoDiscoveryFixtureCommit: {},
-		"app1@dual": {},
-		"app2@dual": {},
-	}
+	expected := set.New(
+		"test-deploy@main",
+		"test-deploy1@"+remoteAutoDiscoveryFixtureCommit,
+		"app1@dual",
+		"app2@dual",
+	)
 
-	if len(configs) != len(expected) {
-		t.Fatalf("expected %d configs, got %d", len(expected), len(configs))
+	if len(configs) != expected.Len() {
+		t.Fatalf("expected %d configs, got %d", expected.Len(), len(configs))
 	}
 
 	seen := make(map[string]int, len(configs))
