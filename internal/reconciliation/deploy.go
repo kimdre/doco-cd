@@ -250,10 +250,12 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 
 	stageMgr, err := stages.NewStageManager(
 		stages.Dependencies{
-			AppConfig:      m.appConfig,
-			SecretProvider: m.secretProvider,
-			Notifier:       m.notifier,
-			SchedulerHolds: m,
+			AppConfig:       m.appConfig,
+			SecretProvider:  m.secretProvider,
+			Notifier:        m.notifier,
+			SchedulerHolds:  m,
+			Contexts:        m.contexts,
+			LeftoverTracker: m.leftoverTracker,
 		},
 		stages.RunInput{
 			Log:        deployLog,

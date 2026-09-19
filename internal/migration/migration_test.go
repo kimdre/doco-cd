@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/moby/moby/api/types/container"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -23,10 +24,20 @@ type migrationTestClient struct {
 	client.APIClient
 
 	containers []container.Summary
+	services   []swarmTypes.Service
+	tasks      []swarmTypes.Task
 }
 
 func (c *migrationTestClient) ContainerList(_ context.Context, _ client.ContainerListOptions) (client.ContainerListResult, error) {
 	return client.ContainerListResult{Items: c.containers}, nil
+}
+
+func (c *migrationTestClient) ServiceList(_ context.Context, _ client.ServiceListOptions) (client.ServiceListResult, error) {
+	return client.ServiceListResult{Items: c.services}, nil
+}
+
+func (c *migrationTestClient) TaskList(_ context.Context, _ client.TaskListOptions) (client.TaskListResult, error) {
+	return client.TaskListResult{Items: c.tasks}, nil
 }
 
 // initLegacyCheckout creates a non-bare git repository directly at repoDir,
@@ -382,6 +393,73 @@ func TestLabelsReferenceLegacyPath_AcceptsHostAndContainerMountPaths(t *testing.
 	}
 }
 
+func TestReferencedOnContext_SwarmProtectsLegacyPathUsedByActiveOldTask(t *testing.T) {
+	t.Parallel()
+
+	repoDir := "/data/github.com/owner/repo"
+	artifactDir := filepath.Join(repoDir, store.ArtifactsSubdir, "new-revision")
+
+	apiClient := &migrationTestClient{
+		services: []swarmTypes.Service{{
+			Spec: swarmTypes.ServiceSpec{
+				Annotations: swarmTypes.Annotations{
+					Name: "app",
+					Labels: map[string]string{
+						docker.DocoCDLabels.Deployment.WorkingDir: artifactDir,
+					},
+				},
+			},
+		}},
+		tasks: []swarmTypes.Task{{
+			Status: swarmTypes.TaskStatus{State: swarmTypes.TaskStateRunning},
+			Spec: swarmTypes.TaskSpec{
+				ContainerSpec: &swarmTypes.ContainerSpec{
+					Labels: map[string]string{
+						docker.DocoCDLabels.Deployment.WorkingDir: repoDir,
+					},
+				},
+			},
+		}},
+	}
+
+	referenced, err := referencedOnContext(t.Context(), apiClient, true, []string{repoDir}, storeLayoutEntries())
+	if err != nil {
+		t.Fatalf("referencedOnContext() error = %v", err)
+	}
+
+	if !referenced {
+		t.Fatal("active old-spec Swarm task using the legacy path was not detected")
+	}
+}
+
+func TestReferencedOnContext_SwarmIgnoresTerminalOldTask(t *testing.T) {
+	t.Parallel()
+
+	repoDir := "/data/github.com/owner/repo"
+
+	apiClient := &migrationTestClient{
+		tasks: []swarmTypes.Task{{
+			Status: swarmTypes.TaskStatus{State: swarmTypes.TaskStateShutdown},
+			Spec: swarmTypes.TaskSpec{
+				ContainerSpec: &swarmTypes.ContainerSpec{
+					Labels: map[string]string{
+						docker.DocoCDLabels.Deployment.WorkingDir: repoDir,
+					},
+				},
+			},
+		}},
+	}
+
+	referenced, err := referencedOnContext(t.Context(), apiClient, true, []string{repoDir}, storeLayoutEntries())
+	if err != nil {
+		t.Fatalf("referencedOnContext() error = %v", err)
+	}
+
+	if referenced {
+		t.Fatal("terminal old-spec Swarm task must not keep legacy files alive")
+	}
+}
+
 // TestRun_RemovesLegacyArtifactsDirectoryOnBootstrap covers a legacy
 // checkout of a repository tracking a directory called "artifacts". Right
 // after bootstrapping the mirror out of ".git", nothing under the repository
@@ -418,5 +496,171 @@ func TestRun_HonorsCanceledContext(t *testing.T) {
 
 	if err := Run(ctx, nil, &migrationTestClient{}, dataDir); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run() error = %v, want context.Canceled", err)
+	}
+}
+
+// TestCleanupRepoLeftovers_NotMigratedIsANoOp covers a repository directory that never went
+// through migration (no mirror at all): cleanupRepoLeftovers must not touch it or call
+// isReferenced.
+func TestCleanupRepoLeftovers_NotMigratedIsANoOp(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("create repo dir: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoDir, "some-file"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	called := false
+	isReferenced := func(context.Context, string, []string) (bool, error) {
+		called = true
+		return false, nil
+	}
+
+	tracker := NewLeftoverTracker()
+
+	if err := cleanupRepoLeftovers(t.Context(), nil, tracker, repoDir, isReferenced); err != nil {
+		t.Fatalf("cleanupRepoLeftovers() error = %v", err)
+	}
+
+	if called {
+		t.Error("isReferenced must not be called for a repository directory that isn't a migrated store")
+	}
+
+	if tracker.isClean(repoDir) {
+		t.Error("a not-yet-migrated repository directory must not be marked clean")
+	}
+}
+
+// TestCleanupRepoLeftovers_NoLeftoversDoesNotCheckReferences covers the steady-state case: a
+// migrated store with no legacy leftovers must not call isReferenced at all (the cheap
+// legacyLeftoverEntries check is enough), and must be marked clean.
+func TestCleanupRepoLeftovers_NoLeftoversDoesNotCheckReferences(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initMigratedStore(t, repoDir)
+
+	called := false
+	isReferenced := func(context.Context, string, []string) (bool, error) {
+		called = true
+		return false, nil
+	}
+
+	tracker := NewLeftoverTracker()
+
+	if err := cleanupRepoLeftovers(t.Context(), nil, tracker, repoDir, isReferenced); err != nil {
+		t.Fatalf("cleanupRepoLeftovers() error = %v", err)
+	}
+
+	if called {
+		t.Error("isReferenced must not be called when there are no legacy leftovers")
+	}
+
+	if !tracker.isClean(repoDir) {
+		t.Error("expected repoDir to be marked clean")
+	}
+}
+
+// TestCleanupRepoLeftovers_RemovesUnreferencedLeftoversAndMarksClean covers a migrated store
+// with a legacy leftover that is not referenced by any running container: it must be removed and
+// the tracker must record repoDir as clean afterward.
+func TestCleanupRepoLeftovers_RemovesUnreferencedLeftoversAndMarksClean(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initMigratedStore(t, repoDir)
+
+	leftover := filepath.Join(repoDir, "docker-compose.yml")
+	if err := os.WriteFile(leftover, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatalf("write legacy leftover: %v", err)
+	}
+
+	isReferenced := func(context.Context, string, []string) (bool, error) {
+		return false, nil
+	}
+
+	tracker := NewLeftoverTracker()
+
+	if err := cleanupRepoLeftovers(t.Context(), nil, tracker, repoDir, isReferenced); err != nil {
+		t.Fatalf("cleanupRepoLeftovers() error = %v", err)
+	}
+
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Fatalf("expected unreferenced legacy leftover to be removed, stat err = %v", err)
+	}
+
+	if !tracker.isClean(repoDir) {
+		t.Error("expected repoDir to be marked clean after removing its last leftover")
+	}
+}
+
+// TestCleanupRepoLeftovers_KeepsReferencedLeftoversAndDoesNotMarkClean covers a migrated store
+// whose legacy leftover is still referenced by a running container: the leftover must survive
+// and the tracker must not mark repoDir clean, so it is rechecked on the next call.
+func TestCleanupRepoLeftovers_KeepsReferencedLeftoversAndDoesNotMarkClean(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initMigratedStore(t, repoDir)
+
+	leftover := filepath.Join(repoDir, "docker-compose.yml")
+	if err := os.WriteFile(leftover, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatalf("write legacy leftover: %v", err)
+	}
+
+	callCount := 0
+	isReferenced := func(context.Context, string, []string) (bool, error) {
+		callCount++
+		return true, nil
+	}
+
+	tracker := NewLeftoverTracker()
+
+	for i := range 2 {
+		if err := cleanupRepoLeftovers(t.Context(), nil, tracker, repoDir, isReferenced); err != nil {
+			t.Fatalf("cleanupRepoLeftovers() call %d error = %v", i, err)
+		}
+	}
+
+	if _, err := os.Stat(leftover); err != nil {
+		t.Fatalf("expected referenced legacy leftover to survive: %v", err)
+	}
+
+	if tracker.isClean(repoDir) {
+		t.Error("a repository still blocked by a running container must not be marked clean")
+	}
+
+	if callCount != 2 {
+		t.Errorf("expected isReferenced to be called on every retry while blocked, got %d calls", callCount)
+	}
+}
+
+// TestCleanupRepoLeftovers_SkipsAlreadyCleanRepoWithoutAnyIO covers the tracker short-circuit:
+// once a repoDir is marked clean, subsequent calls must not touch the filesystem or call
+// isReferenced at all, even if the directory changes on disk afterward.
+func TestCleanupRepoLeftovers_SkipsAlreadyCleanRepoWithoutAnyIO(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	tracker := NewLeftoverTracker()
+	tracker.markClean(repoDir)
+
+	// repoDir does not even exist on disk; a real check would fail trying to inspect it.
+	called := false
+	isReferenced := func(context.Context, string, []string) (bool, error) {
+		called = true
+		return false, nil
+	}
+
+	if err := cleanupRepoLeftovers(t.Context(), nil, tracker, repoDir, isReferenced); err != nil {
+		t.Fatalf("cleanupRepoLeftovers() error = %v", err)
+	}
+
+	if called {
+		t.Error("isReferenced must not be called for a repoDir already marked clean")
 	}
 }

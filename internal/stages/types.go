@@ -24,6 +24,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/migration"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -205,7 +206,15 @@ type StageManager struct {
 	Metadata       notification.Metadata // Notification metadata (may include reconciliation event info)
 	// SchedulerHolds is optional; a nil value means no scheduler stop holds are tracked.
 	SchedulerHolds SchedulerStopHolds
-	releaseGCLock  func()
+	// Contexts is the Docker context registry used by the cleanup stage to check whether legacy
+	// on-disk leftovers are still referenced by a running container in any configured context.
+	// A nil value disables the retry (the cleanup stage then only logs and continues).
+	Contexts *docker.ContextRegistry
+	// LeftoverTracker remembers repository directories already confirmed free of legacy
+	// leftovers, so the cleanup stage can skip redundant checks for them. A nil value disables
+	// the short-circuit (every run is checked from scratch).
+	LeftoverTracker *migration.LeftoverTracker
+	releaseGCLock   func()
 }
 
 // Dependencies holds the stable services shared by every StageManager run in a process:
@@ -220,6 +229,12 @@ type Dependencies struct {
 	// concrete implementation (typically *reconciliation.Manager), which has
 	// its own concurrently-locked internal state and races under -race if walked via reflection.
 	SchedulerHolds SchedulerStopHolds `validate:"omitempty,nostructlevel"`
+	// Contexts and LeftoverTracker are used by the cleanup stage to retry removal of legacy
+	// on-disk leftovers left behind after migration (see internal/migration). Both are optional;
+	// a nil Contexts disables the retry entirely, and a nil LeftoverTracker just disables the
+	// in-memory short-circuit for repositories already confirmed clean.
+	Contexts        *docker.ContextRegistry `validate:"omitempty,nostructlevel"`
+	LeftoverTracker *migration.LeftoverTracker
 }
 
 // RunInput holds the per-deployment input for a single StageManager run: the job identity and
@@ -248,19 +263,21 @@ func NewStageManager(dependencies Dependencies, run RunInput) (*StageManager, er
 	}
 
 	return &StageManager{
-		Log:            run.Log.With(),
-		JobID:          run.JobID,
-		JobTrigger:     run.JobTrigger,
-		AppConfig:      dependencies.AppConfig,
-		DeployConfig:   run.DeployConfig,
-		DeployState:    &DeploymentState{},
-		Docker:         run.Docker,
-		Payload:        run.Payload,
-		Repository:     run.Repository,
-		SecretProvider: dependencies.SecretProvider,
-		Notifier:       dependencies.Notifier,
-		SchedulerHolds: dependencies.SchedulerHolds,
-		Metadata:       run.Metadata,
+		Log:             run.Log.With(),
+		JobID:           run.JobID,
+		JobTrigger:      run.JobTrigger,
+		AppConfig:       dependencies.AppConfig,
+		DeployConfig:    run.DeployConfig,
+		DeployState:     &DeploymentState{},
+		Docker:          run.Docker,
+		Payload:         run.Payload,
+		Repository:      run.Repository,
+		SecretProvider:  dependencies.SecretProvider,
+		Notifier:        dependencies.Notifier,
+		SchedulerHolds:  dependencies.SchedulerHolds,
+		Metadata:        run.Metadata,
+		Contexts:        dependencies.Contexts,
+		LeftoverTracker: dependencies.LeftoverTracker,
 		Stages: &Stages{
 			Init: &InitStageData{
 				MetaData: NewMetaData(StageInit),

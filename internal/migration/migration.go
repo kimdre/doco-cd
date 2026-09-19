@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/go-git/go-git/v5"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -56,6 +58,153 @@ func RunWithContexts(
 
 		return referencedAcrossContexts(ctx, contexts, []string{repoDir, hostRepoDir}, keep)
 	})
+}
+
+// LeftoverTracker remembers, for the lifetime of the process, which repository directories are
+// already known to be free of legacy leftovers, so CleanupRepoLeftovers can skip redundant
+// checks for them. A repository can never regain a legacy on-disk layout once migrated, so a
+// "clean" entry stays valid forever; the map only grows bounded by the number of distinct
+// repository directories ever deployed.
+type LeftoverTracker struct {
+	mu    sync.Mutex
+	repos map[string]*leftoverState
+}
+
+type leftoverState struct {
+	mu    sync.Mutex
+	clean bool
+}
+
+// NewLeftoverTracker creates an empty LeftoverTracker.
+func NewLeftoverTracker() *LeftoverTracker {
+	return &LeftoverTracker{repos: make(map[string]*leftoverState)}
+}
+
+// lock serializes cleanup attempts for the same repository while still allowing different
+// repositories to be cleaned concurrently. The caller must invoke the returned unlock function.
+func (t *LeftoverTracker) lock(repoDir string) (*leftoverState, func()) {
+	if t == nil {
+		return nil, func() {}
+	}
+
+	t.mu.Lock()
+
+	state := t.repos[repoDir]
+	if state == nil {
+		state = &leftoverState{}
+		t.repos[repoDir] = state
+	}
+
+	t.mu.Unlock()
+
+	state.mu.Lock()
+
+	return state, state.mu.Unlock
+}
+
+// isClean reports whether repoDir is already known to be free of legacy leftovers.
+func (t *LeftoverTracker) isClean(repoDir string) bool {
+	if t == nil {
+		return false
+	}
+
+	t.mu.Lock()
+
+	state := t.repos[repoDir]
+
+	t.mu.Unlock()
+
+	if state == nil {
+		return false
+	}
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	return state.clean
+}
+
+// markClean records that repoDir is already known to be free of legacy leftovers.
+func (t *LeftoverTracker) markClean(repoDir string) {
+	state, unlock := t.lock(repoDir)
+	defer unlock()
+
+	if state != nil {
+		state.clean = true
+	}
+}
+
+// CleanupRepoLeftovers removes legacy on-disk leftovers for a single already-migrated
+// repository directory (repoDir), unless they are still bind-mounted by a running container in
+// any configured Docker context. It is safe to call after every deployment/destroy of repoDir:
+// repositories that were never on the legacy layout, or that have no leftovers, return after at
+// most a single directory read - and, once tracker has recorded repoDir as clean, without any
+// filesystem or Docker access at all.
+//
+// Unlike Run/RunWithContexts, it does not walk the whole data mount point and does not acquire
+// its own GC lock - callers must already hold at least a shared GC lock on repoDir for the
+// duration of the call (e.g. the deployment pipeline's own stage-1 lock), which already excludes
+// a concurrent GC sweep from touching the same directory.
+func CleanupRepoLeftovers(
+	ctx context.Context,
+	log *slog.Logger,
+	tracker *LeftoverTracker,
+	contexts *docker.ContextRegistry,
+	dataMountSource string,
+	dataMountDestination string,
+	repoDir string,
+) error {
+	return cleanupRepoLeftovers(ctx, log, tracker, repoDir,
+		func(ctx context.Context, repoDir string, keep []string) (bool, error) {
+			relativeRepoDir, err := filepath.Rel(dataMountDestination, repoDir)
+			if err != nil {
+				return false, fmt.Errorf("derive host repository path: %w", err)
+			}
+
+			hostRepoDir := filepath.Join(dataMountSource, relativeRepoDir)
+
+			return referencedAcrossContexts(ctx, contexts, []string{repoDir, hostRepoDir}, keep)
+		})
+}
+
+// cleanupRepoLeftovers is the source-agnostic implementation behind CleanupRepoLeftovers,
+// parameterized over the reference check so it can be unit-tested with a fake isReferenced,
+// matching the pattern run uses for Run/RunWithContexts.
+func cleanupRepoLeftovers(ctx context.Context, log *slog.Logger, tracker *LeftoverTracker, repoDir string, isReferenced referenceChecker) error {
+	state, unlock := tracker.lock(repoDir)
+	defer unlock()
+
+	if state != nil && state.clean {
+		return nil
+	}
+
+	if log == nil {
+		log = slog.Default()
+	}
+
+	migrated, err := isStoreRoot(repoDir)
+	if err != nil {
+		return fmt.Errorf("inspect mirror directory: %w", err)
+	}
+
+	if !migrated {
+		// Not (yet) on the migrated store layout - nothing for this function to clean up. Do not
+		// mark it clean: it may simply not have finished migrating yet.
+		return nil
+	}
+
+	clean, err := cleanupLegacyLeftovers(ctx, log, isReferenced, repoDir, storeLayoutEntries())
+	if err != nil {
+		return err
+	}
+
+	if clean {
+		if state != nil {
+			state.clean = true
+		}
+	}
+
+	return nil
 }
 
 type referenceChecker func(ctx context.Context, repoDir string, keep []string) (bool, error)
@@ -173,6 +322,8 @@ func isGitDir(path string) (bool, error) {
 	return true, nil
 }
 
+// isStoreRoot reports whether path is a doco-cd Git source's on-disk root in the new store layout:
+// a "mirror" directory that really is a git directory, and a mirror lock file.
 func isStoreRoot(path string) (bool, error) {
 	mirror, err := isGitDir(filepath.Join(path, store.MirrorSubdir))
 	if err != nil || !mirror {
@@ -443,25 +594,76 @@ func referencedAcrossContexts(ctx context.Context, contexts *docker.ContextRegis
 		}
 
 		for _, swarmMode := range modes {
-			services, err := docker.GetServicesWithLabelKey(
-				ctx,
-				result.Cli.Client(),
-				swarmMode,
-				docker.DocoCDLabels.Deployment.WorkingDir,
-			)
+			referenced, err := referencedOnContext(ctx, result.Cli.Client(), swarmMode, repoDirs, keep)
 			if err != nil {
-				return false, fmt.Errorf("list deployments in docker context %s: %w", result.DisplayName(), err)
+				return false, fmt.Errorf("inspect deployments in docker context %s: %w", result.DisplayName(), err)
 			}
 
-			for _, labels := range services {
-				if labelsReferenceLegacyPath(labels, repoDirs, keep) {
-					return true, nil
-				}
+			if referenced {
+				return true, nil
 			}
 		}
 	}
 
 	return false, nil
+}
+
+func referencedOnContext(
+	ctx context.Context,
+	apiClient client.APIClient,
+	swarmMode bool,
+	repoDirs []string,
+	keep []string,
+) (bool, error) {
+	services, err := docker.GetServicesWithLabelKey(
+		ctx,
+		apiClient,
+		swarmMode,
+		docker.DocoCDLabels.Deployment.WorkingDir,
+	)
+	if err != nil {
+		return false, fmt.Errorf("list deployments: %w", err)
+	}
+
+	for _, labels := range services {
+		if labelsReferenceLegacyPath(labels, repoDirs, keep) {
+			return true, nil
+		}
+	}
+
+	if !swarmMode {
+		return false, nil
+	}
+
+	// A Swarm service update changes the current service spec before every old task has
+	// necessarily stopped. Those old tasks retain the previous ContainerSpec labels and may
+	// still have a legacy directory bind-mounted, so service labels alone are not sufficient.
+	tasks, err := apiClient.TaskList(ctx, client.TaskListOptions{})
+	if err != nil {
+		return false, fmt.Errorf("list swarm tasks: %w", err)
+	}
+
+	for _, task := range tasks.Items {
+		if !isActiveSwarmTask(task) || task.Spec.ContainerSpec == nil {
+			continue
+		}
+
+		if labelsReferenceLegacyPath(task.Spec.ContainerSpec.Labels, repoDirs, keep) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func isActiveSwarmTask(task swarmTypes.Task) bool {
+	switch task.Status.State {
+	case swarmTypes.TaskStateComplete, swarmTypes.TaskStateShutdown, swarmTypes.TaskStateFailed,
+		swarmTypes.TaskStateRejected, swarmTypes.TaskStateOrphaned, swarmTypes.TaskStateRemove:
+		return false
+	default:
+		return true
+	}
 }
 
 func labelsReferenceLegacyPath(labels map[string]string, repoDirs []string, keep []string) bool {
