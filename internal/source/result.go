@@ -20,4 +20,18 @@ type Result struct {
 	OCITrusted    bool              // True when the OCI artifact passed trust-policy verification (always true for Git)
 	DeployConfigs []*deploy.Config  // Resolved deployment configurations for this run
 	Payload       webhook.ParsedPayload
+
+	// release drops the in-flight marker and shared GC lock held for this
+	// deployment. See Result.Release.
+	release func()
+}
+
+// Release drops this result's in-flight marker and shared GC lock. Keep them until deployment ends so GC in this or
+// another process cannot remove the artifact.
+//
+// Release is idempotent and safe to call on a zero Result.
+func (r Result) Release() {
+	if r.release != nil {
+		r.release()
+	}
 }

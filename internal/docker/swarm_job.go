@@ -193,11 +193,11 @@ func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []stri
 }
 
 type SwarmOneOffFromServiceOptions struct {
-	Replicas         uint64
-	SendRegistryAuth bool
 	RunID            string
 	ScheduledAt      string
 	StartedAt        string
+	Replicas         uint64
+	SendRegistryAuth bool
 	KeepService      bool
 }
 

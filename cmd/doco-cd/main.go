@@ -32,15 +32,18 @@ import (
 	"github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/certrotation"
 	"github.com/kimdre/doco-cd/internal/controlplane"
+	"github.com/kimdre/doco-cd/internal/gc"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/secretprovider/openbao"
+	"github.com/kimdre/doco-cd/internal/source/store"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/mcp"
+	"github.com/kimdre/doco-cd/internal/migration"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/profiling"
 	"github.com/kimdre/doco-cd/internal/prometheus"
@@ -338,6 +341,13 @@ func run() error {
 		return err
 	}
 
+	// Convert repositories using an old on-disk layout to the current store layout
+	// before anything starts reading from or writing to the data mount point.
+	// Must run here, synchronously, ahead of webhook/poll/scheduler startup.
+	if err = migration.RunWithContexts(ctx, log.Logger, contexts, dataMountPoint.Source, dataMountPoint.Destination); err != nil {
+		log.Error("failed to migrate legacy on-disk repository layouts; continuing startup", logger.ErrAttr(err))
+	}
+
 	var wg sync.WaitGroup
 
 	graceful.SafeGo(&wg, log.Logger,
@@ -503,6 +513,26 @@ func run() error {
 		}
 	} else if c.SecretProvider == openbao.Name {
 		log.Info("certificate rotation watcher disabled by configuration")
+	}
+
+	if c.ArtifactGCEnabled {
+		sweeper := gc.New(
+			contexts,
+			log.Logger,
+			dataMountPoint.Source,
+			dataMountPoint.Destination,
+			store.GCOptions{
+				RetentionRecords: c.ArtifactGCRetentionRecords,
+				RetentionTTL:     c.ArtifactGCRetentionTTL,
+			},
+			c.ArtifactGCInterval,
+		)
+
+		graceful.SafeGo(&wg, log.Logger, func() {
+			sweeper.Start(ctx)
+		})
+	} else {
+		log.Info("artifact garbage collector disabled by configuration")
 	}
 
 	apiMounts := api.Mounts{

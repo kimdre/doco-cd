@@ -12,6 +12,7 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -330,42 +331,34 @@ func waitForExpectedDockerEvent(ctx context.Context, t *testing.T, cli client.AP
 
 	trigger()
 
-	seen := map[string]struct{}{}
+	seen := set.New[string]()
 
 	for {
 		select {
 		case msg, ok := <-eventsResult.Messages:
 			if !ok {
-				t.Fatalf("docker events channel closed before observing %q, seen=%v", wantAction, mapKeys(seen))
+				t.Fatalf("docker events channel closed before observing %q, seen=%v", wantAction, seen.ToSlice())
 			}
 
 			action := normalizeReconciliationEventAction(string(msg.Action))
 
-			seen[action] = struct{}{}
+			seen.Add(action)
+
 			if action == wantAction {
 				return
 			}
 		case err, ok := <-eventsResult.Err:
 			if !ok {
-				t.Fatalf("docker events error channel closed before observing %q, seen=%v", wantAction, mapKeys(seen))
+				t.Fatalf("docker events error channel closed before observing %q, seen=%v", wantAction, seen.ToSlice())
 			}
 
 			if err != nil {
-				t.Fatalf("docker events listener failed while waiting for %q: %v (seen=%v)", wantAction, err, mapKeys(seen))
+				t.Fatalf("docker events listener failed while waiting for %q: %v (seen=%v)", wantAction, err, seen.ToSlice())
 			}
 		case <-listenerCtx.Done():
-			t.Fatalf("timed out waiting for docker event %q, seen=%v", wantAction, mapKeys(seen))
+			t.Fatalf("timed out waiting for docker event %q, seen=%v", wantAction, seen.ToSlice())
 		}
 	}
-}
-
-func mapKeys(m map[string]struct{}) []string {
-	ret := make([]string, 0, len(m))
-	for key := range m {
-		ret = append(ret, key)
-	}
-
-	return ret
 }
 
 func waitForBootMarkerCount(ctx context.Context, t *testing.T, stack *internaltest.ComposeStack, since time.Time, want int, timeout time.Duration) {

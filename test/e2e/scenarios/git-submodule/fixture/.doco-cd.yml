@@ -1,0 +1,3 @@
+name: e2e-git-submodule
+compose_files:
+  - compose.yaml

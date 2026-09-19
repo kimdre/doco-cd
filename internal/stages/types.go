@@ -30,7 +30,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -135,6 +134,8 @@ type RepositoryData struct {
 	PathExternal    string            // Path to the repository on the host machine
 	Git             *git.Repository   // Git repository instance
 	Revision        string            // Resolved immutable revision (commit SHA or digest)
+	ConfigRevision  string            // Immutable revision containing the deploy config
+	ConfigPath      string            // Host path to the config source artifact
 	OCITrusted      bool              // True when the OCI artifact passed trust-policy verification before reconciliation/cleanup
 }
 
@@ -204,19 +205,21 @@ type StageManager struct {
 	Metadata       notification.Metadata // Notification metadata (may include reconciliation event info)
 	// SchedulerHolds is optional; a nil value means no scheduler stop holds are tracked.
 	SchedulerHolds SchedulerStopHolds
+	releaseGCLock  func()
 }
 
 // Dependencies holds the stable services shared by every StageManager run in a process:
 // application configuration, the optional secret provider used to resolve external secret
 // references, and the notifier used for deployment lifecycle messages.
 type Dependencies struct {
-	AppConfig      *app.Config `validate:"required,nostructlevel"`
-	SecretProvider secretprovider.SecretProvider
-	Notifier       notification.Sender `validate:"required,nostructlevel"`
-	// SchedulerHolds lets the pre-deploy stage ask whether a service is
-	// intentionally stopped by a running scheduled job. A nil value disables
-	// the check.
-	SchedulerHolds SchedulerStopHolds
+	AppConfig      *app.Config                   `validate:"required,nostructlevel"`
+	SecretProvider secretprovider.SecretProvider `validate:"omitempty,nostructlevel"`
+	Notifier       notification.Sender           `validate:"required,nostructlevel"`
+	// SchedulerHolds lets the pre-deploy stage ask whether a service is intentionally stopped by a running scheduled job.
+	// A nil value disables the check. nostructlevel keeps the validator from recursing into the
+	// concrete implementation (typically *reconciliation.Manager), which has
+	// its own concurrently-locked internal state and races under -race if walked via reflection.
+	SchedulerHolds SchedulerStopHolds `validate:"omitempty,nostructlevel"`
 }
 
 // RunInput holds the per-deployment input for a single StageManager run: the job identity and
@@ -518,10 +521,13 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 	}
 }
 
-// sourceLockKey returns the key used to serialize every operation that mutates
-// the prepared source tree of this deployment's repository: clones, checkouts
-// (which reset and re-decrypt tracked files) and compose loads (which decrypt in place).
-// All of them must agree on one key, or they do not exclude each other at all.
+// sourceLockKey returns the key used to serialize in-place mutation of this
+// deployment's published artifact directory: LoadCompose decrypts
+// SOPS-encrypted files in place there, so two deployments landing on the
+// same revision (the same artifact directory) must agree on this key to
+// exclude each other. It is a different, finer-grained key than the one
+// source.Prepare locks (the repository's top-level directory, guarding
+// against a concurrent destroy rather than against decrypt races).
 func (s *StageManager) sourceLockKey() string {
 	if s.Repository == nil {
 		return ""
@@ -532,19 +538,4 @@ func (s *StageManager) sourceLockKey() string {
 	}
 
 	return s.Repository.PathExternal
-}
-
-// withSourceLock runs fn while holding the source lock of this deployment's repository.
-// Without a resolvable source path there is nothing to serialize on, and locking
-// the empty key would serialize unrelated repositories against each other.
-func (s *StageManager) withSourceLock(fn func() error) error {
-	key := s.sourceLockKey()
-	if key == "" {
-		return fn()
-	}
-
-	unlock := sourcecache.AcquirePathLock(key)
-	defer unlock()
-
-	return fn()
 }

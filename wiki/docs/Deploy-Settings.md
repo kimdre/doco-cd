@@ -9,9 +9,10 @@ tags:
 Deployments in `Doco-CD` run as concurrent tasks. 
 Each deployment is defined by a deployment configuration file (e.g. `.doco-cd.yml`) that controls how it runs. 
 
-Concurrent tasks are grouped by repository and Git reference (e.g. branch or tag). 
-Deployments from the same repository but different references run sequentially, while those with the same repository and reference run in parallel. 
-See the [App Settings](App-Settings.md) documentation for more information on how to configure the number of concurrent deployments.
+Deployments for different stacks - even the same repository, or the same repository and reference - run in parallel, up to the configured concurrency limit.
+Only deployments of the *same* stack are ever serialized, so one repository can never block deployments of an unrelated stack.
+
+See `MAX_CONCURRENT_DEPLOYMENTS` in the [App Settings](App-Settings.md) documentation for more information on how to configure the number of concurrent deployments.
 
 ## Deployment Sources
 

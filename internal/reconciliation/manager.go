@@ -337,6 +337,17 @@ func (m *Manager) IsSchedulerStopHeld(contextName, project, service string) bool
 	return m.schedulerHolds.isServiceHeld(contextName, project, service)
 }
 
+// ValidatorValue implements the go-playground/validator Valuer interface so
+// that validating a struct holding *Manager (e.g. as stages.SchedulerHolds)
+// never lets the validator dereference into *Manager's own fields.
+// Without this, the validator's internal type unwrapping copies the whole Manager
+// struct by value to check its Kind, racing with Manager's own
+// mutex-protected state (deployments, jobs, etc.) on every concurrent
+// deployment, regardless of any "nostructlevel" struct tag.
+func (m *Manager) ValidatorValue() any {
+	return m != nil
+}
+
 func schedulerHeldServiceKey(contextName, project, service string) string {
 	contextName = docker.NormalizeContextName(contextName)
 	return contextName + "/" + project + "/" + service

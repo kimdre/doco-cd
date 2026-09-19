@@ -14,12 +14,15 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	composeapi "github.com/docker/compose/v5/pkg/api"
+	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/moby/moby/api/types/container"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -176,11 +179,45 @@ func TestDeploy(t *testing.T) {
 	repoName := test.ConvertTestName(t.Name()) + "-repo"
 	repoPath := filepath.Join(tmpDir, repoName)
 
-	_, err = git.CloneOrUpdateRepository(log, p.CloneURL, p.Ref,
-		repoPath, repoPath,
-		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
-		c.HttpProxy, c.GitCloneSubmodules, 0)
+	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 	if err != nil {
+		t.Fatal(err)
+	}
+
+	if auth == nil && p.Private {
+		t.Fatal("missing auth for private repository")
+	}
+
+	// p.Ref is a raw commit hash here, possibly on a non-default branch, so clone all
+	// branches (no SingleBranch/ReferenceName restriction) and then check out that
+	// commit explicitly.
+	cloneOpts := &gogit.CloneOptions{
+		URL:             p.CloneURL,
+		Auth:            auth,
+		InsecureSkipTLS: c.SkipTLSVerification,
+	}
+
+	if c.HttpProxy != (transport.ProxyOptions{}) {
+		cloneOpts.ProxyOptions = c.HttpProxy
+	}
+
+	if c.GitCloneSubmodules {
+		cloneOpts.RecurseSubmodules = gogit.DefaultSubmoduleRecursionDepth
+	}
+
+	repo, err := gogit.PlainClone(repoPath, false, cloneOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.Checkout(&gogit.CheckoutOptions{
+		Hash: plumbing.NewHash(p.Ref),
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -190,7 +227,7 @@ func TestDeploy(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	dcs, err := deployConfig.GetConfigs(repoPath, c.DeployConfigBaseDir, "", p.Ref, nil)
+	dcs, err := deployConfig.GetConfigs(ctx, repoPath, c.DeployConfigBaseDir, "", p.Ref, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +358,7 @@ func getRunningDeploymentNames(ctx context.Context, cli client.APIClient, swarmM
 			return nil, err
 		}
 
-		names := make(map[string]struct{})
+		names := set.New[string]()
 
 		for _, service := range result.Items {
 			name := docker.SwarmServiceLabels(service)[docker.DocoCDLabels.Deployment.Name]
@@ -335,18 +372,11 @@ func getRunningDeploymentNames(ctx context.Context, cli client.APIClient, swarmM
 			}
 
 			if running {
-				names[name] = struct{}{}
+				names.Add(name)
 			}
 		}
 
-		got := make([]string, 0, len(names))
-		for name := range names {
-			got = append(got, name)
-		}
-
-		slices.Sort(got)
-
-		return got, nil
+		return set.SortedSlice(names), nil
 	}
 
 	result, err := cli.ContainerList(ctx, client.ContainerListOptions{
@@ -356,23 +386,16 @@ func getRunningDeploymentNames(ctx context.Context, cli client.APIClient, swarmM
 		return nil, err
 	}
 
-	names := make(map[string]struct{})
+	names := set.New[string]()
 
 	for _, c := range result.Items {
 		name := c.Labels[docker.DocoCDLabels.Deployment.Name]
 		if strings.HasPrefix(name, stackName+"-") {
-			names[name] = struct{}{}
+			names.Add(name)
 		}
 	}
 
-	got := make([]string, 0, len(names))
-	for name := range names {
-		got = append(got, name)
-	}
-
-	slices.Sort(got)
-
-	return got, nil
+	return set.SortedSlice(names), nil
 }
 
 func swarmServiceHasRunningTask(ctx context.Context, cli client.APIClient, serviceID string) (bool, error) {
@@ -401,15 +424,12 @@ func rmContainersForDeployments(ctx context.Context, t *testing.T, cli client.AP
 		return err
 	}
 
-	deployments := make(map[string]struct{}, len(deploymentNames))
-	for _, name := range deploymentNames {
-		deployments[name] = struct{}{}
-	}
+	deployments := set.New(deploymentNames...)
 
 	wg := sync.WaitGroup{}
 
 	for _, container := range result.Items {
-		if _, ok := deployments[container.Labels[docker.DocoCDLabels.Deployment.Name]]; !ok {
+		if !deployments.Contains(container.Labels[docker.DocoCDLabels.Deployment.Name]) {
 			continue
 		}
 

@@ -12,12 +12,18 @@ Doco-CD supports the encryption of sensitive data in your doco-cd app config and
 
 ## How doco-cd detects and decrypts encrypted files
 
-When a deployment is triggered, doco-cd checks the following files for SOPS encryption and decrypts them in place if needed:
+When a deployment is triggered, doco-cd decrypts every SOPS-encrypted file in the source revision it just fetched, before the stack is deployed.
+Decryption happens in doco-cd's own copy of the source, never in your repository.
 
-- Compose files and env files used for variable interpolation (configured via `compose_files` and `env_files` in the [deployment configuration `.doco-cd.y(a)ml`](../Deploy-Settings.md))
-- All file references inside the compose project: `configs`, `secrets`, `env_file`, bind-mounted volumes, and build files (`dockerfile`, `build.secrets`)
+Files and directories matched by `.gitignore` are skipped.
+The following directories are always excluded: `.git`, `.github`, `.vscode`, `.idea`, and `node_modules`.
 
-For bind-mounted directories, all files inside are scanned recursively. Files and directories matched by `.gitignore` are skipped. The following directories are always excluded: `.git`, `.github`, `.vscode`, `.idea`, and `node_modules`.
+If doco-cd has no key for a file, it's left encrypted and logged instead of failing the entire deployment.
+This is intentional: a repository may legitimately contain secrets encrypted for someone else.
+If a deployment actually uses an encrypted file, the deployment fails at that point, naming the file.
+
+Files a compose project references outside the repository (for example a bind mount pointing at an arbitrary host path) are decrypted as well,
+when the project is loaded. For bind-mounted directories, all files inside are scanned recursively.
 
 Detection is content-based: a file is treated as SOPS-encrypted if its content contains both `sops` and `ENC[`. No special file naming convention is required.
 

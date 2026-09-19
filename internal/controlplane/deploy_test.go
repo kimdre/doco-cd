@@ -360,6 +360,8 @@ func TestDeploy_Success_AdaptsResultAndInvokesObserver(t *testing.T) {
 		PathInternal:    "/dst/owner/repo",
 		PathExternal:    "/src/owner/repo",
 		Revision:        "deadbeef",
+		ConfigRevision:  "deadbeef",
+		ConfigPath:      "/src/owner/repo",
 		OCITrusted:      true,
 	}
 	if got != want {

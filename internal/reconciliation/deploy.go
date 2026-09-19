@@ -283,7 +283,7 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 		deployLog.Debug("queuing deployment")
 
 		queueStarted := time.Now()
-		unlock, lErr := m.limiter.acquire(ctx, req.Repository.Name, NormalizeReference(dc.Reference))
+		unlock, lErr := m.limiter.acquire(ctx, req.Repository.Name)
 
 		queueOutcome := "admitted"
 		if lErr != nil {

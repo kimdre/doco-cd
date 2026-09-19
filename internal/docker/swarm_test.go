@@ -3,7 +3,6 @@ package docker
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,12 +55,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		Private:   false,
 	}
 
-	repo, err := git.CloneOrUpdateRepository(slog.Default(), p.CloneURL, p.Ref, tmpDir, tmpDir,
-		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
-		c.HttpProxy, c.GitCloneSubmodules, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	repo := cloneTestRepoBranch(t, tmpDir, p.CloneURL, p.Ref, p.Private, c)
 
 	worktree, err := repo.Worktree()
 	if err != nil {
@@ -76,7 +70,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := deploy.GetConfigs(tmpDir, c.DeployConfigBaseDir, customTarget, p.Ref, nil)
+	deployConfigs, err := deploy.GetConfigs(context.Background(), tmpDir, c.DeployConfigBaseDir, customTarget, p.Ref, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

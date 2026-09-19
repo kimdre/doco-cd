@@ -174,6 +174,8 @@ func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, d
 		DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 		DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
 		DocoCDLabels.Source.URL:                     resolveSourceURLLabel(sourceURL, payload),
+		DocoCDLabels.Source.ConfigRevision:          deployConfig.Internal.ConfigSourceRevision,
+		DocoCDLabels.Source.ConfigWorkingDir:        deployConfig.Internal.ConfigSourceWorkingDir,
 	}
 
 	maps.Copy(sharedServiceSpecLabels, stableLabels)

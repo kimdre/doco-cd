@@ -12,13 +12,13 @@ func TestTryAcquire(t *testing.T) {
 
 	lim := newTestDeployerLimiter(t, 1)
 
-	unlock, ok := lim.TryAcquire("repoA", "ref1")
+	unlock, ok := lim.TryAcquire("repoA")
 	if !ok || unlock == nil {
 		t.Fatalf("expected TryAcquire success on empty limiter")
 	}
 
-	// second TryAcquire should fail because the per-repo lock is held (and sem capacity 1)
-	_, ok2 := lim.TryAcquire("repoA", "ref1")
+	// second TryAcquire should fail because the global semaphore (capacity 1) is held
+	_, ok2 := lim.TryAcquire("repoA")
 	if ok2 {
 		unlock()
 		t.Fatalf("expected TryAcquire to fail when already acquired")
@@ -27,7 +27,7 @@ func TestTryAcquire(t *testing.T) {
 	unlock()
 
 	// now TryAcquire should succeed again
-	unlock2, ok3 := lim.TryAcquire("repoA", "ref1")
+	unlock2, ok3 := lim.TryAcquire("repoA")
 	if !ok3 || unlock2 == nil {
 		t.Fatalf("expected TryAcquire success after release")
 	}
@@ -49,7 +49,7 @@ func TestDifferentReposParallelism(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		unlock, err := lim.acquire(ctx, "repoA", "ref")
+		unlock, err := lim.acquire(ctx, "repoA")
 		if err != nil {
 			t.Errorf("acquire error: %v", err)
 			return
@@ -65,7 +65,7 @@ func TestDifferentReposParallelism(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		unlock, err := lim.acquire(ctx, "repoB", "ref")
+		unlock, err := lim.acquire(ctx, "repoB")
 		if err != nil {
 			t.Errorf("acquire error: %v", err)
 			return
@@ -84,21 +84,74 @@ func TestDifferentReposParallelism(t *testing.T) {
 	}
 }
 
-// TestTryAcquire_JoinSameRef verifies a second TryAcquire with the same ref succeeds when global capacity allows.
-func TestTryAcquire_JoinSameRef(t *testing.T) {
+// TestSameRepoDifferentRefsParallelism verifies that two deployments for the
+// same repository but different git references now run concurrently
+// (subject only to the global semaphore), since immutable per-revision
+// artifacts (Phase 2) mean they no longer share a mutable working tree.
+func TestSameRepoDifferentRefsParallelism(t *testing.T) {
+	t.Parallel()
+
+	// allow max 2 concurrent
+	lim := newTestDeployerLimiter(t, 2)
+	ctx := context.Background()
+
+	start := time.Now()
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+
+		unlock, err := lim.acquire(ctx, "repoSame")
+		if err != nil {
+			t.Errorf("acquire error: %v", err)
+			return
+		}
+
+		time.Sleep(100 * time.Millisecond)
+		unlock()
+	}()
+
+	time.Sleep(5 * time.Millisecond)
+
+	go func() {
+		defer wg.Done()
+
+		unlock, err := lim.acquire(ctx, "repoSame")
+		if err != nil {
+			t.Errorf("acquire error: %v", err)
+			return
+		}
+
+		time.Sleep(100 * time.Millisecond)
+		unlock()
+	}()
+
+	wg.Wait()
+
+	dur := time.Since(start)
+	if dur > 180*time.Millisecond {
+		t.Fatalf("expected parallel execution for the same repo with different refs, took %v", dur)
+	}
+}
+
+// TestTryAcquire_JoinSameRepo verifies a second TryAcquire for the same repo
+// succeeds when global capacity allows, and that a single per-repo metric
+// entry tracks both.
+func TestTryAcquire_JoinSameRepo(t *testing.T) {
 	t.Parallel()
 
 	lim := newTestDeployerLimiter(t, 2)
 
-	unlock1, ok := lim.TryAcquire("repoJoin", "refA")
+	unlock1, ok := lim.TryAcquire("repoJoin")
 	if !ok || unlock1 == nil {
 		t.Fatalf("expected first TryAcquire to succeed")
 	}
 
-	unlock2, ok2 := lim.TryAcquire("repoJoin", "refA")
+	unlock2, ok2 := lim.TryAcquire("repoJoin")
 	if !ok2 || unlock2 == nil {
 		unlock1()
-		t.Fatalf("expected second TryAcquire to join same ref")
+		t.Fatalf("expected second TryAcquire for the same repo to succeed")
 	}
 
 	t.Cleanup(func() {
@@ -106,59 +159,53 @@ func TestTryAcquire_JoinSameRef(t *testing.T) {
 		unlock2()
 	})
 
-	// Check length of locks for repoJoin is 1 and refCounts for refA is 2
 	lim.mu.Lock()
 
 	t.Cleanup(func() {
 		lim.mu.Unlock()
 	})
 
-	repoEnt, ok := lim.locks["repoJoin"]
+	ent, ok := lim.entries["repoJoin"]
 	if !ok {
 		t.Fatalf("expected repo entry for repoJoin")
 	}
 
-	repoEnt.mu.Lock()
+	ent.mu.Lock()
 
 	t.Cleanup(func() {
-		repoEnt.mu.Unlock()
+		ent.mu.Unlock()
 	})
 
-	if len(repoEnt.refCounts) != 1 {
-		t.Fatalf("expected 1 ref in refCounts, got %d", len(repoEnt.refCounts))
-	}
-
-	count, ok := repoEnt.refCounts["refA"]
-
-	if !ok || count != 2 {
-		t.Fatalf("expected refA count to be 2, got %d", count)
+	if ent.active != 2 {
+		t.Fatalf("expected active count to be 2, got %d", ent.active)
 	}
 }
 
-// TestTryAcquire_DifferentRef_BlockedThenSucceeds verifies TryAcquire for a different ref fails while active and succeeds after release.
-func TestTryAcquire_DifferentRef_BlockedThenSucceeds(t *testing.T) {
+// TestTryAcquire_ExhaustedSemaphore verifies TryAcquire fails once the
+// global semaphore capacity is exhausted, regardless of repo, and succeeds
+// again after a release.
+func TestTryAcquire_ExhaustedSemaphore(t *testing.T) {
 	t.Parallel()
 
 	lim := newTestDeployerLimiter(t, 1)
 
-	unlock1, ok := lim.TryAcquire("repoEnq", "ref1")
+	unlock1, ok := lim.TryAcquire("repoEnq")
 	if !ok || unlock1 == nil {
 		t.Fatalf("first TryAcquire failed")
 	}
 
-	// different ref should not acquire while ref1 is active
-	_, ok2 := lim.TryAcquire("repoEnq", "ref2")
+	// capacity is exhausted, even for a different repo
+	_, ok2 := lim.TryAcquire("repoOther")
 	if ok2 {
 		unlock1()
-		t.Fatalf("expected TryAcquire for different ref to fail while ref1 is active")
+		t.Fatalf("expected TryAcquire to fail while global capacity is exhausted")
 	}
 
-	// release and try again
 	unlock1()
 
-	unlock2, ok3 := lim.TryAcquire("repoEnq", "ref2")
+	unlock2, ok3 := lim.TryAcquire("repoOther")
 	if !ok3 || unlock2 == nil {
-		t.Fatalf("expected TryAcquire for ref2 to succeed after release")
+		t.Fatalf("expected TryAcquire to succeed after release")
 	}
 
 	unlock2()

@@ -53,14 +53,33 @@ func DecryptContent(content []byte, format formats.Format) ([]byte, error) {
 }
 
 // DecryptFilesInDirectory walks through the specified directory and decrypts all SOPS-encrypted files.
+// A file that cannot be decrypted aborts the walk.
 func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
-	return decryptFilesInDirectory(repoPath, dirPath, set.New[string]())
+	return decryptFilesInDirectory(repoPath, dirPath, set.New[string](), nil)
+}
+
+// DecryptFilesInDirectoryTolerant behaves like DecryptFilesInDirectory, except
+// that a file which cannot be decrypted is reported to onFileError and left
+// untouched instead of aborting the walk.
+//
+// This is for callers that decrypt speculatively, without knowing which files
+// are actually going to be used: a repository may legitimately contain secrets
+// encrypted for a different recipient, and those must not make the whole
+// directory unusable. Callers that know a file is required must still fail on
+// it themselves - reaching a file that is still ciphertext is an error there.
+func DecryptFilesInDirectoryTolerant(repoPath, dirPath string, onFileError func(path string, err error)) ([]string, error) {
+	if onFileError == nil {
+		onFileError = func(string, error) {}
+	}
+
+	return decryptFilesInDirectory(repoPath, dirPath, set.New[string](), onFileError)
 }
 
 // decryptFilesInDirectory is the recursive implementation of DecryptFilesInDirectory.
 // The visited set tracks already-processed real paths to prevent infinite recursion
 // caused by symlink loops (e.g. a symlink pointing to an ancestor directory).
-func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string]) ([]string, error) {
+// onFileError, when non-nil, absorbs per-file decryption failures.
+func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string], onFileError func(path string, err error)) ([]string, error) {
 	if !filesystem.InBasePath(repoPath, dirPath) {
 		return nil, fmt.Errorf("%w: %s is outside the repository root %s", filesystem.ErrPathTraversal, dirPath, repoPath)
 	}
@@ -127,7 +146,7 @@ func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string]) 
 			}
 
 			// Recursively walk the symlink target
-			_, err = decryptFilesInDirectory(repoPath, absTarget, visited)
+			_, err = decryptFilesInDirectory(repoPath, absTarget, visited, onFileError)
 			if errors.Is(err, filesystem.ErrPathTraversal) {
 				return nil
 			}
@@ -141,7 +160,13 @@ func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string]) 
 
 		decrypted, err := DecryptFileInPlace(path)
 		if err != nil {
-			return fmt.Errorf("failed to decrypt file %s: %w", path, err)
+			if onFileError == nil {
+				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
+			}
+
+			onFileError(path, err)
+
+			return nil
 		}
 
 		if decrypted {
