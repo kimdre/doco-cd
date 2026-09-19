@@ -506,10 +506,10 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 							return nil, fmt.Errorf("failed to acquire artifact GC lock: %w", err)
 						}
 
-						artifact, publishErr := remoteStore.Publish(ctx, revision)
-						if publishErr != nil {
+						artifact, errPublish := remoteStore.Publish(ctx, revision)
+						if errPublish != nil {
 							unlockGC()
-							return nil, fmt.Errorf("failed to publish reference %s: %w", c.Reference, publishErr)
+							return nil, fmt.Errorf("failed to publish reference %s: %w", c.Reference, errPublish)
 						}
 
 						var discoveryErr error
@@ -582,10 +582,10 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 							return nil, fmt.Errorf("failed to acquire artifact GC lock: %w", lockErr)
 						}
 
-						artifact, publishErr := primaryStore.Publish(ctx, store.Revision(hash.String()))
-						if publishErr != nil {
+						artifact, errPublish := primaryStore.Publish(ctx, store.Revision(hash.String()))
+						if errPublish != nil {
 							unlockGC()
-							return nil, fmt.Errorf("failed to publish reference %s: %w", c.Reference, publishErr)
+							return nil, fmt.Errorf("failed to publish reference %s: %w", c.Reference, errPublish)
 						}
 
 						fsys = os.DirFS(artifact.Path)
