@@ -16,6 +16,7 @@ import (
 	composeapi "github.com/docker/compose/v5/pkg/api"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/moby/moby/api/types/container"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
@@ -223,6 +224,38 @@ func TestDeploy(t *testing.T) {
 
 	if swarmMode {
 		makeDeployFixtureSwarmCompatible(t, repoPath)
+
+		// The deployment pipeline resolves Git sources from the CloneURL itself
+		// (via an immutable per-revision store), not from this on-disk checkout, so
+		// the Swarm-compatibility patch above only takes effect if it is committed
+		// and Deploy is pointed at this local repository instead of the upstream one.
+		hash, err := w.Commit("test: make fixtures Swarm-compatible", &gogit.CommitOptions{
+			All:    true,
+			Author: &object.Signature{Name: "doco-cd-tests", Email: "doco-cd-tests@example.com", When: time.Now()},
+		})
+		if err != nil {
+			t.Fatalf("failed to commit Swarm-compatible fixtures: %v", err)
+		}
+
+		// Move HEAD onto a branch pointing at the new commit instead of leaving it
+		// detached: go-git's client-side ref-advertisement fallback (used because our
+		// in-process file transport doesn't send the "symref" capability) guesses which
+		// branch HEAD points to by hash. With a detached HEAD, no branch matches, and it
+		// falls back to matching the synthetic "HEAD" ref against itself, producing a
+		// self-referential symbolic ref that sends go-git's reference resolution into
+		// unbounded recursion on the very next clone/fetch.
+		branchRef := plumbing.NewHashReference(plumbing.NewBranchReferenceName("swarm-compatible"), hash)
+		if err := repo.Storer.SetReference(branchRef); err != nil {
+			t.Fatalf("failed to create branch for Swarm-compatible commit: %v", err)
+		}
+
+		if err := w.Checkout(&gogit.CheckoutOptions{Branch: branchRef.Name()}); err != nil {
+			t.Fatalf("failed to check out Swarm-compatible branch: %v", err)
+		}
+
+		p.Ref = hash.String()
+		p.CommitSHA = hash
+		p.CloneURL = "file://" + repoPath
 	}
 
 	stackName := test.ConvertTestName(t.Name())

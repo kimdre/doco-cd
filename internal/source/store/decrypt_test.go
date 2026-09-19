@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/getsops/sops/v3/age"
+
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
@@ -66,6 +68,13 @@ func TestGitStore_PublishDecryptsArtifact(t *testing.T) {
 // every stack in the repository, including those that never read it. It stays
 // ciphertext, and a stack that does consume it fails later, at load time.
 func TestGitStore_PublishKeepsUndecryptableFileAsCiphertext(t *testing.T) {
+	// No key configured, so the encrypted file below cannot be decrypted.
+	// CI also injects SOPS_AGE_KEY - the same recipient this fixture is
+	// encrypted for - as an ambient env var for the whole test binary, so it
+	// must be cleared explicitly to make this test deterministic there too.
+	t.Setenv(age.SopsAgeKeyEnv, "")
+	t.Setenv(age.SopsAgeKeyFileEnv, "")
+
 	fixture := readEncryptionFixture(t, "encrypted.yaml")
 
 	repoPath := t.TempDir()
