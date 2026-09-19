@@ -178,7 +178,16 @@ func TestDeploy(t *testing.T) {
 	// Use a test-unique repository name so this test's reconciliation job key does not
 	// collide with other package tests that may run in parallel.
 	repoName := test.ConvertTestName(t.Name()) + "-repo"
+	// repoPath is the store root the deployment pipeline manages itself (mirror clone
+	// plus published artifacts, matching production's DataMountPoint.Destination/repoName
+	// layout) - it must stay empty until GitStore populates it. localRepoPath is a
+	// separate, test-only checkout used to read fixtures ahead of Deploy and, in Swarm
+	// mode, to serve the Swarm-compatible commit over a local file:// remote. Keeping
+	// them apart means Stage 5's legacy-leftover cleanup, which operates on repoPath,
+	// never mistakes localRepoPath's on-disk ".git" checkout for a legacy leftover of
+	// its own store.
 	repoPath := filepath.Join(tmpDir, repoName)
+	localRepoPath := filepath.Join(t.TempDir(), repoName)
 
 	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 	if err != nil {
@@ -206,7 +215,7 @@ func TestDeploy(t *testing.T) {
 		cloneOpts.RecurseSubmodules = gogit.DefaultSubmoduleRecursionDepth
 	}
 
-	repo, err := gogit.PlainClone(repoPath, false, cloneOpts)
+	repo, err := gogit.PlainClone(localRepoPath, false, cloneOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +232,7 @@ func TestDeploy(t *testing.T) {
 	}
 
 	if swarmMode {
-		makeDeployFixtureSwarmCompatible(t, repoPath)
+		makeDeployFixtureSwarmCompatible(t, localRepoPath)
 
 		// The deployment pipeline resolves Git sources from the CloneURL itself
 		// (via an immutable per-revision store), not from this on-disk checkout, so
@@ -255,12 +264,12 @@ func TestDeploy(t *testing.T) {
 
 		p.Ref = hash.String()
 		p.CommitSHA = hash
-		p.CloneURL = "file://" + repoPath
+		p.CloneURL = "file://" + localRepoPath
 	}
 
 	stackName := test.ConvertTestName(t.Name())
 
-	dcs, err := deployConfig.GetConfigs(ctx, repoPath, c.DeployConfigBaseDir, "", p.Ref, "", "", nil)
+	dcs, err := deployConfig.GetConfigs(ctx, localRepoPath, c.DeployConfigBaseDir, "", p.Ref, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
