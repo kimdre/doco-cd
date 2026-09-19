@@ -1,0 +1,66 @@
+# Build the image, then move this env's pins in the deployments repo. That commit is
+# the deploy — doco-cd picks it up on its next poll.
+#
+# Setup: a DEPLOY_TOKEN secret with write access to the deployments repo
+# (fine-grained PAT, or a GitHub App token).
+name: deploy
+
+on:
+  push:
+    branches: [dev]        # dev deploys itself
+  workflow_dispatch:       # prod is a human gate
+    inputs:
+      host:
+        description: target host file to bump, e.g. shop-prod
+        required: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  DEPLOYMENTS_REPO: example/deployments
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      # Image tag and compose pin are both this commit's sha, so the compose
+      # travels with the code it describes.
+      - id: vars
+        run: |
+          echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "host=${{ inputs.host || 'shop-dev' }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.vars.outputs.sha }}
+
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ env.DEPLOYMENTS_REPO }}
+          token: ${{ secrets.DEPLOY_TOKEN }}
+          path: deployments
+
+      # Both pins move together so the compose and the image always match.
+      - working-directory: deployments
+        run: |
+          set -euo pipefail
+          f=".doco-cd.${{ steps.vars.outputs.host }}.yml"
+          sha="${{ steps.vars.outputs.sha }}"
+          sed -i -E "s|(SHOP_BE_TAG: +\")[^\"]+|\1${sha}|; s|(SHOP_COMPOSE_SHA: +\")[^\"]+|\1${sha}|" "$f"
+          git diff --quiet && { echo "already at ${sha}"; exit 0; }
+          git config user.name  "ci"
+          git config user.email "ci@example.com"
+          git commit -am "deploy(${{ steps.vars.outputs.host }}): ${sha:0:7}"
+          # Retry once: another env's job may have pushed between fetch and push.
+          git push || { git pull --rebase && git push; }

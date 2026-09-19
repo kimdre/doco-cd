@@ -1,48 +1,49 @@
 # Central deployments repo → many apps, many hosts
 
-One Git repo is the source of truth for a fleet. Each host's doco-cd instance polls the same repo with its own `target:` and reads only its own `.doco-cd.<host>.yml`. A commit here **is** a deploy.
+One repo is the source of truth for a fleet. Each host polls it with its own `target:` and reads only its own `.doco-cd.<host>.yml`. A commit here **is** a deploy.
 
 Needs doco-cd >= 0.108.0 (remote compose `include:`).
-
-## The model
-
-- **One target file per host.** It lists the host's stacks and pins **every** version the host runs: your images by git sha, third-party by exact tag. Nothing floats. A version change is a reviewable, revertable commit, and the diff is the changelog.
-- **Compose lives with the app code, not here.** Each per-env compose is a small stub that `include:`s the app repo's `deploy/compose.yaml`, pinned at a sha. The compose travels through envs together with the images it describes, so a compose change cannot hit prod before its code does.
-- **Non-secret config** is a cleartext env file per environment, committed here.
-- **Secrets** are SOPS-encrypted env files, committed here. The daemon decrypts them at deploy time with an age key (KMS works the same). Secrets land as container env. Verify on the host with `docker exec <c> printenv`, never by reading files.
-- **App CI closes the loop:** after building an image, a bump job rewrites the sha pins in the target files of the envs that should follow, and commits. doco-cd does the rest.
 
 ## Layout
 
 ```
-deployments-repo/            # the fleet's Git repository
-  .doco-cd.shop-dev.yml      # per-host deploy config: stack list + ALL version pins
+deployments-repo/
+  .doco-cd.shop-dev.yml       # per-host: which stacks it runs + every version pin
   .doco-cd.shop-prod.yml
-  .sops.yaml                 # SOPS creation rules (age recipient)
-  shop/
-    shop-dev/compose.yaml    # include stub, pinned at ${SHOP_COMPOSE_SHA}
-    shop-prod/compose.yaml
-    env/shop-dev.env         # cleartext config
-    env/shop-prod.env
-    secrets/shop-dev.sops.env         # SOPS-encrypted (example is a template)
-app-repo/                    # the app's own repo (e.g. github.com/example/shop-be)
-  deploy/compose.yaml        # THE family compose, single source for every env
-server/                      # per host, e.g. /opt/doco-cd/
-  compose.yaml
-  poll.yaml                  # target: shop-dev on the dev host, shop-prod on prod
-  secrets.env.example
+  .sops.yaml
+  shared/db/compose.yaml      # a compose several envs include
+  shop-dev/                   # one dir = everything this host runs
+    app/{compose.yaml,env/app.env,secrets/app.sops.env}
+    db/{compose.yaml,env/db.env,secrets/db.sops.env}
+  shop-prod/…
+app-repo/
+  deploy/compose.yaml           # the app's compose, in the app's own repo
+  .github/workflows/deploy.yml  # build image → bump pins = deploy
+server/                       # copy to /opt/doco-cd/ on each host
 ```
 
-Add more apps as more families (`blog/`, `api/`, …) and more target files. One host can also run several stacks. Add more YAML documents to its target file.
+## How it fits together
+
+- **A host maps to a directory.** `shop-dev/` holds every stack that host runs, one subdir each.
+- **A stack is self-contained.** `shop-dev/app/` holds its own compose, `env/` and `secrets/`, and refers to them by plain relative paths (`./env/app.env`). Copy a stack directory to start a new one.
+- **Compose files live where the thing lives:** the app's compose in the app repo, anything shared by several envs in `shared/`. Each env pulls one in with `include:` at a pinned sha, so the two envs can run different revisions.
+- **Versions live in `.doco-cd.<host>.yml`** — your images by git sha, third-party by exact tag. That file is the full inventory of what a host runs, and its diff is the changelog.
+- **Config and secrets are per stack.** Cleartext in `env/`, SOPS-encrypted in `secrets/`. The daemon decrypts at deploy time; values land as container env.
 
 ## Try it
 
-1. Push `deployments-repo/` contents to a Git repository. Put `app-repo/deploy/compose.yaml` in your app's repo.
-2. Generate an age key: `age-keygen -o age.key`. Put the public key in `.sops.yaml`.
-3. Create the secret files: `sops encrypt shop/secrets/shop-dev.sops.env` (start from the `.example`).
-4. On each host: copy `server/` to `/opt/doco-cd/`, set the host's `target:` in `poll.yaml`, place `age.key` next to it.
-5. `docker compose up -d` in `/opt/doco-cd/`.
+1. Push `deployments-repo/` to a Git repo; put `app-repo/deploy/compose.yaml` in your app repo.
+2. `age-keygen -o age.key` → put the public key in `.sops.yaml`.
+3. For each `*.sops.env.example`: fill it in, drop the `.example`, `sops encrypt --in-place <file>`.
+4. Copy `server/` to `/opt/doco-cd/`, set `target:` in `poll.yaml`, put `age.key` beside it.
+5. `docker compose up -d`.
 
-## Why a stub and not a plain compose here?
+## Common tasks
 
-You can start with full compose files in this repo. That also works and is simpler. The stub + pinned `include:` pays off when app developers own their compose: they change it in the app repo, CI bumps `SHOP_COMPOSE_SHA` here per env, and dev/test/prod each run exactly the compose revision they were promoted to. `project_directory: .` makes the included file's relative paths (`../env/*`, `../secrets/*`) resolve against the per-env stub directory, so one compose serves every env.
+**Deploy new app code** — push to `dev`. CI builds the image and bumps `SHOP_BE_TAG` + `SHOP_COMPOSE_SHA` together in `.doco-cd.shop-dev.yml`. For prod, run the workflow manually with `host: shop-prod`.
+
+**Change a `shared/` compose** — edit it, commit, push. Then take that commit's sha and set `DB_COMPOSE_SHA` in each env you want it on. Roll one env at a time; rollback is putting the old sha back.
+
+**Bump a third-party image** — change its tag in `.doco-cd.<host>.yml`. Renovate can raise these PRs.
+
+**Check a secret reached the container** — `docker exec <container> printenv`.
