@@ -31,6 +31,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -134,6 +135,7 @@ type RepositoryData struct {
 	PathInternal    string            // Path to the repository inside the container
 	PathExternal    string            // Path to the repository on the host machine
 	Git             *git.Repository   // Git repository instance
+	MirrorDir       string            // Path of Git's bare mirror clone backing Git; empty for OCI sources
 	Revision        string            // Resolved immutable revision (commit SHA or digest)
 	ConfigRevision  string            // Immutable revision containing the deploy config
 	ConfigPath      string            // Host path to the config source artifact
@@ -326,6 +328,21 @@ func (s *StageManager) GetStageMetaData(stageName StageName) (*MetaData, error) 
 	}
 }
 
+// acquireMirrorReadLock takes a shared lock on the repository's bare mirror
+// directory for the duration of a read-only Git ref lookup (GetLatestCommit,
+// GetChangedFilesBetweenCommits, GetCommitsBetween, ...). It excludes a
+// concurrent stack's mirror fetch (which takes the matching exclusive lock
+// in git.CloneOrUpdateBareMirror/GitStore.Publish) so a ref read never
+// observes the mirror mid-write. It is a no-op when the mirror path is
+// unknown, e.g. for OCI sources or before stage 1 has resolved it.
+func (s *StageManager) acquireMirrorReadLock() func() {
+	if s.Repository.MirrorDir == "" {
+		return func() {}
+	}
+
+	return sourcecache.AcquireSharedPathLock(s.Repository.MirrorDir)
+}
+
 // NotifyFailure sends a failure notification and returns notifyErr marked as already
 // reported, so the caller does not notify about the same failure a second time.
 func (s *StageManager) NotifyFailure(notifyErr error) error {
@@ -336,6 +353,8 @@ func (s *StageManager) NotifyFailure(notifyErr error) error {
 	)
 
 	if s.Repository.Git != nil {
+		unlock := s.acquireMirrorReadLock()
+
 		latestCommit, commitErr = gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
 		if commitErr != nil {
 			latestCommit = ""
@@ -345,6 +364,8 @@ func (s *StageManager) NotifyFailure(notifyErr error) error {
 		if commitErr != nil {
 			commitSha = latestCommit
 		}
+
+		unlock()
 	}
 
 	if s.Repository.Git == nil {
@@ -387,6 +408,8 @@ func (s *StageManager) NotifyDeploymentStarted() error {
 	)
 
 	if s.Repository.Git != nil {
+		unlock := s.acquireMirrorReadLock()
+
 		latestCommit, commitErr = gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
 		if commitErr == nil {
 			commitSha, commitErr = gitInternal.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
@@ -394,6 +417,8 @@ func (s *StageManager) NotifyDeploymentStarted() error {
 				commitSha = latestCommit
 			}
 		}
+
+		unlock()
 	}
 
 	if s.Repository.Git == nil {
@@ -429,7 +454,11 @@ func (s *StageManager) resolveCommitSHA() string {
 
 	// Prefer the full SHA from the local git repository when available.
 	if s.Repository.Git != nil {
+		unlock := s.acquireMirrorReadLock()
 		sha, err := gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+
+		unlock()
+
 		if err == nil && strings.TrimSpace(sha) != "" {
 			return strings.TrimSpace(sha)
 		}

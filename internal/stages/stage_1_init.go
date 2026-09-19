@@ -242,6 +242,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	s.Repository.Git = mirrorRepo
+	s.Repository.MirrorDir = gitStore.MirrorDir()
 
 	stageLog.Debug("resolved repository artifact",
 		slog.String("url", s.Repository.SourceUrl),

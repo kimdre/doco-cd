@@ -26,7 +26,11 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 	if s.Repository.Source != config.SourceTypeOCI {
 		latestCommit = s.DeployState.latestCommit
 		if latestCommit == "" {
+			unlock := s.acquireMirrorReadLock()
 			latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+
+			unlock()
+
 			if err != nil {
 				return fmt.Errorf("failed to get latest commit: %w", err)
 			}

@@ -125,7 +125,7 @@ func (s *GitStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 		return existing, nil
 	}
 
-	unlock := sourcecache.AcquirePathLock(s.mirrorDir)
+	unlock := sourcecache.AcquireExclusivePathLock(s.mirrorDir)
 	defer unlock()
 
 	repo, err := git.OpenRepository(s.mirrorDir)
@@ -171,8 +171,11 @@ func (s *GitStore) Lookup(revision Revision) (Artifact, bool, error) {
 // Read-only callers that need a *git.Repository handle for history queries
 // (e.g. resolving a different reference, or GetLatestCommit/
 // GetChangedFilesBetweenCommits-style lookups) can open it directly with
-// git.OpenRepository; none of those operations require the mirror's lock,
-// which Resolve/Publish already manage internally.
+// git.OpenRepository. Such reads should still hold a shared
+// sourcecache.AcquireSharedPathLock(mirrorDir) for their duration: Resolve/
+// Publish only exclude each other via the matching exclusive lock, so an
+// unguarded read can otherwise observe the mirror mid-fetch from a
+// concurrent stack sharing this repository.
 func (s *GitStore) MirrorDir() string {
 	return s.mirrorDir
 }

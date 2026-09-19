@@ -428,7 +428,7 @@ func bootstrapMirror(log *slog.Logger, legacyGitDir, mirrorDir string) error {
 	// Migration runs before doco-cd starts accepting webhooks or polling, so
 	// this is normally uncontended; it only matters for a manual/parallel
 	// invocation.
-	unlock := sourcecache.AcquirePathLock(mirrorDir)
+	unlock := sourcecache.AcquireExclusivePathLock(mirrorDir)
 	defer unlock()
 
 	// Re-check under the lock: a concurrent caller may have already migrated it.

@@ -44,7 +44,7 @@ func CloneOrUpdateBareMirror(
 
 	depth = effectiveDepth(cloneURL, depth)
 
-	unlock := sourcecache.AcquirePathLock(path)
+	unlock := sourcecache.AcquireExclusivePathLock(path)
 	defer unlock()
 
 	repo, err := git.PlainOpen(path)

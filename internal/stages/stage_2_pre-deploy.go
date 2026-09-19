@@ -314,7 +314,11 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		// both defeat the stale-deployment guard below and label this stack with a commit whose content was never deployed.
 		latestCommit := strings.TrimSpace(s.Repository.Revision)
 		if latestCommit == "" {
+			unlock := s.acquireMirrorReadLock()
 			latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+
+			unlock()
+
 			if err != nil {
 				return fmt.Errorf("failed to get latest commit: %w", err)
 			}
@@ -375,7 +379,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			// run is stale - deploying it would silently revert that newer state.
 			// A failed last attempt makes the deployed-commit label unreliable
 			// (see the comment above), so the check is skipped during that retry.
+			unlock := s.acquireMirrorReadLock()
+
 			if !retryAfterFailure && isStaleDeployment(s.Repository.Git, latestHash, deployedHash, stageLog) {
+				unlock()
 				return ErrSkipDeployment
 			}
 
@@ -391,14 +398,18 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 					composeChanged = true
 				} else {
+					unlock()
 					return fmt.Errorf("failed to resolve deployed commit %s: %w", deployedCommit, err)
 				}
 			} else {
 				gitChangedFiles, err = git.GetChangedFilesBetweenCommits(s.Repository.Git, deployedHash, latestHash)
 				if err != nil {
+					unlock()
 					return fmt.Errorf("failed to get changed files between commits: %w", err)
 				}
 			}
+
+			unlock()
 
 			changedFiles := docker.GetPathsFromGitChangedFiles(gitChangedFiles, s.Repository.PathExternal)
 
