@@ -359,11 +359,16 @@ func migrateRepo(ctx context.Context, log *slog.Logger, isReferenced referenceCh
 	}
 
 	if legacy {
-		// A legacy checkout takes precedence over anything in its working tree named "mirror", including nested Git
-		// repositories. Every entry other than ".git" is legacy working-tree content.
-		blocked, err := pathExists(mirrorDir)
+		// A legacy checkout takes precedence over anything in its working tree named "mirror", "artifacts" or
+		// "submodules", including nested Git repositories. Every entry other than ".git" is legacy working-tree
+		// content. Checking all three reserved store names - not just "mirror" - matters because "artifacts" and
+		// "submodules" aren't created until the store is actually used after migration: if a legacy working tree
+		// already had its own entry by one of those names, it would otherwise never be recognized as blocking and
+		// would silently merge into (and hide inside) the store's own directory of the same name once doco-cd
+		// starts writing to it, instead of being cleaned up like any other legacy leftover.
+		blocked, err := blockingStoreEntryExists(repoDir)
 		if err != nil {
-			return fmt.Errorf("inspect mirror path: %w", err)
+			return fmt.Errorf("inspect store layout paths: %w", err)
 		}
 
 		if blocked {
@@ -402,6 +407,34 @@ func migrateRepo(ctx context.Context, log *slog.Logger, isReferenced referenceCh
 
 	// Neither a migrated store nor a legacy checkout.
 	return nil
+}
+
+// blockingStoreEntryExists reports whether repoDir already has an entry
+// under one of the reserved store layout names ("mirror", "artifacts",
+// "submodules") before it has been migrated. Any such entry can only be
+// legacy working-tree content, since the store itself hasn't created those
+// paths yet - so it must be cleaned up rather than left in place, where it
+// would otherwise merge into the store's own directory of the same name
+// once doco-cd starts writing to it after migration.
+func blockingStoreEntryExists(repoDir string) (bool, error) {
+	for _, name := range storeLayoutEntries() {
+		if name == store.MirrorSubdir+".lock" {
+			// The lock file can't exist yet for a repo that hasn't been
+			// migrated at all, and checking it here would be misleading.
+			continue
+		}
+
+		exists, err := pathExists(filepath.Join(repoDir, name))
+		if err != nil {
+			return false, err
+		}
+
+		if exists {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func pathExists(path string) (bool, error) {

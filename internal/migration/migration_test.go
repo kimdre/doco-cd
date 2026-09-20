@@ -485,6 +485,84 @@ func TestRun_RemovesLegacyArtifactsDirectoryOnBootstrap(t *testing.T) {
 	}
 }
 
+// TestRun_RemovesNonEmptyLegacyArtifactsDirectoryBeforeBootstrap reproduces a
+// legacy checkout whose own working tree already has a non-empty "artifacts"
+// directory (e.g. a repo that happens to publish its own build output under
+// that name). Its content must be cleared before the mirror is bootstrapped;
+// otherwise it would go on to silently merge into the store's own artifacts
+// directory of the same name once doco-cd starts writing to it, and would
+// never be recognized as legacy leftover content again.
+func TestRun_RemovesNonEmptyLegacyArtifactsDirectoryBeforeBootstrap(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initLegacyCheckout(t, repoDir)
+
+	legacyArtifacts := filepath.Join(repoDir, store.ArtifactsSubdir)
+	if err := os.MkdirAll(legacyArtifacts, 0o755); err != nil {
+		t.Fatalf("create legacy artifacts directory: %v", err)
+	}
+
+	dummyFile := filepath.Join(legacyArtifacts, "dummy.txt")
+	if err := os.WriteFile(dummyFile, []byte("dummy\n"), 0o600); err != nil {
+		t.Fatalf("write legacy artifacts content: %v", err)
+	}
+
+	if err := Run(t.Context(), nil, &migrationTestClient{}, dataDir); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if _, err := git.PlainOpen(filepath.Join(repoDir, store.MirrorSubdir)); err != nil {
+		t.Fatalf("open bootstrapped mirror: %v", err)
+	}
+
+	if _, err := os.Stat(dummyFile); !os.IsNotExist(err) {
+		t.Errorf("legacy content inside working-tree \"artifacts\" directory survived migration, stat err = %v", err)
+	}
+}
+
+// TestRun_KeepsLegacyArtifactsDirectoryReferencedByRunningContainer ensures a
+// non-empty working-tree "artifacts" directory that collides with the store
+// layout still defers to a running container the same way a colliding
+// "mirror" directory does: migration must not bootstrap the mirror (or
+// delete anything) until the stack is no longer deployed from repoDir.
+func TestRun_KeepsLegacyArtifactsDirectoryReferencedByRunningContainer(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initLegacyCheckout(t, repoDir)
+
+	legacyArtifacts := filepath.Join(repoDir, store.ArtifactsSubdir)
+	if err := os.MkdirAll(legacyArtifacts, 0o755); err != nil {
+		t.Fatalf("create legacy artifacts directory: %v", err)
+	}
+
+	dummyFile := filepath.Join(legacyArtifacts, "dummy.txt")
+	if err := os.WriteFile(dummyFile, []byte("dummy\n"), 0o600); err != nil {
+		t.Fatalf("write legacy artifacts content: %v", err)
+	}
+
+	apiClient := &migrationTestClient{containers: []container.Summary{{
+		Labels: map[string]string{docker.DocoCDLabels.Deployment.WorkingDir: repoDir},
+	}}}
+
+	if err := Run(t.Context(), nil, apiClient, dataDir); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if _, err := os.Stat(dummyFile); err != nil {
+		t.Errorf("working-tree content of a still-deployed stack was deleted: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repoDir, gitDirName)); err != nil {
+		t.Errorf("legacy .git directory should be kept until the stack is redeployed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repoDir, store.MirrorSubdir, "HEAD")); !os.IsNotExist(err) {
+		t.Errorf("mirror should not be bootstrapped while blocking content is still referenced, stat err = %v", err)
+	}
+}
+
 // TestRun_HonorsCanceledContext ensures a shutdown during startup migration
 // stops the pass instead of walking the whole data mount point.
 func TestRun_HonorsCanceledContext(t *testing.T) {
