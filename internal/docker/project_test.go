@@ -33,12 +33,12 @@ func TestProjectHash_ChangesWhenJobLabelsChange(t *testing.T) {
 		},
 	}
 
-	baseHash, err := ProjectHash(base)
+	baseHash, err := ProjectHash(base, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(base) error: %v", err)
 	}
 
-	changedHash, err := ProjectHash(changed)
+	changedHash, err := ProjectHash(changed, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(changed) error: %v", err)
 	}
@@ -73,12 +73,12 @@ func TestProjectHash_ChangesWhenRecreateLabelsChange(t *testing.T) {
 		},
 	}
 
-	baseHash, err := ProjectHash(base)
+	baseHash, err := ProjectHash(base, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(base) error: %v", err)
 	}
 
-	changedHash, err := ProjectHash(changed)
+	changedHash, err := ProjectHash(changed, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(changed) error: %v", err)
 	}
@@ -114,12 +114,12 @@ func TestProjectHash_IgnoresDocoMetadataLabels(t *testing.T) {
 		},
 	}
 
-	baseHash, err := ProjectHash(base)
+	baseHash, err := ProjectHash(base, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(base) error: %v", err)
 	}
 
-	withMetadataChangeHash, err := ProjectHash(withMetadataChange)
+	withMetadataChangeHash, err := ProjectHash(withMetadataChange, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(withMetadataChange) error: %v", err)
 	}
@@ -155,12 +155,12 @@ func TestProjectHash_IgnoresComposeGeneratedLabels(t *testing.T) {
 		},
 	}
 
-	baseHash, err := ProjectHash(base)
+	baseHash, err := ProjectHash(base, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(base) error: %v", err)
 	}
 
-	withComposeRuntimeLabelHash, err := ProjectHash(withComposeRuntimeLabel)
+	withComposeRuntimeLabelHash, err := ProjectHash(withComposeRuntimeLabel, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(withComposeRuntimeLabel) error: %v", err)
 	}
@@ -196,12 +196,12 @@ func TestProjectHash_IgnoresScaleZeroServices(t *testing.T) {
 		},
 	}
 
-	baseHash, err := ProjectHash(base)
+	baseHash, err := ProjectHash(base, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(base) error: %v", err)
 	}
 
-	withScaledToZeroServiceHash, err := ProjectHash(withScaledToZeroService)
+	withScaledToZeroServiceHash, err := ProjectHash(withScaledToZeroService, "")
 	if err != nil {
 		t.Fatalf("ProjectHash(withScaledToZeroService) error: %v", err)
 	}
@@ -321,12 +321,12 @@ func TestWithNormalizedEnvValues_StabilizesProjectHash(t *testing.T) {
 	norm1 := WithNormalizedEnvValues(makeProject(cert1), map[string]string{cert1: ref})
 	norm2 := WithNormalizedEnvValues(makeProject(cert2), map[string]string{cert2: ref})
 
-	h1, err := ProjectHash(norm1)
+	h1, err := ProjectHash(norm1, "")
 	if err != nil {
 		t.Fatalf("ProjectHash error: %v", err)
 	}
 
-	h2, err := ProjectHash(norm2)
+	h2, err := ProjectHash(norm2, "")
 	if err != nil {
 		t.Fatalf("ProjectHash error: %v", err)
 	}
@@ -336,10 +336,72 @@ func TestWithNormalizedEnvValues_StabilizesProjectHash(t *testing.T) {
 	}
 
 	// Sanity check: without normalization the hashes DO differ.
-	rawH1, _ := ProjectHash(makeProject(cert1))
-	rawH2, _ := ProjectHash(makeProject(cert2))
+	rawH1, _ := ProjectHash(makeProject(cert1), "")
+	rawH2, _ := ProjectHash(makeProject(cert2), "")
 
 	if rawH1 == rawH2 {
 		t.Error("expected raw hashes to differ when cert PEM changes (test setup incorrect)")
+	}
+}
+
+// Compose resolves every relative path in a project file against the directory the
+// project was loaded from. Artifacts are published per revision, so that directory
+// differs for every commit and would otherwise change the hash of a stack whose
+// content was never touched, redeploying every project on every commit.
+func TestProjectHash_IgnoresSourceRootInResolvedPaths(t *testing.T) {
+	t.Parallel()
+
+	makeProject := func(root string) *types.Project {
+		return &types.Project{
+			WorkingDir: root + "/stacks/app",
+			Services: types.Services{
+				"app": {
+					Name: "app",
+					Volumes: []types.ServiceVolumeConfig{
+						{Type: "bind", Source: root + "/stacks/app/data", Target: "/data"},
+					},
+					EnvFiles: []types.EnvFile{
+						{Path: root + "/stacks/app/app.env"},
+					},
+					Build: &types.BuildConfig{Context: root + "/stacks/app"},
+				},
+			},
+			Configs: types.Configs{
+				"cfg": {File: root + "/shared/cfg.txt"},
+			},
+			Secrets: types.Secrets{
+				"sec": {File: root + "/shared/sec.txt"},
+			},
+		}
+	}
+
+	rootA := "/data/github.com/kimdre/homelab/artifacts/aaaaaaaa"
+	rootB := "/data/github.com/kimdre/homelab/artifacts/bbbbbbbb"
+
+	hashA, err := ProjectHash(makeProject(rootA), rootA)
+	if err != nil {
+		t.Fatalf("ProjectHash(rootA) error: %v", err)
+	}
+
+	hashB, err := ProjectHash(makeProject(rootB), rootB)
+	if err != nil {
+		t.Fatalf("ProjectHash(rootB) error: %v", err)
+	}
+
+	if hashA != hashB {
+		t.Fatalf("expected identical hashes for identical content published under different revisions, got %q and %q", hashA, hashB)
+	}
+
+	// A real path change inside the source tree must still be detected.
+	changed := makeProject(rootB)
+	changed.Configs["cfg"] = types.ConfigObjConfig{File: rootB + "/shared/other.txt"}
+
+	changedHash, err := ProjectHash(changed, rootB)
+	if err != nil {
+		t.Fatalf("ProjectHash(changed) error: %v", err)
+	}
+
+	if changedHash == hashB {
+		t.Fatal("expected hash to change when a referenced file path changes")
 	}
 }

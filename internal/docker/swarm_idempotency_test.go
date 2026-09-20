@@ -103,7 +103,7 @@ func TestDeploySwarmStackIsIdempotent(t *testing.T) {
 
 	deployConfigs[0].Name = stackName
 
-	projectHash, err := ProjectHash(project)
+	projectHash, err := ProjectHash(project, "")
 	if err != nil {
 		t.Fatalf("Failed to get project hash: %v", err)
 	}

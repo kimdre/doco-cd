@@ -513,7 +513,7 @@ compose_files:
 			t.Fatalf("failed to load expected project: %v", err)
 		}
 
-		projectHash, err := ProjectHash(expectedProject)
+		projectHash, err := ProjectHash(expectedProject, repoPath)
 		if err != nil {
 			t.Fatalf("ProjectHash err: %v", err)
 		}

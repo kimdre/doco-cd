@@ -625,7 +625,7 @@ services:
 		t.Fatal(err)
 	}
 
-	projectHash, err := ProjectHash(project)
+	projectHash, err := ProjectHash(project, "")
 	if err != nil {
 		t.Fatalf("failed to get project hash: %v", err)
 	}

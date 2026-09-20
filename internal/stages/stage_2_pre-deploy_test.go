@@ -425,12 +425,12 @@ func TestShouldSkipOCIDeployment_InterpolationEnvironmentChanged(t *testing.T) {
 		}
 	}
 
-	deployedHash, err := docker.ProjectHash(makeProject("old-secret"))
+	deployedHash, err := docker.ProjectHash(makeProject("old-secret"), "")
 	if err != nil {
 		t.Fatalf("hash deployed project: %v", err)
 	}
 
-	resolvedHash, err := docker.ProjectHash(makeProject("new-secret"))
+	resolvedHash, err := docker.ProjectHash(makeProject("new-secret"), "")
 	if err != nil {
 		t.Fatalf("hash resolved project: %v", err)
 	}
@@ -686,12 +686,12 @@ func TestPkiRoleNormMap_HashStability(t *testing.T) {
 		}
 	}
 
-	h1, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert1, key1), norm1))
+	h1, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert1, key1), norm1), "")
 	if err != nil {
 		t.Fatalf("hash 1: %v", err)
 	}
 
-	h2, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert2, key2), norm2))
+	h2, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert2, key2), norm2), "")
 	if err != nil {
 		t.Fatalf("hash 2: %v", err)
 	}

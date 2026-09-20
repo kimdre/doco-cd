@@ -84,7 +84,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	commit := "e8e2d31f0fa0c924400b3bac751b6c2c6930adb1"
 
-	projectHash, err := ProjectHash(project)
+	projectHash, err := ProjectHash(project, "")
 	if err != nil {
 		t.Fatalf("failed to get project hash: %v", err)
 	}

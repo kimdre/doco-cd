@@ -261,7 +261,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	}
 
 	if projectHash == "" {
-		projectHash, err = ProjectHash(WithNormalizedEnvValues(project, req.HashNormMap))
+		projectHash, err = ProjectHash(WithNormalizedEnvValues(project, req.HashNormMap), req.ExternalRepoPath)
 		if err != nil {
 			return fmt.Errorf("failed to generate project hash: %w", err)
 		}

@@ -582,7 +582,7 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 	// solely because an unchanged role issued a fresh certificate.
 	hashProject := docker.WithNormalizedEnvValues(s.Docker.Project, pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
 
-	projectHash, err := docker.ProjectHash(hashProject)
+	projectHash, err := docker.ProjectHash(hashProject, s.Repository.PathExternal)
 	if err != nil {
 		return "", fmt.Errorf("failed to get project hash: %w", err)
 	}
