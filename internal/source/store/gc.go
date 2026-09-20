@@ -51,10 +51,12 @@ type GCResult struct {
 // rest are removed once older than RetentionTTL, measured against now (an
 // explicit clock so tests are deterministic).
 //
-// Sweep never touches anything outside "<baseDir>/artifacts/<revision>"
+// Candidates for removal are never anything outside "<baseDir>/artifacts/<revision>"
 // (via listArtifacts) - the mirror clone, its lock file, the submodule
 // cache, and any in-progress temporary publish directory are never listed
-// as candidates in the first place, so they can never be removed here.
+// as candidates in the first place, so they can never be removed here. Once
+// a candidate is actually removed, its "<path>.lock" sibling - left behind
+// by DeployStack's per-artifact cross-process lock - is removed alongside it.
 //
 // A single artifact that fails to stat or remove is recorded as kept and
 // does not stop the sweep of the others; all such errors are joined and
@@ -111,11 +113,23 @@ func Sweep(baseDir string, live set.Set[Revision], opts GCOptions, now time.Time
 			continue
 		}
 
-		if err := os.RemoveAll(c.Path); err != nil {
+		if err = os.RemoveAll(c.Path); err != nil {
 			errs = append(errs, fmt.Errorf("remove artifact %s: %w", c.Revision, err))
 			result.Kept = append(result.Kept, c.Artifact)
 
 			continue
+		}
+
+		// DeployStack takes a cross-process lock keyed on this exact artifact
+		// path while loading its Compose project (see
+		// sourcecache.AcquirePathLock in internal/docker/deployment.go), which
+		// leaves a "<path>.lock" sibling file behind on disk - flock never
+		// removes the file itself, only the process's hold on it. The artifact
+		// directory above is already gone by this point, so this sibling can
+		// never be locked by a new caller again; only remove failures are
+		// reported, since Removed must still reflect the artifact itself.
+		if err = os.Remove(c.Path + ".lock"); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("remove artifact lock file %s: %w", c.Revision, err))
 		}
 
 		result.Removed = append(result.Removed, c.Artifact)

@@ -136,6 +136,70 @@ func TestSweep_RemovesUnreferencedExpiredArtifact(t *testing.T) {
 	}
 }
 
+// TestSweep_RemovesArtifactLockFileAlongsideExpiredArtifact ensures Sweep
+// also removes the "<path>.lock" sibling that DeployStack's per-artifact
+// cross-process lock (sourcecache.AcquirePathLock) leaves behind - flock
+// never deletes the file itself, only releases the process's hold on it.
+// Without this, every deployed revision permanently leaves an empty lock
+// file behind under artifacts/ even after its directory is garbage collected.
+func TestSweep_RemovesArtifactLockFileAlongsideExpiredArtifact(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	now := time.Now()
+
+	artifact := touchArtifact(t, baseDir, "expired", now, 2*time.Hour)
+
+	lockPath := artifact.Path + ".lock"
+	if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
+		t.Fatalf("create artifact lock file: %v", err)
+	}
+
+	result, err := Sweep(baseDir, nil, GCOptions{RetentionRecords: 0, RetentionTTL: time.Minute}, now)
+	if err != nil {
+		t.Fatalf("Sweep() error = %v", err)
+	}
+
+	if !containsRevision(result.Removed, "expired") {
+		t.Fatalf("Sweep() removed = %v, want to include %q", result.Removed, "expired")
+	}
+
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Errorf("artifact lock file still exists on disk, stat err = %v", err)
+	}
+}
+
+// TestSweep_KeepsLockFileOfLiveOrRetainedArtifact ensures Sweep only removes
+// an artifact's lock file when it actually removes the artifact itself - a
+// still-live or still-retained artifact's lock file must never be touched,
+// since a concurrent DeployStack call may be holding it.
+func TestSweep_KeepsLockFileOfLiveOrRetainedArtifact(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	now := time.Now()
+
+	artifact := touchArtifact(t, baseDir, "live", now, 24*time.Hour)
+
+	lockPath := artifact.Path + ".lock"
+	if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
+		t.Fatalf("create artifact lock file: %v", err)
+	}
+
+	result, err := Sweep(baseDir, revisionSet("live"), GCOptions{RetentionRecords: 0, RetentionTTL: time.Minute}, now)
+	if err != nil {
+		t.Fatalf("Sweep() error = %v", err)
+	}
+
+	if len(result.Removed) != 0 {
+		t.Errorf("Sweep() removed = %v, want none", result.Removed)
+	}
+
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Errorf("live artifact's lock file was removed: %v", err)
+	}
+}
+
 func TestSweep_NeverTouchesMirrorOrSubmodulesOrTemp(t *testing.T) {
 	t.Parallel()
 
