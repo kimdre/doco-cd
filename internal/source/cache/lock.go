@@ -11,7 +11,40 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// sourceLocks holds source-level Mutex values.
+// It is separate from repoLocks because their semantics differ.
 var sourceLocks sync.Map
+
+// pathLocker adapts a path-based lock to sync.Locker.
+// It is not safe for concurrent use by multiple goroutines.
+type pathLocker struct {
+	path     string
+	instance sync.Mutex
+	release  func()
+}
+
+// NewPathLocker adapts the process-and-filesystem path lock to sync.Locker.
+// It lets a callee lock multiple scoped phases without losing cross-process exclusion.
+func NewPathLocker(path string) sync.Locker {
+	return &pathLocker{path: path}
+}
+
+// Lock acquires the path lock, blocking until it is available.
+func (l *pathLocker) Lock() {
+	l.instance.Lock()
+	l.release = AcquirePathLock(l.path)
+}
+
+// Unlock releases the path lock, panicking if it was not held.
+func (l *pathLocker) Unlock() {
+	if l.release == nil {
+		panic("source cache: unlock of unlocked path")
+	}
+
+	l.release()
+	l.release = nil
+	l.instance.Unlock()
+}
 
 // AcquirePathLock takes an exclusive lock for a mutable source path, including across shared data volumes.
 func AcquirePathLock(sourcePath string) func() {
