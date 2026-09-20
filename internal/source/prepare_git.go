@@ -2,9 +2,12 @@ package source
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
+	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/migration"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
@@ -21,6 +24,10 @@ type gitPrepareResult struct {
 // prepareGit resolves req's repository and publishes its immutable revision, reusing an existing commit when possible.
 func (p *Preparer) prepareGit(ctx context.Context, req Request, storeBaseDir, initialRevision string) (gitPrepareResult, error) {
 	result := gitPrepareResult{revision: initialRevision}
+
+	if err := p.ensureGitStoreMigrated(ctx, req, storeBaseDir); err != nil {
+		return result, wrapPrepareError(ErrGitClone, err)
+	}
 
 	gitStore, err := store.NewGitStore(store.GitStoreOptions{
 		Log:                     req.Logger,
@@ -66,4 +73,38 @@ func (p *Preparer) prepareGit(ctx context.Context, req Request, storeBaseDir, in
 	result.artifactPath = artifact.Path
 
 	return result, nil
+}
+
+// ensureGitStoreMigrated finishes migrating storeBaseDir from a legacy checkout to the current
+// store layout if it discovers one still there, before GitStore ever touches it.
+//
+// Startup migration normally handles this once, before doco-cd starts accepting webhooks or
+// polling. But it defers a repository's mirror bootstrap while a running container still
+// references its old, legacy working tree - and, since migration only runs once per process
+// start, that deferral otherwise lasts until the next full restart. Without this call, GitStore's
+// mirror clone has no awareness of the still-present legacy checkout: finding no mirror yet, it
+// would clone a fresh, independent one alongside the un-migrated legacy content instead of
+// replacing it, silently duplicating history and merging unrelated artifacts.
+//
+// Prepare already holds a shared GC lock on storeBaseDir for the duration of this call, which is
+// exactly the precondition migration.MigrateRepository requires.
+func (p *Preparer) ensureGitStoreMigrated(ctx context.Context, req Request, storeBaseDir string) error {
+	if p.contexts == nil {
+		// No Docker context registry configured: behave as if the repository were never a
+		// legacy checkout. Always correct for a store with no on-disk data yet, and the only
+		// reasonable fallback otherwise (see Dependencies.Contexts).
+		return nil
+	}
+
+	migrated, err := migration.MigrateRepository(ctx, req.Logger, p.contexts,
+		req.DataMountPoint.Source, req.DataMountPoint.Destination, storeBaseDir)
+	if err != nil {
+		return fmt.Errorf("migrate legacy repository layout: %w", err)
+	}
+
+	if !migrated {
+		return fmt.Errorf("%w: %s", git.ErrLegacyCheckoutNotMigrated, storeBaseDir)
+	}
+
+	return nil
 }

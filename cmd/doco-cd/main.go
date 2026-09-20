@@ -395,6 +395,7 @@ func run() error {
 
 	sourcePreparer, err := source.NewPreparer(source.Dependencies{
 		AppConfig: c,
+		Contexts:  contexts,
 	})
 	if err != nil {
 		log.Critical("failed to create source preparer", logger.ErrAttr(err))

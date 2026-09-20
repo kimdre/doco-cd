@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/docker/cli/cli/command"
+	contextstore "github.com/docker/cli/cli/context/store"
 	"github.com/go-git/go-git/v5"
 	"github.com/moby/moby/api/types/container"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
@@ -16,6 +18,33 @@ import (
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
+
+// migrationTestCli is a minimal command.Cli stub whose only implemented
+// method is Client, matching the pattern internal/docker's own tests use for
+// the same interface.
+type migrationTestCli struct {
+	command.Cli
+
+	apiClient client.APIClient
+}
+
+func (c migrationTestCli) Client() client.APIClient {
+	return c.apiClient
+}
+
+// ContextStore returns an empty context list, so ContextRegistry.Refresh sees only the default
+// context - matching a plain, single-context Docker installation.
+func (c migrationTestCli) ContextStore() contextstore.Store {
+	return migrationTestContextStore{}
+}
+
+type migrationTestContextStore struct {
+	contextstore.Store
+}
+
+func (migrationTestContextStore) List() ([]contextstore.Metadata, error) {
+	return nil, nil
+}
 
 // migrationTestClient is a minimal client.APIClient stub that only
 // implements ContainerList, matching the pattern used by
@@ -574,6 +603,137 @@ func TestRun_HonorsCanceledContext(t *testing.T) {
 
 	if err := Run(ctx, nil, &migrationTestClient{}, dataDir); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run() error = %v, want context.Canceled", err)
+	}
+}
+
+// TestMigrateRepository_NewRepositoryIsAlreadyUsable covers a first-ever deployment: nothing
+// exists on disk yet, so there is nothing to migrate and the store layout is free to bootstrap
+// itself from scratch. This must not require a Docker context registry.
+func TestMigrateRepository_NewRepositoryIsAlreadyUsable(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	migrated, err := MigrateRepository(t.Context(), nil, nil, dataDir, dataDir, repoDir)
+	if err != nil {
+		t.Fatalf("MigrateRepository() error = %v", err)
+	}
+
+	if !migrated {
+		t.Fatal("MigrateRepository() = false, want true for a repository with no on-disk data yet")
+	}
+}
+
+// TestMigrateRepository_AlreadyMigratedStoreIsUsable covers a repository already on the current
+// store layout: MigrateRepository must recognize it as usable without requiring a Docker context
+// registry either.
+func TestMigrateRepository_AlreadyMigratedStoreIsUsable(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	mirrorDir := filepath.Join(repoDir, store.MirrorSubdir)
+	if _, err := git.PlainInit(mirrorDir, true); err != nil {
+		t.Fatalf("init bare mirror: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoDir, store.MirrorSubdir+".lock"), nil, 0o600); err != nil {
+		t.Fatalf("write mirror lock file: %v", err)
+	}
+
+	migrated, err := MigrateRepository(t.Context(), nil, nil, dataDir, dataDir, repoDir)
+	if err != nil {
+		t.Fatalf("MigrateRepository() error = %v", err)
+	}
+
+	if !migrated {
+		t.Fatal("MigrateRepository() = false, want true for an already-migrated store root")
+	}
+}
+
+// TestMigrateRepository_MigratesUnreferencedLegacyCheckout is the scenario the function exists
+// for: a legacy checkout that startup migration hasn't touched yet (e.g. this is the first
+// deployment attempt since the repository was deployed), with nothing currently referencing its
+// working tree, must be bootstrapped in place so the caller can proceed to use the store layout
+// immediately, without waiting for the next doco-cd restart.
+func TestMigrateRepository_MigratesUnreferencedLegacyCheckout(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initLegacyCheckout(t, repoDir)
+
+	contexts := docker.NewContextRegistry(migrationTestCli{apiClient: &migrationTestClient{}}, docker.ContextRegistryOptions{})
+
+	migrated, err := MigrateRepository(t.Context(), nil, contexts, dataDir, dataDir, repoDir)
+	if err != nil {
+		t.Fatalf("MigrateRepository() error = %v", err)
+	}
+
+	if !migrated {
+		t.Fatal("MigrateRepository() = false, want true for an unreferenced legacy checkout")
+	}
+
+	if _, err := git.PlainOpen(filepath.Join(repoDir, store.MirrorSubdir)); err != nil {
+		t.Fatalf("open bootstrapped mirror: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repoDir, gitDirName)); !os.IsNotExist(err) {
+		t.Errorf("legacy .git directory should have been moved, stat err = %v", err)
+	}
+}
+
+// TestMigrateRepository_KeepsReferencedLegacyCheckout covers the deferral case: a legacy
+// checkout still bind-mounted by a running container must not be migrated, and the caller must
+// be told the repository is not yet usable so it can retry later instead of proceeding to a
+// fresh, independent mirror clone.
+func TestMigrateRepository_KeepsReferencedLegacyCheckout(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initLegacyCheckout(t, repoDir)
+
+	// A blocking working-tree entry named "mirror" is required to defer the mirror bootstrap
+	// itself on a running-container reference: without one, ordinary leftover working-tree files
+	// are cleared independently of the bootstrap, which always proceeds regardless of reference
+	// (renaming ".git" into place is safe even under an open bind mount).
+	blockingFile := filepath.Join(repoDir, store.MirrorSubdir, "tracked.txt")
+	if err := os.MkdirAll(filepath.Dir(blockingFile), 0o755); err != nil {
+		t.Fatalf("create blocking working-tree directory: %v", err)
+	}
+
+	if err := os.WriteFile(blockingFile, []byte("tracked\n"), 0o600); err != nil {
+		t.Fatalf("write blocking working-tree file: %v", err)
+	}
+
+	apiClient := &migrationTestClient{containers: []container.Summary{{
+		Names:  []string{"/test"},
+		Labels: map[string]string{docker.DocoCDLabels.Deployment.WorkingDir: repoDir},
+	}}}
+	contexts := docker.NewContextRegistry(migrationTestCli{apiClient: apiClient}, docker.ContextRegistryOptions{})
+
+	migrated, err := MigrateRepository(t.Context(), nil, contexts, dataDir, dataDir, repoDir)
+	if err != nil {
+		t.Fatalf("MigrateRepository() error = %v", err)
+	}
+
+	if migrated {
+		t.Fatal("MigrateRepository() = true, want false for a legacy checkout still referenced by a running container")
+	}
+
+	if _, err := os.Stat(filepath.Join(repoDir, gitDirName)); err != nil {
+		t.Errorf("legacy .git directory should be kept until the stack is redeployed: %v", err)
+	}
+}
+
+// TestMigrateRepository_RequiresContextsForLegacyCheckout ensures a legacy checkout that needs
+// an actual reference check fails clearly, rather than silently migrating, when no Docker
+// context registry is available to perform that check.
+func TestMigrateRepository_RequiresContextsForLegacyCheckout(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initLegacyCheckout(t, repoDir)
+
+	if _, err := MigrateRepository(t.Context(), nil, nil, dataDir, dataDir, repoDir); err == nil {
+		t.Fatal("MigrateRepository() error = nil, want an error when no Docker context registry is available")
 	}
 }
 

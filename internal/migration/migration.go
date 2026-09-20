@@ -167,6 +167,80 @@ func CleanupRepoLeftovers(
 		})
 }
 
+// MigrateRepository attempts a one-off, single-repository migration of repoDir from the legacy
+// checkout layout to the current mirror-and-artifact store layout, applying the same rules and
+// running-container safety checks as RunWithContexts.
+//
+// It exists for callers that discover, at deployment time, that repoDir still has an un-migrated
+// legacy ".git" checkout - typically because a startup migration pass deferred it while an old
+// container using the legacy layout was still running, and no doco-cd restart has happened
+// since. Without this, a caller that only checks for the store layout (e.g. GitStore's mirror
+// clone) would otherwise clone a fresh, independent mirror alongside the un-migrated legacy
+// content instead of replacing it.
+//
+// It reports whether repoDir is a valid store root - or was never a legacy checkout to begin
+// with - after the call. false means a legacy checkout is still present and could not be
+// migrated right now, most commonly because a running container still references its old
+// working tree; callers should treat repoDir as not yet usable and retry later (e.g. on the next
+// poll/webhook event) rather than falling back to a fresh clone.
+//
+// Like CleanupRepoLeftovers, it does not acquire its own GC lock - callers must already hold at
+// least a shared GC lock on repoDir for the duration of the call. Unlike CleanupRepoLeftovers, it
+// does perform the mirror bootstrap itself when safe to do so; that step takes GitStore's own
+// mirror path lock (see bootstrapMirror), so it can never race a concurrent GitStore clone/fetch
+// for the same repository.
+func MigrateRepository(
+	ctx context.Context,
+	log *slog.Logger,
+	contexts *docker.ContextRegistry,
+	dataMountSource string,
+	dataMountDestination string,
+	repoDir string,
+) (bool, error) {
+	if log == nil {
+		log = slog.Default()
+	}
+
+	isReferenced := func(ctx context.Context, repoDir string, keep []string) (bool, error) {
+		relativeRepoDir, err := filepath.Rel(dataMountDestination, repoDir)
+		if err != nil {
+			return false, fmt.Errorf("derive host repository path: %w", err)
+		}
+
+		hostRepoDir := filepath.Join(dataMountSource, relativeRepoDir)
+
+		return referencedAcrossContexts(ctx, contexts, []string{repoDir, hostRepoDir}, keep)
+	}
+
+	legacy, err := isGitDir(filepath.Join(repoDir, gitDirName))
+	if err != nil {
+		return false, fmt.Errorf("inspect legacy git directory: %w", err)
+	}
+
+	if !legacy {
+		exists, err := pathExists(repoDir)
+		if err != nil {
+			return false, fmt.Errorf("inspect repository directory: %w", err)
+		}
+
+		if !exists {
+			// First-ever deployment: nothing on disk yet, so there is nothing to migrate. The
+			// store layout will be created from scratch.
+			return true, nil
+		}
+
+		// Already on the migrated store layout, or an unrelated directory - either way,
+		// there is nothing for this function to do.
+		return isStoreRoot(repoDir)
+	}
+
+	if err = migrateRepo(ctx, log, isReferenced, repoDir); err != nil {
+		return false, err
+	}
+
+	return isStoreRoot(repoDir)
+}
+
 // cleanupRepoLeftovers is the source-agnostic implementation behind CleanupRepoLeftovers,
 // parameterized over the reference check so it can be unit-tested with a fake isReferenced,
 // matching the pattern run uses for Run/RunWithContexts.
