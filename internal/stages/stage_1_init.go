@@ -7,6 +7,7 @@ import (
 	"maps"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -107,7 +108,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		s.Repository.MirrorDir != "" &&
 		s.Repository.Revision != "" &&
 		s.Repository.PathInternal != "" &&
-		s.DeployConfig.Reference == s.Repository.ResolvedReference &&
+		resolvedReferenceMatches(s.Repository.ResolvedReference, s.DeployConfig.Reference) &&
 		s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth) == s.AppConfig.GitCloneDepth
 
 	// Git sources deliberately reset to the store's base directory here:
@@ -390,6 +391,21 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	return nil
+}
+
+// resolvedReferenceMatches treats a webhook's fully qualified branch reference
+// as equivalent to the short branch name accepted by deployment configs.
+// Keep the normalization asymmetric: a short configured tag can be ambiguous
+// with a same-named branch, while refs/heads/<name> unambiguously identifies
+// the branch Prepare resolved.
+func resolvedReferenceMatches(resolvedReference, configuredReference string) bool {
+	if resolvedReference == configuredReference {
+		return true
+	}
+
+	branch, ok := strings.CutPrefix(resolvedReference, git.BranchPrefix)
+
+	return ok && branch == configuredReference
 }
 
 // MatchesWebhookEventFilter reports whether this run should proceed based on

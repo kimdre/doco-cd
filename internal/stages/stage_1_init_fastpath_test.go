@@ -148,7 +148,7 @@ func TestRunInitStageFastPathReusesResolvedArtifact(t *testing.T) {
 		PathExternal:      artifactPath,
 		MirrorDir:         mirrorDir,
 		Revision:          revision,
-		ResolvedReference: "main",
+		ResolvedReference: "refs/heads/main",
 	}
 
 	deployConfig := deploy.New("app", "main")
@@ -173,6 +173,35 @@ func TestRunInitStageFastPathReusesResolvedArtifact(t *testing.T) {
 
 	if sm.Repository.Git == nil {
 		t.Fatal("Git = nil, want an opened repository handle")
+	}
+}
+
+func TestResolvedReferenceMatches(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		resolved   string
+		configured string
+		want       bool
+	}{
+		{name: "exact branch", resolved: "refs/heads/main", configured: "refs/heads/main", want: true},
+		{name: "short configured branch", resolved: "refs/heads/main", configured: "main", want: true},
+		{name: "different branch", resolved: "refs/heads/main", configured: "feature"},
+		{name: "short resolved reference stays ambiguous", resolved: "main", configured: "refs/heads/main"},
+		{name: "short configured tag stays ambiguous", resolved: "refs/tags/v1.0.0", configured: "v1.0.0"},
+		{name: "exact tag", resolved: "refs/tags/v1.0.0", configured: "refs/tags/v1.0.0", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := resolvedReferenceMatches(tt.resolved, tt.configured); got != tt.want {
+				t.Fatalf("resolvedReferenceMatches(%q, %q) = %t, want %t",
+					tt.resolved, tt.configured, got, tt.want)
+			}
+		})
 	}
 }
 
