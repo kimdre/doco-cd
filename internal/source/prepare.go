@@ -115,7 +115,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 			return Result{}, gitErr
 		}
 
-		req.Logger.Debug("resolved and published repository content",
+		req.Logger.Info("resolved and published repository content",
 			slog.String("revision", gitResult.revision),
 			slog.String("elapsed_time", time.Since(sourceStartedAt).Truncate(time.Millisecond).String()))
 
@@ -140,7 +140,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 		ociTrusted = true
 		resultPathInternal = ociResult.artifactPath
 
-		req.Logger.Debug("resolved and published artifact content",
+		req.Logger.Info("resolved and published artifact content",
 			slog.String("revision", resolvedRevision),
 			slog.String("elapsed_time", time.Since(sourceStartedAt).Truncate(time.Millisecond).String()))
 
@@ -175,7 +175,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 		return Result{}, err
 	}
 
-	req.Logger.Debug("resolved deploy configs",
+	req.Logger.Info("resolved deploy configs",
 		slog.Int("count", len(deployConfigs)),
 		slog.String("elapsed_time", time.Since(deployConfigsStartedAt).Truncate(time.Millisecond).String()))
 
@@ -201,7 +201,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 	}
 	transferGCLock = true
 
-	req.Logger.Debug("source prepared",
+	req.Logger.Info("source prepared",
 		slog.String("source_type", sourceLabel),
 		slog.String("revision", resolvedRevision),
 		slog.String("elapsed_time", time.Since(startedAt).Truncate(time.Millisecond).String()))
