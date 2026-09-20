@@ -51,6 +51,17 @@ func CloneOrUpdateBareMirror(
 
 	switch {
 	case errors.Is(err, git.ErrRepositoryNotExists):
+		if legacyCheckoutExists(path) {
+			// A legacy .git checkout still sits next to the mirror path: startup
+			// migration deferred its bootstrap (e.g. a running container still
+			// references the old layout). Cloning a fresh, independent mirror here
+			// would silently coexist with the un-migrated legacy content instead
+			// of replacing it, duplicating history and artifacts. Fail clearly and
+			// retryably instead; migration retries this repository on the next
+			// doco-cd restart or once the legacy container stops.
+			return nil, fmt.Errorf("%w: %s", ErrLegacyCheckoutNotMigrated, filepath.Dir(path))
+		}
+
 		log.Debug("cloning bare mirror",
 			slog.String("url", cloneURL),
 			slog.String("reference", ref),
@@ -99,6 +110,15 @@ func CloneOrUpdateBareMirror(
 	}
 
 	return repo, nil
+}
+
+// legacyCheckoutExists reports whether mirrorPath's parent directory still
+// holds a legacy, non-bare ".git" checkout. mirrorPath is expected to be
+// "<repoDir>/mirror"; its parent is the repository directory the pre-store-layout
+// checkout used directly.
+func legacyCheckoutExists(mirrorPath string) bool {
+	_, err := git.PlainOpen(filepath.Join(filepath.Dir(mirrorPath), ".git"))
+	return err == nil
 }
 
 // cloneBareMirrorLocked clones a bare mirror while the caller holds path's lock.

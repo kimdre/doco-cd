@@ -47,6 +47,32 @@ func TestCloneOrUpdateBareMirror_ClonesBareAndFetchesRef(t *testing.T) {
 	}
 }
 
+func TestCloneOrUpdateBareMirror_RefusesFreshCloneOverUnmigratedLegacyCheckout(t *testing.T) {
+	t.Parallel()
+
+	srcPath := filepath.Join(t.TempDir(), "src")
+	initLocalTestRepo(t, srcPath)
+
+	// repoDir simulates a repository directory that still holds a legacy,
+	// non-bare ".git" checkout that startup migration deferred (e.g. because a
+	// running container still referenced it). The mirror subdirectory doesn't
+	// exist yet.
+	repoDir := t.TempDir()
+	initLocalTestRepo(t, repoDir)
+
+	mirrorPath := filepath.Join(repoDir, "mirror")
+
+	_, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
+		false, "", "", "", false, transport.ProxyOptions{}, 0)
+	if !errors.Is(err, git.ErrLegacyCheckoutNotMigrated) {
+		t.Fatalf("CloneOrUpdateBareMirror() error = %v, want %v", err, git.ErrLegacyCheckoutNotMigrated)
+	}
+
+	if _, statErr := os.Stat(mirrorPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no mirror directory to be created, stat err = %v", statErr)
+	}
+}
+
 func TestCloneOrUpdateBareMirror_FetchesNewCommitsOnUpdate(t *testing.T) {
 	t.Parallel()
 
