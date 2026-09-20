@@ -132,7 +132,7 @@ func isStaleDeployment(repo *gogit.Repository, latestHash, deployedHash plumbing
 	}
 
 	if isStale {
-		stageLog.Debug("latest revision predates the deployed commit, skipping stale deployment",
+		stageLog.Info("latest revision predates the deployed commit, skipping stale deployment",
 			slog.String("deployed_commit", deployedHash.String()),
 			slog.String("latest_commit", latestHash.String()),
 		)
@@ -379,9 +379,14 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			// run is stale - deploying it would silently revert that newer state.
 			// A failed last attempt makes the deployed-commit label unreliable
 			// (see the comment above), so the check is skipped during that retry.
+			// force_recreate is an explicit instruction to deploy the configured
+			// revision, so it also bypasses the guard: the ancestry alone cannot
+			// distinguish a stale concurrent event from a deliberate rollback to
+			// an older reference, which must stay possible.
 			unlock := s.acquireMirrorReadLock()
 
-			if !retryAfterFailure && isStaleDeployment(s.Repository.Git, latestHash, deployedHash, stageLog) {
+			if !retryAfterFailure && !s.DeployConfig.ForceRecreate &&
+				isStaleDeployment(s.Repository.Git, latestHash, deployedHash, stageLog) {
 				unlock()
 				return ErrSkipDeployment
 			}
