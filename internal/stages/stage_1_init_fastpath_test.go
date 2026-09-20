@@ -275,3 +275,43 @@ func TestRunInitStageFastPathSkippedForRepositoryUrlOverride(t *testing.T) {
 		t.Fatal("Git = nil, want an opened repository handle")
 	}
 }
+
+// TestRunInitStageFastPathSkippedOnGitDepthOverride verifies that a stack requesting a deeper
+// history than Prepare mirrored at falls back to the full resolve/publish path. Prepare only ever
+// mirrors at the global clone depth, so reusing its mirror would silently give the stack less
+// history than it configured. The clone URL is unreachable, so this only passes if the slow path
+// (which re-resolves at the stack's own depth) is actually taken.
+func TestRunInitStageFastPathSkippedOnGitDepthOverride(t *testing.T) {
+	t.Parallel()
+
+	dataMount := t.TempDir()
+	originPath := filepath.Join(t.TempDir(), "origin")
+	cloneURL := initFastPathTestRepo(t, originPath)
+
+	repoName := "depthoverride/repo"
+	baseDir := filepath.Join(dataMount, repoName)
+
+	artifactPath, revision, mirrorDir := resolveViaGitStore(t, cloneURL, "main", baseDir)
+
+	repository := &RepositoryData{
+		Source:            config.SourceTypeGit,
+		SourceUrl:         "file:///no/such/repo/that/has/gone/away.git",
+		Name:              repoName,
+		PathInternal:      artifactPath,
+		PathExternal:      artifactPath,
+		MirrorDir:         mirrorDir,
+		Revision:          revision,
+		ResolvedReference: "main",
+	}
+
+	// AppConfig.GitCloneDepth is 0 in these tests, so any positive override differs from the
+	// depth Prepare used and must disqualify the fast path.
+	deployConfig := deploy.New("app", "main")
+	deployConfig.GitDepth = 5
+
+	sm := newFastPathStageManager(t, repository, deployConfig, dataMount)
+
+	if err := sm.RunInitStage(context.Background(), sm.Log); err == nil {
+		t.Fatal("RunInitStage() error = nil, want the slow path to fail on the unreachable clone URL")
+	}
+}

@@ -99,12 +99,16 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	// once for the whole job, and RunInitStage would otherwise re-run gitStore.Resolve (a real
 	// network fetch guarded by the mirror's exclusive path lock) for every single matched stack,
 	// serializing them all behind that one shared mirror.
+	// A stack that overrides git_depth needs its own Resolve: Prepare mirrors at the global
+	// depth, and reusing that shallower mirror would hide the history the stack asked for from
+	// the deployed-commit lookup and the changed-file/changelog comparisons in the later stages.
 	fastPathEligible := s.DeployConfig.RepositoryUrl == "" &&
 		s.Repository.Source != config.SourceTypeOCI &&
 		s.Repository.MirrorDir != "" &&
 		s.Repository.Revision != "" &&
 		s.Repository.PathInternal != "" &&
-		s.DeployConfig.Reference == s.Repository.ResolvedReference
+		s.DeployConfig.Reference == s.Repository.ResolvedReference &&
+		s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth) == s.AppConfig.GitCloneDepth
 
 	// Git sources deliberately reset to the store's base directory here:
 	// the store below republishes this stack's own reference out of it.
