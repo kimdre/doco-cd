@@ -131,6 +131,125 @@ func TestGetCommitsBetween_DivergedHistory(t *testing.T) {
 	}
 }
 
+// TestIsAncestorCommit_LinearHistory covers the case latest-revision-wins relies on: an
+// older commit on a fast-moving branch must be recognized as an ancestor of whatever is
+// already deployed, and the reverse must never be true.
+func TestIsAncestorCommit_LinearHistory(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	h := commitN(t, wt, 4) // h[0] oldest .. h[3] newest
+
+	isAncestor, err := IsAncestorCommit(repo, h[0], h[3])
+	if err != nil {
+		t.Fatalf("IsAncestorCommit(oldest, newest): %v", err)
+	}
+
+	if !isAncestor {
+		t.Fatal("expected h[0] to be an ancestor of h[3]")
+	}
+
+	isAncestor, err = IsAncestorCommit(repo, h[3], h[0])
+	if err != nil {
+		t.Fatalf("IsAncestorCommit(newest, oldest): %v", err)
+	}
+
+	if isAncestor {
+		t.Fatal("expected h[3] to NOT be an ancestor of h[0]")
+	}
+}
+
+// TestIsAncestorCommit_SameCommit exercises the "identical to" half of the contract: a
+// commit is trivially its own ancestor, matching go-git's IsAncestor semantics.
+func TestIsAncestorCommit_SameCommit(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	h := commitN(t, wt, 1)
+
+	isAncestor, err := IsAncestorCommit(repo, h[0], h[0])
+	if err != nil {
+		t.Fatalf("IsAncestorCommit(same, same): %v", err)
+	}
+
+	if !isAncestor {
+		t.Fatal("expected a commit to be its own ancestor")
+	}
+}
+
+// TestIsAncestorCommit_DivergedHistory covers the "no relationship" fail-open case: a
+// force-push or rebase produces two tips with a common base but neither reachable from
+// the other. latest-revision-wins must not skip here — it must deploy.
+func TestIsAncestorCommit_DivergedHistory(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	h := commitN(t, wt, 3) // a, b(h[1]), oldTip=c(h[2])
+
+	if err := wt.Checkout(&gogit.CheckoutOptions{Hash: h[1]}); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+
+	d := commitN(t, wt, 2) // d and newTip=e(d[1]) both parented on b, diverged from c
+
+	isAncestor, err := IsAncestorCommit(repo, h[2], d[1])
+	if err != nil {
+		t.Fatalf("IsAncestorCommit(oldTip, newTip): %v", err)
+	}
+
+	if isAncestor {
+		t.Fatal("expected diverged old tip to NOT be an ancestor of the new tip")
+	}
+}
+
+// TestIsAncestorCommit_MissingCommit covers the shallow-mirror fail-open case: ancestry
+// cannot be determined when a commit is not locally reachable, and that must surface as
+// an error rather than a false answer, so callers can fail open.
+func TestIsAncestorCommit_MissingCommit(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	h := commitN(t, wt, 1)
+
+	missing := plumbing.NewHash("0000000000000000000000000000000000000001")
+
+	if _, err := IsAncestorCommit(repo, missing, h[0]); err == nil {
+		t.Fatal("expected an error when the ancestor commit is missing")
+	}
+
+	if _, err := IsAncestorCommit(repo, h[0], missing); err == nil {
+		t.Fatal("expected an error when the descendant commit is missing")
+	}
+}
+
 func TestGetShortestUniqueCommitHash(t *testing.T) {
 	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
 	if err != nil {

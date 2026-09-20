@@ -545,16 +545,9 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	j.deploy(ctx, eventLog, stackDCs, action, event, traceID, contextName, swarmMode)
 }
 
+// deploy runs reconciliation without a repository-wide lock. Immutable artifacts allow concurrent prepares; per-stack
+// locks serialize deployments of the same stack.
 func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConfig.Config, action string, event events.Message, traceID string, contextName string, swarmMode bool) {
-	repoLock := lock.GetRepoLock(j.info.Metadata.Repository)
-	if !repoLock.LockContext(ctx, traceID) {
-		jobLog.Debug("reconciliation skipped, context cancelled while waiting for repository lock")
-
-		return
-	}
-
-	defer repoLock.Unlock()
-
 	jobLog.Info("reconciliation started")
 	defer jobLog.Info("reconciliation completed")
 

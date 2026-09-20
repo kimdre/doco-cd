@@ -91,13 +91,16 @@ func (c *AutoDiscoveryConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// expandInlineAutoDiscoverConfigs replaces inline deployments that have auto-discovery
-// enabled with the discovered deployments rooted at repoRoot.
-func expandInlineAutoDiscoverConfigs(repoRoot string, deployments []*Config) ([]*Config, error) {
+// expandInlineAutoDiscoverConfigs replaces enabled inline auto-discovery entries with deployments under repoRoot.
+// labelRoot is a revision-stable directory naming the repository; repoRoot itself is usually a per-revision
+// artifact directory. revisionKey overrides the repository HEAD when repoRoot is not a Git checkout.
+func expandInlineAutoDiscoverConfigs(repoRoot, labelRoot, revisionKey string, deployments []*Config) ([]*Config, error) {
 	expanded := make([]*Config, 0, len(deployments))
 
 	fsys := os.DirFS(repoRoot)
-	revisionKey := revisionKeyForRepoRoot(repoRoot)
+	if revisionKey == "" {
+		revisionKey = revisionKeyForRepoRoot(repoRoot)
+	}
 
 	for _, deployment := range deployments {
 		if !deployment.AutoDiscovery.Enabled {
@@ -105,7 +108,7 @@ func expandInlineAutoDiscoverConfigs(repoRoot string, deployments []*Config) ([]
 			continue
 		}
 
-		discoveredConfigs, err := autoDiscoverDeployments(fsys, repoRoot, revisionKey, deployment)
+		discoveredConfigs, err := autoDiscoverDeployments(fsys, labelRoot, revisionKey, deployment)
 		if err != nil {
 			return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 		}
@@ -133,19 +136,8 @@ func revisionKeyForRepoRoot(repoRoot string) string {
 	return head.Hash().String()
 }
 
-// autoDiscoverDeployments scans for subdirectories containing docker-compose files
-// and generates Config entries for each.
-//
-// fsys is the filesystem to scan, rooted at repoRoot: either the working tree
-// (os.DirFS) or a read-only view of a single commit's tree (*gitInternal.TreeFS)
-// when the target reference differs from the one checked out. This never
-// checks the repository out, so it cannot race with concurrent readers/
-// writers of a shared working tree.
-//
-// repoRoot is used only for labeling (cache keys, metrics, matching
-// baseConfig.Name); revisionKey identifies the content snapshot fsys exposes
-// (a commit SHA, or "" to disable caching). baseConfig.WorkingDirectory is
-// repo-root-relative.
+// autoDiscoverDeployments scans fsys for compose files and creates a Config for each matching subdirectory.
+// revisionKey identifies the exposed revision; repoRoot supplies labels and relative paths.
 func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfig *Config) ([]*Config, error) {
 	repositoryLabel := filepath.Base(filepath.Clean(repoRoot))
 
@@ -363,8 +355,7 @@ func dirHasFile(entries []os.DirEntry, name string) bool {
 }
 
 // mergeConfig merges Config fields from override into base, but only for fields
-// tagged with `doco:"allowOverride"`. Protected fields (reference, repository_url,
-// auto_discovery, git_depth) are never overridden.
+// tagged with `doco:"allowOverride"`. Protected fields remain unchanged.
 // Merge semantics:
 //   - Maps: merged key-by-key (override wins on key collision)
 //   - Slices: replaced entirely if the override slice is non-empty

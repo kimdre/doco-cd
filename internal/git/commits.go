@@ -76,6 +76,28 @@ func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash
 	return changedFiles, nil
 }
 
+// IsAncestorCommit reports whether the commit at ancestorHash is an ancestor of, or
+// identical to, the commit at descendantHash. It walks history purely from local objects
+// (no network round-trip), so it is cheap when the mirror already holds both commits.
+//
+// An error means the relationship could not be determined — most commonly because one of
+// the commits is missing from a shallow mirror, but also on any other lookup or traversal
+// failure. Callers must treat that as "unknown", not "false": fail open (proceed) rather
+// than silently skipping a deployment on an unproven assumption.
+func IsAncestorCommit(repo *git.Repository, ancestorHash, descendantHash plumbing.Hash) (bool, error) {
+	ancestor, err := repo.CommitObject(ancestorHash)
+	if err != nil {
+		return false, fmt.Errorf("failed to get commit %s: %w", ancestorHash, err)
+	}
+
+	descendant, err := repo.CommitObject(descendantHash)
+	if err != nil {
+		return false, fmt.Errorf("failed to get commit %s: %w", descendantHash, err)
+	}
+
+	return ancestor.IsAncestor(descendant)
+}
+
 // CommitInfo is a single commit exposed to notification templates.
 type CommitInfo struct {
 	Hash      string

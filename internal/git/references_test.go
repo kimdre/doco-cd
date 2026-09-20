@@ -65,7 +65,7 @@ func TestGetReferenceSet_LocalResolution(t *testing.T) {
 
 	featureHash := commitFile(t, originRepo, originPath, "feature.txt", "feature\n", "feature commit")
 
-	clonedRepo, err := CloneRepository(clonePath, originPath, MainBranch, false, transport.ProxyOptions{}, nil, false, 0)
+	clonedRepo, err := CloneOrUpdateBareMirror(nil, originPath, MainBranch, clonePath, false, "", "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("clone: %v", err)
 	}
@@ -89,17 +89,19 @@ func TestGetReferenceSet_LocalResolution(t *testing.T) {
 		wantRemoteHash plumbing.Hash // zero means "don't care / expect ZeroHash"
 		wantErr        error
 	}{
-		// Short branch name resolves to the local tracking branch first.
+		// Short branch name for a branch with no local tracking counterpart
+		// (only the branch checked out at clone time, feature/foo, gets a
+		// local refs/heads/* entry) falls through to the remote-tracking ref.
 		{
 			ref:            "main",
-			wantLocalRef:   BranchPrefix + "main",
+			wantLocalRef:   remotePrefix + "main",
 			wantRemoteRef:  remotePrefix + "main",
 			wantRemoteHash: mainHash,
 		},
 		// Full refs/heads/ name uses the same resolution as the short form.
 		{
 			ref:            BranchPrefix + "main",
-			wantLocalRef:   BranchPrefix + "main",
+			wantLocalRef:   remotePrefix + "main",
 			wantRemoteRef:  remotePrefix + "main",
 			wantRemoteHash: mainHash,
 		},
@@ -131,8 +133,9 @@ func TestGetReferenceSet_LocalResolution(t *testing.T) {
 			wantRemoteRef: "",
 			// RemoteHash stays ZeroHash for commit SHA refs.
 		},
-		// go-git PlainClone creates refs/heads/feature/foo locally too (unlike
-		// standard git), so "feature/foo" resolves to the local tracking branch.
+		// feature/foo is the branch checked out in origin at clone time, so
+		// the bare mirror clone creates a local refs/heads/feature/foo for
+		// it (unlike main, which only gets a remote-tracking ref).
 		{
 			ref:            "feature/foo",
 			wantLocalRef:   BranchPrefix + "feature/foo",

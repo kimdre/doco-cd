@@ -58,10 +58,13 @@ services:
       - /srv/doco-cd-data:/data
 ```
 
-The socket proxy on `docker-host.example.com` must expose the Docker API at the configured address. The `/srv/doco-cd-data` path must exist on that remote Docker host and contain the same shared deployment data mounted at `/data` in the Doco-CD container. Configuring `DATA_HOST_PATH` only tells Doco-CD which daemon-visible source path to use; it does not create, mount, synchronize, or share that storage.
+The socket proxy on `docker-host.example.com` must expose the Docker API at the configured address.
+The `/srv/doco-cd-data` path must exist on that remote Docker host and contain the same shared deployment data mounted at `/data` in the Doco-CD container.
+Configuring `DATA_HOST_PATH` only tells Doco-CD which daemon-visible source path to use; it does not create, mount, synchronize, or share that storage.
 
 !!! warning "Swarm storage is not shared automatically"
-    A host path is node-local. `DATA_HOST_PATH` does not make the directory available on other Swarm nodes. If workloads can run on multiple nodes, provide shared storage or ensure the same path and data are mounted on every eligible node.
+    A host path is node-local. `DATA_HOST_PATH` does not make the directory available on other Swarm nodes.
+    If workloads can run on multiple nodes, provide shared storage or ensure the same path and data are mounted on every eligible node.
 
 ## Docker Contexts
 

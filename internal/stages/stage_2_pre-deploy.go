@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -109,6 +110,35 @@ func shouldSkipOCIDeployment(forceRecreate bool, deployedDigest, resolvedDigest,
 // In such cases, we may want to recover by treating it as a full-change deployment.
 func shouldRecoverFromMissingDeployedCommit(err error) bool {
 	return git.IsRefUnreachableError(err)
+}
+
+// isStaleDeployment implements the latest-revision-wins guard: removing the repository-wide lock means
+// two events for the same stack no longer deploy in arrival order.
+// If latestHash (the revision this run resolved to) is itself an ancestor of deployedHash (what is already deployed)
+// a newer deployment already won the race and this run is stale;
+// deploying it would silently revert that newer state. It skips only on a proven ancestor
+// relationship: any lookup or traversal failure (e.g. a shallow mirror missing one of the commits) or
+// an unrelated history (force-push, rebase) must fail open so the caller falls through to its usual change comparison.
+func isStaleDeployment(repo *gogit.Repository, latestHash, deployedHash plumbing.Hash, stageLog *slog.Logger) bool {
+	isStale, err := git.IsAncestorCommit(repo, latestHash, deployedHash)
+	if err != nil {
+		stageLog.Debug("could not determine ancestry between latest and deployed commit, proceeding with deployment",
+			slog.String("deployed_commit", deployedHash.String()),
+			slog.String("latest_commit", latestHash.String()),
+			slog.String("reason", err.Error()),
+		)
+
+		return false
+	}
+
+	if isStale {
+		stageLog.Info("latest revision predates the deployed commit, skipping stale deployment",
+			slog.String("deployed_commit", deployedHash.String()),
+			slog.String("latest_commit", latestHash.String()),
+		)
+	}
+
+	return isStale
 }
 
 func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
@@ -279,9 +309,19 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	if deployedCommit := deployedState.GetDeploymentCommitSHA(); deployedCommit != "" {
 		s.DeployState.DeployedCommit = deployedCommit
 
-		latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-		if err != nil {
-			return fmt.Errorf("failed to get latest commit: %w", err)
+		// The revision stage 1 published for this stack, not whatever the shared mirror points at now:
+		// a parallel run for a newer commit may have advanced the mirror since, and comparing against that would
+		// both defeat the stale-deployment guard below and label this stack with a commit whose content was never deployed.
+		latestCommit := strings.TrimSpace(s.Repository.Revision)
+		if latestCommit == "" {
+			unlock := s.acquireMirrorReadLock()
+			latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+
+			unlock()
+
+			if err != nil {
+				return fmt.Errorf("failed to get latest commit: %w", err)
+			}
 		}
 
 		s.DeployState.latestCommit = latestCommit
@@ -332,6 +372,25 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		)
 
 		if deployedHash != latestHash {
+			// latest-revision-wins: removing the repository-wide lock means two
+			// events for this stack no longer deploy in arrival order.
+			// If the revision this run resolved to is itself an ancestor of what is
+			// already deployed, a newer deployment already won the race and this
+			// run is stale - deploying it would silently revert that newer state.
+			// A failed last attempt makes the deployed-commit label unreliable
+			// (see the comment above), so the check is skipped during that retry.
+			// force_recreate is an explicit instruction to deploy the configured
+			// revision, so it also bypasses the guard: the ancestry alone cannot
+			// distinguish a stale concurrent event from a deliberate rollback to
+			// an older reference, which must stay possible.
+			unlock := s.acquireMirrorReadLock()
+
+			if !retryAfterFailure && !s.DeployConfig.ForceRecreate &&
+				isStaleDeployment(s.Repository.Git, latestHash, deployedHash, stageLog) {
+				unlock()
+				return ErrSkipDeployment
+			}
+
 			gitChangedFiles := make([]git.ChangedFile, 0)
 
 			if _, err := s.Repository.Git.CommitObject(deployedHash); err != nil {
@@ -344,14 +403,18 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 					composeChanged = true
 				} else {
+					unlock()
 					return fmt.Errorf("failed to resolve deployed commit %s: %w", deployedCommit, err)
 				}
 			} else {
 				gitChangedFiles, err = git.GetChangedFilesBetweenCommits(s.Repository.Git, deployedHash, latestHash)
 				if err != nil {
+					unlock()
 					return fmt.Errorf("failed to get changed files between commits: %w", err)
 				}
 			}
+
+			unlock()
 
 			changedFiles := docker.GetPathsFromGitChangedFiles(gitChangedFiles, s.Repository.PathExternal)
 
@@ -498,8 +561,9 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 		return "", fmt.Errorf("failed to check for default compose files: %w", err)
 	}
 
-	// LoadCompose decrypts SOPS-encrypted files in place, so lock the same path
-	// source.Prepare uses to avoid racing a concurrent clone/fetch of this repository.
+	// LoadCompose decrypts SOPS-encrypted files in place, so lock the published artifact
+	// directory this deployment reads from, so two deployments landing on the exact same
+	// revision never race on the same in-place decryption.
 	unlockSource := sourcecache.AcquirePathLock(s.sourceLockKey())
 
 	s.Docker.Project, err = docker.LoadCompose(
@@ -518,7 +582,7 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 	// solely because an unchanged role issued a fresh certificate.
 	hashProject := docker.WithNormalizedEnvValues(s.Docker.Project, pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
 
-	projectHash, err := docker.ProjectHash(hashProject)
+	projectHash, err := docker.ProjectHash(hashProject, s.Repository.PathExternal)
 	if err != nil {
 		return "", fmt.Errorf("failed to get project hash: %w", err)
 	}

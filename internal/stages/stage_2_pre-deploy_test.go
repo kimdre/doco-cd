@@ -4,13 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/storage/memory"
+
+	"github.com/go-git/go-billy/v5/memfs"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
@@ -417,12 +425,12 @@ func TestShouldSkipOCIDeployment_InterpolationEnvironmentChanged(t *testing.T) {
 		}
 	}
 
-	deployedHash, err := docker.ProjectHash(makeProject("old-secret"))
+	deployedHash, err := docker.ProjectHash(makeProject("old-secret"), "")
 	if err != nil {
 		t.Fatalf("hash deployed project: %v", err)
 	}
 
-	resolvedHash, err := docker.ProjectHash(makeProject("new-secret"))
+	resolvedHash, err := docker.ProjectHash(makeProject("new-secret"), "")
 	if err != nil {
 		t.Fatalf("hash resolved project: %v", err)
 	}
@@ -472,6 +480,127 @@ func TestShouldRecoverFromMissingDeployedCommit(t *testing.T) {
 				t.Fatalf("shouldRecoverFromMissingDeployedCommit() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// commitN creates n sequential empty commits on wt starting at message/time
+// offset startIndex, and returns their hashes, oldest first. startIndex lets
+// two separate calls on branches created from the same base (e.g. to build
+// diverged history) produce distinct, non-colliding commits instead of two
+// identical ones. This is a minimal local stand-in for internal/git's
+// unexported test helper of the same name, since it isn't visible from this
+// package.
+func commitN(t *testing.T, wt *gogit.Worktree, n int, startIndex int) []plumbing.Hash {
+	t.Helper()
+
+	hashes := make([]plumbing.Hash, 0, n)
+	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	for i := range n {
+		idx := startIndex + i
+		sig := &object.Signature{Name: "Jane Doe", Email: "jane@example.com", When: when.Add(time.Duration(idx) * time.Minute)}
+
+		h, err := wt.Commit(fmt.Sprintf("commit %d", idx), &gogit.CommitOptions{
+			AllowEmptyCommits: true,
+			Author:            sig,
+			Committer:         sig,
+		})
+		if err != nil {
+			t.Fatalf("commit %d: %v", idx, err)
+		}
+
+		hashes = append(hashes, h)
+	}
+
+	return hashes
+}
+
+// TestIsStaleDeployment_OutOfOrderOlderRevisionIsSkipped is the stage-level
+// regression test for the latest-revision-wins guard (removing the
+// repository-wide webhook lock lets two events for the same stack run out of
+// arrival order): if the revision an out-of-order run resolves to is a proven
+// ancestor of what is already deployed, it must be reported as stale so the
+// caller skips it instead of reverting a newer deployment.
+func TestIsStaleDeployment_OutOfOrderOlderRevisionIsSkipped(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	h := commitN(t, wt, 2, 0) // h[0] older, h[1] newer
+
+	stageLog := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	// An out-of-order run resolving to the older commit, while the newer
+	// commit is already deployed, must be reported stale.
+	if !isStaleDeployment(repo, h[0], h[1], stageLog) {
+		t.Fatal("expected an older, already-superseded revision to be reported stale")
+	}
+
+	// The in-order case (latest is newer than deployed) must never be
+	// reported stale.
+	if isStaleDeployment(repo, h[1], h[0], stageLog) {
+		t.Fatal("expected a newer revision to not be reported stale")
+	}
+}
+
+// TestIsStaleDeployment_DivergedHistoryFailsOpen covers a force-push/rebase:
+// neither commit is reachable from the other, so ancestry is unproven and the
+// guard must fail open (never skip) rather than guess.
+func TestIsStaleDeployment_DivergedHistoryFailsOpen(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	base := commitN(t, wt, 1, 0)
+
+	tip1 := commitN(t, wt, 1, 1) // parented on base
+
+	if err := wt.Checkout(&gogit.CheckoutOptions{Hash: base[0]}); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+
+	tip2 := commitN(t, wt, 1, 2) // also parented on base, diverged from tip1
+
+	stageLog := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	if isStaleDeployment(repo, tip1[0], tip2[0], stageLog) {
+		t.Fatal("expected diverged history to fail open (not stale)")
+	}
+}
+
+// TestIsStaleDeployment_MissingCommitFailsOpen covers a shallow mirror
+// missing one of the two commits: ancestry cannot be determined, so the
+// guard must fail open rather than skip a deployment it cannot prove is
+// stale.
+func TestIsStaleDeployment_MissingCommitFailsOpen(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	h := commitN(t, wt, 1, 0)
+
+	stageLog := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	if isStaleDeployment(repo, plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), h[0], stageLog) {
+		t.Fatal("expected a missing commit to fail open (not stale)")
 	}
 }
 
@@ -557,12 +686,12 @@ func TestPkiRoleNormMap_HashStability(t *testing.T) {
 		}
 	}
 
-	h1, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert1, key1), norm1))
+	h1, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert1, key1), norm1), "")
 	if err != nil {
 		t.Fatalf("hash 1: %v", err)
 	}
 
-	h2, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert2, key2), norm2))
+	h2, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert2, key2), norm2), "")
 	if err != nil {
 		t.Fatalf("hash 2: %v", err)
 	}

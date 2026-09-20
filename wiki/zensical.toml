@@ -67,6 +67,7 @@ nav = [
   ] },
   { Reference = [
     { "Core Concepts" = "Core-Concepts.md" },
+    { "Data Directory Layout" = "Reference/Data-Directory-Layout.md" },
     { Endpoints = [
       { "Healthcheck" = "Endpoints/Healthcheck.md" },
       { "MCP Server" = "Endpoints/MCP-Server.md" },

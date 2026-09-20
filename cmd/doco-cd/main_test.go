@@ -249,7 +249,7 @@ env_files:
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"failed to clone repository","content":"failed to checkout repository: failed to get reference set: invalid reference, should be a tag or a branch: ` + invalidBranch + `","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"failed to clone repository","content":"resolve \"` + invalidBranch + `\": failed to fetch repository: invalid reference, should be a tag or a branch: ` + invalidBranch + `","job_id":"%[1]s"}`,
 			customTarget:         "",
 			swarmMode:            false,
 		},

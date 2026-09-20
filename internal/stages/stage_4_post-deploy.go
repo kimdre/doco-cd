@@ -32,12 +32,18 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 	var latestCommit string
 
 	if s.Repository.Source != config.SourceTypeOCI {
+		unlock := s.acquireMirrorReadLock()
+
 		latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
 		if err != nil {
+			unlock()
 			return fmt.Errorf("failed to get latest commit: %w", err)
 		}
 
 		shortCommit, err = git.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, git.DefaultShortSHALength)
+
+		unlock()
+
 		if err != nil {
 			return fmt.Errorf("failed to get short commit SHA: %w", err)
 		}
@@ -70,6 +76,7 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 			stageLog.Warn("failed to build changelog path filter, listing all commits", logger.ErrAttr(filterErr))
 		}
 
+		unlock := s.acquireMirrorReadLock()
 		metadata.Commits, err = git.GetCommitsBetween(
 			stageLog,
 			s.Repository.Git,
@@ -78,6 +85,9 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 			maxChangelogCommits,
 			pathFilter,
 		)
+
+		unlock()
+
 		if err != nil {
 			// changelog is best-effort, never block the notification
 			stageLog.Warn("failed to build commit changelog", logger.ErrAttr(err))

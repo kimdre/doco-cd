@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
@@ -29,6 +31,7 @@ import (
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
+	"github.com/kimdre/doco-cd/internal/source/store"
 
 	"github.com/kimdre/doco-cd/internal/logger"
 )
@@ -95,6 +98,9 @@ type Config struct {
 		ExternalSecretsFromFiles      map[string]secrettypes.ExternalSecretRef // ExternalSecretsFromFiles accumulates entries loaded from ExternalSecretsFiles across local and remote loads, merged into ExternalSecrets by MergeExternalSecretsFromFiles
 		Hash                          string                                   `yaml:"-"`          // Hash is a hash of the Config struct
 		OciTrustPolicyOverrideTrusted bool                                     `yaml:"-" json:"-"` // true only for trusted config sources (e.g. POLL_CONFIG inline deployments)
+		ConfigSourceFilesLoaded       bool                                     `yaml:"-" json:"-"` // Config-source env and external-secret files have been loaded
+		ConfigSourceRevision          string                                   `yaml:"-" json:"-"` // Immutable revision containing this deployment config
+		ConfigSourceWorkingDir        string                                   `yaml:"-" json:"-"` // Host path to the config source artifact
 	} `json:"-"` // Internal holds internal configuration values that are not set by the user
 }
 
@@ -368,10 +374,22 @@ func getConfigFromYAMLBytes(contents []byte, fileName string, applyDefaults bool
 	return configs, nil
 }
 
-// GetConfigs returns deployment configurations discovered in the repository.
-// It fails when no matching deployment configuration file exists.
-// gitOpts is optional (can be nil) and is only required when AutoDiscovery with a remote RepositoryUrl is used.
-func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts *GitOptions) ([]*Config, error) {
+// remoteDiscoveryStoreDir returns the shared store directory for remote auto-discovery, or the legacy sibling fallback.
+func remoteDiscoveryStoreDir(sourceBaseDir, repoRoot, repositoryURL string) string {
+	repoName := gitInternal.GetRepoName(repositoryURL)
+
+	if sourceBaseDir == "" {
+		// No base directory supplied (e.g. scheduled runs, which pass no
+		// git options at all); fall back to the legacy sibling guess.
+		return path.Join(path.Dir(repoRoot), repoName)
+	}
+
+	return filepath.Join(sourceBaseDir, repoName)
+}
+
+// GetConfigs returns deployment configurations discovered in repoRoot. gitMirrorRoot and primaryRevision identify the
+// Git source when repoRoot is a published artifact.
+func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, reference, gitMirrorRoot, primaryRevision string, gitOpts *GitOptions) ([]*Config, error) {
 	configDir := filepath.Join(repoRoot, configBaseDir)
 
 	files, err := os.ReadDir(configDir)
@@ -393,21 +411,45 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 		DeploymentConfigFileNames = DefaultDeploymentConfigFileNames
 	}
 
-	// baseRepo is used only for read-only reference resolution (e.g. finding
-	// the tree of a different reference than the one checked out) and is
-	// never checked out or otherwise mutated, to avoid racing with concurrent
-	// readers/writers of the shared working tree at repoRoot. Non-git sources
-	// (e.g. OCI) skip git operations entirely.
-	baseRepo, err := git.PlainOpen(repoRoot)
+	// gitOpenRoot is used only for read-only reference resolution. It defaults to repoRoot, or uses gitMirrorRoot when
+	// repoRoot is not a Git checkout.
+	// Non-Git sources skip these operations.
+	gitOpenRoot := repoRoot
+	if gitMirrorRoot != "" {
+		gitOpenRoot = gitMirrorRoot
+	}
+
+	// acquireMirrorReadLock guards read-only access to the shared bare mirror's object database and refs.
+	// GitStore.Resolve/Publish only exclude each other via the matching exclusive lock, so an unguarded read
+	// can observe the mirror mid-fetch while another deployment of the same repository runs concurrently.
+	// The lock is not reentrant, so it must never be held across a call that publishes into the same mirror.
+	acquireMirrorReadLock := func(mirrorDir string) func() {
+		if mirrorDir == "" {
+			return func() {}
+		}
+
+		return sourcecache.AcquireSharedPathLock(mirrorDir)
+	}
+
+	unlockMirror := acquireMirrorReadLock(gitMirrorRoot)
+	baseRepo, err := git.PlainOpen(gitOpenRoot)
+
+	unlockMirror()
+
 	isGitRepo := true
 
 	if err != nil {
 		if !errors.Is(err, git.ErrRepositoryNotExists) {
-			return nil, fmt.Errorf("failed to open git repository at %s: %w", repoRoot, err)
+			return nil, fmt.Errorf("failed to open git repository at %s: %w", gitOpenRoot, err)
 		}
 
 		isGitRepo = false
 	}
+
+	// gitRepoLabelRoot names the repository for auto-discovery's metrics labels and default stack naming.
+	// repoRoot may be an anonymous per-revision artifact path (e.g. named after a commit SHA or an OCI
+	// digest), which would make both revision-dependent, so a revision-stable directory is derived instead.
+	gitRepoLabelRoot := repositoryLabelRoot(repoRoot, gitMirrorRoot)
 
 	var configs []*Config
 	for _, configFile := range DeploymentConfigFileNames {
@@ -445,80 +487,166 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 
 				switch {
 				case c.RepositoryUrl != "":
-					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), opts.SSHPrivateKey, opts.SSHPrivateKeyPassphrase, opts.GitAccessToken)
+					repoDir = remoteDiscoveryStoreDir(opts.SourceBaseDir, repoRoot, string(c.RepositoryUrl))
+
+					// GitStore locks the mirror during fetch. Discovery reads the resolved tree directly
+					// instead of publishing and decrypting an artifact.
+					remoteStore, err := store.NewGitStore(store.GitStoreOptions{
+						Log:                     slog.Default(),
+						CloneURL:                string(c.RepositoryUrl),
+						BaseDir:                 repoDir,
+						SSHPrivateKey:           opts.SSHPrivateKey,
+						SSHPrivateKeyPassphrase: opts.SSHPrivateKeyPassphrase,
+						AccessToken:             opts.GitAccessToken,
+						SkipTLSVerify:           opts.SkipTLSVerification,
+						ProxyOptions:            opts.HttpProxy,
+						CloneSubmodules:         opts.GitCloneSubmodules,
+						Depth:                   c.ResolveGitDepth(opts.GitCloneDepth),
+					})
 					if err != nil {
-						return nil, fmt.Errorf("failed to get auth method: %w", err)
+						return nil, fmt.Errorf("failed to initialize git store for %s: %w", c.RepositoryUrl, err)
 					}
 
-					repoDir = path.Join(path.Dir(repoRoot), gitInternal.GetRepoName(string(c.RepositoryUrl)))
-
-					// Hold repoDir's source lock across the sync, resolving HEAD and the scan:
-					// the repository may be shared with another AutoDiscovery config, a concurrent GetConfigs call or
-					// a concurrent deployment, and syncing it rewrites decrypted files and the decrypted-files manifest.
-					// repoRoot's lock is already held by our caller, so a repository_url pointing at repoRoot itself must not re-lock.
-					discoveredConfigs, err = func() ([]*Config, error) {
-						if repoDir != repoRoot {
-							unlock := sourcecache.AcquirePathLock(repoDir)
-							defer unlock()
-						}
-
-						if _, err := gitInternal.SyncRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth)); err != nil {
-							return nil, fmt.Errorf("failed to synchronize repository: %w", err)
-						}
-
-						remoteRepo, err := git.PlainOpen(repoDir)
-						if err != nil {
-							return nil, fmt.Errorf("failed to open synchronized repository at %s: %w", repoDir, err)
-						}
-
-						head, err := remoteRepo.Head()
-						if err != nil {
-							return nil, fmt.Errorf("%w: %w", gitInternal.ErrGetHeadFailed, err)
-						}
-
-						return autoDiscoverDeployments(os.DirFS(repoDir), repoDir, head.Hash().String(), c)
-					}()
-					if err != nil {
-						return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
-					}
-				case isGitRepo:
-					headRef, err := baseRepo.Head()
-					if err != nil {
-						return nil, fmt.Errorf("%w: %w", gitInternal.ErrGetHeadFailed, err)
-					}
-
-					hash, err := gitInternal.ResolveReferenceCommit(baseRepo, c.Reference)
+					revision, err := remoteStore.Resolve(ctx, c.Reference)
 					if err != nil {
 						return nil, fmt.Errorf("failed to resolve reference %s: %w", c.Reference, err)
 					}
 
-					var fsys fs.FS
+					if opts.GitCloneSubmodules {
+						unlockGC, err := sourcecache.AcquireSharedGCPathLock(repoDir)
+						if err != nil {
+							return nil, fmt.Errorf("failed to acquire artifact GC lock: %w", err)
+						}
 
-					if hash == headRef.Hash() {
-						// Already at the target reference: read the working tree
-						// directly so submodules and locally materialized content
-						// (e.g. decrypted files) remain visible.
-						fsys = os.DirFS(repoRoot)
+						artifact, errPublish := remoteStore.Publish(ctx, revision)
+						if errPublish != nil {
+							unlockGC()
+							return nil, fmt.Errorf("failed to publish reference %s: %w", c.Reference, errPublish)
+						}
+
+						var discoveryErr error
+
+						discoveredConfigs, discoveryErr = autoDiscoverDeployments(os.DirFS(artifact.Path), repoDir, string(revision), c)
+
+						unlockGC()
+
+						if discoveryErr != nil {
+							return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", discoveryErr)
+						}
 					} else {
+						// TreeFS reads objects lazily, so the mirror lock must be held across the walk as well.
+						unlockRemoteMirror := acquireMirrorReadLock(remoteStore.MirrorDir())
+
+						discoveredConfigs, err = func() ([]*Config, error) {
+							defer unlockRemoteMirror()
+
+							mirrorRepo, openErr := git.PlainOpen(remoteStore.MirrorDir())
+							if openErr != nil {
+								return nil, fmt.Errorf("failed to open git mirror at %s: %w", remoteStore.MirrorDir(), openErr)
+							}
+
+							treeFS, treeErr := gitInternal.NewTreeFSAtCommit(mirrorRepo, plumbing.NewHash(string(revision)))
+							if treeErr != nil {
+								return nil, fmt.Errorf("failed to open tree for reference %s: %w", c.Reference, treeErr)
+							}
+
+							return autoDiscoverDeployments(treeFS, repoDir, string(revision), c)
+						}()
+						if err != nil {
+							return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
+						}
+					}
+				case isGitRepo:
+					unlockMirror := acquireMirrorReadLock(gitMirrorRoot)
+
+					hash, err := gitInternal.ResolveReferenceCommit(baseRepo, c.Reference)
+					if err != nil {
+						unlockMirror()
+						return nil, fmt.Errorf("failed to resolve reference %s: %w", c.Reference, err)
+					}
+
+					matchesPrimary, err := matchesPrimaryContent(baseRepo, hash, primaryRevision)
+
+					// Released before the switch below: publishing an artifact takes the matching
+					// exclusive lock on the same mirror, which would deadlock on this non-reentrant lock.
+					unlockMirror()
+
+					if err != nil {
+						return nil, err
+					}
+
+					var (
+						fsys                 fs.FS
+						releaseDiscoveryLock func()
+					)
+
+					switch {
+					case matchesPrimary:
+						// Already at the target reference: read repoRoot's content directly so submodules and locally
+						// materialized content (e.g. decrypted files) remain visible.
+						fsys = os.DirFS(repoRoot)
+					case opts.GitCloneSubmodules && gitMirrorRoot != "" && opts.SourceURL != "":
+						baseDir := filepath.Dir(gitMirrorRoot)
+
+						primaryStore, storeErr := store.NewGitStore(store.GitStoreOptions{
+							Log:                     slog.Default(),
+							CloneURL:                opts.SourceURL,
+							BaseDir:                 baseDir,
+							SSHPrivateKey:           opts.SSHPrivateKey,
+							SSHPrivateKeyPassphrase: opts.SSHPrivateKeyPassphrase,
+							AccessToken:             opts.GitAccessToken,
+							SkipTLSVerify:           opts.SkipTLSVerification,
+							ProxyOptions:            opts.HttpProxy,
+							CloneSubmodules:         true,
+							Depth:                   c.ResolveGitDepth(opts.GitCloneDepth),
+						})
+						if storeErr != nil {
+							return nil, fmt.Errorf("failed to initialize git store: %w", storeErr)
+						}
+
+						unlockGC, lockErr := sourcecache.AcquireSharedGCPathLock(baseDir)
+						if lockErr != nil {
+							return nil, fmt.Errorf("failed to acquire artifact GC lock: %w", lockErr)
+						}
+
+						artifact, errPublish := primaryStore.Publish(ctx, store.Revision(hash.String()))
+						if errPublish != nil {
+							unlockGC()
+							return nil, fmt.Errorf("failed to publish reference %s: %w", c.Reference, errPublish)
+						}
+
+						fsys = os.DirFS(artifact.Path)
+						releaseDiscoveryLock = unlockGC
+					default:
 						// Different reference: read from the object database
 						// instead of checking out, to avoid mutating the shared
 						// working tree while other readers/writers may be using it.
+						// TreeFS reads objects lazily, so the mirror lock is held until the walk below finishes.
+						unlockTreeMirror := acquireMirrorReadLock(gitMirrorRoot)
+
 						treeFS, err := gitInternal.NewTreeFSAtCommit(baseRepo, hash)
 						if err != nil {
+							unlockTreeMirror()
 							return nil, fmt.Errorf("failed to open tree for reference %s: %w", c.Reference, err)
 						}
 
 						fsys = treeFS
+						releaseDiscoveryLock = unlockTreeMirror
 					}
 
-					discoveredConfigs, err = autoDiscoverDeployments(fsys, repoDir, hash.String(), c)
+					discoveredConfigs, err = autoDiscoverDeployments(fsys, gitRepoLabelRoot, hash.String(), c)
+
+					if releaseDiscoveryLock != nil {
+						releaseDiscoveryLock()
+					}
+
 					if err != nil {
 						return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 					}
 				default:
 					var err error
 
-					discoveredConfigs, err = autoDiscoverDeployments(os.DirFS(repoRoot), repoDir, "", c)
+					discoveredConfigs, err = autoDiscoverDeployments(os.DirFS(repoRoot), gitRepoLabelRoot, "", c)
 					if err != nil {
 						return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 					}
@@ -554,6 +682,38 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 	}
 
 	return nil, fmt.Errorf("%w: .doco-cd.y(a)ml", ErrConfigFileNotFound)
+}
+
+// repositoryLabelRoot returns a revision-stable directory whose base name identifies the repository, for
+// auto-discovery's metrics label and default stack name. repoRoot is usually a per-revision artifact directory
+// ("<baseDir>/artifacts/<revision>"), whose name would otherwise change on every commit or digest.
+func repositoryLabelRoot(repoRoot, gitMirrorRoot string) string {
+	if gitMirrorRoot != "" {
+		return filepath.Dir(gitMirrorRoot)
+	}
+
+	artifactsDir := filepath.Dir(filepath.Clean(repoRoot))
+	if filepath.Base(artifactsDir) == store.ArtifactsSubdir {
+		return filepath.Dir(artifactsDir)
+	}
+
+	return repoRoot
+}
+
+// matchesPrimaryContent reports whether hash matches the content already
+// materialized at repoRoot. primaryRevision avoids relying on a mirror's HEAD;
+// when empty, the repository's working-tree HEAD is used.
+func matchesPrimaryContent(baseRepo *git.Repository, hash plumbing.Hash, primaryRevision string) (bool, error) {
+	if primaryRevision != "" {
+		return hash.String() == primaryRevision, nil
+	}
+
+	headRef, err := baseRepo.Head()
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", gitInternal.ErrGetHeadFailed, err)
+	}
+
+	return hash == headRef.Hash(), nil
 }
 
 // getConfigsFromFile returns the deployment configurations from the repository or nil if not found.
@@ -637,13 +797,11 @@ func ValidateUniqueProjectNames(configs []*Config) error {
 	return nil
 }
 
-// ResolveConfigs returns deployment configs, preferring supplied inline
-// deployments. Inline deployments bypass repository config file discovery.
-// When no inline deployments are present, repository config files are required.
-// repoRoot is the absolute path to the repository root.
-// configBaseDir is the relative path from repo root where config files are located.
-// gitOpts is optional (may be nil) and is only required when AutoDiscovery with a remote RepositoryUrl is used.
-func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRoot, configBaseDir string, gitOpts *GitOptions) ([]*Config, error) {
+// ResolveConfigs returns inline deployment configs when supplied; otherwise it reads the repository config files.
+// repoRoot is the absolute repository path, and configBaseDir is the relative config path.
+// gitOpts is optional and only required for AutoDiscovery with a remote RepositoryUrl.
+// gitMirrorRoot and primaryRevision are optional Git-only parameters; see GetConfigs.
+func ResolveConfigs(ctx context.Context, inlineDeployments []*Config, customTarget, reference, repoRoot, configBaseDir, gitMirrorRoot, primaryRevision string, gitOpts *GitOptions) ([]*Config, error) {
 	// Prefer inline deployments when present
 	if len(inlineDeployments) > 0 {
 		inlineDeployments = cloneConfigSlice(inlineDeployments)
@@ -655,7 +813,7 @@ func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRo
 			}
 		}
 
-		configs, err := expandInlineAutoDiscoverConfigs(repoRoot, inlineDeployments)
+		configs, err := expandInlineAutoDiscoverConfigs(repoRoot, repositoryLabelRoot(repoRoot, gitMirrorRoot), primaryRevision, inlineDeployments)
 		if err != nil {
 			return nil, err
 		}
@@ -672,5 +830,5 @@ func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRo
 	}
 
 	// No inline deployments, use repository config discovery
-	return GetConfigs(repoRoot, configBaseDir, customTarget, reference, gitOpts)
+	return GetConfigs(ctx, repoRoot, configBaseDir, customTarget, reference, gitMirrorRoot, primaryRevision, gitOpts)
 }
