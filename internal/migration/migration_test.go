@@ -629,6 +629,55 @@ func TestMigrateRepository_NewRepositoryIsAlreadyUsable(t *testing.T) {
 	}
 }
 
+// TestMigrateRepository_IncompleteStoreIsRetryable covers a transient failure during the first
+// clone: CloneOrUpdateBareMirror creates the mirror directory before cloning, and the clone may
+// leave that directory behind when it fails. Migration must not misclassify that recoverable
+// state as an un-migrated legacy checkout and prevent GitStore from retrying the clone.
+func TestMigrateRepository_IncompleteStoreIsRetryable(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	if err := os.MkdirAll(filepath.Join(repoDir, store.MirrorSubdir), 0o755); err != nil {
+		t.Fatalf("create incomplete mirror directory: %v", err)
+	}
+
+	migrated, err := MigrateRepository(t.Context(), nil, nil, dataDir, dataDir, repoDir)
+	if err != nil {
+		t.Fatalf("MigrateRepository() error = %v", err)
+	}
+
+	if !migrated {
+		t.Fatal("MigrateRepository() = false, want true so GitStore can retry an incomplete first clone")
+	}
+}
+
+func TestMigrateRepository_InvalidLegacyGitDirectoryFailsClosed(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+	legacyGitDir := filepath.Join(repoDir, gitDirName)
+
+	if err := os.MkdirAll(legacyGitDir, 0o755); err != nil {
+		t.Fatalf("create invalid legacy git directory: %v", err)
+	}
+
+	migrated, err := MigrateRepository(t.Context(), nil, nil, dataDir, dataDir, repoDir)
+	if err == nil {
+		t.Fatal("MigrateRepository() error = nil, want invalid legacy repository error")
+	}
+
+	if migrated {
+		t.Fatal("MigrateRepository() = true, want false for an invalid legacy git directory")
+	}
+
+	if _, statErr := os.Stat(legacyGitDir); statErr != nil {
+		t.Errorf("invalid legacy git directory was modified: %v", statErr)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repoDir, store.MirrorSubdir+".lock")); !os.IsNotExist(statErr) {
+		t.Errorf("migration lock marker should not be created for invalid legacy state, stat err = %v", statErr)
+	}
+}
+
 // TestMigrateRepository_AlreadyMigratedStoreIsUsable covers a repository already on the current
 // store layout: MigrateRepository must recognize it as usable without requiring a Docker context
 // registry either.

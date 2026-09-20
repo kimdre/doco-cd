@@ -133,6 +133,31 @@ func AcquireExclusivePathLock(path string) func() {
 	}
 }
 
+// AcquireRequiredExclusivePathLock takes an exclusive path lock and fails if cross-process
+// exclusion cannot be established.
+func AcquireRequiredExclusivePathLock(path string) (func(), error) {
+	key := canonicalLockKey(path)
+
+	value, _ := repoLocks.LoadOrStore(key, &sync.RWMutex{})
+	mutex := value.(*sync.RWMutex)
+	mutex.Lock()
+
+	unlockFile, err := acquireRequiredCrossProcessLock(key, unix.LOCK_EX)
+	if err != nil {
+		mutex.Unlock()
+		return nil, err
+	}
+
+	var once sync.Once
+
+	return func() {
+		once.Do(func() {
+			unlockFile()
+			mutex.Unlock()
+		})
+	}, nil
+}
+
 // TryAcquireExclusivePathLock attempts to take an exclusive path lock without waiting. It returns false when another
 // process or goroutine currently holds the path.
 func TryAcquireExclusivePathLock(path string) (func(), bool, error) {

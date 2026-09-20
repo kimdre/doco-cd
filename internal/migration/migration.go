@@ -178,17 +178,16 @@ func CleanupRepoLeftovers(
 // clone) would otherwise clone a fresh, independent mirror alongside the un-migrated legacy
 // content instead of replacing it.
 //
-// It reports whether repoDir is a valid store root - or was never a legacy checkout to begin
-// with - after the call. false means a legacy checkout is still present and could not be
-// migrated right now, most commonly because a running container still references its old
-// working tree; callers should treat repoDir as not yet usable and retry later (e.g. on the next
-// poll/webhook event) rather than falling back to a fresh clone.
+// It reports whether repoDir is usable by the current store after the call. A repository without
+// a valid legacy checkout is usable even if its mirror does not exist yet or a previous clone
+// left an incomplete directory behind: GitStore owns creating or repairing that state. false
+// means a valid legacy checkout is still present and could not be migrated.
 //
 // Like CleanupRepoLeftovers, it does not acquire its own GC lock - callers must already hold at
 // least a shared GC lock on repoDir for the duration of the call. Unlike CleanupRepoLeftovers, it
-// does perform the mirror bootstrap itself when safe to do so; that step takes GitStore's own
-// mirror path lock (see bootstrapMirror), so it can never race a concurrent GitStore clone/fetch
-// for the same repository.
+// does perform the mirror bootstrap itself when safe to do so; migrateRepo takes GitStore's own
+// mirror path lock before inspecting or changing migration state, so it can never race another
+// migration or a concurrent GitStore clone/fetch/publish for the same repository.
 func MigrateRepository(
 	ctx context.Context,
 	log *slog.Logger,
@@ -212,26 +211,26 @@ func MigrateRepository(
 		return referencedAcrossContexts(ctx, contexts, []string{repoDir, hostRepoDir}, keep)
 	}
 
-	legacy, err := isGitDir(filepath.Join(repoDir, gitDirName))
+	legacyGitDir := filepath.Join(repoDir, gitDirName)
+
+	legacyPathExists, err := isDir(legacyGitDir)
+	if err != nil {
+		return false, fmt.Errorf("inspect legacy git directory: %w", err)
+	}
+
+	if !legacyPathExists {
+		// There is nothing to migrate. GitStore will create a missing mirror and is responsible
+		// for retrying or repairing an incomplete one left by a failed clone.
+		return true, nil
+	}
+
+	legacy, err := isGitDir(legacyGitDir)
 	if err != nil {
 		return false, fmt.Errorf("inspect legacy git directory: %w", err)
 	}
 
 	if !legacy {
-		exists, err := pathExists(repoDir)
-		if err != nil {
-			return false, fmt.Errorf("inspect repository directory: %w", err)
-		}
-
-		if !exists {
-			// First-ever deployment: nothing on disk yet, so there is nothing to migrate. The
-			// store layout will be created from scratch.
-			return true, nil
-		}
-
-		// Already on the migrated store layout, or an unrelated directory - either way,
-		// there is nothing for this function to do.
-		return isStoreRoot(repoDir)
+		return false, fmt.Errorf("legacy git directory is not a valid repository: %s", legacyGitDir)
 	}
 
 	if err = migrateRepo(ctx, log, isReferenced, repoDir); err != nil {
@@ -427,49 +426,29 @@ func migrateRepo(ctx context.Context, log *slog.Logger, isReferenced referenceCh
 	mirrorDir := filepath.Join(repoDir, store.MirrorSubdir)
 	legacyGitDir := filepath.Join(repoDir, gitDirName)
 
-	legacy, err := isGitDir(legacyGitDir)
+	legacyPathExists, err := isDir(legacyGitDir)
 	if err != nil {
 		return fmt.Errorf("inspect legacy git directory: %w", err)
 	}
 
-	if legacy {
-		// A legacy checkout takes precedence over anything in its working tree named "mirror", "artifacts" or
-		// "submodules", including nested Git repositories. Every entry other than ".git" is legacy working-tree
-		// content. Checking all three reserved store names - not just "mirror" - matters because "artifacts" and
-		// "submodules" aren't created until the store is actually used after migration: if a legacy working tree
-		// already had its own entry by one of those names, it would otherwise never be recognized as blocking and
-		// would silently merge into (and hide inside) the store's own directory of the same name once doco-cd
-		// starts writing to it, instead of being cleaned up like any other legacy leftover.
-		blocked, err := blockingStoreEntryExists(repoDir)
+	if legacyPathExists {
+		legacy, err := isGitDir(legacyGitDir)
 		if err != nil {
-			return fmt.Errorf("inspect store layout paths: %w", err)
+			return fmt.Errorf("inspect legacy git directory: %w", err)
 		}
 
-		if blocked {
-			// Move the colliding entries out of the way instead of requiring them to be
-			// unreferenced first. Deploying a stack whose compose files live at repoDir's root -
-			// the overwhelmingly common case - gives every one of its containers a working-directory
-			// label that covers the whole of repoDir, including any reserved-name entry inside it.
-			// Gating the bootstrap on that check being "unreferenced" would therefore defer it for
-			// as long as the very stack this migration is meant to unblock keeps running, which is
-			// normally forever: nothing ever redeploys it, because deployment itself waits on this
-			// migration to finish first. Renaming - like the ".git" to "mirror" rename below - never
-			// breaks an already-established bind mount, so it is just as safe to do unconditionally;
-			// only the actual removal of the quarantined copy still waits for it to be dereferenced,
-			// via the ordinary leftover cleanup below.
-			if err := quarantineBlockingStoreEntries(repoDir); err != nil {
-				return fmt.Errorf("quarantine blocking legacy entries: %w", err)
-			}
+		if !legacy {
+			return fmt.Errorf("legacy git directory is not a valid repository: %s", legacyGitDir)
 		}
 
-		if err := bootstrapMirror(log, legacyGitDir, mirrorDir); err != nil {
-			return fmt.Errorf("bootstrap mirror: %w", err)
+		// Serialize the migration state transition with every GitStore operation. The legacy
+		// checkout is revalidated under this lock before inspecting reserved store paths:
+		// otherwise two concurrent attempts can both observe the legacy checkout, then the second
+		// can mistake the valid mirror created by the first for legacy content and quarantine it.
+		// Cross-process exclusion is mandatory because this transition renames persistent data.
+		if err = migrateLegacyRepo(log, repoDir, legacyGitDir, mirrorDir); err != nil {
+			return err
 		}
-
-		_, err = cleanupLegacyLeftovers(ctx, log, isReferenced, repoDir,
-			[]string{store.MirrorSubdir, store.MirrorSubdir + ".lock"})
-
-		return err
 	}
 
 	migrated, err := isStoreRoot(repoDir)
@@ -478,12 +457,82 @@ func migrateRepo(ctx context.Context, log *slog.Logger, isReferenced referenceCh
 	}
 
 	if migrated {
-		_, err := cleanupLegacyLeftovers(ctx, log, isReferenced, repoDir, storeLayoutEntries())
+		_, err = cleanupLegacyLeftovers(ctx, log, isReferenced, repoDir, storeLayoutEntries())
 
 		return err
 	}
 
 	// Neither a migrated store nor a legacy checkout.
+	return nil
+}
+
+// migrateLegacyRepo bootstraps a bare mirror from a legacy checkout's ".git" directory, moving any
+// colliding working-tree entries out of the way so the mirror can be created in their place. The
+// caller must hold sourcecache.AcquireExclusiveGCPathLock(repoDir) for the duration of this call.
+func migrateLegacyRepo(
+	log *slog.Logger,
+	repoDir string,
+	legacyGitDir string,
+	mirrorDir string,
+) error {
+	unlock, err := sourcecache.AcquireRequiredExclusivePathLock(mirrorDir)
+	if err != nil {
+		return fmt.Errorf("acquire mirror migration lock: %w", err)
+	}
+	defer unlock()
+
+	// Re-check under the lock: a concurrent caller may have already completed the migration.
+	legacyPathExists, err := isDir(legacyGitDir)
+	if err != nil {
+		return fmt.Errorf("inspect legacy git directory: %w", err)
+	}
+
+	if !legacyPathExists {
+		return nil
+	}
+
+	legacy, err := isGitDir(legacyGitDir)
+	if err != nil {
+		return fmt.Errorf("inspect legacy git directory: %w", err)
+	}
+
+	if !legacy {
+		return fmt.Errorf("legacy git directory is not a valid repository: %s", legacyGitDir)
+	}
+
+	// A legacy checkout takes precedence over anything in its working tree named "mirror", "artifacts" or
+	// "submodules", including nested Git repositories. Every entry other than ".git" is legacy working-tree
+	// content. Checking all three reserved store names - not just "mirror" - matters because "artifacts" and
+	// "submodules" aren't created until the store is actually used after migration: if a legacy working tree
+	// already had its own entry by one of those names, it would otherwise never be recognized as blocking and
+	// would silently merge into (and hide inside) the store's own directory of the same name once doco-cd
+	// starts writing to it, instead of being cleaned up like any other legacy leftover.
+	blocked, err := blockingStoreEntryExists(repoDir)
+	if err != nil {
+		return fmt.Errorf("inspect store layout paths: %w", err)
+	}
+
+	if blocked {
+		// Move the colliding entries out of the way instead of requiring them to be
+		// unreferenced first. Deploying a stack whose compose files live at repoDir's root -
+		// the overwhelmingly common case - gives every one of its containers a working-directory
+		// label that covers the whole of repoDir, including any reserved-name entry inside it.
+		// Gating the bootstrap on that check being "unreferenced" would therefore defer it for
+		// as long as the very stack this migration is meant to unblock keeps running, which is
+		// normally forever: nothing ever redeploys it, because deployment itself waits on this
+		// migration to finish first. Renaming - like the ".git" to "mirror" rename below - never
+		// breaks an already-established bind mount, so it is just as safe to do unconditionally;
+		// only the actual removal of the quarantined copy still waits for it to be dereferenced,
+		// via the ordinary leftover cleanup below.
+		if err := quarantineBlockingStoreEntries(repoDir); err != nil {
+			return fmt.Errorf("quarantine blocking legacy entries: %w", err)
+		}
+	}
+
+	if err := bootstrapMirrorLocked(log, legacyGitDir, mirrorDir); err != nil {
+		return fmt.Errorf("bootstrap mirror: %w", err)
+	}
+
 	return nil
 }
 
@@ -524,9 +573,9 @@ func blockingStoreEntryExists(repoDir string) (bool, error) {
 const legacyQuarantinePrefix = ".legacy-"
 
 // quarantineBlockingStoreEntries renames every existing entry reported by blockingStoreEntryExists
-// out of the way, freeing the reserved store layout names so bootstrapMirror can create the
+// out of the way, freeing the reserved store layout names so bootstrapMirrorLocked can create the
 // mirror in their place. Renaming - unlike deleting - never breaks an already-established bind
-// mount for a running container (see bootstrapMirror's own rename of the legacy ".git" directory),
+// mount for a running container (see bootstrapMirrorLocked's own rename of the legacy ".git" directory),
 // so this is safe to do unconditionally regardless of whether the entry is currently referenced;
 // only the actual removal of the quarantined copy is left to the normal, reference-checked
 // leftover cleanup.
@@ -593,21 +642,12 @@ func pathExists(path string) (bool, error) {
 	return false, err
 }
 
-// bootstrapMirror converts a legacy non-bare checkout into the new bare
-// mirror layout by renaming its ".git" directory into place as mirrorDir.
-// This never touches the network: the mirror's objects and refs are exactly
-// what the legacy checkout already had on disk, and GitStore's normal fetch
-// path incrementally brings it up to date the next time it is used.
-func bootstrapMirror(log *slog.Logger, legacyGitDir, mirrorDir string) error {
-	// Hold the same lock GitStore's own mirror operations use, so this can
-	// never race a concurrent CloneOrUpdateBareMirror for the same path.
-	// Migration runs before doco-cd starts accepting webhooks or polling, so
-	// this is normally uncontended; it only matters for a manual/parallel
-	// invocation.
-	unlock := sourcecache.AcquireExclusivePathLock(mirrorDir)
-	defer unlock()
-
-	// Re-check under the lock: a concurrent caller may have already migrated it.
+// bootstrapMirrorLocked converts legacyGitDir into mirrorDir. The caller must hold
+// sourcecache.AcquireRequiredExclusivePathLock(mirrorDir). This never touches the network: the
+// mirror's objects and refs are exactly what the legacy checkout already had on disk, and
+// GitStore's normal fetch path incrementally brings it up to date the next time it is used.
+func bootstrapMirrorLocked(log *slog.Logger, legacyGitDir, mirrorDir string) error {
+	// Re-check while holding the lock: a concurrent caller may have already migrated it.
 	if migrated, err := isGitDir(mirrorDir); err != nil {
 		return fmt.Errorf("inspect mirror directory: %w", err)
 	} else if migrated {
