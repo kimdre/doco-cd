@@ -446,16 +446,20 @@ func migrateRepo(ctx context.Context, log *slog.Logger, isReferenced referenceCh
 		}
 
 		if blocked {
-			removed, err := cleanupLegacyLeftovers(ctx, log, isReferenced, repoDir, []string{gitDirName})
-			if err != nil {
-				return err
+			// Move the colliding entries out of the way instead of requiring them to be
+			// unreferenced first. Deploying a stack whose compose files live at repoDir's root -
+			// the overwhelmingly common case - gives every one of its containers a working-directory
+			// label that covers the whole of repoDir, including any reserved-name entry inside it.
+			// Gating the bootstrap on that check being "unreferenced" would therefore defer it for
+			// as long as the very stack this migration is meant to unblock keeps running, which is
+			// normally forever: nothing ever redeploys it, because deployment itself waits on this
+			// migration to finish first. Renaming - like the ".git" to "mirror" rename below - never
+			// breaks an already-established bind mount, so it is just as safe to do unconditionally;
+			// only the actual removal of the quarantined copy still waits for it to be dereferenced,
+			// via the ordinary leftover cleanup below.
+			if err := quarantineBlockingStoreEntries(repoDir); err != nil {
+				return fmt.Errorf("quarantine blocking legacy entries: %w", err)
 			}
-
-			if !removed {
-				return nil
-			}
-
-			return bootstrapMirror(log, legacyGitDir, mirrorDir)
 		}
 
 		if err := bootstrapMirror(log, legacyGitDir, mirrorDir); err != nil {
@@ -487,9 +491,10 @@ func migrateRepo(ctx context.Context, log *slog.Logger, isReferenced referenceCh
 // under one of the reserved store layout names ("mirror", "artifacts",
 // "submodules") before it has been migrated. Any such entry can only be
 // legacy working-tree content, since the store itself hasn't created those
-// paths yet - so it must be cleaned up rather than left in place, where it
-// would otherwise merge into the store's own directory of the same name
-// once doco-cd starts writing to it after migration.
+// paths yet - so it must be moved out of the way (see
+// quarantineBlockingStoreEntries) rather than left in place, where it would
+// otherwise merge into the store's own directory of the same name once
+// doco-cd starts writing to it after migration.
 func blockingStoreEntryExists(repoDir string) (bool, error) {
 	for _, name := range storeLayoutEntries() {
 		if name == store.MirrorSubdir+".lock" {
@@ -509,6 +514,70 @@ func blockingStoreEntryExists(repoDir string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// legacyQuarantinePrefix marks a legacy working-tree entry that collided with a reserved store
+// layout name and was moved aside by quarantineBlockingStoreEntries so the mirror bootstrap could
+// proceed. It is treated as an ordinary leftover from then on and removed by the normal
+// cleanupLegacyLeftovers pass once no running container references repoDir anymore, exactly like
+// any other legacy working-tree file.
+const legacyQuarantinePrefix = ".legacy-"
+
+// quarantineBlockingStoreEntries renames every existing entry reported by blockingStoreEntryExists
+// out of the way, freeing the reserved store layout names so bootstrapMirror can create the
+// mirror in their place. Renaming - unlike deleting - never breaks an already-established bind
+// mount for a running container (see bootstrapMirror's own rename of the legacy ".git" directory),
+// so this is safe to do unconditionally regardless of whether the entry is currently referenced;
+// only the actual removal of the quarantined copy is left to the normal, reference-checked
+// leftover cleanup.
+func quarantineBlockingStoreEntries(repoDir string) error {
+	for _, name := range storeLayoutEntries() {
+		if name == store.MirrorSubdir+".lock" {
+			continue
+		}
+
+		src := filepath.Join(repoDir, name)
+
+		exists, err := pathExists(src)
+		if err != nil {
+			return fmt.Errorf("inspect %s: %w", src, err)
+		}
+
+		if !exists {
+			continue
+		}
+
+		dst, err := uniqueQuarantinePath(repoDir, name)
+		if err != nil {
+			return err
+		}
+
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("quarantine %s: %w", src, err)
+		}
+	}
+
+	return nil
+}
+
+// uniqueQuarantinePath returns a not-yet-existing destination path for quarantining repoDir's
+// entry called name, so quarantineBlockingStoreEntries never overwrites a previous quarantine
+// left behind by an earlier, still-deferred migration attempt.
+func uniqueQuarantinePath(repoDir, name string) (string, error) {
+	candidate := filepath.Join(repoDir, legacyQuarantinePrefix+name)
+
+	for i := 1; ; i++ {
+		exists, err := pathExists(candidate)
+		if err != nil {
+			return "", fmt.Errorf("inspect %s: %w", candidate, err)
+		}
+
+		if !exists {
+			return candidate, nil
+		}
+
+		candidate = filepath.Join(repoDir, fmt.Sprintf("%s%s-%d", legacyQuarantinePrefix, name, i))
+	}
 }
 
 func pathExists(path string) (bool, error) {

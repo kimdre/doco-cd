@@ -373,10 +373,12 @@ func TestRun_MigratesLegacyCheckoutWhoseWorkingTreeFileBlocksMirrorPath(t *testi
 	}
 }
 
-// TestRun_KeepsBlockingWorkingTreeReferencedByRunningContainer ensures the
-// blocked path above still defers to a running container: clearing the
-// working tree is only safe once nothing is deployed from it.
-func TestRun_KeepsBlockingWorkingTreeReferencedByRunningContainer(t *testing.T) {
+// TestRun_QuarantinesBlockingWorkingTreeReferencedByRunningContainer ensures the blocked path
+// above still migrates even while a container is running: the mirror must be bootstrapped
+// unconditionally (renaming never breaks an already-established bind mount), and only the
+// quarantined copy of the blocking working-tree content stays around until nothing references
+// repoDir anymore.
+func TestRun_QuarantinesBlockingWorkingTreeReferencedByRunningContainer(t *testing.T) {
 	dataDir := t.TempDir()
 	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
 
@@ -399,12 +401,16 @@ func TestRun_KeepsBlockingWorkingTreeReferencedByRunningContainer(t *testing.T) 
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if _, err := os.Stat(blockingFile); err != nil {
-		t.Errorf("working-tree file of a still-deployed stack was deleted: %v", err)
+	if _, err := git.PlainOpen(filepath.Join(repoDir, store.MirrorSubdir)); err != nil {
+		t.Fatalf("mirror should have been bootstrapped even while the blocking content is still referenced: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(repoDir, gitDirName)); err != nil {
-		t.Errorf("legacy .git directory should be kept until the stack is redeployed: %v", err)
+	if _, err := os.Stat(filepath.Join(repoDir, legacyQuarantinePrefix+store.MirrorSubdir, "tracked.txt")); err != nil {
+		t.Errorf("quarantined working-tree file of a still-deployed stack was deleted: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repoDir, gitDirName)); !os.IsNotExist(err) {
+		t.Errorf("legacy .git directory should have been moved, stat err = %v", err)
 	}
 }
 
@@ -550,12 +556,12 @@ func TestRun_RemovesNonEmptyLegacyArtifactsDirectoryBeforeBootstrap(t *testing.T
 	}
 }
 
-// TestRun_KeepsLegacyArtifactsDirectoryReferencedByRunningContainer ensures a
-// non-empty working-tree "artifacts" directory that collides with the store
-// layout still defers to a running container the same way a colliding
-// "mirror" directory does: migration must not bootstrap the mirror (or
-// delete anything) until the stack is no longer deployed from repoDir.
-func TestRun_KeepsLegacyArtifactsDirectoryReferencedByRunningContainer(t *testing.T) {
+// TestRun_QuarantinesLegacyArtifactsDirectoryReferencedByRunningContainer ensures a non-empty
+// working-tree "artifacts" directory that collides with the store layout is migrated the same
+// way a colliding "mirror" directory is: the mirror is bootstrapped unconditionally, and only the
+// quarantined copy of the blocking content stays around until the stack is no longer deployed
+// from repoDir.
+func TestRun_QuarantinesLegacyArtifactsDirectoryReferencedByRunningContainer(t *testing.T) {
 	dataDir := t.TempDir()
 	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
 
@@ -579,16 +585,16 @@ func TestRun_KeepsLegacyArtifactsDirectoryReferencedByRunningContainer(t *testin
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if _, err := os.Stat(dummyFile); err != nil {
-		t.Errorf("working-tree content of a still-deployed stack was deleted: %v", err)
+	if _, err := os.Stat(filepath.Join(repoDir, legacyQuarantinePrefix+store.ArtifactsSubdir, "dummy.txt")); err != nil {
+		t.Errorf("quarantined working-tree content of a still-deployed stack was deleted: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(repoDir, gitDirName)); err != nil {
-		t.Errorf("legacy .git directory should be kept until the stack is redeployed: %v", err)
+	if _, err := os.Stat(filepath.Join(repoDir, gitDirName)); !os.IsNotExist(err) {
+		t.Errorf("legacy .git directory should have been moved, stat err = %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(repoDir, store.MirrorSubdir, "HEAD")); !os.IsNotExist(err) {
-		t.Errorf("mirror should not be bootstrapped while blocking content is still referenced, stat err = %v", err)
+	if _, err := git.PlainOpen(filepath.Join(repoDir, store.MirrorSubdir)); err != nil {
+		t.Errorf("mirror should have been bootstrapped even while the blocking content is still referenced: %v", err)
 	}
 }
 
@@ -680,20 +686,19 @@ func TestMigrateRepository_MigratesUnreferencedLegacyCheckout(t *testing.T) {
 	}
 }
 
-// TestMigrateRepository_KeepsReferencedLegacyCheckout covers the deferral case: a legacy
-// checkout still bind-mounted by a running container must not be migrated, and the caller must
-// be told the repository is not yet usable so it can retry later instead of proceeding to a
-// fresh, independent mirror clone.
-func TestMigrateRepository_KeepsReferencedLegacyCheckout(t *testing.T) {
+// TestMigrateRepository_MigratesReferencedBlockedLegacyCheckout covers the deadlock this
+// function exists to avoid: a legacy checkout whose working tree collides with the "mirror"
+// store name, still bind-mounted by the very stack a deployment is trying to redeploy. The
+// mirror must be bootstrapped anyway - deferring it until the stack becomes unreferenced would
+// wait forever, since nothing else ever redeploys that stack while deployments themselves keep
+// failing on this same check. Only the quarantined copy of the blocking content stays around
+// until it is safe to remove.
+func TestMigrateRepository_MigratesReferencedBlockedLegacyCheckout(t *testing.T) {
 	dataDir := t.TempDir()
 	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
 
 	initLegacyCheckout(t, repoDir)
 
-	// A blocking working-tree entry named "mirror" is required to defer the mirror bootstrap
-	// itself on a running-container reference: without one, ordinary leftover working-tree files
-	// are cleared independently of the bootstrap, which always proceeds regardless of reference
-	// (renaming ".git" into place is safe even under an open bind mount).
 	blockingFile := filepath.Join(repoDir, store.MirrorSubdir, "tracked.txt")
 	if err := os.MkdirAll(filepath.Dir(blockingFile), 0o755); err != nil {
 		t.Fatalf("create blocking working-tree directory: %v", err)
@@ -714,12 +719,16 @@ func TestMigrateRepository_KeepsReferencedLegacyCheckout(t *testing.T) {
 		t.Fatalf("MigrateRepository() error = %v", err)
 	}
 
-	if migrated {
-		t.Fatal("MigrateRepository() = true, want false for a legacy checkout still referenced by a running container")
+	if !migrated {
+		t.Fatal("MigrateRepository() = false, want true: bootstrap must not wait on the stack it would otherwise deadlock behind")
 	}
 
-	if _, err := os.Stat(filepath.Join(repoDir, gitDirName)); err != nil {
-		t.Errorf("legacy .git directory should be kept until the stack is redeployed: %v", err)
+	if _, err := git.PlainOpen(filepath.Join(repoDir, store.MirrorSubdir)); err != nil {
+		t.Fatalf("open bootstrapped mirror: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repoDir, legacyQuarantinePrefix+store.MirrorSubdir, "tracked.txt")); err != nil {
+		t.Errorf("quarantined working-tree file of a still-deployed stack was deleted: %v", err)
 	}
 }
 
