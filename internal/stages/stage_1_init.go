@@ -273,9 +273,9 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			return fmt.Errorf("failed to resolve reference %s: %w", s.DeployConfig.Reference, resolveErr)
 		}
 
-		artifact, publishErr := gitStore.Publish(ctx, revision)
-		if publishErr != nil {
-			return fmt.Errorf("failed to publish artifact for revision %s: %w", revision, publishErr)
+		artifact, pErr := gitStore.Publish(ctx, revision)
+		if pErr != nil {
+			return fmt.Errorf("failed to publish artifact for revision %s: %w", revision, pErr)
 		}
 
 		rel, relErr := filepath.Rel(s.Docker.DataMountPoint.Destination, artifact.Path)
