@@ -227,3 +227,51 @@ func TestExportTree_RejectsAbsoluteSymlinkTarget(t *testing.T) {
 		t.Fatalf("expected escape.txt to not be created, stat err = %v", statErr)
 	}
 }
+
+func TestExportTree_RejectsSymlinkEscapingRootViaChainedSymlinks(t *testing.T) {
+	t.Parallel()
+
+	srcPath := filepath.Join(t.TempDir(), "src")
+	repo := initLocalTestRepo(t, srcPath)
+
+	// Neither entry escapes the root when checked on its own: "d/l" cleans to the
+	// root, and "escape.txt" cleans to the root too. Following "d/l" for real
+	// makes the trailing ".." segments land two levels above the root.
+	commitLocalTestSymlink(t, repo, srcPath, "d/l", "..", "add inner symlink")
+	commitLocalTestSymlink(t, repo, srcPath, "escape.txt", "d/l/../..", "add chained traversal symlink")
+
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatalf("Head() error = %v", err)
+	}
+
+	dir := t.TempDir()
+
+	if err = git.ExportTree(dir, repo, head.Hash(), git.ExportOptions{}); err == nil {
+		t.Fatal("ExportTree() error = nil, want a path traversal error for chained symlinks")
+	}
+}
+
+func TestExportTree_AllowsDanglingSymlinkInsideRoot(t *testing.T) {
+	t.Parallel()
+
+	srcPath := filepath.Join(t.TempDir(), "src")
+	repo := initLocalTestRepo(t, srcPath)
+
+	commitLocalTestSymlink(t, repo, srcPath, "link.txt", "not-created-yet.txt", "add dangling symlink")
+
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatalf("Head() error = %v", err)
+	}
+
+	dir := t.TempDir()
+
+	if err = git.ExportTree(dir, repo, head.Hash(), git.ExportOptions{}); err != nil {
+		t.Fatalf("ExportTree() error = %v, want nil for a dangling symlink inside the export directory", err)
+	}
+
+	if _, statErr := os.Lstat(filepath.Join(dir, "link.txt")); statErr != nil {
+		t.Fatalf("expected link.txt to be created, stat err = %v", statErr)
+	}
+}

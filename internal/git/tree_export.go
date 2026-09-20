@@ -5,10 +5,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -96,14 +98,109 @@ func ExportTree(dir string, repo *git.Repository, commit plumbing.Hash, opts Exp
 		submodules = readGitmodules(tree)
 	}
 
-	return exportTree(exportCtx{
+	if err := exportTree(exportCtx{
 		absRoot:         absDir,
 		repo:            repo,
 		parentRemoteURL: parentRemoteURL,
 		opts:            opts,
 		depth:           int(git.DefaultSubmoduleRecursionDepth),
 		submodules:      submodules,
-	}, tree, "")
+	}, tree, ""); err != nil {
+		return err
+	}
+
+	return verifyNoEscapingSymlinks(absDir)
+}
+
+// verifyNoEscapingSymlinks rejects any exported symlink whose fully resolved
+// target leaves root. exportSymlink's own check is lexical, so it is blind to
+// symlinks installed by other tree entries: a crafted repository can chain
+// them (d/l -> "..", m -> "d/l/../..") so that every entry passes on its own
+// while the resulting link graph escapes. This pass runs once the whole tree
+// is materialized, so resolution observes the final graph regardless of the
+// order entries were exported in.
+func verifyNoEscapingSymlinks(root string) error {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return fmt.Errorf("resolve export directory: %w", err)
+	}
+
+	return filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		if d.Type()&fs.ModeSymlink == 0 {
+			return nil
+		}
+
+		resolved, err := resolveSymlink(p)
+		if err != nil {
+			return fmt.Errorf("resolve symlink %s: %w", p, err)
+		}
+
+		if !filesystem.InBasePath(realRoot, resolved) {
+			return fmt.Errorf("%w: symlink %s resolves outside the export directory", filesystem.ErrPathTraversal, p)
+		}
+
+		return nil
+	})
+}
+
+// resolveSymlink returns the location linkPath resolves to, following
+// intermediate symlinks. Git permits dangling links, whose trailing components
+// cannot be resolved; those are appended to the longest prefix that does
+// resolve, which is exact because a path that does not exist cannot traverse a
+// further symlink.
+func resolveSymlink(linkPath string) (string, error) {
+	if resolved, err := filepath.EvalSymlinks(linkPath); err == nil {
+		return resolved, nil
+	}
+
+	target, err := os.Readlink(linkPath)
+	if err != nil {
+		return "", err
+	}
+
+	if filepath.IsAbs(target) {
+		return resolveLongestExistingPrefix(filepath.FromSlash(target)), nil
+	}
+
+	parent, err := filepath.EvalSymlinks(filepath.Dir(linkPath))
+	if err != nil {
+		return "", err
+	}
+
+	// Concatenated rather than joined: filepath.Join cleans ".." segments
+	// textually, which would erase exactly the traversal that an intermediate
+	// symlink makes real.
+	return resolveLongestExistingPrefix(parent + string(filepath.Separator) + filepath.FromSlash(target)), nil
+}
+
+// resolveLongestExistingPrefix resolves symlinks in the longest existing prefix
+// of path and re-appends the components that do not exist.
+func resolveLongestExistingPrefix(path string) string {
+	current := path
+
+	var suffix []string
+
+	for {
+		if resolved, err := filepath.EvalSymlinks(current); err == nil {
+			for _, s := range slices.Backward(suffix) {
+				resolved = filepath.Join(resolved, s)
+			}
+
+			return filepath.Clean(resolved)
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			return filepath.Clean(path)
+		}
+
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
 }
 
 // exportCtx carries the state that stays constant across one ExportTree
