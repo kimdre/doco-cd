@@ -134,38 +134,42 @@ func normalizeComposeForSwarmSchema(content []byte) ([]byte, error) {
 		}
 	}
 
-	services, ok := doc["services"].(map[string]any)
-	if !ok {
-		return content, nil
-	}
-
-	for name, rawService := range services {
-		service, ok := rawService.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		envFiles, ok := service["env_file"].([]any)
-		if !ok {
-			continue
-		}
-
-		for i, rawEntry := range envFiles {
-			entry, ok := rawEntry.(map[string]any)
+	if services, ok := doc["services"].(map[string]any); ok {
+		for name, rawService := range services {
+			service, ok := rawService.(map[string]any)
 			if !ok {
 				continue
 			}
 
-			if path, ok := entry["path"].(string); ok {
-				envFiles[i] = path
+			envFiles, ok := service["env_file"].([]any)
+			if !ok {
+				continue
 			}
+
+			for i, rawEntry := range envFiles {
+				entry, ok := rawEntry.(map[string]any)
+				if !ok {
+					continue
+				}
+
+				if path, ok := entry["path"].(string); ok {
+					envFiles[i] = path
+				}
+			}
+
+			service["env_file"] = envFiles
+			services[name] = service
 		}
 
-		service["env_file"] = envFiles
-		services[name] = service
+		doc["services"] = services
 	}
 
-	doc["services"] = services
+	// The document is fed back into a loader that interpolates again (the
+	// Docker CLI stack loader has no skip-interpolation path here), but its
+	// values are already resolved. Escaping "$" as "$$" makes that second pass
+	// a no-op, instead of silently mangling any resolved value that legitimately
+	// contains "$" - bcrypt hashes, generated passwords, literal "${...}".
+	escapeComposeInterpolation(doc)
 
 	normalized, err := yaml.Marshal(doc)
 	if err != nil {
@@ -173,6 +177,40 @@ func normalizeComposeForSwarmSchema(content []byte) ([]byte, error) {
 	}
 
 	return normalized, nil
+}
+
+// escapeComposeInterpolation rewrites every string scalar in the document so a
+// subsequent interpolation pass reproduces it verbatim.
+func escapeComposeInterpolation(node any) {
+	switch typed := node.(type) {
+	case map[string]any:
+		for key, value := range typed {
+			if str, ok := value.(string); ok {
+				typed[key] = strings.ReplaceAll(str, "$", "$$")
+				continue
+			}
+
+			escapeComposeInterpolation(value)
+		}
+	case map[any]any:
+		for key, value := range typed {
+			if str, ok := value.(string); ok {
+				typed[key] = strings.ReplaceAll(str, "$", "$$")
+				continue
+			}
+
+			escapeComposeInterpolation(value)
+		}
+	case []any:
+		for i, value := range typed {
+			if str, ok := value.(string); ok {
+				typed[i] = strings.ReplaceAll(str, "$", "$$")
+				continue
+			}
+
+			escapeComposeInterpolation(value)
+		}
+	}
 }
 
 // composeFilesUseInclude reports whether any of the given compose files declares
