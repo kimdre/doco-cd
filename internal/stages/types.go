@@ -206,6 +206,7 @@ type StageManager struct {
 	Payload        *webhook.ParsedPayload
 	Repository     *RepositoryData
 	GitChanges     *GitChangeCache
+	GitAncestry    *GitAncestryCache
 	SecretProvider secretprovider.SecretProvider
 	Notifier       notification.Sender
 	Metadata       notification.Metadata // Notification metadata (may include reconciliation event info)
@@ -255,6 +256,7 @@ type RunInput struct {
 	DeployConfig *deploy.Config `validate:"required,nostructlevel"`
 	Metadata     notification.Metadata
 	GitChanges   *GitChangeCache
+	GitAncestry  *GitAncestryCache
 }
 
 // NewStageManager validates dependencies and run, then creates and initializes a new
@@ -279,6 +281,7 @@ func NewStageManager(dependencies Dependencies, run RunInput) (*StageManager, er
 		Payload:         run.Payload,
 		Repository:      run.Repository,
 		GitChanges:      run.GitChanges,
+		GitAncestry:     run.GitAncestry,
 		SecretProvider:  dependencies.SecretProvider,
 		Notifier:        dependencies.Notifier,
 		SchedulerHolds:  dependencies.SchedulerHolds,

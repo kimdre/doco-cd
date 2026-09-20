@@ -127,8 +127,17 @@ func shouldRecoverFromMissingDeployedCommit(err error) bool {
 // latestHash, so that direction is checked first: it typically resolves within a handful of hops. Only
 // when that check comes back false (diverged history, rollback, or rebase) do we fall back to the
 // expensive reverse check, which must walk deployedHash's entire reachable history to prove non-ancestry.
-func isStaleDeployment(repo *gogit.Repository, latestHash, deployedHash plumbing.Hash, stageLog *slog.Logger) bool {
-	deployedIsAncestor, err := git.IsAncestorCommit(repo, deployedHash, latestHash)
+//
+// cache deduplicates the walk itself: in a monorepo of many stacks, several stacks are often last
+// deployed at the exact same commit, so their (deployedHash, latestHash) pairs are identical and only
+// need to be walked once per job. cache may be nil, in which case each call computes its own result.
+func isStaleDeployment(
+	repo *gogit.Repository, repository string, latestHash, deployedHash plumbing.Hash,
+	cache *GitAncestryCache, stageLog *slog.Logger,
+) bool {
+	deployedIsAncestor, err := cache.isAncestor(repository, deployedHash, latestHash, func() (bool, error) {
+		return git.IsAncestorCommit(repo, deployedHash, latestHash)
+	})
 	if err != nil {
 		stageLog.Debug("could not determine ancestry between deployed and latest commit, proceeding with deployment",
 			slog.String("deployed_commit", deployedHash.String()),
@@ -145,7 +154,9 @@ func isStaleDeployment(repo *gogit.Repository, latestHash, deployedHash plumbing
 		return false
 	}
 
-	isStale, err := git.IsAncestorCommit(repo, latestHash, deployedHash)
+	isStale, err := cache.isAncestor(repository, latestHash, deployedHash, func() (bool, error) {
+		return git.IsAncestorCommit(repo, latestHash, deployedHash)
+	})
 	if err != nil {
 		stageLog.Debug("could not determine ancestry between latest and deployed commit, proceeding with deployment",
 			slog.String("deployed_commit", deployedHash.String()),
@@ -442,7 +453,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 			if !retryAfterFailure && !s.DeployConfig.ForceRecreate {
 				stale, _ := measurePreDeployOperation(stageLog, "git_ancestry", func() (bool, error) {
-					return isStaleDeployment(s.Repository.Git, latestHash, deployedHash, stageLog), nil
+					return isStaleDeployment(s.Repository.Git, s.Repository.MirrorDir, latestHash, deployedHash, s.GitAncestry, stageLog), nil
 				})
 				if stale {
 					unlock()

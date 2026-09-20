@@ -109,6 +109,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 
 	resultCh := make(chan error, len(req.DeployConfigs))
 	gitChanges := stages.NewGitChangeCache()
+	gitAncestry := stages.NewGitAncestryCache()
 
 	for _, deployCfg := range req.DeployConfigs {
 		deployLog := req.Logger.
@@ -150,7 +151,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 				return
 			}
 
-			err := m.handleOneDeploy(ctx, req, deployLog, entry.cli, entry.swarmMode, dc, gitChanges)
+			err := m.handleOneDeploy(ctx, req, deployLog, entry.cli, entry.swarmMode, dc, gitChanges, gitAncestry)
 
 			resultCh <- err
 		}(deployCfg)
@@ -242,6 +243,7 @@ func resolveDeployContext(ctx context.Context, contexts *docker.ContextRegistry,
 
 func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deployLog *slog.Logger,
 	deploymentDockerCli command.Cli, swarmAvailable bool, dc *deployConfig.Config, gitChanges *stages.GitChangeCache,
+	gitAncestry *stages.GitAncestryCache,
 ) error {
 	swarmMode, err := dc.ResolveSwarmMode(swarmAvailable)
 	if err != nil {
@@ -273,6 +275,7 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 			DeployConfig: dc,
 			Metadata:     req.Metadata,
 			GitChanges:   gitChanges,
+			GitAncestry:  gitAncestry,
 		},
 	)
 	if err != nil {

@@ -538,13 +538,13 @@ func TestIsStaleDeployment_OutOfOrderOlderRevisionIsSkipped(t *testing.T) {
 
 	// An out-of-order run resolving to the older commit, while the newer
 	// commit is already deployed, must be reported stale.
-	if !isStaleDeployment(repo, h[0], h[1], stageLog) {
+	if !isStaleDeployment(repo, "repo", h[0], h[1], nil, stageLog) {
 		t.Fatal("expected an older, already-superseded revision to be reported stale")
 	}
 
 	// The in-order case (latest is newer than deployed) must never be
 	// reported stale.
-	if isStaleDeployment(repo, h[1], h[0], stageLog) {
+	if isStaleDeployment(repo, "repo", h[1], h[0], nil, stageLog) {
 		t.Fatal("expected a newer revision to not be reported stale")
 	}
 }
@@ -575,7 +575,7 @@ func TestIsStaleDeployment_DivergedHistoryFailsOpen(t *testing.T) {
 
 	stageLog := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	if isStaleDeployment(repo, tip1[0], tip2[0], stageLog) {
+	if isStaleDeployment(repo, "repo", tip1[0], tip2[0], nil, stageLog) {
 		t.Fatal("expected diverged history to fail open (not stale)")
 	}
 }
@@ -599,7 +599,7 @@ func TestIsStaleDeployment_MissingCommitFailsOpen(t *testing.T) {
 
 	stageLog := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	if isStaleDeployment(repo, plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), h[0], stageLog) {
+	if isStaleDeployment(repo, "repo", plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), h[0], nil, stageLog) {
 		t.Fatal("expected a missing commit to fail open (not stale)")
 	}
 }
