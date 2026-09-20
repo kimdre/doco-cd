@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
@@ -22,6 +23,31 @@ type ChangedFile struct {
 	From diff.File
 	// To represents the file state after the change.
 	To diff.File
+}
+
+// treeDiffFile is a simple implementation of the diff.File interface,
+// representing a file in a git tree.
+type treeDiffFile struct {
+	hash plumbing.Hash
+	mode filemode.FileMode
+	path string
+}
+
+func (f treeDiffFile) Hash() plumbing.Hash     { return f.hash }
+func (f treeDiffFile) Mode() filemode.FileMode { return f.mode }
+func (f treeDiffFile) Path() string            { return f.path }
+
+// diffFileFromChangeEntry converts a ChangeEntry to a diff.File if it represents a file change.
+func diffFileFromChangeEntry(entry object.ChangeEntry) diff.File {
+	if entry.Name == "" || !entry.TreeEntry.Mode.IsFile() {
+		return nil
+	}
+
+	return treeDiffFile{
+		hash: entry.TreeEntry.Hash,
+		mode: entry.TreeEntry.Mode,
+		path: entry.Name,
+	}
 }
 
 // GetLatestCommit retrieves the last commit hash for a given reference in a repository.
@@ -61,16 +87,30 @@ func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash
 		return nil, fmt.Errorf("failed to get commit From commitHash2 %s: %w", commitHash2, err)
 	}
 
-	// Create a patch between the two commits
-	patch, err := commit1.Patch(commit2)
+	tree1, err := commit1.Tree()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create patch: %w", err)
+		return nil, fmt.Errorf("failed to get tree for commit %s: %w", commitHash1, err)
 	}
 
-	changedFiles := make([]ChangedFile, 0, len(patch.FilePatches()))
-	for _, file := range patch.FilePatches() {
-		from, to := file.Files()
-		changedFiles = append(changedFiles, ChangedFile{From: from, To: to})
+	tree2, err := commit2.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tree for commit %s: %w", commitHash2, err)
+	}
+
+	// The deployment pipeline only needs changed paths, not textual patches.
+	// Tree.Diff retains go-git's rename detection without loading blob contents
+	// and generating every file hunk.
+	changes, err := tree1.Diff(tree2)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compare commit trees: %w", err)
+	}
+
+	changedFiles := make([]ChangedFile, 0, len(changes))
+	for _, change := range changes {
+		changedFiles = append(changedFiles, ChangedFile{
+			From: diffFileFromChangeEntry(change.From),
+			To:   diffFileFromChangeEntry(change.To),
+		})
 	}
 
 	return changedFiles, nil
