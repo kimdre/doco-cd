@@ -92,8 +92,9 @@ func (c *AutoDiscoveryConfig) UnmarshalJSON(data []byte) error {
 }
 
 // expandInlineAutoDiscoverConfigs replaces enabled inline auto-discovery entries with deployments under repoRoot.
-// revisionKey overrides the repository HEAD when repoRoot is not a Git checkout.
-func expandInlineAutoDiscoverConfigs(repoRoot, revisionKey string, deployments []*Config) ([]*Config, error) {
+// labelRoot is a revision-stable directory naming the repository; repoRoot itself is usually a per-revision
+// artifact directory. revisionKey overrides the repository HEAD when repoRoot is not a Git checkout.
+func expandInlineAutoDiscoverConfigs(repoRoot, labelRoot, revisionKey string, deployments []*Config) ([]*Config, error) {
 	expanded := make([]*Config, 0, len(deployments))
 
 	fsys := os.DirFS(repoRoot)
@@ -107,7 +108,7 @@ func expandInlineAutoDiscoverConfigs(repoRoot, revisionKey string, deployments [
 			continue
 		}
 
-		discoveredConfigs, err := autoDiscoverDeployments(fsys, repoRoot, revisionKey, deployment)
+		discoveredConfigs, err := autoDiscoverDeployments(fsys, labelRoot, revisionKey, deployment)
 		if err != nil {
 			return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 		}
