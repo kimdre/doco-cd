@@ -120,7 +120,31 @@ func shouldRecoverFromMissingDeployedCommit(err error) bool {
 // deploying it would silently revert that newer state. It skips only on a proven ancestor
 // relationship: any lookup or traversal failure (e.g. a shallow mirror missing one of the commits) or
 // an unrelated history (force-push, rebase) must fail open so the caller falls through to its usual change comparison.
+//
+// Ancestry walks in go-git traverse backward from the descendant until the ancestor is found or history
+// is exhausted, so cost is dominated by how many commits must be visited before a match (or none at all).
+// In the overwhelmingly common case (normal forward progress) deployedHash is a recent ancestor of
+// latestHash, so that direction is checked first: it typically resolves within a handful of hops. Only
+// when that check comes back false (diverged history, rollback, or rebase) do we fall back to the
+// expensive reverse check, which must walk deployedHash's entire reachable history to prove non-ancestry.
 func isStaleDeployment(repo *gogit.Repository, latestHash, deployedHash plumbing.Hash, stageLog *slog.Logger) bool {
+	deployedIsAncestor, err := git.IsAncestorCommit(repo, deployedHash, latestHash)
+	if err != nil {
+		stageLog.Debug("could not determine ancestry between deployed and latest commit, proceeding with deployment",
+			slog.String("deployed_commit", deployedHash.String()),
+			slog.String("latest_commit", latestHash.String()),
+			slog.String("reason", err.Error()),
+		)
+
+		return false
+	}
+
+	if deployedIsAncestor {
+		// Normal forward progress: the deployed commit already precedes latestHash, so latestHash cannot
+		// also be an ancestor of deployedHash (that would require a cycle). Not stale.
+		return false
+	}
+
 	isStale, err := git.IsAncestorCommit(repo, latestHash, deployedHash)
 	if err != nil {
 		stageLog.Debug("could not determine ancestry between latest and deployed commit, proceeding with deployment",
