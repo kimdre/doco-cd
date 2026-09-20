@@ -230,6 +230,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		// deploy config names a different reference) could otherwise observe it mid-fetch.
 		unlockMirror := sourcecache.AcquireSharedPathLock(s.Repository.MirrorDir)
 		mirrorRepo, openErr := git.OpenRepository(s.Repository.MirrorDir)
+
 		unlockMirror()
 
 		if openErr != nil {
