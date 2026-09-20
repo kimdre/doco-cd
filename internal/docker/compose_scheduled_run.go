@@ -506,7 +506,17 @@ func loadComposeScheduledDeployConfig(
 	primaryRevision := ""
 
 	if ref.ConfigRevision != "" {
-		configRepoPath = filepath.Join(sourceRepoPath, store.ArtifactsSubdir, store.ArtifactDirName(store.Revision(ref.ConfigRevision)))
+		// ConfigRevision comes from a container label, which a user-supplied compose file
+		// can also set, so the joined path is containment-checked like every other
+		// label-derived path here rather than trusted.
+		configRepoPath, err = filesystem.VerifyAndSanitizePath(
+			filepath.Join(sourceRepoPath, store.ArtifactsSubdir, store.ArtifactDirName(store.Revision(ref.ConfigRevision))),
+			sourceRepoPath,
+		)
+		if err != nil {
+			return nil, "", fmt.Errorf("resolve config artifact path for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
+		}
+
 		if !filesystem.IsDir(configRepoPath) {
 			return nil, "", fmt.Errorf("%w: config artifact %s for scheduled service %s/%s",
 				ErrComposeScheduledSourceUnavailable, configRepoPath, ref.Project, ref.Service)
