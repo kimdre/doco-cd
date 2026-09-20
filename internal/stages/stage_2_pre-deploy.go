@@ -22,6 +22,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/prometheus"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
@@ -141,6 +142,32 @@ func isStaleDeployment(repo *gogit.Repository, latestHash, deployedHash plumbing
 	return isStale
 }
 
+// measurePreDeployOperation is a helper function that measures
+// the duration of a pre-deploy operation and logs the outcome.
+func measurePreDeployOperation[T any](
+	stageLog *slog.Logger,
+	operation string,
+	fn func() (T, error),
+) (T, error) {
+	startedAt := time.Now()
+	value, err := fn()
+
+	outcome := "success"
+	if err != nil {
+		outcome = "failure"
+	}
+
+	elapsed := time.Since(startedAt)
+	prometheus.PreDeployOperationDuration.WithLabelValues(operation, outcome).Observe(elapsed.Seconds())
+	stageLog.Debug("completed pre-deploy operation",
+		slog.String("operation", operation),
+		slog.String("outcome", outcome),
+		slog.String("elapsed_time", elapsed.Truncate(time.Millisecond).String()),
+	)
+
+	return value, err
+}
+
 func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
 	s.Stages.PreDeploy.StartedAt = time.Now()
 
@@ -198,26 +225,24 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	// Init has resolved the repository/payload identity by this point. Migrate
 	// before any skip detection, otherwise an unchanged source could leave the
 	// previous runtime mode alive indefinitely.
-	source := s.Repository.SourceUrl
-	if s.Payload != nil && strings.TrimSpace(s.Payload.FullName) != "" {
-		source = s.Payload.FullName
-	}
-
-	deploymentModeMigrated, err := docker.MigrateDeploymentMode(
-		ctx,
-		stageLog,
-		s.Docker.Cmd,
-		s.DeployConfig.Context,
-		s.DeployConfig.Name,
-		source,
-		s.Docker.SwarmMode,
-		s.Docker.SwarmAvailable,
-	)
+	s.DeployState.modeMigrationNeeded, err = measurePreDeployOperation(stageLog, "deployment_mode_inspection", func() (bool, error) {
+		return docker.DeploymentModeMigrationRequired(
+			ctx,
+			s.Docker.Cmd,
+			s.DeployConfig.Context,
+			s.DeployConfig.Name,
+			s.migrationSource(),
+			s.Docker.SwarmMode,
+			s.Docker.SwarmAvailable,
+		)
+	})
 	if err != nil {
-		return fmt.Errorf("failed to migrate deployment mode: %w", err)
+		return fmt.Errorf("failed to inspect deployment mode migration: %w", err)
 	}
 
-	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.Repository.Name, s.DeployConfig.Name)
+	deployedState, err := measurePreDeployOperation(stageLog, "deployed_state_lookup", func() (docker.LatestServiceStatus, error) {
+		return docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.Repository.Name, s.DeployConfig.Name)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
@@ -261,12 +286,14 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		resolvedDigest := s.Repository.Revision
 		deployedProjectHash := deployedState.GetDeploymentComposeHash()
 
-		resolvedProjectHash, err := s.loadComposeProjectHash(ctx)
+		resolvedProjectHash, err := measurePreDeployOperation(stageLog, "compose_load_and_hash", func() (string, error) {
+			return s.loadComposeProjectHash(ctx)
+		})
 		if err != nil {
 			return err
 		}
 
-		if !deploymentModeMigrated &&
+		if !s.DeployState.modeMigrationNeeded &&
 			shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest, deployedProjectHash, resolvedProjectHash) &&
 			!autoDiscoveryConfigChanged &&
 			!retryAfterFailure {
@@ -330,7 +357,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			slog.String("deployed_commit", deployedCommit),
 			slog.String("latest_commit", latestCommit))
 
-		newHash, err := s.loadComposeProjectHash(ctx)
+		newHash, err := measurePreDeployOperation(stageLog, "compose_load_and_hash", func() (string, error) {
+			return s.loadComposeProjectHash(ctx)
+		})
 		if err != nil {
 			return err
 		}
@@ -340,7 +369,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		} else if s.DeployConfig.ForceImagePull {
 			stageLog.Debug("force image pull enabled, checking deployed image digests against registry")
 
-			imageChangedServices, err = docker.DeployedServicesWithChangedImageDigests(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, stageLog)
+			imageChangedServices, err = measurePreDeployOperation(stageLog, "image_digest_lookup", func() ([]string, error) {
+				return docker.DeployedServicesWithChangedImageDigests(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, stageLog)
+			})
 			if err != nil {
 				return fmt.Errorf("failed to compare deployed service image digests: %w", err)
 			}
@@ -385,10 +416,14 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			// an older reference, which must stay possible.
 			unlock := s.acquireMirrorReadLock()
 
-			if !retryAfterFailure && !s.DeployConfig.ForceRecreate &&
-				isStaleDeployment(s.Repository.Git, latestHash, deployedHash, stageLog) {
-				unlock()
-				return ErrSkipDeployment
+			if !retryAfterFailure && !s.DeployConfig.ForceRecreate {
+				stale, _ := measurePreDeployOperation(stageLog, "git_ancestry", func() (bool, error) {
+					return isStaleDeployment(s.Repository.Git, latestHash, deployedHash, stageLog), nil
+				})
+				if stale {
+					unlock()
+					return ErrSkipDeployment
+				}
 			}
 
 			gitChangedFiles := make([]git.ChangedFile, 0)
@@ -407,7 +442,11 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 					return fmt.Errorf("failed to resolve deployed commit %s: %w", deployedCommit, err)
 				}
 			} else {
-				gitChangedFiles, err = git.GetChangedFilesBetweenCommits(s.Repository.Git, deployedHash, latestHash)
+				gitChangedFiles, err = measurePreDeployOperation(stageLog, "git_changed_files", func() ([]git.ChangedFile, error) {
+					return s.GitChanges.changedFiles(s.Repository.MirrorDir, deployedHash, latestHash, func() ([]git.ChangedFile, error) {
+						return git.GetChangedFilesBetweenCommits(s.Repository.Git, deployedHash, latestHash)
+					})
+				})
 				if err != nil {
 					unlock()
 					return fmt.Errorf("failed to get changed files between commits: %w", err)
@@ -418,10 +457,22 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 			changedFiles := docker.GetPathsFromGitChangedFiles(gitChangedFiles, s.Repository.PathExternal)
 
-			changedServices, ignoredInfo, err = docker.ProjectFilesHaveChanges(s.Repository.PathExternal, changedFiles, s.Docker.Project)
-			if err != nil {
-				return fmt.Errorf("failed to check for changed project files: %s", err)
+			type projectChanges struct {
+				changed []docker.Change
+				ignored docker.IgnoredInfo
 			}
+
+			mappedChanges, mapErr := measurePreDeployOperation(stageLog, "project_change_mapping", func() (projectChanges, error) {
+				changed, ignored, changeErr := docker.ProjectFilesHaveChanges(s.Repository.PathExternal, changedFiles, s.Docker.Project)
+
+				return projectChanges{changed: changed, ignored: ignored}, changeErr
+			})
+			if mapErr != nil {
+				return fmt.Errorf("failed to check for changed project files: %s", mapErr)
+			}
+
+			changedServices = mappedChanges.changed
+			ignoredInfo = mappedChanges.ignored
 		}
 
 		if autoDiscoveryConfigChanged {
@@ -446,7 +497,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			stageLog.Debug("force recreate enabled, proceeding with deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
-		} else if !deploymentModeMigrated &&
+		} else if !s.DeployState.modeMigrationNeeded &&
 			shouldSkipDeployment(retryAfterFailure, composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
@@ -461,7 +512,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		// only enriches the notification and must never change the outcome: an error is
 		// logged and dropped rather than failing a deployment that is going ahead.
 		if len(imageChangedServices) == 0 {
-			refChangedServices, err := docker.DeployedServicesWithChangedImageRefs(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, stageLog)
+			refChangedServices, err := measurePreDeployOperation(stageLog, "image_reference_lookup", func() ([]string, error) {
+				return docker.DeployedServicesWithChangedImageRefs(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, stageLog)
+			})
 			if err != nil {
 				stageLog.Warn("failed to compare deployed image references", slog.String("err", err.Error()))
 			} else {
@@ -561,18 +614,13 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 		return "", fmt.Errorf("failed to check for default compose files: %w", err)
 	}
 
-	// LoadCompose decrypts SOPS-encrypted files in place, so lock the published artifact
-	// directory this deployment reads from, so two deployments landing on the exact same
-	// revision never race on the same in-place decryption.
-	unlockSource := sourcecache.AcquirePathLock(s.sourceLockKey())
+	composeOpts := docker.NewComposeLoadOptions(s.AppConfig)
+	composeOpts.MutationLock = sourcecache.NewPathLocker(s.sourceLockKey())
 
 	s.Docker.Project, err = docker.LoadCompose(
 		ctx, s.Docker.Cmd, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
 		s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles,
-		s.DeployConfig.Profiles, s.DeployConfig.Internal.Environment, docker.NewComposeLoadOptions(s.AppConfig))
-
-	unlockSource()
-
+		s.DeployConfig.Profiles, s.DeployConfig.Internal.Environment, composeOpts)
 	if err != nil {
 		return "", fmt.Errorf("failed to load compose project: %w", err)
 	}

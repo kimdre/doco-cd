@@ -17,9 +17,9 @@ func init() {
 		AutoDiscoveryCacheTotal,
 		WebhookRequestsTotal, WebhookErrorsTotal, WebhookDuration,
 		DeploymentsTotal, DeploymentErrorsTotal, DeploymentDuration, DeploymentStageDuration,
-		DeploymentQueueDuration,
+		DeploymentQueueDuration, DeploymentAdmissionDuration, PreDeployOperationDuration,
 		SourcePreparationDuration,
-		DeploymentsActive, DeploymentsQueued,
+		DeploymentsActive, DeploymentsQueued, PreDeploymentsActive, PreDeploymentsQueued,
 		ScheduledRunsTotal, ScheduledRunErrorsTotal, ScheduledRunSkippedTotal,
 		ScheduledRunDuration, ScheduledRunsActive,
 		McpRequestsTotal, McpErrorsTotal, McpRequestDuration,
@@ -102,6 +102,12 @@ var (
 		Help:      "Time deployments spend waiting for admission in seconds",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"repository", "outcome"})
+	PreDeployOperationDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "pre_deploy_operation_duration_seconds",
+		Help:      "Duration of pre-deploy sub-operations",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"operation", "outcome"})
 	SourcePreparationDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "source_preparation_duration_seconds",
@@ -118,6 +124,22 @@ var (
 		Name:      "deployments_queued",
 		Help:      "Number of queued deployments waiting to start",
 	}, []string{"repository"})
+	PreDeploymentsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "pre_deployments_active",
+		Help:      "Number of active pre-deployment checks",
+	}, []string{"repository"})
+	PreDeploymentsQueued = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "pre_deployments_queued",
+		Help:      "Number of pre-deployment checks waiting for admission",
+	}, []string{"repository"})
+	DeploymentAdmissionDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "deployment_admission_duration_seconds",
+		Help:      "Time deployment work spends waiting for phase admission",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"repository", "phase", "outcome"})
 	ScheduledRunsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "scheduled_runs_total",

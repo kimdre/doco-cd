@@ -169,6 +169,7 @@ type DeploymentState struct {
 	changedServices      []docker.Change
 	imageChangedServices []string // services whose image moved: digest drift under force_image_pull, otherwise a changed image reference
 	ignoredInfo          docker.IgnoredInfo
+	modeMigrationNeeded  bool
 	DeployedCommit       string // previously-deployed commit SHA, carried to post-deploy for the changelog
 	latestCommit         string // current commit SHA, resolved during pre-deploy for reuse by deploy
 }
@@ -204,6 +205,7 @@ type StageManager struct {
 	Docker         *Docker
 	Payload        *webhook.ParsedPayload
 	Repository     *RepositoryData
+	GitChanges     *GitChangeCache
 	SecretProvider secretprovider.SecretProvider
 	Notifier       notification.Sender
 	Metadata       notification.Metadata // Notification metadata (may include reconciliation event info)
@@ -252,6 +254,7 @@ type RunInput struct {
 	Payload      *webhook.ParsedPayload
 	DeployConfig *deploy.Config `validate:"required,nostructlevel"`
 	Metadata     notification.Metadata
+	GitChanges   *GitChangeCache
 }
 
 // NewStageManager validates dependencies and run, then creates and initializes a new
@@ -275,6 +278,7 @@ func NewStageManager(dependencies Dependencies, run RunInput) (*StageManager, er
 		Docker:          run.Docker,
 		Payload:         run.Payload,
 		Repository:      run.Repository,
+		GitChanges:      run.GitChanges,
 		SecretProvider:  dependencies.SecretProvider,
 		Notifier:        dependencies.Notifier,
 		SchedulerHolds:  dependencies.SchedulerHolds,
@@ -585,4 +589,22 @@ func (s *StageManager) sourceLockKey() string {
 	}
 
 	return s.Repository.PathExternal
+}
+
+// migrationSource returns the source identity used to prove that previous-mode
+// resources belong to this deployment. Pre-deploy inspection and the deploy
+// stage's actual migration must resolve it identically, otherwise ownership
+// validation could reject a migration the inspection already approved.
+func (s *StageManager) migrationSource() string {
+	if s.Payload != nil {
+		if fullName := strings.TrimSpace(s.Payload.FullName); fullName != "" {
+			return fullName
+		}
+	}
+
+	if s.Repository == nil {
+		return ""
+	}
+
+	return s.Repository.SourceUrl
 }

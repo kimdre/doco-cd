@@ -379,13 +379,14 @@ func run() error {
 	}
 
 	reconciliationManager, err := reconciliation.NewManager(reconciliation.Dependencies{
-		AppConfig:                c,
-		DataMountPoint:           dataMountPoint,
-		DockerCLI:                dockerCli,
-		Contexts:                 contexts,
-		SecretProvider:           secretProvider,
-		Notifier:                 notifier,
-		MaxConcurrentDeployments: c.MaxConcurrentDeployments,
+		AppConfig:                   c,
+		DataMountPoint:              dataMountPoint,
+		DockerCLI:                   dockerCli,
+		Contexts:                    contexts,
+		SecretProvider:              secretProvider,
+		Notifier:                    notifier,
+		MaxConcurrentDeployments:    c.MaxConcurrentDeployments,
+		MaxConcurrentPreDeployments: c.MaxConcurrentPreDeployments,
 	})
 	if err != nil {
 		log.Critical("failed to create reconciliation manager", logger.ErrAttr(err))

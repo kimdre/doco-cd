@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	prom "github.com/prometheus/client_golang/prometheus"
+
 	"github.com/kimdre/doco-cd/internal/prometheus"
 )
 
@@ -16,9 +18,19 @@ type repoEntry struct {
 	lastUsed time.Time
 }
 
+// deploymentPhase names the admission stage a limiter guards. Pre-deploy
+// resolves sources and detects changes, deployment guards Docker mutations.
+type deploymentPhase string
+
+const (
+	phasePreDeploy  deploymentPhase = "pre_deploy"
+	phaseDeployment deploymentPhase = "deployment"
+)
+
 // DeployerLimiter bounds concurrency with a global semaphore and reports per-repository metrics.
 type DeployerLimiter struct {
 	sem             chan struct{}
+	phase           deploymentPhase
 	mu              sync.Mutex
 	entries         map[string]*repoEntry
 	cleanupInterval time.Duration
@@ -32,12 +44,23 @@ type DeployerLimiter struct {
 // It also starts a background cleanup goroutine to remove unused per-repo
 // metric bookkeeping entries.
 func NewDeployerLimiter(maxConcurrent uint) *DeployerLimiter {
+	return newDeployerLimiter(maxConcurrent, phaseDeployment)
+}
+
+// NewPreDeployLimiter creates a limiter allowing maxConcurrent pre-deployments.
+func newPreDeployLimiter(maxConcurrent uint) *DeployerLimiter {
+	return newDeployerLimiter(maxConcurrent, phasePreDeploy)
+}
+
+// newDeployerLimiter creates a limiter allowing maxConcurrent deployments or pre-deployments.
+func newDeployerLimiter(maxConcurrent uint, phase deploymentPhase) *DeployerLimiter {
 	if maxConcurrent == 0 {
 		maxConcurrent = 1
 	}
 
 	l := &DeployerLimiter{
 		sem:             make(chan struct{}, maxConcurrent),
+		phase:           phase,
 		entries:         make(map[string]*repoEntry),
 		cleanupInterval: 1 * time.Minute,
 		entryTTL:        5 * time.Minute,
@@ -49,6 +72,28 @@ func NewDeployerLimiter(maxConcurrent uint) *DeployerLimiter {
 	return l
 }
 
+// gauges returns the active/queued gauges owned by this limiter's phase.
+func (d *DeployerLimiter) gauges() (active, queued *prom.GaugeVec) {
+	if d.phase == phasePreDeploy {
+		return prometheus.PreDeploymentsActive, prometheus.PreDeploymentsQueued
+	}
+
+	return prometheus.DeploymentsActive, prometheus.DeploymentsQueued
+}
+
+// addQueued increments the queued gauge for repo by delta.
+func (d *DeployerLimiter) addQueued(repo string, delta float64) {
+	_, queued := d.gauges()
+	queued.WithLabelValues(repo).Add(delta)
+}
+
+// addActive increments the active gauge for repo by delta.
+func (d *DeployerLimiter) addActive(repo string, delta float64) {
+	active, _ := d.gauges()
+	active.WithLabelValues(repo).Add(delta)
+}
+
+// getOrCreateEntry returns the repoEntry for repo, creating it if necessary.
 func (d *DeployerLimiter) getOrCreateEntry(repo string) *repoEntry {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -87,7 +132,7 @@ func (d *DeployerLimiter) acquire(ctx context.Context, repo string) (func(), err
 	ent.mu.Lock()
 	ent.queued++
 	ent.mu.Unlock()
-	prometheus.DeploymentsQueued.WithLabelValues(repo).Inc()
+	d.addQueued(repo, 1)
 
 	select {
 	case d.sem <- struct{}{}:
@@ -97,15 +142,15 @@ func (d *DeployerLimiter) acquire(ctx context.Context, repo string) (func(), err
 		ent.lastUsed = time.Now()
 		ent.mu.Unlock()
 
-		prometheus.DeploymentsQueued.WithLabelValues(repo).Dec()
-		prometheus.DeploymentsActive.WithLabelValues(repo).Inc()
+		d.addQueued(repo, -1)
+		d.addActive(repo, 1)
 
 		return d.makeUnlock(repo, ent), nil
 	case <-ctx.Done():
 		ent.mu.Lock()
 		ent.queued--
 		ent.mu.Unlock()
-		prometheus.DeploymentsQueued.WithLabelValues(repo).Dec()
+		d.addQueued(repo, -1)
 
 		return nil, ctx.Err()
 	}
@@ -120,7 +165,7 @@ func (d *DeployerLimiter) makeUnlock(repo string, ent *repoEntry) func() {
 		ent.lastUsed = time.Now()
 		ent.mu.Unlock()
 
-		prometheus.DeploymentsActive.WithLabelValues(repo).Dec()
+		d.addActive(repo, -1)
 	}
 }
 
@@ -135,7 +180,7 @@ func (d *DeployerLimiter) TryAcquire(repo string) (func(), bool) {
 		ent.lastUsed = time.Now()
 		ent.mu.Unlock()
 
-		prometheus.DeploymentsActive.WithLabelValues(repo).Inc()
+		d.addActive(repo, 1)
 
 		return d.makeUnlock(repo, ent), true
 	default:
@@ -171,8 +216,10 @@ func (d *DeployerLimiter) cleanup(now time.Time) {
 
 		if idle {
 			delete(d.entries, repo)
-			prometheus.DeploymentsActive.WithLabelValues(repo).Set(0)
-			prometheus.DeploymentsQueued.WithLabelValues(repo).Set(0)
+
+			active, queued := d.gauges()
+			active.WithLabelValues(repo).Set(0)
+			queued.WithLabelValues(repo).Set(0)
 		}
 	}
 }

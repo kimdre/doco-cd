@@ -39,6 +39,8 @@ type Dependencies struct {
 	// MaxConcurrentDeployments controls how many deployments can run concurrently within a manager instance.
 	// It sets the capacity of a semaphore-based limiter (DeployerLimiter).
 	MaxConcurrentDeployments uint `validate:"min=1"`
+	// MaxConcurrentPreDeployments controls concurrent initialization and change detection.
+	MaxConcurrentPreDeployments uint `validate:"min=1"`
 
 	AppConfig      *app.Config             `validate:"required,nostructlevel"`
 	DataMountPoint container.MountPoint    `validate:"required"`
@@ -74,15 +76,16 @@ func (dockerRuntimeQueries) ListManagedRepositoryServices(ctx context.Context, a
 // Manager owns reconciliation jobs, active-deployment tracking, scheduler
 // holds, and deployment admission state.
 type Manager struct {
-	jobs           jobRegistry
-	deployments    deploymentTracker
-	schedulerHolds schedulerHoldRegistry
-	limiter        *DeployerLimiter
-	closeOnce      sync.Once
-	lifecycleMu    sync.Mutex
-	closed         bool
-	deployWG       sync.WaitGroup
-	jobWG          sync.WaitGroup
+	jobs             jobRegistry
+	deployments      deploymentTracker
+	schedulerHolds   schedulerHoldRegistry
+	limiter          *DeployerLimiter
+	preDeployLimiter *DeployerLimiter
+	closeOnce        sync.Once
+	lifecycleMu      sync.Mutex
+	closed           bool
+	deployWG         sync.WaitGroup
+	jobWG            sync.WaitGroup
 
 	// Stable application dependencies shared by every deployment; see Dependencies.
 	appConfig      *app.Config
@@ -104,6 +107,10 @@ func NewManager(dependencies Dependencies) (*Manager, error) {
 		dependencies.MaxConcurrentDeployments = 1
 	}
 
+	if dependencies.MaxConcurrentPreDeployments == 0 {
+		dependencies.MaxConcurrentPreDeployments = dependencies.MaxConcurrentDeployments
+	}
+
 	if dependencies.RuntimeQueries == nil {
 		dependencies.RuntimeQueries = dockerRuntimeQueries{}
 	}
@@ -113,18 +120,19 @@ func NewManager(dependencies Dependencies) (*Manager, error) {
 	}
 
 	return &Manager{
-		jobs:            jobRegistry{jobs: make(map[string]*job)},
-		deployments:     deploymentTracker{stacks: make(map[string]int)},
-		schedulerHolds:  schedulerHoldRegistry{services: make(map[string]schedulerHoldEntry)},
-		limiter:         NewDeployerLimiter(dependencies.MaxConcurrentDeployments),
-		appConfig:       dependencies.AppConfig,
-		dataMountPoint:  dependencies.DataMountPoint,
-		dockerCli:       dependencies.DockerCLI,
-		contexts:        dependencies.Contexts,
-		secretProvider:  dependencies.SecretProvider,
-		notifier:        dependencies.Notifier,
-		runtimeQueries:  dependencies.RuntimeQueries,
-		leftoverTracker: migration.NewLeftoverTracker(),
+		jobs:             jobRegistry{jobs: make(map[string]*job)},
+		deployments:      deploymentTracker{stacks: make(map[string]int)},
+		schedulerHolds:   schedulerHoldRegistry{services: make(map[string]schedulerHoldEntry)},
+		limiter:          NewDeployerLimiter(dependencies.MaxConcurrentDeployments),
+		preDeployLimiter: newPreDeployLimiter(dependencies.MaxConcurrentPreDeployments),
+		appConfig:        dependencies.AppConfig,
+		dataMountPoint:   dependencies.DataMountPoint,
+		dockerCli:        dependencies.DockerCLI,
+		contexts:         dependencies.Contexts,
+		secretProvider:   dependencies.SecretProvider,
+		notifier:         dependencies.Notifier,
+		runtimeQueries:   dependencies.RuntimeQueries,
+		leftoverTracker:  migration.NewLeftoverTracker(),
 	}, nil
 }
 
@@ -262,6 +270,7 @@ func (m *Manager) Close() {
 		m.deployments.clear()
 		m.schedulerHolds.clear()
 		m.limiter.Close()
+		m.preDeployLimiter.Close()
 	})
 }
 

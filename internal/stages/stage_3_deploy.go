@@ -22,6 +22,23 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 
 	var err error
 
+	// Migrate deployment mode if needed
+	if s.DeployState.modeMigrationNeeded {
+		_, err = docker.MigrateDeploymentMode(
+			ctx,
+			stageLog,
+			s.Docker.Cmd,
+			s.DeployConfig.Context,
+			s.DeployConfig.Name,
+			s.migrationSource(),
+			s.Docker.SwarmMode,
+			s.Docker.SwarmAvailable,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to migrate deployment mode: %w", err)
+		}
+	}
+
 	latestCommit := strings.TrimSpace(s.Repository.Revision)
 	if s.Repository.Source != config.SourceTypeOCI {
 		latestCommit = s.DeployState.latestCommit

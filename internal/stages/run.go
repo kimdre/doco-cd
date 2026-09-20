@@ -17,6 +17,10 @@ import (
 
 type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
 
+// MutationAdmission is invoked after pre-deploy confirms that a deployment
+// requires mutation. The returned function releases the mutation admission.
+type MutationAdmission func(context.Context) (func(), error)
+
 func successfulCommitStatusDescription(startedAt, finishedAt time.Time) string {
 	if startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) {
 		return "Successful"
@@ -99,11 +103,20 @@ func (s *StageManager) GetDestroyStageOrder() StageOrder {
 	}
 }
 
-// RunStages executes the stages in the defined order.
-func (s *StageManager) RunStages(ctx context.Context) error {
+// RunStages executes the stages in the defined order. For regular deployments,
+// admitMutation runs after a successful pre-deploy stage and before any
+// deployment-side notifications or mutations.
+func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmission) error {
 	defer func() {
 		if s.releaseGCLock != nil {
 			s.releaseGCLock()
+		}
+	}()
+
+	var releaseMutation func()
+	defer func() {
+		if releaseMutation != nil {
+			releaseMutation()
 		}
 	}()
 
@@ -161,6 +174,17 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 		stageLog.Debug(string("completed stage: "+stageName),
 			slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
 		finishedAt = metadata.FinishedAt
+
+		if stageName == StagePreDeploy && admitMutation != nil {
+			var admissionErr error
+
+			releaseMutation, admissionErr = admitMutation(ctx)
+			if admissionErr != nil {
+				return admissionErr
+			}
+
+			admitMutation = nil
+		}
 
 		if shouldSendDeploymentStartedNotification(stageName, s.DeployConfig.Destroy.Enabled, startedNotified) {
 			if err := s.NotifyDeploymentStarted(); err != nil {
