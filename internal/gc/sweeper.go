@@ -111,28 +111,36 @@ func (s *Sweeper) sweep(ctx context.Context) {
 		default:
 		}
 
-		unlockGC, acquired, lockErr := sourcecache.TryAcquireExclusiveGCPathLock(repoDir)
-		if lockErr != nil {
-			s.log.Error("gc: failed to acquire repository GC lock; skipping repository",
-				slog.String("repository", repoDir), logger.ErrAttr(lockErr))
+		// Each iteration releases the gate via defer so a panic in liveRevisions or
+		// sweepRepoDir - which graceful.SafeGo recovers - cannot leave the exclusive
+		// lock held, which would block every later deployment of this repository forever.
+		if stop := func() bool {
+			unlockGC, acquired, lockErr := sourcecache.TryAcquireExclusiveGCPathLock(repoDir)
+			if lockErr != nil {
+				s.log.Error("gc: failed to acquire repository GC lock; skipping repository",
+					slog.String("repository", repoDir), logger.ErrAttr(lockErr))
 
-			continue
-		}
+				return false
+			}
 
-		if !acquired {
-			continue
-		}
+			if !acquired {
+				return false
+			}
 
-		live, err := s.liveRevisions(ctx, s.contexts, s.log, s.dataMountSource, s.dataMountPoint)
-		if err != nil {
-			unlockGC()
-			s.log.Error("gc: failed to discover all live revisions; skipping sweep", logger.ErrAttr(err))
+			defer unlockGC()
 
+			live, err := s.liveRevisions(ctx, s.contexts, s.log, s.dataMountSource, s.dataMountPoint)
+			if err != nil {
+				s.log.Error("gc: failed to discover all live revisions; skipping sweep", logger.ErrAttr(err))
+				return true
+			}
+
+			s.sweepRepoDir(repoDir, live)
+
+			return false
+		}(); stop {
 			return
 		}
-
-		s.sweepRepoDir(repoDir, live)
-		unlockGC()
 	}
 }
 
