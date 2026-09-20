@@ -117,7 +117,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 
 		req.Logger.Debug("resolved and published repository content",
 			slog.String("revision", gitResult.revision),
-			slog.Duration("elapsed", time.Since(sourceStartedAt)))
+			slog.String("elapsed_time", time.Since(sourceStartedAt).Truncate(time.Millisecond).String()))
 
 		resolvedRevision = gitResult.revision
 		gitMirrorDir = gitResult.mirrorDir
@@ -142,7 +142,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 
 		req.Logger.Debug("resolved and published artifact content",
 			slog.String("revision", resolvedRevision),
-			slog.Duration("elapsed", time.Since(sourceStartedAt)))
+			slog.String("elapsed_time", time.Since(sourceStartedAt).Truncate(time.Millisecond).String()))
 
 		rel, relErr := filepath.Rel(internalRepoPath, ociResult.artifactPath)
 		if relErr != nil {
@@ -177,7 +177,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 
 	req.Logger.Debug("resolved deploy configs",
 		slog.Int("count", len(deployConfigs)),
-		slog.Duration("elapsed", time.Since(deployConfigsStartedAt)))
+		slog.String("elapsed_time", time.Since(deployConfigsStartedAt).Truncate(time.Millisecond).String()))
 
 	// For OCI sources, the deploy config's reference must reflect the actual artifact tag that
 	// triggered this deployment (e.g. "latest"). A deployment-level Git repository keeps its configured Git reference.
@@ -204,7 +204,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 	req.Logger.Debug("source prepared",
 		slog.String("source_type", sourceLabel),
 		slog.String("revision", resolvedRevision),
-		slog.Duration("elapsed", time.Since(startedAt)))
+		slog.String("elapsed_time", time.Since(startedAt).Truncate(time.Millisecond).String()))
 
 	return Result{
 		SourceType:    sourceType,

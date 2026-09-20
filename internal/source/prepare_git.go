@@ -70,7 +70,7 @@ func (p *Preparer) prepareGit(ctx context.Context, req Request, storeBaseDir, in
 	req.Logger.Debug("fetched and resolved git reference",
 		slog.String("reference", req.Ref),
 		slog.String("revision", string(revision)),
-		slog.Duration("elapsed", time.Since(resolveStartedAt)))
+		slog.String("elapsed_time", time.Since(resolveStartedAt).Truncate(time.Millisecond).String()))
 
 	publishStartedAt := time.Now()
 
@@ -81,7 +81,7 @@ func (p *Preparer) prepareGit(ctx context.Context, req Request, storeBaseDir, in
 
 	req.Logger.Debug("published and decrypted git artifact",
 		slog.String("revision", string(revision)),
-		slog.Duration("elapsed", time.Since(publishStartedAt)))
+		slog.String("elapsed_time", time.Since(publishStartedAt).Truncate(time.Millisecond).String()))
 
 	result.revision = string(revision)
 	result.artifactPath = artifact.Path
