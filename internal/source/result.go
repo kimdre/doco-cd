@@ -17,6 +17,7 @@ type Result struct {
 	PathInternal  string            // Path to the repository/artifact inside the container
 	PathExternal  string            // Path to the repository/artifact on the host machine
 	Revision      string            // Resolved immutable revision (commit SHA or OCI digest)
+	MirrorDir     string            // Path of Git's bare mirror clone backing this result; empty for OCI sources
 	OCITrusted    bool              // True when the OCI artifact passed trust-policy verification (always true for Git)
 	DeployConfigs []*deploy.Config  // Resolved deployment configurations for this run
 	Payload       webhook.ParsedPayload

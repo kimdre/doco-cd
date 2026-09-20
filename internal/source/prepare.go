@@ -190,6 +190,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 		PathInternal:  resultPathInternal,
 		PathExternal:  resultPathExternal,
 		Revision:      resolvedRevision,
+		MirrorDir:     gitMirrorDir,
 		OCITrusted:    ociTrusted,
 		DeployConfigs: deployConfigs,
 		Payload:       payload,

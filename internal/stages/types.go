@@ -128,18 +128,19 @@ type Stages struct {
 
 // RepositoryData holds information about the triggering repository.
 type RepositoryData struct {
-	Source          types2.SourceType // Source backend used for this deployment (git or oci)
-	SourceUrl       string            // Repository or OCI artifact URL used for the deployment
-	ConfigSourceUrl string            // Resolved URL of the repository or artifact containing the deploy config
-	Name            string            // Repository name (e.g., "user/my-repo")
-	PathInternal    string            // Path to the repository inside the container
-	PathExternal    string            // Path to the repository on the host machine
-	Git             *git.Repository   // Git repository instance
-	MirrorDir       string            // Path of Git's bare mirror clone backing Git; empty for OCI sources
-	Revision        string            // Resolved immutable revision (commit SHA or digest)
-	ConfigRevision  string            // Immutable revision containing the deploy config
-	ConfigPath      string            // Host path to the config source artifact
-	OCITrusted      bool              // True when the OCI artifact passed trust-policy verification before reconciliation/cleanup
+	Source            types2.SourceType // Source backend used for this deployment (git or oci)
+	SourceUrl         string            // Repository or OCI artifact URL used for the deployment
+	ConfigSourceUrl   string            // Resolved URL of the repository or artifact containing the deploy config
+	Name              string            // Repository name (e.g., "user/my-repo")
+	PathInternal      string            // Path to the repository inside the container
+	PathExternal      string            // Path to the repository on the host machine
+	Git               *git.Repository   // Git repository instance
+	MirrorDir         string            // Path of Git's bare mirror clone backing Git; empty for OCI sources
+	Revision          string            // Resolved immutable revision (commit SHA or digest)
+	ResolvedReference string            // Reference that Revision/MirrorDir were resolved against (e.g., the branch/tag from the triggering job); empty for OCI sources
+	ConfigRevision    string            // Immutable revision containing the deploy config
+	ConfigPath        string            // Host path to the config source artifact
+	OCITrusted        bool              // True when the OCI artifact passed trust-policy verification before reconciliation/cleanup
 }
 
 // SchedulerStopHolds reports whether a Compose service is currently held
