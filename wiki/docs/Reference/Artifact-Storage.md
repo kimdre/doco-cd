@@ -23,28 +23,28 @@ The source directory is organized by source type and source name, and contains t
 
     A Git source may have the following layout:
 
-    ```text title="Example Git Source Layout"
+    ```tree title="Example Git Source Layout"
     <DATA_MOUNT_PATH>/
-    └── github.com/
-        └── org/
-            ├── example/  # Source directory
-            │   ├── artifacts/  # Immutable Git tree exports
-            │   │   ├── <revision>/  # Immutable export of a Git tree for a specific revision
-            │   │   ├── <revision>.lock  # Lock file for artifact access
-            │   │   └── ...
-            │   ├── mirror/  # Bare Git repository mirror
-            │   │   ├── HEAD
-            │   │   ├── config
-            │   │   ├── objects/
-            │   │   ├── refs/
-            │   │   └── ...
-            │   ├── mirror.lock  # Lock file for mirror access
-            │   └── submodules/  # Cached submodule data
-            │       ├── <submodule-revision>/  # Submodule data for a specific revision
-            │       ├── <submodule-revision>.lock  # Lock file for submodule access
-            │       └── ...
-            ├── example.gc-use.lock  # Lock file for the garbage collector while the source is in use
-            └── example.lock  # Lock file for source-level operations
+      github.com/
+        org/
+          example/  # Source directory
+            artifacts/  # Immutable Git tree exports
+              <revision>/  # Immutable export of a Git tree for a specific revision
+              <revision>.lock  # Lock file for artifact access
+              ...
+            mirror/  # Bare Git repository mirror
+              HEAD
+              config
+              objects/
+              refs/
+              ...
+            mirror.lock  # Lock file for mirror access
+            submodules/  # Cached submodule data
+              <submodule-revision>/  # Submodule data for a specific revision
+              <submodule-revision>.lock  # Lock file for submodule access
+              ...
+            example.gc-use.lock  # Lock file for the garbage collector while the source is in use
+            example.lock  # Lock file for source-level operations
     ```
 
     - `mirror` is a bare Git mirror used to resolve revisions. It is never checked out directly.
@@ -61,17 +61,17 @@ The source directory is organized by source type and source name, and contains t
 
     An OCI source may have the following layout:
 
-    ```text title="Example OCI Source Layout"
+    ```tree title="Example OCI Source Layout"
     <DATA_MOUNT_PATH>/
-    └── ghcr.io/
-        └── org/
-            ├── example/  # Source directory
-            │   └── artifacts/  # Immutable OCI artifact exports
-            │       ├── sha256-<digest>/  # Extracted artifact for a specific digest
-            │       ├── sha256-<digest>.lock  # Lock file for artifact access
-            │       └── ...
-            ├── example.gc-use.lock  # Lock file for the garbage collector while the source is in use
-            └── example.lock  # Lock file for source-level operations
+      ghcr.io/
+        org/
+          example/  # Source directory
+            artifacts/  # Immutable OCI artifact exports
+              sha256-<digest>/  # Extracted artifact for a specific digest
+              sha256-<digest>.lock  # Lock file for artifact access
+              ...
+            example.gc-use.lock  # Lock file for the garbage collector while the source is in use
+            example.lock  # Lock file for source-level operations
     ```
 
     - `artifacts/<digest>` is an immutable extraction of the OCI artifact for a
