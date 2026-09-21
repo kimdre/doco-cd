@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/migration"
@@ -59,15 +60,28 @@ func (p *Preparer) prepareGit(ctx context.Context, req Request, storeBaseDir, in
 		}
 	}
 
+	resolveStartedAt := time.Now()
+
 	revision, err := gitStore.Resolve(ctx, req.Ref)
 	if err != nil {
 		return result, wrapPrepareError(ErrGitClone, err)
 	}
 
+	req.Logger.Debug("fetched and resolved git reference",
+		slog.String("reference", req.Ref),
+		slog.String("revision", string(revision)),
+		slog.String("elapsed_time", time.Since(resolveStartedAt).Truncate(time.Millisecond).String()))
+
+	publishStartedAt := time.Now()
+
 	artifact, err := gitStore.Publish(ctx, revision)
 	if err != nil {
 		return result, wrapPrepareError(ErrGitClone, err)
 	}
+
+	req.Logger.Debug("published and decrypted git artifact",
+		slog.String("revision", string(revision)),
+		slog.String("elapsed_time", time.Since(publishStartedAt).Truncate(time.Millisecond).String()))
 
 	result.revision = string(revision)
 	result.artifactPath = artifact.Path

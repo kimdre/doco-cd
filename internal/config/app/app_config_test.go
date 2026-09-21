@@ -691,6 +691,33 @@ func TestGetConfig_OciVerifyMaxWorkersRejectsZero(t *testing.T) {
 	}
 }
 
+func TestGetConfig_MaxConcurrentPreDeploymentsDefaultsToEight(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("MAX_CONCURRENT_PREDEPLOYMENTS", "")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.MaxConcurrentPreDeployments != 8 {
+		t.Fatalf("expected MAX_CONCURRENT_PREDEPLOYMENTS default to be 8, got %d", cfg.MaxConcurrentPreDeployments)
+	}
+}
+
+func TestGetConfig_MaxConcurrentPreDeploymentsRejectsZero(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("MAX_CONCURRENT_PREDEPLOYMENTS", "0")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected MAX_CONCURRENT_PREDEPLOYMENTS=0 to be rejected")
+	}
+}
+
 func TestGetConfig_DataMountPathDefaultsToData(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")

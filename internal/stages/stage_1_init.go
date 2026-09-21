@@ -7,6 +7,7 @@ import (
 	"maps"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -93,12 +94,31 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 	}
 
+	// A stack tracking the same repository/reference that Prepare already resolved for this job
+	// (the common case for auto-discovered stacks on the triggering branch) can reuse that
+	// resolution instead of paying for its own redundant fetch: Prepare already ran Resolve+Publish
+	// once for the whole job, and RunInitStage would otherwise re-run gitStore.Resolve (a real
+	// network fetch guarded by the mirror's exclusive path lock) for every single matched stack,
+	// serializing them all behind that one shared mirror.
+	// A stack that overrides git_depth needs its own Resolve: Prepare mirrors at the global
+	// depth, and reusing that shallower mirror would hide the history the stack asked for from
+	// the deployed-commit lookup and the changed-file/changelog comparisons in the later stages.
+	fastPathEligible := s.DeployConfig.RepositoryUrl == "" &&
+		s.Repository.Source != config.SourceTypeOCI &&
+		s.Repository.MirrorDir != "" &&
+		s.Repository.Revision != "" &&
+		s.Repository.PathInternal != "" &&
+		resolvedReferenceMatches(s.Repository.ResolvedReference, s.DeployConfig.Reference) &&
+		s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth) == s.AppConfig.GitCloneDepth
+
 	// Git sources deliberately reset to the store's base directory here:
 	// the store below republishes this stack's own reference out of it.
 	// For OCI sources Prepare already resolved these paths to the published artifact directory,
 	// and recomputing them would point the deployment at the base directory instead -
 	// which holds the pull cache and every published artifact, but no compose file.
-	if s.Repository.Source != config.SourceTypeOCI || s.DeployConfig.RepositoryUrl != "" {
+	// The fast path above keeps Prepare's already-published artifact paths instead: there is
+	// nothing left to republish, so resetting to the base directory here would just be undone.
+	if (s.Repository.Source != config.SourceTypeOCI && !fastPathEligible) || s.DeployConfig.RepositoryUrl != "" {
 		s.Repository.PathInternal, err = filesystem.VerifyAndSanitizePath(filepath.Join(s.Docker.DataMountPoint.Destination, s.Repository.Name), s.Docker.DataMountPoint.Destination) // Path inside the container
 		if err != nil {
 			return fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err)
@@ -183,72 +203,111 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	// This deployment may resolve a different repository or revision than
 	// Prepare did. Hold that store's GC gate until RunStages finishes.
-	s.releaseGCLock, err = sourcecache.AcquireSharedGCPathLock(s.Repository.PathInternal)
+	//
+	// The GC gate is always keyed by the store's base directory (not the resolved artifact directory),
+	// matching every other acquisition of this lock (Prepare, OCI branch above, GC sweep itself).
+	// In the fast path below, s.Repository.PathInternal already points at Prepare's
+	// resolved artifact directory rather than the base directory - it must be recomputed here
+	// rather than reused, or this would take a lock on the wrong path and not actually exclude GC.
+	gcBaseDir, err := filesystem.VerifyAndSanitizePath(filepath.Join(s.Docker.DataMountPoint.Destination, s.Repository.Name), s.Docker.DataMountPoint.Destination)
+	if err != nil {
+		return fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err)
+	}
+
+	s.releaseGCLock, err = sourcecache.AcquireSharedGCPathLock(gcBaseDir)
 	if err != nil {
 		return fmt.Errorf("acquire artifact GC lock: %w", err)
 	}
 
-	// Ask the immutable per-revision store for this stack's reference,
-	// rather than checking out a path shared with every other stack/
-	// reference using the same repository (whether that's the primary
-	// source repository, or one named by this stack's own RepositoryUrl).
-	// GitStore locks its own mirror internally, so concurrent stacks
-	// resolving different references (or the same one) no longer need a
-	// wrapping lock here to stay correct.
-	gitStore, err := store.NewGitStore(store.GitStoreOptions{
-		Log:                     stageLog,
-		CloneURL:                s.Repository.SourceUrl,
-		BaseDir:                 s.Repository.PathInternal,
-		SSHPrivateKey:           s.AppConfig.SSHPrivateKey,
-		SSHPrivateKeyPassphrase: s.AppConfig.SSHPrivateKeyPassphrase,
-		AccessToken:             s.AppConfig.GitAccessToken,
-		SkipTLSVerify:           s.AppConfig.SkipTLSVerification,
-		ProxyOptions:            s.AppConfig.HttpProxy,
-		CloneSubmodules:         s.AppConfig.GitCloneSubmodules,
-		Depth:                   s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to initialize git store: %w", err)
+	if fastPathEligible {
+		// Prepare already resolved and published this exact repository/reference for this job -
+		// reuse that artifact/revision/mirror as-is instead of re-running Resolve+Publish (a real
+		// network fetch) for this stack too. Only the mirror needs opening here, to give this
+		// stack its own *git.Repository handle for later stages.
+		//
+		// The shared path lock below matches GitStore.MirrorDir's documented invariant:
+		// Resolve/Publish only exclude each other via the mirror's own exclusive lock, so reading the
+		// mirror while some other stack's slow path is still fetching into it (e.g. a stack whose
+		// deploy config names a different reference) could otherwise observe it mid-fetch.
+		unlockMirror := sourcecache.AcquireSharedPathLock(s.Repository.MirrorDir)
+		mirrorRepo, openErr := git.OpenRepository(s.Repository.MirrorDir)
+
+		unlockMirror()
+
+		if openErr != nil {
+			return fmt.Errorf("failed to open repository mirror: %w", openErr)
+		}
+
+		s.Repository.Git = mirrorRepo
+
+		stageLog.Debug("reusing already-resolved repository artifact",
+			slog.String("url", s.Repository.SourceUrl),
+			slog.String("reference", s.DeployConfig.Reference),
+			slog.String("revision", s.Repository.Revision),
+			slog.String("path", s.Repository.PathExternal))
+	} else {
+		// Ask the immutable per-revision store for this stack's reference,
+		// rather than checking out a path shared with every other stack/
+		// reference using the same repository (whether that's the primary
+		// source repository, or one named by this stack's own RepositoryUrl).
+		// GitStore locks its own mirror internally, so concurrent stacks
+		// resolving different references (or the same one) no longer need a
+		// wrapping lock here to stay correct.
+		gitStore, gitStoreErr := store.NewGitStore(store.GitStoreOptions{
+			Log:                     stageLog,
+			CloneURL:                s.Repository.SourceUrl,
+			BaseDir:                 s.Repository.PathInternal,
+			SSHPrivateKey:           s.AppConfig.SSHPrivateKey,
+			SSHPrivateKeyPassphrase: s.AppConfig.SSHPrivateKeyPassphrase,
+			AccessToken:             s.AppConfig.GitAccessToken,
+			SkipTLSVerify:           s.AppConfig.SkipTLSVerification,
+			ProxyOptions:            s.AppConfig.HttpProxy,
+			CloneSubmodules:         s.AppConfig.GitCloneSubmodules,
+			Depth:                   s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth),
+		})
+		if gitStoreErr != nil {
+			return fmt.Errorf("failed to initialize git store: %w", gitStoreErr)
+		}
+
+		revision, resolveErr := gitStore.Resolve(ctx, s.DeployConfig.Reference)
+		if resolveErr != nil {
+			return fmt.Errorf("failed to resolve reference %s: %w", s.DeployConfig.Reference, resolveErr)
+		}
+
+		artifact, pErr := gitStore.Publish(ctx, revision)
+		if pErr != nil {
+			return fmt.Errorf("failed to publish artifact for revision %s: %w", revision, pErr)
+		}
+
+		rel, relErr := filepath.Rel(s.Docker.DataMountPoint.Destination, artifact.Path)
+		if relErr != nil {
+			return fmt.Errorf("failed to compute external path for artifact: %w", relErr)
+		}
+
+		s.Repository.PathInternal = artifact.Path
+		s.Repository.PathExternal = filepath.Join(s.Docker.DataMountPoint.Source, rel)
+
+		// This stack deploys exactly this revision - its deploy config may name a
+		// different reference (or a different repository) than the event that
+		// triggered the run resolved to. Recording it means later stages compare
+		// against and label with what was published here, instead of re-resolving
+		// the reference against a mirror another run may have advanced in the meantime.
+		s.Repository.Revision = string(revision)
+
+		mirrorRepo, openErr := git.OpenRepository(gitStore.MirrorDir())
+		if openErr != nil {
+			return fmt.Errorf("failed to open repository mirror: %w", openErr)
+		}
+
+		s.Repository.Git = mirrorRepo
+		s.Repository.MirrorDir = gitStore.MirrorDir()
+
+		stageLog.Debug("resolved repository artifact",
+			slog.String("url", s.Repository.SourceUrl),
+			slog.String("reference", s.DeployConfig.Reference),
+			slog.String("revision", string(revision)),
+			slog.String("path", s.Repository.PathExternal))
 	}
-
-	revision, err := gitStore.Resolve(ctx, s.DeployConfig.Reference)
-	if err != nil {
-		return fmt.Errorf("failed to resolve reference %s: %w", s.DeployConfig.Reference, err)
-	}
-
-	artifact, err := gitStore.Publish(ctx, revision)
-	if err != nil {
-		return fmt.Errorf("failed to publish artifact for revision %s: %w", revision, err)
-	}
-
-	rel, relErr := filepath.Rel(s.Docker.DataMountPoint.Destination, artifact.Path)
-	if relErr != nil {
-		return fmt.Errorf("failed to compute external path for artifact: %w", relErr)
-	}
-
-	s.Repository.PathInternal = artifact.Path
-	s.Repository.PathExternal = filepath.Join(s.Docker.DataMountPoint.Source, rel)
-
-	// This stack deploys exactly this revision - its deploy config may name a
-	// different reference (or a different repository) than the event that
-	// triggered the run resolved to. Recording it means later stages compare
-	// against and label with what was published here, instead of re-resolving
-	// the reference against a mirror another run may have advanced in the meantime.
-	s.Repository.Revision = string(revision)
-
-	mirrorRepo, err := git.OpenRepository(gitStore.MirrorDir())
-	if err != nil {
-		return fmt.Errorf("failed to open repository mirror: %w", err)
-	}
-
-	s.Repository.Git = mirrorRepo
-	s.Repository.MirrorDir = gitStore.MirrorDir()
-
-	stageLog.Debug("resolved repository artifact",
-		slog.String("url", s.Repository.SourceUrl),
-		slog.String("reference", s.DeployConfig.Reference),
-		slog.String("revision", string(revision)),
-		slog.String("path", s.Repository.PathExternal))
 
 	if s.DeployConfig.RepositoryUrl != "" {
 		// Now also load remote dotenv files.
@@ -332,6 +391,21 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	return nil
+}
+
+// resolvedReferenceMatches treats a webhook's fully qualified branch reference
+// as equivalent to the short branch name accepted by deployment configs.
+// Keep the normalization asymmetric: a short configured tag can be ambiguous
+// with a same-named branch, while refs/heads/<name> unambiguously identifies
+// the branch Prepare resolved.
+func resolvedReferenceMatches(resolvedReference, configuredReference string) bool {
+	if resolvedReference == configuredReference {
+		return true
+	}
+
+	branch, ok := strings.CutPrefix(resolvedReference, git.BranchPrefix)
+
+	return ok && branch == configuredReference
 }
 
 // MatchesWebhookEventFilter reports whether this run should proceed based on

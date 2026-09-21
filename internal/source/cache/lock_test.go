@@ -115,6 +115,42 @@ func TestAcquirePathLock_Blocks(t *testing.T) {
 	}
 }
 
+func TestPathLockerCanBeShared(t *testing.T) {
+	t.Parallel()
+
+	locker := sourcecache.NewPathLocker(filepath.Join(t.TempDir(), "repo"))
+	locker.Lock()
+
+	acquired := make(chan struct{})
+	released := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		locker.Lock()
+		close(acquired)
+		<-released
+		locker.Unlock()
+		close(done)
+	}()
+
+	select {
+	case <-acquired:
+		t.Fatal("shared PathLocker allowed overlapping holders")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	locker.Unlock()
+
+	select {
+	case <-acquired:
+	case <-time.After(time.Second):
+		t.Fatal("shared PathLocker did not admit the waiter after unlock")
+	}
+
+	close(released)
+	<-done
+}
+
 // TestAcquirePathLock_CanonicalizesSymlinks verifies that a path and a
 // symlink pointing at it resolve to the same lock, so two callers naming the
 // same physical directory differently still exclude each other.

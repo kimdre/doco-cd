@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -104,6 +105,8 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 
 	var gitMirrorDir string
 
+	sourceStartedAt := time.Now()
+
 	switch sourceType {
 	case config.SourceTypeGit:
 		gitResult, gitErr := p.prepareGit(ctx, req, internalRepoPath, resolvedRevision)
@@ -111,6 +114,10 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 			p.postEarlyFailureCommitStatus(ctx, req, sourceType, gitResult.revision, payload, gitErr)
 			return Result{}, gitErr
 		}
+
+		req.Logger.Info("resolved and published repository content",
+			slog.String("revision", gitResult.revision),
+			slog.String("elapsed_time", time.Since(sourceStartedAt).Truncate(time.Millisecond).String()))
 
 		resolvedRevision = gitResult.revision
 		gitMirrorDir = gitResult.mirrorDir
@@ -132,6 +139,10 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 		resolvedRevision = ociResult.revision
 		ociTrusted = true
 		resultPathInternal = ociResult.artifactPath
+
+		req.Logger.Info("resolved and published artifact content",
+			slog.String("revision", resolvedRevision),
+			slog.String("elapsed_time", time.Since(sourceStartedAt).Truncate(time.Millisecond).String()))
 
 		rel, relErr := filepath.Rel(internalRepoPath, ociResult.artifactPath)
 		if relErr != nil {
@@ -156,11 +167,17 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 		}
 	}()
 
+	deployConfigsStartedAt := time.Now()
+
 	deployConfigs, err := p.resolveDeployConfigs(ctx, req, resultPathInternal, gitMirrorDir, resolvedRevision, payload.Ref)
 	if err != nil {
 		p.postEarlyFailureCommitStatus(ctx, req, sourceType, resolvedRevision, payload, err)
 		return Result{}, err
 	}
+
+	req.Logger.Info("resolved deploy configs",
+		slog.Int("count", len(deployConfigs)),
+		slog.String("elapsed_time", time.Since(deployConfigsStartedAt).Truncate(time.Millisecond).String()))
 
 	// For OCI sources, the deploy config's reference must reflect the actual artifact tag that
 	// triggered this deployment (e.g. "latest"). A deployment-level Git repository keeps its configured Git reference.
@@ -184,12 +201,18 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 	}
 	transferGCLock = true
 
+	req.Logger.Info("source prepared",
+		slog.String("source_type", sourceLabel),
+		slog.String("revision", resolvedRevision),
+		slog.String("elapsed_time", time.Since(startedAt).Truncate(time.Millisecond).String()))
+
 	return Result{
 		SourceType:    sourceType,
 		RepoName:      repoName,
 		PathInternal:  resultPathInternal,
 		PathExternal:  resultPathExternal,
 		Revision:      resolvedRevision,
+		MirrorDir:     gitMirrorDir,
 		OCITrusted:    ociTrusted,
 		DeployConfigs: deployConfigs,
 		Payload:       payload,
