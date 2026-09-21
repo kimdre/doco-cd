@@ -222,23 +222,12 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	if fastPathEligible {
 		// Prepare already resolved and published this exact repository/reference for this job -
 		// reuse that artifact/revision/mirror as-is instead of re-running Resolve+Publish (a real
-		// network fetch) for this stack too. Only the mirror needs opening here, to give this
-		// stack its own *git.Repository handle for later stages.
-		//
-		// The shared path lock below matches GitStore.MirrorDir's documented invariant:
-		// Resolve/Publish only exclude each other via the mirror's own exclusive lock, so reading the
-		// mirror while some other stack's slow path is still fetching into it (e.g. a stack whose
-		// deploy config names a different reference) could otherwise observe it mid-fetch.
-		unlockMirror := sourcecache.AcquireSharedPathLock(s.Repository.MirrorDir)
-		mirrorRepo, openErr := git.OpenRepository(s.Repository.MirrorDir)
-
-		unlockMirror()
-
-		if openErr != nil {
-			return fmt.Errorf("failed to open repository mirror: %w", openErr)
+		// network fetch) for this stack too. The mirror is only probed here to fail fast if it is
+		// unreadable; the handle is deliberately discarded, because later stages must open their
+		// own short-lived handle per read (see StageManager.withMirrorRead).
+		if err := verifyMirrorReadable(s.Repository.MirrorDir); err != nil {
+			return err
 		}
-
-		s.Repository.Git = mirrorRepo
 
 		stageLog.Debug("reusing already-resolved repository artifact",
 			slog.String("url", s.Repository.SourceUrl),
@@ -294,13 +283,11 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		// the reference against a mirror another run may have advanced in the meantime.
 		s.Repository.Revision = string(revision)
 
-		mirrorRepo, openErr := git.OpenRepository(gitStore.MirrorDir())
-		if openErr != nil {
-			return fmt.Errorf("failed to open repository mirror: %w", openErr)
-		}
-
-		s.Repository.Git = mirrorRepo
 		s.Repository.MirrorDir = gitStore.MirrorDir()
+
+		if err := verifyMirrorReadable(s.Repository.MirrorDir); err != nil {
+			return err
+		}
 
 		stageLog.Debug("resolved repository artifact",
 			slog.String("url", s.Repository.SourceUrl),

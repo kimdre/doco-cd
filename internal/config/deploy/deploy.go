@@ -431,8 +431,24 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 		return sourcecache.AcquireSharedPathLock(mirrorDir)
 	}
 
+	// openGitRead opens a fresh handle on the repository for a single read region.
+	//
+	// The handle must never be reused across lock regions: go-git caches a handle's
+	// packfile index map on first use and never refreshes it, so a handle that was
+	// opened before another deployment fetched into the same mirror enumerates a
+	// packfile it has no index for and segfaults inside go-git. Every caller below
+	// opens its own handle while holding the matching shared lock and drops it again.
+	openGitRead := func() (*git.Repository, error) {
+		repo, openErr := git.PlainOpen(gitOpenRoot)
+		if openErr != nil {
+			return nil, fmt.Errorf("failed to open git repository at %s: %w", gitOpenRoot, openErr)
+		}
+
+		return repo, nil
+	}
+
 	unlockMirror := acquireMirrorReadLock(gitMirrorRoot)
-	baseRepo, err := git.PlainOpen(gitOpenRoot)
+	_, err = git.PlainOpen(gitOpenRoot)
 
 	unlockMirror()
 
@@ -559,6 +575,12 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 				case isGitRepo:
 					unlockMirror := acquireMirrorReadLock(gitMirrorRoot)
 
+					baseRepo, err := openGitRead()
+					if err != nil {
+						unlockMirror()
+						return nil, err
+					}
+
 					hash, err := gitInternal.ResolveReferenceCommit(baseRepo, c.Reference)
 					if err != nil {
 						unlockMirror()
@@ -624,7 +646,16 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 						// TreeFS reads objects lazily, so the mirror lock is held until the walk below finishes.
 						unlockTreeMirror := acquireMirrorReadLock(gitMirrorRoot)
 
-						treeFS, err := gitInternal.NewTreeFSAtCommit(baseRepo, hash)
+						// Fresh handle for this read region: the one used above was dropped with
+						// its lock, and reusing it across a fetch by another deployment is exactly
+						// what makes go-git dereference a missing packfile index.
+						treeRepo, err := openGitRead()
+						if err != nil {
+							unlockTreeMirror()
+							return nil, err
+						}
+
+						treeFS, err := gitInternal.NewTreeFSAtCommit(treeRepo, hash)
 						if err != nil {
 							unlockTreeMirror()
 							return nil, fmt.Errorf("failed to open tree for reference %s: %w", c.Reference, err)
