@@ -62,6 +62,7 @@ nav = [
     { "Pre- / Post-Deployment Scripts" = "Advanced/Pre-Post-Deployment-Scripts.md" },
     { "Renovate Bot" = "Advanced/Renovate.md" },
     { "Self-Updating" = "Advanced/Self-Updating.md" },
+    { "Source URL Rewrites" = "Advanced/Source-URL-Rewrites.md" },
     { "Swarm Mode" = "Advanced/Swarm-Mode.md" },
     { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" },
   ] },

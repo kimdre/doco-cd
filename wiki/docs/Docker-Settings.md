@@ -36,7 +36,7 @@ These settings are specific to Docker Swarm mode behavior in Doco-CD.
 
 ## Remote Docker Daemons
 
-By default, Doco-CD inspects its own container to discover the source of the writable data mount. That inspection is not possible when `DOCKER_HOST` points to a daemon that does not run the Doco-CD container. Set [`DATA_HOST_PATH`](App-Settings.md#general-settings) to bypass this inspection.
+By default, Doco-CD inspects its own container to discover the source of the writable data mount. That inspection is not possible when `DOCKER_HOST` points to a daemon that does not run the Doco-CD container. Set [`DATA_HOST_PATH`](App-Settings.md#storage-settings) to bypass this inspection.
 
 The two data path settings describe opposite sides of the mount:
 
