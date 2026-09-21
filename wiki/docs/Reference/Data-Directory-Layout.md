@@ -5,7 +5,9 @@ tags:
 
 # Data Directory Layout
 
-Doco-CD keeps one subdirectory per Git or OCI source under `DATA_MOUNT_PATH`. For Git sources it contains:
+!!! tip "See also [Artifact Garbage Collection](Artifact-Garbage-Collection.md) for more information on how an artifact is cleaned up."
+
+Doco-CD keeps one subdirectory per Git or OCI source under [`DATA_MOUNT_PATH`](../App-Settings.md#storage-settings). For Git sources it contains:
 
 - `mirror`: a bare, read-only mirror clone of the repository, updated in place on every deployment. 
     It is never checked out directly.
@@ -19,6 +21,6 @@ content digest instead of a Git commit.
 Both directories are managed entirely by Doco-CD; you do not need to interact with them.
 
 !!! info "Upgrading from an older Doco-CD version"
-    Versions prior to this layout checked repositories out directly into the source directory instead of using a bare mirror and per-revision artifacts. 
+    Versions prior to v0.120.0 checked repositories out directly into the source directory instead of using a bare mirror and per-revision artifacts. 
     On first startup after upgrading, Doco-CD automatically migrates any repository still using the old layout, no action is required. 
     Leftover files from the old checkout are only removed once no running container still references them.
