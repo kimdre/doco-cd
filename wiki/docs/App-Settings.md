@@ -27,16 +27,6 @@ The settings are grouped below by the part of the application they configure.
 | `WEBHOOK_SECRET`      | string  | Secret that is used by webhooks for authentication to the application                                                                                                                         | Webhook endpoint is disabled when not specified |
 | `WEBHOOK_SECRET_FILE` | string  | Path to the file containing the webhook secret (mutually exclusive with `WEBHOOK_SECRET`).                                                                                                    |
 
-## Deployment Settings
-
-| Key                             | Type    | Description                                                                                                                                                                                                                                           | Default |
-|---------------------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| `DEPLOY_CONFIG_BASE_DIR`        | string  | Relative Path to the directory containing the deployment configuration files **in all repositories**. **NOTE**: This does not affect/alter the `working_dir` path in the deploy config. It must still be relative to the repository root.             | `/`     |
-| `MAX_CONCURRENT_DEPLOYMENTS`    | number  | Maximum number of concurrent deployments allowed                                                                                                                                                                                                      | `4`     |
-| `MAX_CONCURRENT_PREDEPLOYMENTS` | number  | Maximum number of concurrent pre-deployment operations (initialization and change detection) allowed                                                                                                                                                  | `8`     |
-| `MAX_DEPLOYMENT_LOOP_COUNT`     | number  | When the deployment loop detection should trigger a forced re-deployment on consecutive deployments for the same commit. Set to `0`, to disable the detection logic.                                                                                  | `2`     |
-| `PASS_ENV`                      | boolean | Controls whether environment variables from the doco-cd container should be passed to the deployment environment for docker compose variable interpolation. Use with caution, as this may expose sensitive information to the deployment environment. | `false` |
-
 ## HTTP and Network Settings
 
 | Key                      | Type   | Description                                                                                                                                                                                                                                                                                                                                                                                             | Default                                                       |

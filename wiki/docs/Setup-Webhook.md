@@ -53,7 +53,7 @@ To find more information about the webhook endpoint, see the [Webhook Listener E
     4. Fill in the following fields:
          - **Payload URL**: The URL to the app endpoint, e.g. `https://example.com/v1/webhook`.
          - **Content type**: Set this to `application/json`.
-         - **Secret**: The `WEBHOOK_SECRET` you have set in your app configuration (See [App Settings](App-Settings.md)).
+         - **Secret**: The `WEBHOOK_SECRET` you have set in your app configuration (See [App Settings](App-Settings.md#api-and-webhook-settings)).
          - **SSL verification**: Enable this if you have a valid SSL certificate for the app endpoint.
          - **Which events would you like to trigger this webhook?**: Set this to `Just the push event` or `Let me select individual events` and then `Pushes` and/or `Branch or tag creation`.
          - **Active**: Enable this to activate the webhook.
@@ -149,7 +149,7 @@ To find more information about the webhook endpoint, see the [Webhook Listener E
         - **Target URL**: The URL to the app endpoint, e.g. `https://example.com/v1/webhook`.
         - **HTTP Method**: Set to `POST`.
         - **POST Content Type**: Set to `application/json`.
-        - **Secret**: The `WEBHOOK_SECRET` you have set in your app configuration (See [App Settings](App-Settings.md)).
+        - **Secret**: The `WEBHOOK_SECRET` you have set in your app configuration (See [App Settings](App-Settings.md#api-and-webhook-settings)).
         - **Trigger On**: Set this to `Push Events` or `Custom Events...` and then `Create` and/or `Push`.
         - **Branch filter**: Set this to the branch you want to trigger the webhook or `*` for all branches.
         - **Active**: Enable this to activate the webhook.
@@ -180,7 +180,7 @@ To find more information about the webhook endpoint, see the [Webhook Listener E
     3. Click on the `Add new webhook` button.
     4. Fill in the following fields:
          - **URL**: The URL to the app endpoint, e.g. `https://example.com/v1/webhook`.
-         - **Secret Token**: The `WEBHOOK_SECRET` you have set in your app configuration (See [App Settings](App-Settings.md)).
+         - **Secret Token**: The `WEBHOOK_SECRET` you have set in your app configuration (See [App Settings](App-Settings.md#api-and-webhook-settings)).
          - **Trigger**: Set this to `Push events` and/or `Tag push events`.
          - **SSL verification**: Enable this if you have a valid SSL certificate for the app endpoint.
     5. Click on the `Test` button and then `Push events` to test the webhook.
@@ -204,7 +204,7 @@ To find more information about the webhook endpoint, see the [Webhook Listener E
      1. Create a new pipeline in your Azure DevOps project.
      2. Add the following pipeline variables (mark them as secret):
         - `WEBHOOK_URL`: The URL to the app endpoint, e.g. `https://example.com/v1/webhook`.
-        - `WEBHOOK_SECRET`: The `WEBHOOK_SECRET` you have set in your app configuration (See [App Settings](App-Settings.md)).
+        - `WEBHOOK_SECRET`: The `WEBHOOK_SECRET` you have set in your app configuration (See [App Settings](App-Settings.md#api-and-webhook-settings)).
      3. Add the following YAML configuration to the pipeline:
          ```yaml title="azure-pipelines.yml"
          trigger:
