@@ -162,4 +162,6 @@ jobs:
         run: pip install -r ./wiki/requirements.txt
 
       - name: Run strict wiki build
+        env:
+          PYTHONPATH: wiki
         run: zensical build --config-file wiki/zensical.toml --strict
