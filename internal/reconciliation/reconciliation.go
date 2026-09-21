@@ -155,12 +155,22 @@ func (j *job) run(ctx context.Context) {
 
 			go func(entry contextCLIEntry, swarmMode bool, unhealthyConfigs []*deployConfig.Config) {
 				defer startupRecoveryWG.Done()
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						logger.LogRecoveredPanic(jobLog, "restart unhealthy containers on startup", recovered)
+					}
+				}()
 
 				j.restartUnhealthyContainersOnStartup(ctx, jobLog, entry.cli, swarmMode, unhealthyConfigs)
 			}(entry, swarmMode, unhealthyConfigs)
 
 			go func(ctxName string, entry contextCLIEntry, swarmMode bool, configs []*deployConfig.Config) {
 				defer startupRecoveryWG.Done()
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						logger.LogRecoveredPanic(jobLog, "redeploy missing services on startup", recovered)
+					}
+				}()
 
 				j.redeployMissingServicesOnStartup(ctx, jobLog, ctxName, entry.cli, swarmMode, configs)
 			}(ctxName, entry, swarmMode, configs)
@@ -187,6 +197,11 @@ func (j *job) run(ctx context.Context) {
 
 			go func(ctxName string, entry contextCLIEntry, swarmMode bool, configs []*deployConfig.Config) {
 				defer listenerWG.Done()
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						logger.LogRecoveredPanic(jobLog, "context event listener", recovered)
+					}
+				}()
 
 				j.runContextEventListener(ctx, jobLog, ctxName, entry, swarmMode, configs, mergedCh, listenerReadyCh)
 			}(ctxName, entry, swarmMode, configs)

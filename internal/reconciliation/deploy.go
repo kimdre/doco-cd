@@ -138,6 +138,18 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 			defer wg.Done()
 			defer m.deployments.finish(req.Repository.Name, dc.Context, dc.Name)
 
+			// A panic here (e.g. from a lower-level library bug) must never take
+			// down the whole process: it would abort every other concurrently
+			// running deployment too. Recover, log it, and report this stack's
+			// deployment as failed instead.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logger.LogRecoveredPanic(deployLog, "stack deployment", recovered)
+
+					resultCh <- fmt.Errorf("panic during deployment of stack %q: %v", dc.Name, recovered)
+				}
+			}()
+
 			contextName := docker.NormalizeContextName(dc.Context)
 
 			entry, ok := contextCLIs[contextName]
