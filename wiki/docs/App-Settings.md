@@ -71,6 +71,11 @@ The settings are grouped below by the part of the application they configure.
 |---------------------------|------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------|
 | `OCI_INSECURE_REGISTRIES` | list | Comma-separated OCI registry `host[:port]` entries for [Compose includes](https://docs.docker.com/compose/how-tos/multiple-compose-files/include). **TLS verification is disabled** for these registries; use only for trusted registries. | Ignored when not specified |
 
+### Pulling images from a private registry
+
+If you want to pull images from a private registry, see [Container Registry Authentication](Advanced/Container-Registry-Authentication.md).
+
+
 ## Notification Settings
 
 Doco-CD can be configured to send [Notifications](Advanced/Notifications.md) with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, failed, or triggered by [reconciliation](Deploy-Settings.md#reconciliation-settings).
@@ -251,8 +256,3 @@ To check the status of the service, you can use the following command:
 ```sh
 docker service ps doco-cd_app
 ```
-
-## Pulling images from a private registry
-
-If you want to pull images from a private registry, see [Container Registry Authentication](Advanced/Container-Registry-Authentication.md) in the wiki.
-
