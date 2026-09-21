@@ -68,8 +68,7 @@ nav = [
   ] },
   { Reference = [
     { "Core Concepts" = "Core-Concepts.md" },
-    { "Artifact Garbage Collection" = "Reference/Artifact-Garbage-Collection.md" },
-    { "Data Directory Layout" = "Reference/Data-Directory-Layout.md" },
+    { "Artifact Storage" = "Reference/Artifact-Storage.md" },
     { Endpoints = [
       { "Healthcheck" = "Endpoints/Healthcheck.md" },
       { "MCP Server" = "Endpoints/MCP-Server.md" },

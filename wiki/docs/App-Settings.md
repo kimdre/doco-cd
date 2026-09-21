@@ -51,19 +51,19 @@ The settings are grouped below by the part of the application they configure.
 
 ## Storage Settings
 
-| Key               | Type   | Description                                                                                                                                                   | Default                |
-|-------------------|--------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
-| `DATA_HOST_PATH`  | string | Optional source path of the deployment data mount as seen by the target Docker daemon. See [Remote Docker daemons](Docker-Settings.md#remote-docker-daemons). | Automatically detected |
-| `DATA_MOUNT_PATH` | string | Destination path of the writable deployment data mount inside the doco-cd container (set this if you do not mount the data volume at `/data`).                | `/data`                |
+| Key               | Type   | Description                                                                                                                                                    | Default                |
+|-------------------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
+| `DATA_HOST_PATH`  | string | Optional source path of the artifact storage mount as seen by the target Docker daemon. See [Remote Docker daemons](Docker-Settings.md#remote-docker-daemons). | Automatically detected |
+| `DATA_MOUNT_PATH` | string | Destination path of the writable artifact storage mount inside the doco-cd container (set this if you do not mount the data volume at `/data`).                | `/data`                |
 
 ### Artifact Garbage Collection Settings
 
-| Key                             | Type     | Description                                                                                                                                                                                                                                                                     | Default |
-|---------------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| `ARTIFACT_GC_ENABLED`           | boolean  | Enables the built-in sweeper that removes old, unreferenced published source artifacts (Git revisions/OCI digests) to reclaim disk space and limit how long decrypted SOPS secrets remain on disk. See [Artifact Garbage Collection](Reference/Artifact-Garbage-Collection.md). | `true`  |
-| `ARTIFACT_GC_INTERVAL`          | duration | How often the artifact garbage collector sweeps for removable artifacts (it also always sweeps once at startup). Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration).                                                                                                | `10m`   |
-| `ARTIFACT_GC_RETENTION_RECORDS` | number   | Number of most-recent unreferenced artifacts kept per repository/artifact, regardless of `ARTIFACT_GC_RETENTION_TTL`.                                                                                                                                                           | `2`     |
-| `ARTIFACT_GC_RETENTION_TTL`     | duration | How long an unreferenced artifact beyond `ARTIFACT_GC_RETENTION_RECORDS` is kept before it becomes eligible for removal. Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration).                                                                                        |         |
+| Key                             | Type     | Description                                                                                                                                                                                                                                                                             | Default |
+|---------------------------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| `ARTIFACT_GC_ENABLED`           | boolean  | Enables the built-in sweeper that removes old, unreferenced published source artifacts (Git revisions/OCI digests) to reclaim disk space and limit how long decrypted SOPS secrets remain on disk. See [Artifact Garbage Collection](Reference/Artifact-Storage.md#garbage-collection). | `true`  |
+| `ARTIFACT_GC_INTERVAL`          | duration | How often the artifact garbage collector sweeps for removable artifacts (it also always sweeps once at startup). Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration).                                                                                                        | `10m`   |
+| `ARTIFACT_GC_RETENTION_RECORDS` | number   | Number of most-recent unreferenced artifacts kept per repository/artifact, regardless of `ARTIFACT_GC_RETENTION_TTL`.                                                                                                                                                                   | `2`     |
+| `ARTIFACT_GC_RETENTION_TTL`     | duration | How long an unreferenced artifact beyond `ARTIFACT_GC_RETENTION_RECORDS` is kept before it becomes eligible for removal. Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration).                                                                                                |         |
 
 ## OCI Registry Settings
 
