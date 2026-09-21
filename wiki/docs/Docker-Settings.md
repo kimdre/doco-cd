@@ -36,7 +36,7 @@ These settings are specific to Docker Swarm mode behavior in Doco-CD.
 
 ## Remote Docker Daemons
 
-By default, Doco-CD inspects its own container to discover the source of the writable data mount. That inspection is not possible when `DOCKER_HOST` points to a daemon that does not run the Doco-CD container. Set [`DATA_HOST_PATH`](App-Settings.md#general-settings) to bypass this inspection.
+By default, Doco-CD inspects its own container to discover the source of the writable artifact storage/data mount. That inspection is not possible when `DOCKER_HOST` points to a daemon that does not run the Doco-CD container. Set [`DATA_HOST_PATH`](App-Settings.md#storage-settings) to bypass this inspection.
 
 The two data path settings describe opposite sides of the mount:
 
@@ -59,7 +59,7 @@ services:
 ```
 
 The socket proxy on `docker-host.example.com` must expose the Docker API at the configured address.
-The `/srv/doco-cd-data` path must exist on that remote Docker host and contain the same shared deployment data mounted at `/data` in the Doco-CD container.
+The `/srv/doco-cd-data` path must exist on that remote Docker host and contain the same shared artifact storage mounted at `/data` in the Doco-CD container.
 Configuring `DATA_HOST_PATH` only tells Doco-CD which daemon-visible source path to use; it does not create, mount, synchronize, or share that storage.
 
 !!! warning "Swarm storage is not shared automatically"
