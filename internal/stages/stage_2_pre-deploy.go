@@ -376,11 +376,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		// both defeat the stale-deployment guard below and label this stack with a commit whose content was never deployed.
 		latestCommit := strings.TrimSpace(s.Repository.Revision)
 		if latestCommit == "" {
-			unlock := s.acquireMirrorReadLock()
-			latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-
-			unlock()
-
+			latestCommit, err = s.latestCommitFromMirror()
 			if err != nil {
 				return fmt.Errorf("failed to get latest commit: %w", err)
 			}
@@ -449,22 +445,26 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			// revision, so it also bypasses the guard: the ancestry alone cannot
 			// distinguish a stale concurrent event from a deliberate rollback to
 			// an older reference, which must stay possible.
-			unlock := s.acquireMirrorReadLock()
-
-			if !retryAfterFailure && !s.DeployConfig.ForceRecreate {
-				stale, _ := measurePreDeployOperation(stageLog, "git_ancestry", func() (bool, error) {
-					return isStaleDeployment(s.Repository.Git, s.Repository.MirrorDir, latestHash, deployedHash, s.GitAncestry, stageLog), nil
-				})
-				if stale {
-					unlock()
-					return ErrSkipDeployment
-				}
-			}
-
 			gitChangedFiles := make([]git.ChangedFile, 0)
 
-			if _, err := s.Repository.Git.CommitObject(deployedHash); err != nil {
-				if shouldRecoverFromMissingDeployedCommit(err) {
+			// One scoped mirror read covers the whole comparison: the ancestry check, the
+			// reachability probe for the deployed commit and the changed-file walk all read
+			// the same mirror state through the same short-lived handle.
+			err = s.withMirrorRead(func(repo *gogit.Repository) error {
+				if !retryAfterFailure && !s.DeployConfig.ForceRecreate {
+					stale, _ := measurePreDeployOperation(stageLog, "git_ancestry", func() (bool, error) {
+						return isStaleDeployment(repo, s.Repository.MirrorDir, latestHash, deployedHash, s.GitAncestry, stageLog), nil
+					})
+					if stale {
+						return ErrSkipDeployment
+					}
+				}
+
+				if _, err := repo.CommitObject(deployedHash); err != nil {
+					if !shouldRecoverFromMissingDeployedCommit(err) {
+						return fmt.Errorf("failed to resolve deployed commit %s: %w", deployedCommit, err)
+					}
+
 					stageLog.Warn("previous deployed commit is no longer reachable; continuing with full-change deployment comparison",
 						slog.String("deployed_commit", deployedCommit),
 						slog.String("latest_commit", latestCommit),
@@ -472,23 +472,24 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 					)
 
 					composeChanged = true
-				} else {
-					unlock()
-					return fmt.Errorf("failed to resolve deployed commit %s: %w", deployedCommit, err)
+
+					return nil
 				}
-			} else {
+
 				gitChangedFiles, err = measurePreDeployOperation(stageLog, "git_changed_files", func() ([]git.ChangedFile, error) {
 					return s.GitChanges.changedFiles(s.Repository.MirrorDir, deployedHash, latestHash, func() ([]git.ChangedFile, error) {
-						return git.GetChangedFilesBetweenCommits(s.Repository.Git, deployedHash, latestHash)
+						return git.GetChangedFilesBetweenCommits(repo, deployedHash, latestHash)
 					})
 				})
 				if err != nil {
-					unlock()
 					return fmt.Errorf("failed to get changed files between commits: %w", err)
 				}
-			}
 
-			unlock()
+				return nil
+			})
+			if err != nil {
+				return err
+			}
 
 			changedFiles := docker.GetPathsFromGitChangedFiles(gitChangedFiles, s.Repository.PathExternal)
 

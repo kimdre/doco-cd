@@ -10,7 +10,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/git"
 )
 
 func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger) error {
@@ -43,11 +42,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 	if s.Repository.Source != config.SourceTypeOCI {
 		latestCommit = s.DeployState.latestCommit
 		if latestCommit == "" {
-			unlock := s.acquireMirrorReadLock()
-			latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-
-			unlock()
-
+			latestCommit, err = s.latestCommitFromMirror()
 			if err != nil {
 				return fmt.Errorf("failed to get latest commit: %w", err)
 			}

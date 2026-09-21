@@ -171,8 +171,14 @@ func TestRunInitStageFastPathReusesResolvedArtifact(t *testing.T) {
 		t.Fatalf("MirrorDir = %q, want unchanged %q", sm.Repository.MirrorDir, mirrorDir)
 	}
 
-	if sm.Repository.Git == nil {
-		t.Fatal("Git = nil, want an opened repository handle")
+	if sm.Repository.MirrorDir == "" {
+		t.Fatal("MirrorDir = \"\", want the resolved bare mirror path")
+	}
+
+	// Later stages open their own short-lived handle per read, so the init stage must
+	// leave behind a mirror that is actually readable rather than a retained handle.
+	if err := verifyMirrorReadable(sm.Repository.MirrorDir); err != nil {
+		t.Fatalf("verifyMirrorReadable() = %v, want nil", err)
 	}
 }
 
@@ -247,8 +253,14 @@ func TestRunInitStageFastPathSkippedOnReferenceMismatch(t *testing.T) {
 		t.Fatalf("Revision = %q, want re-resolved to %q", sm.Repository.Revision, revision)
 	}
 
-	if sm.Repository.Git == nil {
-		t.Fatal("Git = nil, want an opened repository handle")
+	if sm.Repository.MirrorDir == "" {
+		t.Fatal("MirrorDir = \"\", want the resolved bare mirror path")
+	}
+
+	// Later stages open their own short-lived handle per read, so the init stage must
+	// leave behind a mirror that is actually readable rather than a retained handle.
+	if err := verifyMirrorReadable(sm.Repository.MirrorDir); err != nil {
+		t.Fatalf("verifyMirrorReadable() = %v, want nil", err)
 	}
 
 	// The slow path resets PathInternal/PathExternal to the store base directory before
@@ -300,8 +312,14 @@ func TestRunInitStageFastPathSkippedForRepositoryUrlOverride(t *testing.T) {
 		t.Fatalf("SourceUrl = %q, want deployment override %q", sm.Repository.SourceUrl, overrideCloneURL)
 	}
 
-	if sm.Repository.Git == nil {
-		t.Fatal("Git = nil, want an opened repository handle")
+	if sm.Repository.MirrorDir == "" {
+		t.Fatal("MirrorDir = \"\", want the resolved bare mirror path")
+	}
+
+	// Later stages open their own short-lived handle per read, so the init stage must
+	// leave behind a mirror that is actually readable rather than a retained handle.
+	if err := verifyMirrorReadable(sm.Repository.MirrorDir); err != nil {
+		t.Fatalf("verifyMirrorReadable() = %v, want nil", err)
 	}
 }
 

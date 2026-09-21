@@ -31,7 +31,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -134,8 +133,7 @@ type RepositoryData struct {
 	Name              string            // Repository name (e.g., "user/my-repo")
 	PathInternal      string            // Path to the repository inside the container
 	PathExternal      string            // Path to the repository on the host machine
-	Git               *git.Repository   // Git repository instance
-	MirrorDir         string            // Path of Git's bare mirror clone backing Git; empty for OCI sources
+	MirrorDir         string            // Path of the bare mirror clone backing git reads; empty for OCI sources
 	Revision          string            // Resolved immutable revision (commit SHA or digest)
 	ResolvedReference string            // Reference that Revision/MirrorDir were resolved against (e.g., the branch/tag from the triggering job); empty for OCI sources
 	ConfigRevision    string            // Immutable revision containing the deploy config
@@ -336,49 +334,79 @@ func (s *StageManager) GetStageMetaData(stageName StageName) (*MetaData, error) 
 	}
 }
 
-// acquireMirrorReadLock takes a shared lock on the repository's bare mirror
-// directory for the duration of a read-only Git ref lookup (GetLatestCommit,
-// GetChangedFilesBetweenCommits, GetCommitsBetween, ...). It excludes a
-// concurrent stack's mirror fetch (which takes the matching exclusive lock
-// in git.CloneOrUpdateBareMirror/GitStore.Publish) so a ref read never
-// observes the mirror mid-write. It is a no-op when the mirror path is
-// unknown, e.g. for OCI sources or before stage 1 has resolved it.
-func (s *StageManager) acquireMirrorReadLock() func() {
-	if s.Repository.MirrorDir == "" {
-		return func() {}
+// hasGitMirror reports whether this deployment has a bare mirror to read git
+// history from. OCI sources never do, and neither does a deployment whose init
+// stage has not resolved one yet.
+func (s *StageManager) hasGitMirror() bool {
+	return s.Repository.MirrorDir != ""
+}
+
+// withMirrorRead runs fn against a freshly opened handle on this deployment's bare
+// mirror while holding the mirror's shared read lock.
+//
+// The handle deliberately does not outlive fn. Retaining one across lock regions is
+// what crashed doco-cd: go-git caches a repository handle's packfile index map on
+// first use and never refreshes it, so once a concurrent job fetches into the same
+// mirror the retained handle enumerates a packfile it has no index for and
+// segfaults inside packfile.GetByType. See git.WithMirrorRead for the full
+// mechanism. Batch every read of one logical region into a single call so the
+// region shares one handle and one lock acquisition.
+func (s *StageManager) withMirrorRead(fn func(repo *git.Repository) error) error {
+	return gitInternal.WithMirrorRead(s.Repository.MirrorDir, fn)
+}
+
+// mirrorRead is the value-returning form of StageManager.withMirrorRead.
+func mirrorRead[T any](s *StageManager, fn func(repo *git.Repository) (T, error)) (T, error) {
+	return gitInternal.MirrorRead(s.Repository.MirrorDir, fn)
+}
+
+// latestCommitFromMirror resolves the deploy config's reference to a commit SHA
+// using a scoped mirror read.
+func (s *StageManager) latestCommitFromMirror() (string, error) {
+	return mirrorRead(s, func(repo *git.Repository) (string, error) {
+		return gitInternal.GetLatestCommit(repo, s.DeployConfig.Reference)
+	})
+}
+
+// notificationCommitSha resolves the short commit SHA shown in notifications.
+// It always prefers the immutable revision published for this deployment over the
+// mirror's moving branch, which another webhook may already have advanced.
+func (s *StageManager) notificationCommitSha() string {
+	fullSHA := strings.TrimSpace(s.Repository.Revision)
+	if !s.hasGitMirror() {
+		return fullSHA
 	}
 
-	return sourcecache.AcquireSharedPathLock(s.Repository.MirrorDir)
+	commitSha, err := mirrorRead(s, func(repo *git.Repository) (string, error) {
+		if fullSHA == "" {
+			var resolveErr error
+
+			fullSHA, resolveErr = gitInternal.GetLatestCommit(repo, s.DeployConfig.Reference)
+			if resolveErr != nil {
+				return "", resolveErr
+			}
+		}
+
+		shortSha, shortErr := gitInternal.GetShortestUniqueCommitHash(repo, fullSHA, gitInternal.DefaultShortSHALength)
+		if shortErr != nil {
+			// Shortening is cosmetic: fall back to the full SHA rather than failing
+			// the notification over it.
+			return fullSHA, nil //nolint:nilerr // intentional degradation
+		}
+
+		return shortSha, nil
+	})
+	if err != nil {
+		return fullSHA
+	}
+
+	return commitSha
 }
 
 // NotifyFailure sends a failure notification and returns notifyErr marked as already
 // reported, so the caller does not notify about the same failure a second time.
 func (s *StageManager) NotifyFailure(notifyErr error) error {
-	var (
-		latestCommit string
-		commitErr    error
-		commitSha    string
-	)
-
-	if s.Repository.Git != nil {
-		unlock := s.acquireMirrorReadLock()
-
-		latestCommit, commitErr = gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-		if commitErr != nil {
-			latestCommit = ""
-		}
-
-		commitSha, commitErr = gitInternal.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
-		if commitErr != nil {
-			commitSha = latestCommit
-		}
-
-		unlock()
-	}
-
-	if s.Repository.Git == nil {
-		commitSha = strings.TrimSpace(s.Repository.Revision)
-	}
+	commitSha := s.notificationCommitSha()
 
 	revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
 
@@ -409,29 +437,7 @@ func (s *StageManager) NotifyFailure(notifyErr error) error {
 }
 
 func (s *StageManager) NotifyDeploymentStarted() error {
-	var (
-		latestCommit string
-		commitErr    error
-		commitSha    string
-	)
-
-	if s.Repository.Git != nil {
-		unlock := s.acquireMirrorReadLock()
-
-		latestCommit, commitErr = gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-		if commitErr == nil {
-			commitSha, commitErr = gitInternal.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
-			if commitErr != nil {
-				commitSha = latestCommit
-			}
-		}
-
-		unlock()
-	}
-
-	if s.Repository.Git == nil {
-		commitSha = strings.TrimSpace(s.Repository.Revision)
-	}
+	commitSha := s.notificationCommitSha()
 
 	revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
 
@@ -460,13 +466,9 @@ func (s *StageManager) resolveCommitSHA() string {
 		return "" // OCI digests are not git commit SHAs
 	}
 
-	// Prefer the full SHA from the local git repository when available.
-	if s.Repository.Git != nil {
-		unlock := s.acquireMirrorReadLock()
-		sha, err := gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-
-		unlock()
-
+	// Prefer the full SHA from the local git mirror when available.
+	if s.hasGitMirror() {
+		sha, err := s.latestCommitFromMirror()
 		if err == nil && strings.TrimSpace(sha) != "" {
 			return strings.TrimSpace(sha)
 		}
@@ -610,4 +612,21 @@ func (s *StageManager) migrationSource() string {
 	}
 
 	return s.Repository.SourceUrl
+}
+
+// verifyMirrorReadable fails fast if the bare mirror backing a deployment cannot be
+// opened, so the init stage reports an unreadable mirror instead of letting a later
+// stage fail mid-deployment. The handle it opens is intentionally discarded: go-git
+// caches a handle's packfile index on first use and never refreshes it, so a handle
+// retained past this point would break as soon as another job fetched into the same
+// mirror. Later stages open their own handle per read via StageManager.withMirrorRead.
+func verifyMirrorReadable(mirrorDir string) error {
+	err := gitInternal.WithMirrorRead(mirrorDir, func(*git.Repository) error {
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to open repository mirror: %w", err)
+	}
+
+	return nil
 }
