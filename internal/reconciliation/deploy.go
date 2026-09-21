@@ -145,6 +145,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					logger.LogRecoveredPanic(deployLog, "stack deployment", recovered)
+
 					resultCh <- fmt.Errorf("panic during deployment of stack %q: %v", dc.Name, recovered)
 				}
 			}()
