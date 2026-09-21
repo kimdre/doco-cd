@@ -209,6 +209,11 @@ auto_append = ["wiki/includes/abbreviations.md"]
 check_paths = true
 
 # zensical
+# Must be listed before "zensical.extensions.preview": it ensures a LinksTreeprocessor
+# is always registered, including on the internal Markdown instances markdown-exec uses
+# to render fences (e.g. "tree"), which the preview extension requires to be present.
+# See wiki/hooks/exec_links_shim.py for details.
+[project.markdown_extensions."hooks.exec_links_shim"]
 [project.markdown_extensions.zensical.extensions.preview]
 configurations = [
   { targets.include = [

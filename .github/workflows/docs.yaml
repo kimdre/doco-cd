@@ -65,12 +65,15 @@ jobs:
           done
 
       - name: Publish dev docs
+        env:
+          PYTHONPATH: wiki
         run: mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push next
 
       - name: Publish release docs
         if: ${{ (github.event_name == 'release' && !github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && github.event.inputs.version) }}
         env:
           VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.version }}
+          PYTHONPATH: wiki
         run: |
           MAJOR_MINOR="$(echo $VERSION | sed -E 's/^(v[0-9]+\.[0-9]+)\..*$/\1/')"
 

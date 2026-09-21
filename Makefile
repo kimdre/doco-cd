@@ -117,4 +117,4 @@ wiki-tools:
 	.venv-wiki/bin/python -m pip install -r wiki/requirements.txt
 
 wiki-serve:
-	.venv-wiki/bin/zensical serve --config-file wiki/zensical.toml
+	PYTHONPATH=wiki .venv-wiki/bin/zensical serve --config-file wiki/zensical.toml
