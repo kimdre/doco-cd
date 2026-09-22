@@ -91,7 +91,7 @@ services:
 ### Post-Init and Standalone One-Shot Services
 
 Services referenced by `#!yaml depends_on.condition: service_completed_successfully` are automatically treated as one-shot services.
-For a one-shot service that runs after another service or is not referenced by another service, add the `cd.doco.deployment.one_shot` label:
+For a one-shot service that runs after another service or is not referenced by another service, add the `#!yaml cd.doco.deployment.one_shot: "true"` label:
 
 ```yaml title="docker-compose.yml" hl_lines="14-15"
 services:
