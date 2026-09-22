@@ -110,14 +110,14 @@ jobs:
       # Both matrix legs use identical build flags, so only one needs to
       # write the shared cache entry back.
       - name: Save Go build cache
-        if: always() && matrix.mode == 'standalone'
+        if: ${{ !cancelled() && matrix.mode == 'standalone' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/test-go-build
           key: test-go-build-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
 
       - name: Upload coverage reports to Codecov
-        if: always()
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -167,7 +167,7 @@ jobs:
       # Both matrix jobs build the identical binary, so only one of them needs
       # to write the shared cache entry back.
       - name: Save e2e Go build cache
-        if: always() && matrix.mode == 'standalone'
+        if: ${{ !cancelled() && matrix.mode == 'standalone' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/e2e-go-build
