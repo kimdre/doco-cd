@@ -296,23 +296,27 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			slog.String("path", s.Repository.PathExternal))
 	}
 
-	// Load dotenv and external secrets files relative to the working directory. This must run
-	// unconditionally (not just when RepositoryUrl is set), otherwise files placed anywhere other
-	// than the repo root are never loaded for the common case of a deploy config in the same
-	// repository that triggered the deployment.
+	// Load the dotenv and external secrets files that belong to the repository resolved above,
+	// relative to this stack's working directory.
+	//
+	// This must run unconditionally. When RepositoryUrl is set it is the second pass that picks up
+	// the "remote:"-prefixed entries loadConfigSourceFiles deliberately left behind. When it is not
+	// set - by far the most common case, a deploy config living in the repository that triggered
+	// the deployment - this is the only pass there is, and gating it meant dotenv and external
+	// secrets files were never loaded at all for those stacks.
 	envFileKind := "local"
 	if s.DeployConfig.RepositoryUrl != "" {
 		envFileKind = "remote"
 	}
 
-	// Load local dotenv files.
-	err = deploy.LoadLocalDotEnv(s.DeployConfig, filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory))
+	sourceFilesPath := filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory)
+
+	err = deploy.LoadLocalDotEnv(s.DeployConfig, sourceFilesPath)
 	if err != nil {
 		return fmt.Errorf("failed to parse %s env files: %w", envFileKind, err)
 	}
 
-	// Load external secrets files.
-	err = deploy.LoadExternalSecretsFiles(s.DeployConfig, filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory))
+	err = deploy.LoadExternalSecretsFiles(s.DeployConfig, sourceFilesPath)
 	if err != nil {
 		return fmt.Errorf("failed to parse %s external secrets files: %w", envFileKind, err)
 	}
