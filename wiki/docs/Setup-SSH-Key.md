@@ -51,8 +51,6 @@ If the connection is successful, you should see a message indicating that you ha
 
 ## Configure doco-cd to use the Private Key
 You need to configure doco-cd to use the private key (`id_ed25519` or the file path you specified) for SSH authentication.
-See the app config on the [App Settings](App-Settings.md) wiki page for more information on how to set the SSH private key in doco-cd.
-
 
 !!! tip "About Git Authentication"
     See [Git Authentication](Git-Settings.md#authentication) for more information on how doco-cd handles Git authentication 

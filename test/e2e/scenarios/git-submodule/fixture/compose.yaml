@@ -1,0 +1,12 @@
+# The config source lives inside the submodule, so this stack only deploys if
+# the submodule was materialized during checkout.
+services:
+  app:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    configs:
+      - shared.txt
+
+configs:
+  shared.txt:
+    file: shared/shared.txt

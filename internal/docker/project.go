@@ -1,8 +1,10 @@
 package docker
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -88,8 +90,38 @@ func WithNormalizedEnvValues(p *types.Project, normMap map[string]string) *types
 	return pCopy
 }
 
+// sourceRootPlaceholder replaces the on-disk source root inside hashed project data.
+//
+// Compose resolves every relative path in a project file (bind mount sources, env_file,
+// config/secret files, build contexts, …) against the directory the project was loaded
+// from. That directory is revision scoped (…/artifacts/<revision>/…), so the resolved
+// absolute paths change with every new commit even when the stack itself is untouched.
+// Replacing the source root with a fixed token keeps the hash tied to the project's
+// content instead of to the revision it happens to be published under.
+const sourceRootPlaceholder = "/__doco_cd_source_root__"
+
+// normalizeSourceRoot rewrites every occurrence of sourceRoot in the marshaled project
+// to sourceRootPlaceholder. It is a no-op for an empty, relative or filesystem root path.
+func normalizeSourceRoot(b []byte, sourceRoot string) []byte {
+	root := strings.TrimSpace(sourceRoot)
+	if root == "" {
+		return b
+	}
+
+	root = filepath.Clean(root)
+	if !filepath.IsAbs(root) || root == string(filepath.Separator) {
+		return b
+	}
+
+	return bytes.ReplaceAll(b, []byte(root), []byte(sourceRootPlaceholder))
+}
+
 // ProjectHash generates a SHA256 hash of the project configuration to be used for detecting changes in the project that may require a redeployment.
-func ProjectHash(p *types.Project) (string, error) {
+//
+// sourceRoot is the on-disk directory the project was loaded from. When set, absolute
+// paths below it are normalized so the hash stays stable across revisions of the same
+// unchanged stack.
+func ProjectHash(p *types.Project, sourceRoot string) (string, error) {
 	pCopy := clone.New(p)
 
 	// Services scaled to zero never create containers, so they must not affect restart-time hash checks.
@@ -131,5 +163,5 @@ func ProjectHash(p *types.Project) (string, error) {
 		return "", fmt.Errorf("failed to marshal project for hashing: %w", err)
 	}
 
-	return digest.SHA256.FromBytes(b).Encoded(), nil
+	return digest.SHA256.FromBytes(normalizeSourceRoot(b, sourceRoot)).Encoded(), nil
 }

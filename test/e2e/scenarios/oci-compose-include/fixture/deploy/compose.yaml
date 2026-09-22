@@ -1,0 +1,7 @@
+include:
+  - oci://__OCI_COMPOSE_INCLUDE_REF__
+
+services:
+  app:
+    image: alpine:3.22
+    command: ["sleep", "600"]

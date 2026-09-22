@@ -205,6 +205,13 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		return newDeploymentError(response, err, statusCode)
 	}
 
+	// Prepare marked this revision in flight before releasing the source
+	// path lock, so artifact garbage collection (internal/gc) could not have
+	// removed the artifact in between. Holding the marker until this method
+	// returns covers the rest of the window, up to the point the deployment
+	// below labels a container/service with the revision.
+	defer result.Release()
+
 	for _, cfg := range result.DeployConfigs {
 		if req.Metadata.DeploymentTargetObserver != nil {
 			req.Metadata.DeploymentTargetObserver(cfg.Name, cfg.Context)
@@ -212,14 +219,18 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 	}
 
 	repoData := stages.RepositoryData{
-		Source:          result.SourceType,
-		SourceUrl:       req.SourceRef,
-		ConfigSourceUrl: req.SourceRef,
-		Name:            result.RepoName,
-		PathInternal:    result.PathInternal,
-		PathExternal:    result.PathExternal,
-		Revision:        result.Revision,
-		OCITrusted:      result.OCITrusted,
+		Source:            result.SourceType,
+		SourceUrl:         req.SourceRef,
+		ConfigSourceUrl:   req.SourceRef,
+		Name:              result.RepoName,
+		PathInternal:      result.PathInternal,
+		PathExternal:      result.PathExternal,
+		MirrorDir:         result.MirrorDir,
+		Revision:          result.Revision,
+		ResolvedReference: req.Ref,
+		ConfigRevision:    result.Revision,
+		ConfigPath:        result.PathExternal,
+		OCITrusted:        result.OCITrusted,
 	}
 
 	if err := d.reconciler.Deploy(ctx, reconciliation.DeployRequest{

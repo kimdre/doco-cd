@@ -14,6 +14,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	teardownSuiteHarnesses()
+	terminateSharedOCIRegistry()
 	removeGitServerImage()
 	removeDaemonImage()
 

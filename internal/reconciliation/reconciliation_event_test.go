@@ -9,6 +9,7 @@ import (
 
 	"github.com/moby/moby/api/types/events"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -280,6 +281,64 @@ func TestShouldIgnoreRestartReconciliationForScheduledJob(t *testing.T) {
 			got := shouldIgnoreRestartReconciliationForScheduledJob(tt.action, tt.labels)
 			if got != tt.want {
 				t.Fatalf("shouldIgnoreRestartReconciliationForScheduledJob() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldIgnoreOneShotCompletionReconciliation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		action   string
+		labels   map[string]string
+		expected bool
+	}{
+		{
+			name:   "successful one-shot exit",
+			action: "die",
+			labels: map[string]string{
+				docker.DocoCDLabels.Deployment.OneShot: "true",
+				"exitCode":                             "0",
+			},
+			expected: true,
+		},
+		{
+			name:   "failed one-shot exit",
+			action: "die",
+			labels: map[string]string{
+				docker.DocoCDLabels.Deployment.OneShot: "true",
+				"exitCode":                             "1",
+			},
+			expected: false,
+		},
+		{
+			name:   "ordinary successful exit",
+			action: "die",
+			labels: map[string]string{
+				"exitCode": "0",
+			},
+			expected: false,
+		},
+		{
+			name:   "unrelated one-shot event",
+			action: "unhealthy",
+			labels: map[string]string{
+				docker.DocoCDLabels.Deployment.OneShot: "true",
+				"exitCode":                             "0",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			actual := shouldIgnoreOneShotCompletionReconciliation(tt.action, tt.labels)
+			if actual != tt.expected {
+				t.Fatalf("shouldIgnoreOneShotCompletionReconciliation() = %v, want %v", actual, tt.expected)
 			}
 		})
 	}
@@ -787,9 +846,9 @@ func TestUniqueRedeployDCsFromGroupByEvent(t *testing.T) {
 	got := uniqueRedeployDCsFromGroupByEvent(grouped)
 
 	// Build a name set for order-independent assertion.
-	names := make(map[string]struct{}, len(got))
+	names := set.New[string]()
 	for _, dc := range got {
-		names[dc.Name] = struct{}{}
+		names.Add(dc.Name)
 	}
 
 	if len(got) != 4 {
@@ -797,12 +856,12 @@ func TestUniqueRedeployDCsFromGroupByEvent(t *testing.T) {
 	}
 
 	for _, wantName := range []string{"stack-die", "stack-destroy", "stack-both"} {
-		if _, ok := names[wantName]; !ok {
+		if !names.Contains(wantName) {
 			t.Errorf("expected %q to be included, got %v", wantName, names)
 		}
 	}
 
-	if _, ok := names["stack-restart"]; ok {
+	if names.Contains("stack-restart") {
 		t.Error("expected stack-restart to be excluded (only restart-oriented events)")
 	}
 

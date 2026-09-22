@@ -24,6 +24,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/docker"
 )
 
 // Sentinel errors classify Prepare failures so callers can map them to the
@@ -53,8 +54,6 @@ var (
 	ErrOCIVerify = errors.New("failed OCI signature verification")
 	// ErrOCIPull indicates an OCI artifact pull/extract failure.
 	ErrOCIPull = errors.New("failed to pull oci artifact")
-	// ErrPersistCacheRevision indicates that the immutable revision for cached source contents could not be recorded.
-	ErrPersistCacheRevision = errors.New("failed to persist cached source revision")
 	// ErrDeployConfig indicates a webhook/poll deployment configuration resolution failure.
 	ErrDeployConfig = errors.New("failed to get deploy configuration")
 	// ErrUnsupportedJobTrigger indicates an unrecognized JobTrigger.
@@ -88,12 +87,18 @@ func (e *prepareError) Unwrap() []error {
 // Dependencies holds the stable services shared by every Preparer.Prepare call.
 type Dependencies struct {
 	AppConfig *app.Config `validate:"required,nostructlevel"`
+	// Contexts resolves configured Docker contexts so Prepare can safely finish migrating a
+	// legacy Git checkout it finds still un-migrated (see prepareGit). Optional: if nil, Prepare
+	// skips that on-demand migration attempt and behaves as if the repository were never a
+	// legacy checkout, which is always correct for a store that has no on-disk data yet.
+	Contexts *docker.ContextRegistry
 }
 
 // Preparer resolves sources (Git repositories or OCI artifacts) into a
 // ready-to-deploy local checkout. See the package doc for its responsibilities.
 type Preparer struct {
 	appConfig *app.Config
+	contexts  *docker.ContextRegistry
 }
 
 // NewPreparer validates dependencies and creates a Preparer.
@@ -102,7 +107,7 @@ func NewPreparer(dependencies Dependencies) (*Preparer, error) {
 		return nil, fmt.Errorf("validate source dependencies: %w", err)
 	}
 
-	return &Preparer{appConfig: dependencies.AppConfig}, nil
+	return &Preparer{appConfig: dependencies.AppConfig, contexts: dependencies.Contexts}, nil
 }
 
 // EntityLabel returns the log-friendly entity name for sourceType: "artifact"

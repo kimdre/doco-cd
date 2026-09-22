@@ -22,7 +22,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
 
-	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -686,26 +685,11 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 		Revision:   metadata.Revision,
 	})
 
-	lockEntity := "repository"
-	lockLogValue := metadata.Repository
-
-	if payload.Source == webhook.PayloadSourceOCI {
-		lockEntity = "artifact"
-		lockLogValue = payload.Artifact
-	}
-
-	// Prevent concurrent deployments for the same repository using a lock
-	repoLock := lock.GetRepoLock(metadata.Repository)
-
+	// No repository-wide lock is taken here:
+	// source preparation is keyed per-revision (internal/source.Prepare/MarkInFlight) and the actual deployment is
+	// keyed per-stack (internal/lock.LockStack, applied deep in internal/docker.Deploy), so unrelated stacks/revisions
+	// within the same repository run concurrently while conflicting ones still serialize at the layer that actually needs it.
 	handleFn := func(ctx context.Context, w http.ResponseWriter) (controlplane.RunResult, error) {
-		if !acquireWebhookRepoLock(ctx, repoLock, jobID, func() {
-			jobLog.Info("waiting for webhook "+lockEntity+" lock", slog.String(lockEntity, lockLogValue))
-		}) {
-			return controlplane.FailedRun(ctx.Err().Error()), ctx.Err()
-		}
-
-		defer repoLock.Unlock()
-
 		return handleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, metadata, h.testName, h.deployment, h.notifier)
 	}
 
@@ -743,13 +727,6 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 	if !wait {
 		restAPI.JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
 	}
-}
-
-func acquireWebhookRepoLock(ctx context.Context, repoLock *lock.RepoLock, jobID string, onWait func()) bool {
-	waitTimer := time.AfterFunc(10*time.Millisecond, onWait)
-	defer waitTimer.Stop()
-
-	return repoLock.LockContext(ctx, jobID)
 }
 
 // noopResponseWriter is used when we run HandleEvent asynchronously.

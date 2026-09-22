@@ -1,6 +1,8 @@
 package docker
 
 import (
+	"sync"
+
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -36,6 +38,16 @@ type ComposeLoadOptions struct {
 	// the daemon performing the checkout.
 	DataHostPath  string
 	DataMountPath string
+	// MutationLock, when non-nil, serializes in-place SOPS decryption. Project parsing,
+	// referenced-file decryption, and the conditional reload form one atomic phase so
+	// every caller observes the files it parsed in a consistent state.
+	//
+	// Callers that need cross-goroutine mutual exclusion (e.g. multiple deployments touching
+	// the same repository checkout concurrently) should supply a shared lock such as a
+	// *sync.Mutex or the repository-scoped lock.GetRepoLock(repoName). LoadCompose does not
+	// require any particular lock granularity and does not create or own the lock itself.
+	// If nil, no locking is performed.
+	MutationLock sync.Locker
 }
 
 // NewComposeLoadOptions builds the ComposeLoadOptions LoadCompose needs from the application

@@ -142,6 +142,13 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
+	oneShotServices, err := getOneShotServices(project)
+	if err != nil {
+		return err
+	}
+
+	addOneShotServiceLabels(project, oneShotServices)
+
 	stoppedAutostartServices := autostartDisabledServices.Difference(runningServices)
 
 	// Remove mismatched recreatable volumes (tmpfs, NFS, CIFS mounts) before create.
@@ -185,7 +192,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 		setDeploymentPhase(setPhase, "waiting for services to start")
 
-		err = waitForStartedServices(ctx, dockerCli, project.Name, startServices, jobServices,
+		err = waitForStartedServices(ctx, dockerCli, project.Name, startServices, jobServices, oneShotServices,
 			time.Duration(deployConfig.Timeout)*time.Second)
 		if err != nil {
 			return err

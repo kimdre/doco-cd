@@ -88,22 +88,46 @@ services:
   
 - If you need commands from the app container, try to use the same image as your app container. Many app images also come with a shell (sh, ash, bash) 
 
+### Post-Init and Standalone One-Shot Services
+
+Services referenced by `#!yaml depends_on.condition: service_completed_successfully` are automatically treated as one-shot services.
+For a one-shot service that runs after another service or is not referenced by another service, add the `cd.doco.deployment.one_shot` label:
+
+```yaml title="docker-compose.yml" hl_lines="14-15"
+services:
+  app:
+    image: backend
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 2s
+      timeout: 1s
+      retries: 10
+
+  post-init:  # Runs *after* the app service is healthy
+    image: backend
+    command: ["./create-initial-resources.sh"]
+    restart: on-failure:3
+    labels:
+      cd.doco.deployment.one_shot: "true"
+    depends_on:
+      app:
+        condition: service_healthy
+```
+
+Doco-CD waits for labeled one-shot services to exit.
+Exit code `0` completes the deployment successfully; a nonzero exit code fails the deployment.
+A one-shot service that does not finish before the deployment timeout also fails the deployment.
+
 ### Troubleshooting
 
 #### container exited (0)
 
-If the deployment fails with an error containing a message like `container <init-container-name> exited (0)`, try to add a short sleep at the end of the init container commands.
-This is a workaround for a known issue where the init container may exit before the main container starts waiting for it, causing the main container to miss the successful completion of the init container.
-Adding a short sleep ensures that the init container has time to exit properly before the main container checks its status.
+If a service is expected to exit successfully but the deployment reports `container <service-name> exited (0)`, make its lifecycle explicit:
 
-!!! example "Add a sleep command to the init container in your docker-compose.yml"
-     The sleep duration can be adjusted based on the expected time for the init commands to complete.
-    ```yaml title="docker-compose.yml"
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["<your-commands-here> && sleep 3"] # (1)!
-    ```
+- For a pre-init service, reference it from the dependent service with `condition: service_completed_successfully`.
+- For a post-init or standalone service, add the `cd.doco.deployment.one_shot: "true"` label.
 
-    1. Depending on the complexity of your init commands, you may need to adjust the sleep duration.
+Doco-cd evaluates declared one-shot services by their exit code even if they finish before the first status check.
 
 Related issue: [#1115](https://github.com/kimdre/doco-cd/issues/1115)
 

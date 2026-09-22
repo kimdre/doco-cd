@@ -10,7 +10,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/git"
 )
 
 func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger) error {
@@ -22,16 +21,36 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 
 	var err error
 
+	// Migrate deployment mode if needed
+	if s.DeployState.modeMigrationNeeded {
+		_, err = docker.MigrateDeploymentMode(
+			ctx,
+			stageLog,
+			s.Docker.Cmd,
+			s.DeployConfig.Context,
+			s.DeployConfig.Name,
+			s.migrationSource(),
+			s.Docker.SwarmMode,
+			s.Docker.SwarmAvailable,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to migrate deployment mode: %w", err)
+		}
+	}
+
 	latestCommit := strings.TrimSpace(s.Repository.Revision)
 	if s.Repository.Source != config.SourceTypeOCI {
 		latestCommit = s.DeployState.latestCommit
 		if latestCommit == "" {
-			latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+			latestCommit, err = s.latestCommitFromMirror()
 			if err != nil {
 				return fmt.Errorf("failed to get latest commit: %w", err)
 			}
 		}
 	}
+
+	s.DeployConfig.Internal.ConfigSourceRevision = s.Repository.ConfigRevision
+	s.DeployConfig.Internal.ConfigSourceWorkingDir = s.Repository.ConfigPath
 
 	err = docker.DeployStack(ctx, docker.DeployRequest{
 		JobLog:           stageLog,

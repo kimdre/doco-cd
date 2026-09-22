@@ -62,11 +62,13 @@ nav = [
     { "Pre- / Post-Deployment Scripts" = "Advanced/Pre-Post-Deployment-Scripts.md" },
     { "Renovate Bot" = "Advanced/Renovate.md" },
     { "Self-Updating" = "Advanced/Self-Updating.md" },
+    { "Source URL Rewrites" = "Advanced/Source-URL-Rewrites.md" },
     { "Swarm Mode" = "Advanced/Swarm-Mode.md" },
     { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" },
   ] },
   { Reference = [
     { "Core Concepts" = "Core-Concepts.md" },
+    { "Artifact Storage" = "Reference/Artifact-Storage.md" },
     { Endpoints = [
       { "Healthcheck" = "Endpoints/Healthcheck.md" },
       { "MCP Server" = "Endpoints/MCP-Server.md" },
@@ -207,6 +209,11 @@ auto_append = ["wiki/includes/abbreviations.md"]
 check_paths = true
 
 # zensical
+# Must be listed before "zensical.extensions.preview": it ensures a LinksTreeprocessor
+# is always registered, including on the internal Markdown instances markdown-exec uses
+# to render fences (e.g. "tree"), which the preview extension requires to be present.
+# See wiki/hooks/exec_links_shim.py for details.
+[project.markdown_extensions."hooks.exec_links_shim"]
 [project.markdown_extensions.zensical.extensions.preview]
 configurations = [
   { targets.include = [

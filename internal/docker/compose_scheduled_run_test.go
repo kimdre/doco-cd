@@ -11,11 +11,13 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/kimdre/doco-cd/internal/source/oci"
+	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
 // stubSecretProvider is a minimal SecretProvider whose ResolveSecretReferences
@@ -439,6 +441,97 @@ func TestLoadComposeScheduledDeployConfigResolvesRepoPathBySourceType(t *testing
 
 		if repoPath != repoDir {
 			t.Fatalf("expected repo path %q, got %q", repoDir, repoPath)
+		}
+	})
+
+	t.Run("git source resolves published artifact directory under the store base dir", func(t *testing.T) {
+		t.Parallel()
+
+		dataMountPath := t.TempDir()
+		repositoryURL := "https://example.com/owner/artifact-repo"
+		storeBaseDir := filepath.Join(dataMountPath, git.GetRepoName(repositoryURL))
+		commitSHA := "abc123def456"
+		artifactDir := filepath.Join(storeBaseDir, "artifacts", commitSHA)
+
+		if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+			t.Fatalf("mkdir artifact dir: %v", err)
+		}
+
+		writeDeployConfig(t, artifactDir, "stack-artifact")
+
+		ref := composeScheduledServiceRef{
+			Project:        "stack-artifact",
+			WorkingDir:     artifactDir,
+			RepositoryURL:  repositoryURL,
+			SourceType:     "git",
+			DeploymentName: "stack-artifact",
+		}
+
+		opts := ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}
+
+		cfg, repoPath, err := loadComposeScheduledDeployConfig(context.Background(), ref, newStubProvider(nil, nil), opts)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if cfg.Name != "stack-artifact" {
+			t.Fatalf("unexpected config name: %q", cfg.Name)
+		}
+
+		if repoPath != artifactDir {
+			t.Fatalf("expected repo path %q, got %q", artifactDir, repoPath)
+		}
+	})
+
+	t.Run("config source and deployment repository use their own artifacts", func(t *testing.T) {
+		t.Parallel()
+
+		dataMountPath := t.TempDir()
+		configURL := "ghcr.io/owner/config:latest"
+		configRevision := "sha256:config123"
+		configStore := filepath.Join(dataMountPath, oci.RepositoryNameFromArtifact(configURL))
+		configArtifact := filepath.Join(configStore, store.ArtifactsSubdir, store.ArtifactDirName(store.Revision(configRevision)))
+
+		deploymentURL := "https://example.com/owner/app.git"
+		deploymentStore := filepath.Join(dataMountPath, git.GetRepoName(deploymentURL))
+		deploymentArtifact := filepath.Join(deploymentStore, store.ArtifactsSubdir, "abcdef123456")
+
+		if err := os.MkdirAll(configArtifact, 0o755); err != nil {
+			t.Fatalf("mkdir config artifact: %v", err)
+		}
+
+		if err := os.MkdirAll(deploymentArtifact, 0o755); err != nil {
+			t.Fatalf("mkdir deployment artifact: %v", err)
+		}
+
+		configYAML := "name: mixed-source\nrepository_url: " + deploymentURL + "\nreference: main\n"
+		if err := os.WriteFile(filepath.Join(configArtifact, ".doco-cd.yaml"), []byte(configYAML), 0o600); err != nil {
+			t.Fatalf("write deploy config: %v", err)
+		}
+
+		ref := composeScheduledServiceRef{
+			Project:          "mixed-source",
+			WorkingDir:       deploymentArtifact,
+			RepositoryURL:    configURL,
+			SourceType:       "oci",
+			DeploymentName:   "mixed-source",
+			ConfigRevision:   configRevision,
+			ConfigWorkingDir: configArtifact,
+		}
+
+		opts := ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}
+
+		cfg, repoPath, err := loadComposeScheduledDeployConfig(context.Background(), ref, newStubProvider(nil, nil), opts)
+		if err != nil {
+			t.Fatalf("load mixed-source config: %v", err)
+		}
+
+		if cfg.RepositoryUrl != config.GitUrl(deploymentURL) {
+			t.Fatalf("RepositoryUrl = %q, want %q", cfg.RepositoryUrl, deploymentURL)
+		}
+
+		if repoPath != deploymentArtifact {
+			t.Fatalf("repo path = %q, want deployment artifact %q", repoPath, deploymentArtifact)
 		}
 	})
 }

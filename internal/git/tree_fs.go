@@ -28,8 +28,7 @@ var (
 	_ fs.ReadFileFS = (*TreeFS)(nil)
 )
 
-// NewTreeFS resolves ref in repo to a commit using the same resolution rules
-// CheckoutRepository uses, and returns a TreeFS backed by that commit's tree.
+// NewTreeFS resolves ref and returns a TreeFS backed by the commit's tree.
 func NewTreeFS(repo *git.Repository, ref string) (*TreeFS, error) {
 	hash, err := ResolveReferenceCommit(repo, ref)
 	if err != nil {

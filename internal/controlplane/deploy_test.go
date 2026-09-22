@@ -360,6 +360,8 @@ func TestDeploy_Success_AdaptsResultAndInvokesObserver(t *testing.T) {
 		PathInternal:    "/dst/owner/repo",
 		PathExternal:    "/src/owner/repo",
 		Revision:        "deadbeef",
+		ConfigRevision:  "deadbeef",
+		ConfigPath:      "/src/owner/repo",
 		OCITrusted:      true,
 	}
 	if got != want {
@@ -379,6 +381,38 @@ func TestDeploy_Success_AdaptsResultAndInvokesObserver(t *testing.T) {
 		if observed[i] != wantObserved[i] {
 			t.Fatalf("observed[%d] = %v, want %v", i, observed[i], wantObserved[i])
 		}
+	}
+}
+
+func TestDeploy_Success_PopulatesMirrorDirAndResolvedReference(t *testing.T) {
+	t.Parallel()
+
+	preparer := &fakeSourcePreparer{result: source.Result{
+		SourceType:   config.SourceTypeGit,
+		RepoName:     "owner/repo",
+		PathInternal: "/dst/owner/repo",
+		PathExternal: "/src/owner/repo",
+		Revision:     "deadbeef",
+		MirrorDir:    "/dst/owner/repo/mirror",
+	}}
+	reconciler := &fakeReconciler{}
+	d := newTestDeployment(t, preparer, reconciler)
+
+	req := validDeploymentRequest()
+	req.Ref = "main"
+
+	if err := d.Deploy(t.Context(), req); err != nil {
+		t.Fatalf("Deploy() error = %v", err)
+	}
+
+	got := reconciler.lastReq.Repository
+
+	if got.MirrorDir != preparer.result.MirrorDir {
+		t.Fatalf("Repository.MirrorDir = %q, want %q", got.MirrorDir, preparer.result.MirrorDir)
+	}
+
+	if got.ResolvedReference != req.Ref {
+		t.Fatalf("Repository.ResolvedReference = %q, want %q", got.ResolvedReference, req.Ref)
 	}
 }
 

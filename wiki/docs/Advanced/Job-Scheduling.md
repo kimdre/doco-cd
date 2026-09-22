@@ -126,7 +126,7 @@ be created for each scheduled run and removed after completion and reporting.
 ??? info "Recovery after forced termination"
     For `one_off` jobs, doco-cd labels the temporary container or Swarm service with the execution identity
     and retains it until its result has been reported, and it has been cleaned up. 
-    It writes only the small finalization record needed to restore `stop_services` and avoid duplicate reporting to `DATA_MOUNT_PATH`.
+    It writes only the small finalization record needed to restore `stop_services` and avoid duplicate reporting to [`DATA_MOUNT_PATH`](../App-Settings.md#storage-settings).
     If doco-cd is forcibly terminated and recreated with the same data mount, the replacement adopts the labeled execution, 
     waits for it, restores dependencies, reports the result, and removes the artifact.
 

@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/avast/retry-go/v5"
@@ -21,18 +22,25 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
-
-var swarmJobLock = sync.Map{}
 
 const (
 	swarmOneOffCleanupTimeout = 30 * time.Second
 	maxSwarmServiceNameLength = 63
+	// swarmJobLockDir holds one lock file per named Swarm job service
+	// (e.g. the shared "image-prune" job every stack deployment can trigger).
+	// A plain in-process mutex only serializes callers within a single doco-cd
+	// process; "go test ./..." runs each package as its own process, and
+	// multiple doco-cd replicas can share one Swarm cluster, so without a
+	// cross-process lock two callers can both update the same job service at
+	// once. The loser then observes the job iteration advance to the winner's
+	// run while it is still waiting on its own, and errors out.
+	swarmJobLockDir = "doco-cd-swarm-job-locks"
 )
 
-func getSwarmJobLock(name string) *sync.Mutex {
-	lock, _ := swarmJobLock.LoadOrStore(name, &sync.Mutex{})
-	return lock.(*sync.Mutex)
+func swarmJobLockPath(name string) string {
+	return filepath.Join(os.TempDir(), swarmJobLockDir, name)
 }
 
 // RunSwarmJob runs a Docker Swarm job container with the specified mode and command.
@@ -67,9 +75,8 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 
 	name := fmt.Sprintf("%s_%s", app.Name, title)
 
-	lock := getSwarmJobLock(name)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock := sourcecache.AcquireExclusivePathLock(swarmJobLockPath(name))
+	defer unlock()
 
 	newServiceSpec := swarmTypes.ServiceSpec{
 		Name: name,
@@ -193,11 +200,11 @@ func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []stri
 }
 
 type SwarmOneOffFromServiceOptions struct {
-	Replicas         uint64
-	SendRegistryAuth bool
 	RunID            string
 	ScheduledAt      string
 	StartedAt        string
+	Replicas         uint64
+	SendRegistryAuth bool
 	KeepService      bool
 }
 

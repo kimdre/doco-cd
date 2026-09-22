@@ -2,44 +2,65 @@ package source
 
 import (
 	"context"
+	"errors"
 	"path"
 	"strings"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/source/oci"
+	"github.com/kimdre/doco-cd/internal/source/store"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-// prepareOCI resolves req's OCI artifact digest, verifies it against the
-// configured cosign trust policy, pulls and extracts it into
-// internalRepoPath, and enriches the webhook payload with the resolved
-// artifact metadata. It returns the resolved digest (used as the immutable
-// revision), whether the artifact is trusted (always true on success - OCI
-// artifacts that fail verification never reach this point), and the enriched
-// payload.
-func (p *Preparer) prepareOCI(ctx context.Context, req Request, internalRepoPath, repoName string) (string, bool, webhook.ParsedPayload, error) {
+// ociPrepareResult is prepareOCI's output: the resolved immutable revision(artifact digest)
+// and the read-only artifact directory materialized for it.
+type ociPrepareResult struct {
+	revision     string
+	artifactPath string
+}
+
+// prepareOCI publishes req's verified OCI artifact and returns its digest and enriched payload.
+func (p *Preparer) prepareOCI(ctx context.Context, req Request, storeBaseDir, repoName string) (ociPrepareResult, webhook.ParsedPayload, error) {
 	payload := req.Payload
+	result := ociPrepareResult{}
 
-	resolvedDigest, err := oci.ResolveDigest(ctx, req.SourceRef, strings.TrimSpace(payload.Digest))
+	ociStore, err := store.NewOCIStore(store.OCIStoreOptions{
+		Log:                 req.Logger,
+		ArtifactRef:         req.SourceRef,
+		BaseDir:             storeBaseDir,
+		CustomTarget:        req.CustomTarget,
+		TrustPolicy:         p.appConfig.OciTrustPolicy,
+		TrustPolicyOverride: config.OciTrustPolicyOverride{},
+		VerifyMaxWorkers:    p.appConfig.OciVerifyMaxWorkers,
+	})
 	if err != nil {
-		return "", false, payload, wrapPrepareError(ErrOCIResolveDigest, err)
+		return result, payload, wrapPrepareError(ErrOCIResolveDigest, err)
 	}
 
-	if err := oci.VerifyWithCosign(ctx, req.SourceRef, resolvedDigest, p.appConfig.OciTrustPolicy, config.OciTrustPolicyOverride{}, p.appConfig.OciVerifyMaxWorkers); err != nil {
-		return "", false, payload, wrapPrepareError(ErrOCIVerify, err)
-	}
-
-	pullResult, err := oci.PullAndExtract(ctx,
-		req.SourceRef, resolvedDigest, config.OciArtifactLayoutV1,
-		internalRepoPath, req.CustomTarget)
+	revision, err := ociStore.Resolve(ctx, strings.TrimSpace(payload.Digest))
 	if err != nil {
-		return "", false, payload, wrapPrepareError(ErrOCIPull, err)
+		// Resolve folds digest resolution and cosign verification into one call;
+		// distinguish them here by the wrapped sentinel so callers
+		// keep seeing the same error classification as before.
+		if errors.Is(err, oci.ErrVerificationFailed) || errors.Is(err, oci.ErrNoTrustRules) {
+			return result, payload, wrapPrepareError(ErrOCIVerify, err)
+		}
+
+		return result, payload, wrapPrepareError(ErrOCIResolveDigest, err)
 	}
+
+	artifact, err := ociStore.Publish(ctx, revision)
+	if err != nil {
+		return result, payload, wrapPrepareError(ErrOCIPull, err)
+	}
+
+	result.revision = string(revision)
+	result.artifactPath = artifact.Path
 
 	payload.Source = webhook.PayloadSourceOCI
 	payload.Artifact = req.SourceRef
-	payload.Digest = pullResult.Digest
-	payload.Trigger = pullResult.Digest
+	payload.Digest = string(revision)
+	payload.Trigger = string(revision)
 
 	if payload.FullName == "" {
 		payload.FullName = repoName
@@ -53,5 +74,5 @@ func (p *Preparer) prepareOCI(ctx context.Context, req Request, internalRepoPath
 		payload.WebURL = req.SourceRef
 	}
 
-	return pullResult.Digest, true, payload, nil
+	return result, payload, nil
 }
