@@ -75,6 +75,11 @@ jobs:
         with:
           packages: musl-tools
           version: 1.0
+      # The apt cache restores files directly rather than replaying the install,
+      # so make sure the compiler the CGO build depends on is actually usable.
+      - name: Verify musl toolchain
+        run: musl-gcc --version
+
       - run: go mod download
 
       # Dedicated build cache for this job's CGO + musl-gcc static-link build
