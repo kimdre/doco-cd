@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"path/filepath"
 
+	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -93,15 +94,23 @@ func (s *GitStore) Resolve(ctx context.Context, ref string) (Revision, error) {
 	// full clone/fetch operation; acquiring it again here would deadlock
 	// against ourselves. It never populates submodules either: Publish
 	// materializes them itself, from tree objects, via git.ExportTree.
-	repo, err := git.CloneOrUpdateBareMirror(s.opts.Log,
+	if _, err := git.CloneOrUpdateBareMirror(s.opts.Log,
 		s.opts.CloneURL, ref, s.mirrorDir,
 		s.opts.Private, s.opts.SSHPrivateKey, s.opts.SSHPrivateKeyPassphrase, s.opts.AccessToken,
-		s.opts.SkipTLSVerify, s.opts.ProxyOptions, s.opts.Depth)
-	if err != nil {
+		s.opts.SkipTLSVerify, s.opts.ProxyOptions, s.opts.Depth); err != nil {
 		return "", fmt.Errorf("resolve %q: %w", ref, err)
 	}
 
-	sha, err := git.GetLatestCommit(repo, ref)
+	// CloneOrUpdateBareMirror releases the mirror's exclusive path lock
+	// before returning, so a concurrent Resolve/Publish call for the same
+	// mirror can start fetching (and briefly mutate refs) between that
+	// release and this read. Re-open the repo under the shared lock via
+	// git.MirrorRead so this read is fully ordered before or after any such
+	// concurrent fetch, instead of racing it - reusing the returned repo
+	// handle here reproduced exactly that race.
+	sha, err := git.MirrorRead(s.mirrorDir, func(repo *gogit.Repository) (string, error) {
+		return git.GetLatestCommit(repo, ref)
+	})
 	if err != nil {
 		return "", fmt.Errorf("resolve %q: %w", ref, err)
 	}
