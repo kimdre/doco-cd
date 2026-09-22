@@ -71,10 +71,30 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - name: Install packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends musl-tools
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: musl-tools
+          version: 1.0
+      # The apt cache restores files directly rather than replaying the install,
+      # so make sure the compiler the CGO build depends on is actually usable.
+      - name: Verify musl toolchain
+        run: musl-gcc --version
+
       - run: go mod download
+
+      # Dedicated build cache for this job's CGO + musl-gcc static-link build
+      # config. setup-go's own cache covers GOMODCACHE *and* GOCACHE under a key
+      # that is not job-scoped, so lint/test/e2e would otherwise share one build
+      # cache despite compiling with different flags. Redirecting GOCACHE below
+      # keeps this job's objects on a separate path and key, mirroring e2e.
+      - name: Restore Go build cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/test-go-build
+          key: test-go-build-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: |
+            test-go-build-${{ runner.os }}-
+
       - name: Enable Swarm mode
         if: matrix.mode == 'swarm'
         run: docker swarm init
@@ -90,12 +110,25 @@ jobs:
           CGO_ENABLED: 1
           CC: musl-gcc
           BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+          GOCACHE: ${{ runner.temp }}/test-go-build
+
+      # Both matrix legs use identical build flags, so only one needs to
+      # write the shared cache entry back.
+      - name: Save Go build cache
+        if: ${{ !cancelled() && matrix.mode == 'standalone' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/test-go-build
+          key: test-go-build-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+
       - name: Upload coverage reports to Codecov
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-${{ matrix.mode }}.out
-          flags: unittests
+          flags: unittests,${{ matrix.mode }}
+          fail_ci_if_error: false
 
   e2e:
     name: E2E (${{ matrix.mode }})
@@ -121,6 +154,8 @@ jobs:
         with:
           path: ${{ runner.temp }}/e2e-go-build
           key: e2e-go-build-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: |
+            e2e-go-build-
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
@@ -137,7 +172,7 @@ jobs:
       # Both matrix jobs build the identical binary, so only one of them needs
       # to write the shared cache entry back.
       - name: Save e2e Go build cache
-        if: always() && matrix.mode == 'standalone'
+        if: ${{ !cancelled() && matrix.mode == 'standalone' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/e2e-go-build
