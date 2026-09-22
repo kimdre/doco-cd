@@ -78,14 +78,15 @@ jobs:
       - run: go mod download
 
       # Dedicated build cache for this job's CGO + musl-gcc static-link build
-      # config. Kept apart from the setup-go cache (which only covers the
-      # module cache here) so it isn't invalidated by other jobs, e.g. lint
-      # and e2e, that compile with different flags against the same go.sum.
+      # config. setup-go's own cache covers GOMODCACHE *and* GOCACHE under a key
+      # that is not job-scoped, so lint/test/e2e would otherwise share one build
+      # cache despite compiling with different flags. Redirecting GOCACHE below
+      # keeps this job's objects on a separate path and key, mirroring e2e.
       - name: Restore Go build cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/go-build
-          key: test-go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          path: ${{ runner.temp }}/test-go-build
+          key: test-go-build-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
           restore-keys: |
             test-go-build-${{ runner.os }}-
 
@@ -104,6 +105,7 @@ jobs:
           CGO_ENABLED: 1
           CC: musl-gcc
           BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+          GOCACHE: ${{ runner.temp }}/test-go-build
 
       # Both matrix legs use identical build flags, so only one needs to
       # write the shared cache entry back.
@@ -111,8 +113,8 @@ jobs:
         if: always() && matrix.mode == 'standalone'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/go-build
-          key: test-go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          path: ${{ runner.temp }}/test-go-build
+          key: test-go-build-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
 
       - name: Upload coverage reports to Codecov
         if: always()
