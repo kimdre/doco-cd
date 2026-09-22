@@ -1,0 +1,18 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 1s
+      timeout: 1s
+      retries: 1
+
+  post-init:
+    image: alpine:3.22
+    command: ["sh", "-c", "exit 0"]
+    labels:
+      cd.doco.deployment.one_shot: "true"
+    depends_on:
+      app:
+        condition: service_healthy
