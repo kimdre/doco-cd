@@ -124,8 +124,8 @@ A one-shot service that does not finish before the deployment timeout also fails
 
 If a service is expected to exit successfully but the deployment reports `container <service-name> exited (0)`, make its lifecycle explicit:
 
-- For a pre-init service, reference it from the dependent service with `condition: service_completed_successfully`.
-- For a post-init or standalone service, add the `cd.doco.deployment.one_shot: "true"` label.
+- For a pre-init service, reference it from the dependent service with `#!yaml condition: service_completed_successfully`
+- For a post-init or standalone service, add the `#!yaml cd.doco.deployment.one_shot: "true"` label.
 
 Doco-cd evaluates declared one-shot services by their exit code even if they finish before the first status check.
 
