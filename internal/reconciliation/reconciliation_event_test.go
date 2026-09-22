@@ -286,6 +286,64 @@ func TestShouldIgnoreRestartReconciliationForScheduledJob(t *testing.T) {
 	}
 }
 
+func TestShouldIgnoreOneShotCompletionReconciliation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		action   string
+		labels   map[string]string
+		expected bool
+	}{
+		{
+			name:   "successful one-shot exit",
+			action: "die",
+			labels: map[string]string{
+				docker.DocoCDLabels.Deployment.OneShot: "true",
+				"exitCode":                             "0",
+			},
+			expected: true,
+		},
+		{
+			name:   "failed one-shot exit",
+			action: "die",
+			labels: map[string]string{
+				docker.DocoCDLabels.Deployment.OneShot: "true",
+				"exitCode":                             "1",
+			},
+			expected: false,
+		},
+		{
+			name:   "ordinary successful exit",
+			action: "die",
+			labels: map[string]string{
+				"exitCode": "0",
+			},
+			expected: false,
+		},
+		{
+			name:   "unrelated one-shot event",
+			action: "unhealthy",
+			labels: map[string]string{
+				docker.DocoCDLabels.Deployment.OneShot: "true",
+				"exitCode":                             "0",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			actual := shouldIgnoreOneShotCompletionReconciliation(tt.action, tt.labels)
+			if actual != tt.expected {
+				t.Fatalf("shouldIgnoreOneShotCompletionReconciliation() = %v, want %v", actual, tt.expected)
+			}
+		})
+	}
+}
+
 func TestIsRestartFollowupAction(t *testing.T) {
 	t.Parallel()
 

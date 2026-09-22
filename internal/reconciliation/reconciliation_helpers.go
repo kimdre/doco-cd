@@ -3,6 +3,7 @@ package reconciliation
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,6 +109,8 @@ func (j *job) waitForContainerRemovalSettled(ctx context.Context, jobLog *slog.L
 	}
 }
 
+// deployConfigsByName filters the given slice of deployConfig.Config pointers
+// to only those with a matching Name field.
 func deployConfigsByName(dcs []*deployConfig.Config, name string) []*deployConfig.Config {
 	result := make([]*deployConfig.Config, 0, len(dcs))
 
@@ -182,6 +185,9 @@ func matchCandidateStackName(identifier string, candidates []*deployConfig.Confi
 	return ""
 }
 
+// cloneDeployConfigsWithForcedRecreate creates a deep copy of the given slice of deployConfig.Config pointers,
+// setting the ForceRecreate field to true for each copied config. This is used to ensure that a reconciliation
+// deploy will forcefully recreate the associated containers/services.
 func cloneDeployConfigsWithForcedRecreate(dcs []*deployConfig.Config) []*deployConfig.Config {
 	reconcileDCs := make([]*deployConfig.Config, len(dcs))
 
@@ -194,6 +200,8 @@ func cloneDeployConfigsWithForcedRecreate(dcs []*deployConfig.Config) []*deployC
 	return reconcileDCs
 }
 
+// shouldIgnoreRestartReconciliationForScheduledJob determines whether a reconciliation event for a scheduled job
+// that is stopping should be ignored. This is to prevent unnecessary redeploys for scheduled jobs that are stopping.
 func shouldIgnoreRestartReconciliationForScheduledJob(action string, labels map[string]string) bool {
 	action = normalizeReconciliationEventAction(action)
 	if action != "stop" {
@@ -208,6 +216,20 @@ func shouldIgnoreRestartReconciliationForScheduledJob(action string, labels map[
 	return true
 }
 
+// shouldIgnoreOneShotCompletionReconciliation determines whether a reconciliation event for a one-shot container
+// that exited successfully (exit code 0) should be ignored. This is to prevent unnecessary redeploys for
+// one-shot containers that complete their work successfully.
+func shouldIgnoreOneShotCompletionReconciliation(action string, labels map[string]string) bool {
+	if normalizeReconciliationEventAction(action) != "die" || strings.TrimSpace(labels["exitCode"]) != "0" {
+		return false
+	}
+
+	oneShot, err := strconv.ParseBool(strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.OneShot]))
+
+	return err == nil && oneShot
+}
+
+// normalizeReconciliationEventAction normalizes the given Docker event action string to a canonical form.
 func normalizeReconciliationEventAction(action string) string {
 	action = strings.ToLower(strings.TrimSpace(action))
 	action = strings.Join(strings.Fields(action), " ")
