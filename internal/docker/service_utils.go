@@ -80,6 +80,17 @@ func normalizeRepositoryForLabelMatch(repository string) string {
 	return strings.TrimSpace(repository)
 }
 
+// NormalizeRepositoryLabel exposes normalizeRepositoryForLabelMatch for
+// callers outside this package that need to map a deployed container or
+// service's cd.doco.source.name label back to the on-disk repository
+// directory name (git.GetRepoName for Git sources, the repository portion
+// of an OCI artifact reference for OCI sources) - the same normalization
+// GetLatestDeployStatus already relies on for label matching. Used by
+// artifact garbage collection (internal/gc) to build its live-revision set.
+func NormalizeRepositoryLabel(repository string) string {
+	return normalizeRepositoryForLabelMatch(repository)
+}
+
 // buildRepositoryLabelCandidates generates a set of candidate repository label values
 // for matching by normalizing the input repository string.
 func buildRepositoryLabelCandidates(repository string) set.Set[string] {

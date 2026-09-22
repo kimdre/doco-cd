@@ -24,6 +24,7 @@ var (
 	ErrPossibleAuthMethodMismatch = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
 	ErrRemoteURLMismatch          = errors.New("remote URL does not match expected URL")
 	ErrGetHeadFailed              = errors.New("failed to get HEAD reference")
+	ErrLegacyCheckoutNotMigrated  = errors.New("legacy checkout has not been migrated to the store layout yet")
 )
 
 // IsRefUnreachableError returns true when the error indicates the requested ref

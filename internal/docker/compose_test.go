@@ -282,12 +282,7 @@ func TestDeployCompose(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneOrUpdateRepository(slog.Default(), p.CloneURL, p.Ref, tmpDir, tmpDir,
-		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
-		c.HttpProxy, c.GitCloneSubmodules, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	repo := cloneTestRepoBranch(t, tmpDir, p.CloneURL, p.Ref, p.Private, c)
 
 	latestCommit, err := git.GetLatestCommit(repo, p.Ref)
 	if err != nil {
@@ -332,7 +327,7 @@ compose_files:
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := deploy.GetConfigs(tmpDir, c.DeployConfigBaseDir, customTarget, p.Ref, nil)
+	deployConfigs, err := deploy.GetConfigs(context.Background(), tmpDir, c.DeployConfigBaseDir, customTarget, p.Ref, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,7 +513,7 @@ compose_files:
 			t.Fatalf("failed to load expected project: %v", err)
 		}
 
-		projectHash, err := ProjectHash(expectedProject)
+		projectHash, err := ProjectHash(expectedProject, repoPath)
 		if err != nil {
 			t.Fatalf("ProjectHash err: %v", err)
 		}
@@ -1619,19 +1614,13 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, cloneUrlTest, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
-	}
+	repo := cloneTestRepoAllBranches(t, tmpDir, cloneUrlTest, auth, c)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err = git.CheckoutRepository(repo, tc.newCommit, auth, c.GitCloneSubmodules)
-			if err != nil {
-				t.Fatalf("Failed to checkout old commit: %v", err)
-			}
+			checkoutTestCommit(t, repo, tc.newCommit)
 
-			deployConfigs, err := deploy.GetConfigs(tmpDir, ".", "", "", nil)
+			deployConfigs, err := deploy.GetConfigs(context.Background(), tmpDir, ".", "", "", "", "", nil)
 			if err != nil {
 				t.Fatal(err)
 			}

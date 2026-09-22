@@ -107,7 +107,7 @@ func WaitOnJobService(
 	serviceID string,
 	previousJobIteration *uint64,
 ) error {
-	iteration, err := waitForJobIteration(ctx, dockerCli.Client(), serviceID, previousJobIteration)
+	_, err := waitForJobIteration(ctx, dockerCli.Client(), serviceID, previousJobIteration)
 	if err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func WaitOnJobService(
 	}()
 
 	go func() {
-		failureResult <- waitForJobTaskFailure(waitCtx, dockerCli.Client(), serviceID, iteration)
+		failureResult <- waitForJobTaskFailure(waitCtx, dockerCli.Client(), serviceID)
 	}()
 
 	select {
@@ -139,11 +139,12 @@ func WaitOnJobService(
 			return err
 		}
 
-		if failureErr = ensureJobIteration(ctx, dockerCli.Client(), serviceID, iteration); failureErr != nil {
+		currentIteration, failureErr := currentJobIteration(ctx, dockerCli.Client(), serviceID)
+		if failureErr != nil {
 			return failureErr
 		}
 
-		if failureErr = jobTaskFailure(ctx, dockerCli.Client(), serviceID, iteration); failureErr != nil {
+		if failureErr = jobTaskFailure(ctx, dockerCli.Client(), serviceID, currentIteration); failureErr != nil {
 			return failureErr
 		}
 
@@ -195,16 +196,23 @@ func waitForJobIteration(
 	}
 }
 
-func waitForJobTaskFailure(ctx context.Context, apiClient client.APIClient, serviceID string, iteration uint64) error {
+// waitForJobTaskFailure polls a job service's tasks for terminal failures. A shared job
+// service (e.g. a cluster-wide image-prune job that any concurrent stack deployment can
+// trigger) may be re-triggered by another caller while this waits, advancing the service to
+// a newer iteration. That does not mean our own trigger failed - someone else's run simply
+// superseded it - so failures are tracked against whichever iteration is current rather than
+// erroring out when the iteration moves forward.
+func waitForJobTaskFailure(ctx context.Context, apiClient client.APIClient, serviceID string) error {
 	ticker := time.NewTicker(jobTaskPollInterval)
 	defer ticker.Stop()
 
 	for {
-		if err := ensureJobIteration(ctx, apiClient, serviceID, iteration); err != nil {
+		iteration, err := currentJobIteration(ctx, apiClient, serviceID)
+		if err != nil {
 			return err
 		}
 
-		if err := jobTaskFailure(ctx, apiClient, serviceID, iteration); err != nil {
+		if err = jobTaskFailure(ctx, apiClient, serviceID, iteration); err != nil {
 			return err
 		}
 
@@ -216,26 +224,18 @@ func waitForJobTaskFailure(ctx context.Context, apiClient client.APIClient, serv
 	}
 }
 
-func ensureJobIteration(ctx context.Context, apiClient client.APIClient, serviceID string, iteration uint64) error {
+// currentJobIteration returns the job service's current iteration index.
+func currentJobIteration(ctx context.Context, apiClient client.APIClient, serviceID string) (uint64, error) {
 	result, err := apiClient.ServiceInspect(ctx, serviceID, client.ServiceInspectOptions{})
 	if err != nil {
-		return fmt.Errorf("inspect job service %s: %w", serviceID, err)
+		return 0, fmt.Errorf("inspect job service %s: %w", serviceID, err)
 	}
 
 	if result.Service.JobStatus == nil {
-		return fmt.Errorf("job service %s no longer reports an active job iteration", serviceID)
+		return 0, fmt.Errorf("job service %s no longer reports an active job iteration", serviceID)
 	}
 
-	if result.Service.JobStatus.JobIteration.Index != iteration {
-		return fmt.Errorf(
-			"job service %s advanced from iteration %d to %d while waiting",
-			serviceID,
-			iteration,
-			result.Service.JobStatus.JobIteration.Index,
-		)
-	}
-
-	return nil
+	return result.Service.JobStatus.JobIteration.Index, nil
 }
 
 func jobTaskFailure(ctx context.Context, apiClient client.APIClient, serviceID string, iteration uint64) error {

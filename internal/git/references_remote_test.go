@@ -47,18 +47,8 @@ func TestGetReferenceSet(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	auth, err := git.GetAuthMethod(cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
-	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
-	}
-
-	repo, err := git.CloneRepository(t.TempDir(), cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
+	repo, err := git.CloneOrUpdateBareMirror(nil, cloneUrl, git.MainBranch, t.TempDir(), false,
+		c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, false, c.HttpProxy, 0)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}

@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -224,14 +225,8 @@ func getRunningServices(containers []api.ContainerSummary) set.Set[string] {
 
 func getStartServicesForDeploy(project *types.Project, autostartDisabledServices, runningServices set.Set[string]) ([]string, error) {
 	startServices := make([]string, 0, len(project.Services))
-	completedDependencyServices := getServiceCompletedDependencies(project)
 
 	for serviceName, svc := range project.Services {
-		if completedDependencyServices.Contains(serviceName) ||
-			(svc.Name != "" && completedDependencyServices.Contains(svc.Name)) {
-			continue
-		}
-
 		labels := getServiceSchedulerLabels(svc)
 		_, hasScheduleLabel := labels[docoCDJobLabelNames.JobEnabled]
 
@@ -258,25 +253,66 @@ func getStartServicesForDeploy(project *types.Project, autostartDisabledServices
 	return startServices, nil
 }
 
-// getServiceCompletedDependencies returns services referenced via depends_on with
-// condition=service_completed_successfully. These are init-style one-shot services
-// that should be started as dependencies but not treated as long-running start targets.
-func getServiceCompletedDependencies(project *types.Project) set.Set[string] {
-	completed := set.New[string]()
+// getOneShotServices returns services that are expected to complete successfully instead of remaining running.
+func getOneShotServices(project *types.Project) (set.Set[string], error) {
+	oneShot := set.New[string]()
 
 	if project == nil {
-		return completed
+		return oneShot, nil
 	}
 
-	for _, svc := range project.Services {
+	for serviceName, svc := range project.Services {
+		labels := getServiceSchedulerLabels(svc)
+		if raw, ok := labels[DocoCDLabels.Deployment.OneShot]; ok {
+			enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return nil, fmt.Errorf("service %s: invalid %s value %q: %w",
+					serviceName, DocoCDLabels.Deployment.OneShot, raw, err)
+			}
+
+			if enabled {
+				oneShot.Add(serviceName)
+			}
+		}
+
 		for depName, dep := range svc.DependsOn {
 			if strings.TrimSpace(dep.Condition) == types.ServiceConditionCompletedSuccessfully {
-				completed.Add(depName)
+				oneShot.Add(depName)
 			}
 		}
 	}
 
-	return completed
+	for serviceName := range oneShot {
+		svc, ok := project.Services[serviceName]
+		if !ok {
+			continue
+		}
+
+		switch strings.ToLower(strings.TrimSpace(svc.Restart)) {
+		case types.RestartPolicyAlways, types.RestartPolicyUnlessStopped:
+			return nil, fmt.Errorf("service %s: restart=%q is incompatible with %s; use no, on-failure, or unset",
+				serviceName, svc.Restart, DocoCDLabels.Deployment.OneShot)
+		}
+	}
+
+	return oneShot, nil
+}
+
+// addOneShotServiceLabels adds the one-shot label to services that are expected to complete successfully instead of remaining running.
+func addOneShotServiceLabels(project *types.Project, oneShotServices set.Set[string]) {
+	for serviceName, svc := range project.Services {
+		if !oneShotServices.Contains(serviceName) &&
+			(svc.Name == "" || !oneShotServices.Contains(svc.Name)) {
+			continue
+		}
+
+		if svc.CustomLabels == nil {
+			svc.CustomLabels = make(types.Labels)
+		}
+
+		svc.CustomLabels[DocoCDLabels.Deployment.OneShot] = strconv.FormatBool(true)
+		project.Services[serviceName] = svc
+	}
 }
 
 func getJobServices(project *types.Project) (set.Set[string], error) {
@@ -359,12 +395,17 @@ func projectForStart(project *types.Project, jobServices, stoppedAutostartServic
 }
 
 type serviceStartStatus struct {
-	running   bool
-	unhealthy bool
-	terminal  string
+	seen           int
+	running        bool
+	unhealthy      bool
+	completed      int
+	terminal       string
+	dead           bool
+	failedExit     bool
+	failedExitCode int
 }
 
-func assessStartedServiceStates(containers []api.ContainerSummary, targetServices set.Set[string]) (bool, []string, error) {
+func assessStartedServiceStates(containers []api.ContainerSummary, targetServices, oneShotServices set.Set[string]) (bool, []string, error) {
 	statusByService := make(map[string]serviceStartStatus, targetServices.Len())
 	for svc := range targetServices {
 		statusByService[svc] = serviceStartStatus{}
@@ -377,22 +418,43 @@ func assessStartedServiceStates(containers []api.ContainerSummary, targetService
 		}
 
 		status := statusByService[serviceName]
+		status.seen++
 
 		state := strings.ToLower(strings.TrimSpace(string(cont.State)))
 		health := strings.ToLower(strings.TrimSpace(string(cont.Health)))
 
 		switch state {
 		case "running":
+			if oneShotServices.Contains(serviceName) {
+				break
+			}
+
 			switch health {
 			case "", "healthy":
 				status.running = true
 			case "unhealthy":
 				status.unhealthy = true
 			}
-		// "restarting" exists only after a container died and restart policy
-		// kicked in - right after deploy that is a crash, not a slow start
-		case "restarting", "exited", "dead":
+		case "exited":
 			status.terminal = state
+			if oneShotServices.Contains(serviceName) {
+				if cont.ExitCode == 0 {
+					status.completed++
+				} else if !status.failedExit {
+					status.failedExit = true
+					status.failedExitCode = cont.ExitCode
+				}
+			}
+		case "restarting":
+			if !oneShotServices.Contains(serviceName) {
+				status.terminal = state
+			}
+		case "dead":
+			if oneShotServices.Contains(serviceName) {
+				status.dead = true
+			} else {
+				status.terminal = state
+			}
 		}
 
 		statusByService[serviceName] = status
@@ -400,6 +462,22 @@ func assessStartedServiceStates(containers []api.ContainerSummary, targetService
 
 	waiting := make([]string, 0, len(statusByService))
 	for serviceName, status := range statusByService {
+		if oneShotServices.Contains(serviceName) {
+			if status.failedExit {
+				return false, nil, &oneShotExitError{service: serviceName, code: status.failedExitCode}
+			}
+
+			if status.dead {
+				return false, nil, fmt.Errorf("one-shot service %s has a dead container", serviceName)
+			}
+
+			if status.seen == 0 || status.completed != status.seen {
+				waiting = append(waiting, serviceName)
+			}
+
+			continue
+		}
+
 		if status.unhealthy {
 			return false, nil, fmt.Errorf("service %s is unhealthy", serviceName)
 		}
@@ -425,22 +503,33 @@ func assessStartedServiceStates(containers []api.ContainerSummary, targetService
 // and every following poll redeployed the crashed container as drift.
 const startReadyStableSamples = 3
 
+const oneShotFailureStableSamples = 2
+
+type oneShotExitError struct {
+	service string
+	code    int
+}
+
+func (e *oneShotExitError) Error() string {
+	return fmt.Sprintf("one-shot service %s exited with code %d", e.service, e.code)
+}
+
 // projectContainerLister abstracts container listing so the wait loop can be
 // tested without a Docker daemon.
 type projectContainerLister func(ctx context.Context) ([]api.ContainerSummary, error)
 
 func waitForStartedServices(ctx context.Context, dockerCli command.Cli, projectName string,
-	startServices []string, jobServices set.Set[string], timeout time.Duration,
+	startServices []string, jobServices, oneShotServices set.Set[string], timeout time.Duration,
 ) error {
 	listContainers := func(ctx context.Context) ([]api.ContainerSummary, error) {
 		return GetProjectContainers(ctx, dockerCli, projectName)
 	}
 
-	return waitForStartedServicesWith(ctx, listContainers, startServices, jobServices, timeout)
+	return waitForStartedServicesWith(ctx, listContainers, startServices, jobServices, oneShotServices, timeout)
 }
 
 func waitForStartedServicesWith(ctx context.Context, listContainers projectContainerLister,
-	startServices []string, jobServices set.Set[string], timeout time.Duration,
+	startServices []string, jobServices, oneShotServices set.Set[string], timeout time.Duration,
 ) error {
 	nonJobServices := getNonJobServices(startServices, jobServices)
 	if nonJobServices.IsEmpty() {
@@ -457,6 +546,8 @@ func waitForStartedServicesWith(ctx context.Context, listContainers projectConta
 	defer ticker.Stop()
 
 	readyStreak := 0
+	oneShotFailureStreak := 0
+	lastOneShotFailure := ""
 
 	for {
 		containers, err := listContainers(ctx)
@@ -464,21 +555,39 @@ func waitForStartedServicesWith(ctx context.Context, listContainers projectConta
 			return fmt.Errorf("failed to inspect project containers: %w", err)
 		}
 
-		ready, waiting, stateErr := assessStartedServiceStates(containers, nonJobServices)
-		if stateErr != nil {
-			return stateErr
-		}
+		ready, waiting, stateErr := assessStartedServiceStates(containers, nonJobServices, oneShotServices)
+		switch {
+		case stateErr != nil:
+			if _, ok := errors.AsType[*oneShotExitError](stateErr); !ok {
+				return stateErr
+			}
 
-		if ready {
+			if stateErr.Error() == lastOneShotFailure {
+				oneShotFailureStreak++
+			} else {
+				lastOneShotFailure = stateErr.Error()
+				oneShotFailureStreak = 1
+			}
+
+			if oneShotFailureStreak >= oneShotFailureStableSamples || time.Now().After(deadline) {
+				return stateErr
+			}
+		case ready:
+			oneShotFailureStreak = 0
+			lastOneShotFailure = ""
+
 			readyStreak++
 			if readyStreak >= startReadyStableSamples {
 				return nil
 			}
-		} else {
+		default:
 			readyStreak = 0
+			oneShotFailureStreak = 0
+			lastOneShotFailure = ""
 
 			if time.Now().After(deadline) {
-				return fmt.Errorf("timed out after %s waiting for services to start: %s", timeout, strings.Join(waiting, ", "))
+				return fmt.Errorf("timed out after %s waiting for services to become ready: %s",
+					timeout, strings.Join(waiting, ", "))
 			}
 		}
 

@@ -22,6 +22,7 @@ type docoCdLabelNamesDeployment struct {
 	AutoDiscovery        string // Whether the deployment was auto-discovered
 	AutoDiscoveryConfig  string // JSON-serialized AutoDiscoveryConfig settings
 	Autostart            string // Whether deployment should start the service automatically
+	OneShot              string // Whether the service is expected to complete successfully and exit
 	RecreateIgnore       string // Whether the deployment file changes should ignore recreate
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
 	CertExpiry           string // RFC3339 timestamp of the earliest expiry among the deployment's cert-bearing external secrets
@@ -31,8 +32,10 @@ type docoCdLabelNamesDeployment struct {
 
 // docoCdLabelNamesSource contains the labels used by DocoCD to identify the deployment source.
 type docoCdLabelNamesSource struct {
-	Type string // Source type (git or oci)
-	Name string // Repository or artifact name
+	Type             string // Source type (git or oci)
+	Name             string // Repository or artifact name
+	ConfigRevision   string // Immutable revision containing the deployment config
+	ConfigWorkingDir string // Host path to the config source artifact
 	// URL is the resolved URL used to fetch and name the on-disk source
 	// directory containing the deploy config. It intentionally remains the
 	// config-containing source when repository_url selects a different
@@ -71,6 +74,7 @@ var DocoCDLabels = docoCdLabelNames{
 		AutoDiscovery:        "cd.doco.deployment.auto_discovery",
 		AutoDiscoveryConfig:  "cd.doco.deployment.auto_discovery.config",
 		Autostart:            "cd.doco.deployment.autostart",
+		OneShot:              "cd.doco.deployment.one_shot",
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
 		CertExpiry:           "cd.doco.deployment.cert.expiry",
@@ -78,9 +82,11 @@ var DocoCDLabels = docoCdLabelNames{
 		CertState:            "cd.doco.deployment.cert.state",
 	},
 	Source: docoCdLabelNamesSource{
-		Type: "cd.doco.source",
-		Name: "cd.doco.source.name",
-		URL:  "cd.doco.source.url",
+		Type:             "cd.doco.source",
+		Name:             "cd.doco.source.name",
+		URL:              "cd.doco.source.url",
+		ConfigRevision:   "cd.doco.source.config.revision",
+		ConfigWorkingDir: "cd.doco.source.config.working_dir",
 	},
 }
 

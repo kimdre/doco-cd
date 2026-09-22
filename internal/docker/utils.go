@@ -158,6 +158,23 @@ func GetLabeledContainers(ctx context.Context, cli client.APIClient, key, value 
 	return result.Items, nil
 }
 
+// getContainersWithLabelKey retrieves all containers that carry labelKey,
+// regardless of its value. Unlike GetLabeledContainers, this does not
+// require knowing the label's value in advance - it is used for discovery
+// scans (e.g. garbage collection) that need every doco-cd-managed container
+// regardless of which value a label was stamped with.
+func getContainersWithLabelKey(ctx context.Context, cli client.APIClient, labelKey string, all bool) ([]container.Summary, error) {
+	result, err := cli.ContainerList(ctx, client.ContainerListOptions{
+		Filters: make(client.Filters).Add("label", labelKey),
+		All:     all,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
+}
+
 // GetLabeledServices retrieves all services with a specific label key and value, along with their labels.
 func GetLabeledServices(ctx context.Context, cli client.APIClient, swarmMode bool, key, value string) (map[Service]map[string]string, error) {
 	if swarmMode {
@@ -181,6 +198,49 @@ func GetLabeledServices(ctx context.Context, cli client.APIClient, swarmMode boo
 
 	result := make(map[Service]map[string]string)
 	for _, cont := range containers {
+		result[Service(cont.Names[0])] = cont.Labels
+	}
+
+	return result, nil
+}
+
+// GetServicesWithLabelKey retrieves every container or swarm service that
+// carries labelKey, regardless of its value, along with its labels. Like
+// getContainersWithLabelKey/swarm.GetServicesByLabelKey, this is for
+// discovery scans (e.g. garbage collection) that need to enumerate every
+// doco-cd-managed deployment without knowing any label's value - or the
+// deployment's stack name - in advance.
+//
+// Containers are listed with all=true, so a stopped-but-still-deployed
+// stack is reported the same as a running one: it is still deployed and its
+// on-disk source artifact is still in use.
+func GetServicesWithLabelKey(ctx context.Context, cli client.APIClient, swarmMode bool, labelKey string) (map[Service]map[string]string, error) {
+	if swarmMode {
+		services, err := swarmInternal.GetServicesByLabelKey(ctx, cli, labelKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get services with label key %s: %w", labelKey, err)
+		}
+
+		result := make(map[Service]map[string]string)
+		for _, service := range services {
+			result[Service(service.Spec.Name)] = SwarmServiceLabels(service)
+		}
+
+		return result, nil
+	}
+
+	containers, err := getContainersWithLabelKey(ctx, cli, labelKey, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get containers with label key %s: %w", labelKey, err)
+	}
+
+	result := make(map[Service]map[string]string)
+
+	for _, cont := range containers {
+		if len(cont.Names) == 0 {
+			continue
+		}
+
 		result[Service(cont.Names[0])] = cont.Labels
 	}
 

@@ -155,12 +155,22 @@ func (j *job) run(ctx context.Context) {
 
 			go func(entry contextCLIEntry, swarmMode bool, unhealthyConfigs []*deployConfig.Config) {
 				defer startupRecoveryWG.Done()
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						logger.LogRecoveredPanic(jobLog, "restart unhealthy containers on startup", recovered)
+					}
+				}()
 
 				j.restartUnhealthyContainersOnStartup(ctx, jobLog, entry.cli, swarmMode, unhealthyConfigs)
 			}(entry, swarmMode, unhealthyConfigs)
 
 			go func(ctxName string, entry contextCLIEntry, swarmMode bool, configs []*deployConfig.Config) {
 				defer startupRecoveryWG.Done()
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						logger.LogRecoveredPanic(jobLog, "redeploy missing services on startup", recovered)
+					}
+				}()
 
 				j.redeployMissingServicesOnStartup(ctx, jobLog, ctxName, entry.cli, swarmMode, configs)
 			}(ctxName, entry, swarmMode, configs)
@@ -187,6 +197,11 @@ func (j *job) run(ctx context.Context) {
 
 			go func(ctxName string, entry contextCLIEntry, swarmMode bool, configs []*deployConfig.Config) {
 				defer listenerWG.Done()
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						logger.LogRecoveredPanic(jobLog, "context event listener", recovered)
+					}
+				}()
 
 				j.runContextEventListener(ctx, jobLog, ctxName, entry, swarmMode, configs, mergedCh, listenerReadyCh)
 			}(ctxName, entry, swarmMode, configs)
@@ -472,6 +487,16 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	if shouldIgnoreOneShotCompletionReconciliation(action, event.Actor.Attributes) {
+		jobLog.Debug("skipping reconciliation for successful one-shot service completion",
+			slog.String("event", action),
+			slog.String("stack", stackName),
+			slog.String("container_name", event.Actor.Attributes["name"]),
+		)
+
+		return
+	}
+
 	stackID := j.info.Metadata.Repository + "/" + contextName + "/" + stackName
 	stackLock := lock.GetRepoLock(stackID)
 
@@ -545,16 +570,9 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	j.deploy(ctx, eventLog, stackDCs, action, event, traceID, contextName, swarmMode)
 }
 
+// deploy runs reconciliation without a repository-wide lock. Immutable artifacts allow concurrent prepares; per-stack
+// locks serialize deployments of the same stack.
 func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConfig.Config, action string, event events.Message, traceID string, contextName string, swarmMode bool) {
-	repoLock := lock.GetRepoLock(j.info.Metadata.Repository)
-	if !repoLock.LockContext(ctx, traceID) {
-		jobLog.Debug("reconciliation skipped, context cancelled while waiting for repository lock")
-
-		return
-	}
-
-	defer repoLock.Unlock()
-
 	jobLog.Info("reconciliation started")
 	defer jobLog.Info("reconciliation completed")
 

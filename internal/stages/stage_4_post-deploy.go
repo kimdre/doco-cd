@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 
+	gogit "github.com/go-git/go-git/v5"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -32,14 +34,27 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 	var latestCommit string
 
 	if s.Repository.Source != config.SourceTypeOCI {
-		latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-		if err != nil {
-			return fmt.Errorf("failed to get latest commit: %w", err)
-		}
+		err = s.withMirrorRead(func(repo *gogit.Repository) error {
+			// This stage reports what this run deployed. A parallel webhook may have
+			// advanced the mirror's branch already, so only resolve the moving ref for
+			// legacy callers that did not record an immutable revision.
+			latestCommit = strings.TrimSpace(s.Repository.Revision)
+			if latestCommit == "" {
+				latestCommit, err = git.GetLatestCommit(repo, s.DeployConfig.Reference)
+				if err != nil {
+					return fmt.Errorf("failed to get latest commit: %w", err)
+				}
+			}
 
-		shortCommit, err = git.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, git.DefaultShortSHALength)
+			shortCommit, err = git.GetShortestUniqueCommitHash(repo, latestCommit, git.DefaultShortSHALength)
+			if err != nil {
+				return fmt.Errorf("failed to get short commit SHA: %w", err)
+			}
+
+			return nil
+		})
 		if err != nil {
-			return fmt.Errorf("failed to get short commit SHA: %w", err)
+			return err
 		}
 	}
 
@@ -70,14 +85,16 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 			stageLog.Warn("failed to build changelog path filter, listing all commits", logger.ErrAttr(filterErr))
 		}
 
-		metadata.Commits, err = git.GetCommitsBetween(
-			stageLog,
-			s.Repository.Git,
-			plumbing.NewHash(s.DeployState.DeployedCommit),
-			plumbing.NewHash(latestCommit),
-			maxChangelogCommits,
-			pathFilter,
-		)
+		metadata.Commits, err = mirrorRead(s, func(repo *gogit.Repository) ([]git.CommitInfo, error) {
+			return git.GetCommitsBetween(
+				stageLog,
+				repo,
+				plumbing.NewHash(s.DeployState.DeployedCommit),
+				plumbing.NewHash(latestCommit),
+				maxChangelogCommits,
+				pathFilter,
+			)
+		})
 		if err != nil {
 			// changelog is best-effort, never block the notification
 			stageLog.Warn("failed to build commit changelog", logger.ErrAttr(err))

@@ -691,6 +691,33 @@ func TestGetConfig_OciVerifyMaxWorkersRejectsZero(t *testing.T) {
 	}
 }
 
+func TestGetConfig_MaxConcurrentPreDeploymentsDefaultsToEight(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("MAX_CONCURRENT_PREDEPLOYMENTS", "")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.MaxConcurrentPreDeployments != 8 {
+		t.Fatalf("expected MAX_CONCURRENT_PREDEPLOYMENTS default to be 8, got %d", cfg.MaxConcurrentPreDeployments)
+	}
+}
+
+func TestGetConfig_MaxConcurrentPreDeploymentsRejectsZero(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("MAX_CONCURRENT_PREDEPLOYMENTS", "0")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected MAX_CONCURRENT_PREDEPLOYMENTS=0 to be rejected")
+	}
+}
+
 func TestGetConfig_DataMountPathDefaultsToData(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")
@@ -1042,5 +1069,86 @@ func TestGetConfig_PollConfigExplicitZeroDisablesPolling(t *testing.T) {
 
 	if got := cfg.PollConfig[1].Interval; got != 10*time.Second {
 		t.Fatalf("expected Git interval to be 10s, got %s", got)
+	}
+}
+
+func TestGetConfig_ArtifactGCDefaults(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if !cfg.ArtifactGCEnabled {
+		t.Fatal("expected ArtifactGCEnabled to default to true")
+	}
+
+	if cfg.ArtifactGCRetentionRecords != 2 {
+		t.Fatalf("expected ArtifactGCRetentionRecords default to be 2, got %d", cfg.ArtifactGCRetentionRecords)
+	}
+
+	if cfg.ArtifactGCRetentionTTL != time.Minute {
+		t.Fatalf("expected ArtifactGCRetentionTTL default to be 1m, got %s", cfg.ArtifactGCRetentionTTL)
+	}
+
+	if cfg.ArtifactGCInterval != 10*time.Minute {
+		t.Fatalf("expected ArtifactGCInterval default to be 10m, got %s", cfg.ArtifactGCInterval)
+	}
+}
+
+func TestGetConfig_ArtifactGCDisabled(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("ARTIFACT_GC_ENABLED", "false")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.ArtifactGCEnabled {
+		t.Fatal("expected ArtifactGCEnabled to be false")
+	}
+}
+
+func TestGetConfig_ArtifactGCRetentionRecordsAllowsZero(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("ARTIFACT_GC_RETENTION_RECORDS", "0")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected ARTIFACT_GC_RETENTION_RECORDS=0 to be accepted, got %v", err)
+	}
+
+	if cfg.ArtifactGCRetentionRecords != 0 {
+		t.Fatalf("expected ArtifactGCRetentionRecords=0, got %d", cfg.ArtifactGCRetentionRecords)
+	}
+}
+
+func TestGetConfig_ArtifactGCRetentionRecordsRejectsNegative(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("ARTIFACT_GC_RETENTION_RECORDS", "-1")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected ARTIFACT_GC_RETENTION_RECORDS=-1 to be rejected")
+	}
+}
+
+func TestGetConfig_ArtifactGCIntervalRejectsZero(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("ARTIFACT_GC_INTERVAL", "0")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected ARTIFACT_GC_INTERVAL=0 to be rejected")
 	}
 }
