@@ -71,10 +71,24 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - name: Install packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends musl-tools
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: musl-tools
+          version: 1.0
       - run: go mod download
+
+      # Dedicated build cache for this job's CGO + musl-gcc static-link build
+      # config. Kept apart from the setup-go cache (which only covers the
+      # module cache here) so it isn't invalidated by other jobs, e.g. lint
+      # and e2e, that compile with different flags against the same go.sum.
+      - name: Restore Go build cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: test-go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            test-go-build-${{ runner.os }}-
+
       - name: Enable Swarm mode
         if: matrix.mode == 'swarm'
         run: docker swarm init
@@ -90,12 +104,24 @@ jobs:
           CGO_ENABLED: 1
           CC: musl-gcc
           BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+
+      # Both matrix legs use identical build flags, so only one needs to
+      # write the shared cache entry back.
+      - name: Save Go build cache
+        if: always() && matrix.mode == 'standalone'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: test-go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}
+
       - name: Upload coverage reports to Codecov
+        if: always()
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-${{ matrix.mode }}.out
-          flags: unittests
+          flags: unittests,${{ matrix.mode }}
+          fail_ci_if_error: false
 
   e2e:
     name: E2E (${{ matrix.mode }})
@@ -121,6 +147,8 @@ jobs:
         with:
           path: ${{ runner.temp }}/e2e-go-build
           key: e2e-go-build-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: |
+            e2e-go-build-
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
