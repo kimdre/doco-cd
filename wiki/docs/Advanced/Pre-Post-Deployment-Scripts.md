@@ -103,7 +103,7 @@ services:
       timeout: 1s
       retries: 10
 
-  post-init:
+  post-init:  # Runs *after* the app service is healthy
     image: backend
     command: ["./create-initial-resources.sh"]
     restart: on-failure:3
