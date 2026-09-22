@@ -22,6 +22,7 @@ type docoCdLabelNamesDeployment struct {
 	AutoDiscovery        string // Whether the deployment was auto-discovered
 	AutoDiscoveryConfig  string // JSON-serialized AutoDiscoveryConfig settings
 	Autostart            string // Whether deployment should start the service automatically
+	OneShot              string // Whether the service is expected to complete successfully and exit
 	RecreateIgnore       string // Whether the deployment file changes should ignore recreate
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
 	CertExpiry           string // RFC3339 timestamp of the earliest expiry among the deployment's cert-bearing external secrets
@@ -73,6 +74,7 @@ var DocoCDLabels = docoCdLabelNames{
 		AutoDiscovery:        "cd.doco.deployment.auto_discovery",
 		AutoDiscoveryConfig:  "cd.doco.deployment.auto_discovery.config",
 		Autostart:            "cd.doco.deployment.autostart",
+		OneShot:              "cd.doco.deployment.one_shot",
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
 		CertExpiry:           "cd.doco.deployment.cert.expiry",

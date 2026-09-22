@@ -487,6 +487,16 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	if shouldIgnoreOneShotCompletionReconciliation(action, event.Actor.Attributes) {
+		jobLog.Debug("skipping reconciliation for successful one-shot service completion",
+			slog.String("event", action),
+			slog.String("stack", stackName),
+			slog.String("container_name", event.Actor.Attributes["name"]),
+		)
+
+		return
+	}
+
 	stackID := j.info.Metadata.Repository + "/" + contextName + "/" + stackName
 	stackLock := lock.GetRepoLock(stackID)
 
