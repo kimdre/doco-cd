@@ -1201,9 +1201,9 @@ func TestPlainGitDiscoveryTree_ReusesUnchangedArtifactDirectories(t *testing.T) 
 	verify := func() map[string]int {
 		t.Helper()
 
-		head, headErr := source.Head()
-		if headErr != nil {
-			t.Fatal(headErr)
+		head, hErr := source.Head()
+		if hErr != nil {
+			t.Fatal(hErr)
 		}
 
 		tree, treeErr := gitInternal.NewTreeFSAtCommit(source, head.Hash())
@@ -1391,9 +1391,9 @@ func TestGetConfigs_PrimaryPublishedGitArtifactReusesSubtrees(t *testing.T) {
 			t.Fatal(resolveErr)
 		}
 
-		artifact, publishErr := gitStore.Publish(context.Background(), revision)
-		if publishErr != nil {
-			t.Fatal(publishErr)
+		artifact, pErr := gitStore.Publish(context.Background(), revision)
+		if pErr != nil {
+			t.Fatal(pErr)
 		}
 
 		counts := make(map[string]int)
@@ -1770,9 +1770,9 @@ func TestGetConfigs_NoMatchSubtreeBecomesInvalidAfterMaterialization(t *testing.
 			t.Fatal(resolveErr)
 		}
 
-		artifact, publishErr := gitStore.Publish(context.Background(), revision)
-		if publishErr != nil {
-			t.Fatal(publishErr)
+		artifact, pErr := gitStore.Publish(context.Background(), revision)
+		if pErr != nil {
+			t.Fatal(pErr)
 		}
 
 		return GetConfigs(context.Background(), artifact.Path, ".", "", "main",
