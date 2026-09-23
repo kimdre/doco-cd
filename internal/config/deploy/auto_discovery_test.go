@@ -2183,9 +2183,9 @@ func TestGetConfigs_PrimaryPublishedNestedSubmoduleRetainsCompleteInventory(t *t
 			t.Fatal(resolveErr)
 		}
 
-		artifact, publishErr := gitStore.Publish(context.Background(), revision)
-		if publishErr != nil {
-			t.Fatal(publishErr)
+		artifact, pErr := gitStore.Publish(context.Background(), revision)
+		if pErr != nil {
+			t.Fatal(pErr)
 		}
 
 		if _, statErr := os.Stat(filepath.Join(artifact.Path, "stacks", "userscript", "module", "compose.yaml")); statErr != nil {
