@@ -25,7 +25,9 @@ go test -tags e2e ./test/e2e/... -run TestFailedDeployRetry -v
 ```
 
 Set `E2E_KEEP_COMPONENTS_RUNNING=0` to stop each harness when its test ends,
-rather than at suite teardown.
+rather than at suite teardown. CI sets this so finished scenarios release their
+Docker networks before later scenarios start, avoiding exhaustion of the
+runner's default address pools.
 
 Also runs in CI on pull requests (`.github/workflows/test.yaml`, job `e2e`).
 
@@ -101,8 +103,9 @@ Consequences for scenario code:
   volume makes it fire once so the restarted actor can make progress.
 
 Keep scenarios independent: every scenario gets a fresh daemon, a fresh data
-volume and a fresh repo. Harness containers remain running until the e2e suite
-finishes; deployed stacks are still cleaned up after each test.
+volume and a fresh repo. Locally, harness containers remain running until the
+e2e suite finishes unless `E2E_KEEP_COMPONENTS_RUNNING=0` is set (as in CI);
+deployed stacks are still cleaned up after each test.
 
 Prefer Docker state for the primary assertion. Logs are useful for proving that
 a specific path ran, but a success log alone does not prove that the expected
