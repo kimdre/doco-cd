@@ -143,7 +143,7 @@ func runSelfUpdate(
 			RecreateMode:   api.RecreateForce,
 			Services:       []string{target.Service},
 		},
-		Labels: opts.Identity.Labels,
+		Labels: successorLabels(project, target.Service, opts.Identity.Labels),
 	}
 
 	if err = opts.Store.Create(record); err != nil {
@@ -183,6 +183,17 @@ func runSelfUpdate(
 	selfupdate.RequestDrain()
 
 	return selfupdate.ErrHandover
+}
+
+// successorLabels returns the labels the successor is deployed with. Sources are
+// immutable per revision now, so the predecessor's own labels still point at the
+// artifact it was started from; the applier must reload the new one instead.
+func successorLabels(project *types.Project, service string, fallback map[string]string) map[string]string {
+	if svc, ok := project.Services[service]; ok && len(svc.CustomLabels) > 0 {
+		return maps.Clone(svc.CustomLabels)
+	}
+
+	return fallback
 }
 
 // selfUpdateScaleOut creates a second container from the new config, waits for

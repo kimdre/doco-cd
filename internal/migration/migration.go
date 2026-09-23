@@ -323,10 +323,20 @@ func run(ctx context.Context, log *slog.Logger, dataMountDestination string, isR
 
 		repoLog := log.With(slog.String("repo_dir", path))
 
-		unlockGC, lockErr := sourcecache.AcquireExclusiveGCPathLock(path)
+		// Never wait here: a deployment in another process holds the shared GC lock until its
+		// stack is healthy, and when that stack is this very doco-cd (self-update, bootstrap)
+		// the wait would keep this process from serving its health check. A busy repository is
+		// migrated on its next deployment by MigrateRepository instead.
+		unlockGC, acquired, lockErr := sourcecache.TryAcquireExclusiveGCPathLock(path)
 		if lockErr != nil {
 			repoLog.Warn("failed to acquire repository GC lock; leaving it untouched for now",
 				logger.ErrAttr(lockErr))
+
+			return filepath.SkipDir
+		}
+
+		if !acquired {
+			repoLog.Debug("repository is busy in another process; deferring its migration to the next deployment")
 
 			return filepath.SkipDir
 		}
