@@ -12,14 +12,11 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
-	gogit "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/git"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
+	"github.com/kimdre/doco-cd/internal/source/store"
 	"github.com/kimdre/doco-cd/internal/test"
 )
 
@@ -69,11 +66,19 @@ func TestRecreateProjectManaged(t *testing.T) {
 	repoPath := filepath.Join(dataMountPath, git.GetRepoName(repositoryURL))
 	projectName := "managed-recreate"
 
-	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+	// Content lives under the store's per-revision artifact directory, not
+	// flat at repoPath (repoPath is a GitStore base directory: mirror/ and artifacts/<revision>).
+	// commitSHA stands in for the revision GitStore would have resolved and published;
+	// no real Git history is needed since validateManagedRecreateRevision only checks that the artifact directory
+	// exists, and this deploy config has auto-discovery disabled.
+	commitSHA := "b1946ac92492d2347c6235b4d2611184"
+	artifactPath := filepath.Join(repoPath, "artifacts", commitSHA)
+
+	if err := os.MkdirAll(artifactPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	composePath := filepath.Join(repoPath, "compose.yml")
+	composePath := filepath.Join(artifactPath, "compose.yml")
 	if err := os.WriteFile(composePath, []byte(`services:
   web:
     image: nginx:latest
@@ -81,39 +86,12 @@ func TestRecreateProjectManaged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := os.WriteFile(filepath.Join(repoPath, ".doco-cd.yml"), []byte(`name: managed-recreate
+	if err := os.WriteFile(filepath.Join(artifactPath, ".doco-cd.yml"), []byte(`name: managed-recreate
 reference: refs/heads/main
 working_dir: .
 compose_files:
   - compose.yml
 `), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	repo, err := gogit.PlainInit(repoPath, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))); err != nil {
-		t.Fatal(err)
-	}
-
-	worktree, err := repo.Worktree()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, path := range []string{"compose.yml", ".doco-cd.yml"} {
-		if _, err := worktree.Add(path); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	commit, err := worktree.Commit("initial", &gogit.CommitOptions{
-		Author: &object.Signature{Name: "test", Email: "test@example.com"},
-	})
-	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -123,7 +101,7 @@ compose_files:
 		test.WithCustomLabel(map[string]string{
 			DocoCDLabels.Deployment.Name:       projectName,
 			DocoCDLabels.Deployment.TargetRef:  "refs/heads/main",
-			DocoCDLabels.Deployment.CommitSHA:  commit.String(),
+			DocoCDLabels.Deployment.CommitSHA:  commitSHA,
 			DocoCDLabels.Deployment.ConfigHash: "deployed-config-hash",
 			DocoCDLabels.Source.Type:           string(config.SourceTypeGit),
 			DocoCDLabels.Source.Name:           "owner/repo",
@@ -314,7 +292,7 @@ func TestAddComposeServiceTrackingLabels(t *testing.T) {
 }
 
 func TestValidateManagedRecreateRevision(t *testing.T) {
-	t.Run("matching Git HEAD", func(t *testing.T) {
+	t.Run("matching published Git artifact", func(t *testing.T) {
 		dataMountPath := t.TempDir()
 		ref := composeScheduledServiceRef{
 			Project:       "example",
@@ -323,48 +301,23 @@ func TestValidateManagedRecreateRevision(t *testing.T) {
 		}
 
 		repoPath := filepath.Join(dataMountPath, git.GetRepoName(ref.RepositoryURL))
-		if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		commitSHA := "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+		// sourceRepoPath is a GitStore base directory: the expected revision
+		// is only "cached" if it was already published under artifacts/<sha>.
+		if err := os.MkdirAll(filepath.Join(repoPath, "artifacts", commitSHA), 0o755); err != nil {
 			t.Fatal(err)
 		}
 
-		repo, err := gogit.PlainInit(repoPath, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := os.WriteFile(filepath.Join(repoPath, "compose.yml"), []byte("services: {}\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-
-		worktree, err := repo.Worktree()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if _, err := worktree.Add("compose.yml"); err != nil {
-			t.Fatal(err)
-		}
-
-		commit, err := worktree.Commit("initial", &gogit.CommitOptions{
-			Author: &object.Signature{Name: "test", Email: "test@example.com"},
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = validateManagedRecreateRevision(ref, map[string]string{
-			DocoCDLabels.Deployment.CommitSHA: commit.String(),
-		}, ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}, repoPath, config.SourceTypeGit)
+		err := validateManagedRecreateRevision(ref, map[string]string{
+			DocoCDLabels.Deployment.CommitSHA: commitSHA,
+		}, repoPath, config.SourceTypeGit)
 		if err != nil {
 			t.Fatalf("validateManagedRecreateRevision() error = %v", err)
 		}
 	})
 
-	t.Run("mismatched Git HEAD", func(t *testing.T) {
+	t.Run("missing published Git artifact", func(t *testing.T) {
 		dataMountPath := t.TempDir()
 		ref := composeScheduledServiceRef{
 			Project:       "example",
@@ -376,20 +329,20 @@ func TestValidateManagedRecreateRevision(t *testing.T) {
 
 		err := validateManagedRecreateRevision(ref, map[string]string{
 			DocoCDLabels.Deployment.CommitSHA: "deadbeef",
-		}, ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}, repoPath, config.SourceTypeGit)
+		}, repoPath, config.SourceTypeGit)
 		if !errors.Is(err, ErrComposeSourceRevisionConflict) {
 			t.Fatalf("validateManagedRecreateRevision() error = %v, want ErrComposeSourceRevisionConflict", err)
 		}
 	})
 
 	t.Run("missing deployed revision", func(t *testing.T) {
-		err := validateManagedRecreateRevision(composeScheduledServiceRef{Project: "example"}, nil, ScheduledComposeOptions{}, "", config.SourceTypeGit)
+		err := validateManagedRecreateRevision(composeScheduledServiceRef{Project: "example"}, nil, "", config.SourceTypeGit)
 		if !errors.Is(err, ErrComposeSourceRevisionConflict) {
 			t.Fatalf("validateManagedRecreateRevision() error = %v, want ErrComposeSourceRevisionConflict", err)
 		}
 	})
 
-	t.Run("matching OCI marker", func(t *testing.T) {
+	t.Run("matching published OCI artifact", func(t *testing.T) {
 		dataMountPath := t.TempDir()
 		ref := composeScheduledServiceRef{
 			Project:       "example",
@@ -402,24 +355,26 @@ func TestValidateManagedRecreateRevision(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := sourcecache.WriteRevision(dataMountPath, sourcePath, sourceType, "sha256:deployed"); err != nil {
+		// sourcePath is an OCIStore base directory: the expected revision
+		// is only "cached" if it was already published under artifacts/<digest>.
+		if err := os.MkdirAll(filepath.Join(sourcePath, "artifacts", store.ArtifactDirName("sha256:deployed")), 0o755); err != nil {
 			t.Fatal(err)
 		}
 
 		err = validateManagedRecreateRevision(ref, map[string]string{
 			DocoCDLabels.Deployment.CommitSHA: "sha256:deployed",
-		}, ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}, sourcePath, sourceType)
+		}, sourcePath, sourceType)
 		if err != nil {
 			t.Fatalf("validateManagedRecreateRevision() error = %v", err)
 		}
 	})
 
 	for _, tc := range []struct {
-		name           string
-		cachedRevision string
+		name              string
+		publishedRevision string
 	}{
-		{name: "mismatched OCI marker", cachedRevision: "sha256:newer"},
-		{name: "missing OCI marker"},
+		{name: "mismatched OCI artifact", publishedRevision: "sha256:newer"},
+		{name: "missing OCI artifact"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dataMountPath := t.TempDir()
@@ -434,15 +389,15 @@ func TestValidateManagedRecreateRevision(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if tc.cachedRevision != "" {
-				if err := sourcecache.WriteRevision(dataMountPath, sourcePath, sourceType, tc.cachedRevision); err != nil {
+			if tc.publishedRevision != "" {
+				if err := os.MkdirAll(filepath.Join(sourcePath, "artifacts", store.ArtifactDirName(store.Revision(tc.publishedRevision))), 0o755); err != nil {
 					t.Fatal(err)
 				}
 			}
 
 			err = validateManagedRecreateRevision(ref, map[string]string{
 				DocoCDLabels.Deployment.CommitSHA: "sha256:deployed",
-			}, ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}, sourcePath, sourceType)
+			}, sourcePath, sourceType)
 			if !errors.Is(err, ErrComposeSourceRevisionConflict) {
 				t.Fatalf("validateManagedRecreateRevision() error = %v, want ErrComposeSourceRevisionConflict", err)
 			}

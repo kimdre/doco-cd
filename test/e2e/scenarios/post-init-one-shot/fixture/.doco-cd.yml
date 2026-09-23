@@ -1,0 +1,2 @@
+name: e2e-post-init-one-shot
+working_dir: deploy

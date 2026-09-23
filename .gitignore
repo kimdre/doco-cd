@@ -54,3 +54,7 @@ issue.md
 
 # e2e harness scratch dir
 test/e2e/.work/
+
+# Python cache
+__pycache__/
+*.pyc

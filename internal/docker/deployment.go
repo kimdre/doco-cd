@@ -111,11 +111,12 @@ func resolveDeploymentMetricsDeploymentLabel(deployName string) string {
 type DeployRequest struct {
 	JobLog           *slog.Logger `validate:"required,nostructlevel"`
 	ExternalRepoPath string       `validate:"required"`
-	// InternalRepoPath is the repository's container-internal path, the same
-	// one source.Prepare locks via sourcecache.AcquirePathLock. DeployStack
-	// takes that lock while loading the Compose project (which decrypts
-	// files in place) to avoid racing a concurrent Prepare call.
-	// Optional: falls back to ExternalRepoPath when empty.
+	// InternalRepoPath is the repository's container-internal path.
+	// For a prepared deployment this is the published artifact directory for the deployed revision (Result.PathInternal),
+	// not the repository's top-level directory that Prepare itself locks (with a shared lock,
+	// see sourcecache.AcquireSharedPathLock). DeployStack takes an exclusive lock on this path while loading
+	// the Compose project (which decrypts files in place), so two deployments landing on the exact same
+	// revision never race on the same in-place decryption. Optional: falls back to ExternalRepoPath when empty.
 	InternalRepoPath string
 	DockerCLI        command.Cli `validate:"required,nostructlevel"`
 	Payload          *webhook.ParsedPayload
@@ -260,7 +261,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	}
 
 	if projectHash == "" {
-		projectHash, err = ProjectHash(WithNormalizedEnvValues(project, req.HashNormMap))
+		projectHash, err = ProjectHash(WithNormalizedEnvValues(project, req.HashNormMap), req.ExternalRepoPath)
 		if err != nil {
 			return fmt.Errorf("failed to generate project hash: %w", err)
 		}

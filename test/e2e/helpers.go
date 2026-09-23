@@ -12,12 +12,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/cache"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/storage/filesystem"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
@@ -59,7 +61,134 @@ func (h *Harness) initRepo() {
 		h.t.Fatalf("get worktree: %v", err)
 	}
 
+	h.repo = repo
 	h.wt = wt
+}
+
+// SideRepo is a second repository served by the same gitserver container, used
+// by scenarios that need more than the one scenario repo - a submodule target,
+// for instance.
+type SideRepo struct {
+	t        *testing.T
+	Name     string // repo name without the .git suffix
+	URL      string // clone URL as seen from inside the test network
+	worktree string
+	wt       *git.Worktree
+}
+
+// NewSideRepo creates an additional bare repo under the directory the
+// gitserver mounts, so it is reachable at http://gitserver/<name>.git.
+// Call before Start.
+func (h *Harness) NewSideRepo(name string) *SideRepo {
+	h.t.Helper()
+
+	repoPath := filepath.Join(h.workDir, "repos", name+".git")
+	worktree := filepath.Join(h.workDir, "src", name)
+
+	for _, dir := range []string{repoPath, worktree} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			h.t.Fatalf("create side repo dir %s: %v", dir, err)
+		}
+	}
+
+	storer := filesystem.NewStorage(osfs.New(repoPath), cache.NewObjectLRUDefault())
+
+	repo, err := git.InitWithOptions(storer, osfs.New(worktree), git.InitOptions{
+		DefaultBranch: plumbing.NewBranchReferenceName("main"),
+	})
+	if err != nil {
+		h.t.Fatalf("init side repo %s: %v", name, err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		h.t.Fatalf("get side repo worktree %s: %v", name, err)
+	}
+
+	return &SideRepo{
+		t:        h.t,
+		Name:     name,
+		URL:      "http://gitserver/" + name + ".git",
+		worktree: worktree,
+		wt:       wt,
+	}
+}
+
+// Write puts files into the side repo worktree, keyed by path relative to its root.
+func (s *SideRepo) Write(files map[string]string) {
+	s.t.Helper()
+
+	for rel, content := range files {
+		path := filepath.Join(s.worktree, rel)
+
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			s.t.Fatalf("create dir for %s: %v", rel, err)
+		}
+
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			s.t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+}
+
+// Commit stages and commits everything in the side repo worktree, returning
+// the new commit hash - the value a parent repo's gitlink must point at.
+func (s *SideRepo) Commit(message string) plumbing.Hash {
+	s.t.Helper()
+
+	if _, err := s.wt.Add("."); err != nil {
+		s.t.Fatalf("stage side repo changes: %v", err)
+	}
+
+	hash, err := s.wt.Commit(message, &git.CommitOptions{
+		Author: &object.Signature{Name: "e2e", Email: "e2e@localhost", When: time.Now()},
+	})
+	if err != nil {
+		s.t.Fatalf("commit side repo: %v", err)
+	}
+
+	return hash
+}
+
+// SetSubmoduleGitlink pins path in the scenario repo to a commit of another
+// repository. go-git cannot add a submodule, so the index entry is written
+// directly; RepoPush applies it after staging so a plain Add cannot drop it.
+// The matching .gitmodules entry still has to be part of the fixture.
+func (h *Harness) SetSubmoduleGitlink(path string, commit plumbing.Hash) {
+	h.t.Helper()
+
+	if h.gitlinks == nil {
+		h.gitlinks = map[string]plumbing.Hash{}
+	}
+
+	h.gitlinks[path] = commit
+}
+
+func (h *Harness) applyGitlinks() {
+	h.t.Helper()
+
+	if len(h.gitlinks) == 0 {
+		return
+	}
+
+	idx, err := h.repo.Storer.Index()
+	if err != nil {
+		h.t.Fatalf("read index: %v", err)
+	}
+
+	for path, commit := range h.gitlinks {
+		entry, err := idx.Entry(path)
+		if err != nil {
+			entry = idx.Add(path)
+		}
+
+		entry.Hash = commit
+		entry.Mode = filemode.Submodule
+	}
+
+	if err = h.repo.Storer.SetIndex(idx); err != nil {
+		h.t.Fatalf("write index: %v", err)
+	}
 }
 
 func (h *Harness) copyFixture(fixtureDir string) {
@@ -99,6 +228,8 @@ func (h *Harness) RepoPush(message string) {
 	if _, err := h.wt.Add("."); err != nil {
 		h.t.Fatalf("stage changes: %v", err)
 	}
+
+	h.applyGitlinks()
 
 	_, err := h.wt.Commit(message, &git.CommitOptions{
 		Author: &object.Signature{Name: "e2e", Email: "e2e@localhost", When: time.Now()},
@@ -602,6 +733,7 @@ func (h *Harness) isSwarmMode() bool {
 // those stacks still need cleaning up.
 func (h *Harness) scenarioStackNames() set.Set[string] {
 	names := set.New[string]()
+	names.Add(h.extraStacks...)
 
 	_ = filepath.WalkDir(scenarioDir(h.scenario), func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

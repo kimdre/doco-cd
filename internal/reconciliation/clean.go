@@ -65,6 +65,21 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 		stackLog := jobLog.With(slog.String("stack", stackName))
 
+		// Filter out stacks belonging to a different deployment config target before doing the
+		// more expensive repository URL comparison (and its associated logging). This avoids
+		// needlessly scanning/logging stacks that were auto-discovered by other doco-cd targets
+		// sharing the same Docker host and repository (e.g., a "nas" target's auto-discovered
+		// stacks while reconciling for an "updater" target that doesn't use auto-discovery at all).
+		stackConfigTarget := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.ConfigTarget])
+		if !isCleanupTargetMatch(runConfigTargets, stackConfigTarget) {
+			stackLog.Debug("skipping auto-discovered stack as it belongs to a different deployment config target",
+				slog.String("stack_config_target", stackConfigTarget),
+				slog.Any("run_config_targets", sortedTargetKeys(runConfigTargets)),
+			)
+
+			continue
+		}
+
 		labelUrl := labels[docker.DocoCDLabels.Source.URL]
 
 		// cloneUrl may not be in the same format as labelUrl
@@ -85,65 +100,57 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 			slog.Bool("match", match),
 		)
 
-		if match {
-			if _, found := autoDiscoveredNames[stackName]; found {
-				stackLog.Debug("auto-discovered stack is present in current config, skipping obsolete cleanup")
-
-				processedStacks = append(processedStacks, stackName)
-
-				continue
-			}
-
-			stackConfigTarget := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.ConfigTarget])
-			if !isCleanupTargetMatch(runConfigTargets, stackConfigTarget) {
-				stackLog.Debug("skipping auto-discovered stack as it belongs to a different deployment config target",
-					slog.String("stack_config_target", stackConfigTarget),
-					slog.Any("run_config_targets", sortedTargetKeys(runConfigTargets)),
-				)
-
-				continue
-			}
-
-			stackLog.Debug("checking auto-discovered stack for obsolescence")
-
-			autoDiscoverCfg := docker.ParseAutoDiscoveryConfig(labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig])
-
-			if !autoDiscoverCfg.Delete {
-				stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
-
-				processedStacks = append(processedStacks, stackName)
-
-				continue
-			}
-
-			stackLog.Info("removing obsolete auto-discovered stack")
-
-			notifyMetadata := metadata
-			notifyMetadata.Target = stackConfigTarget
-			notifyMetadata.Stack = stackName
-			notifyMetadata.Context = contextName
-
-			removeConfig := &deployConfig.Config{Name: stackName}
-			removeConfig.Destroy.Enabled = true
-			removeConfig.Destroy.RemoveVolumes = autoDiscoverCfg.RemoveVolumes
-			removeConfig.Destroy.RemoveImages = autoDiscoverCfg.RemoveImages
-			removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
-
-			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig, swarmMode)
-			if err != nil {
-				return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
-			}
-
-			err = notifier.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, notifyMetadata)
-			if err != nil {
-				stackLog.Error("failed to send notification", logger.ErrAttr(err))
-			}
-
-			stackLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
-			processedStacks = append(processedStacks, stackName)
-		} else {
+		if !match {
 			stackLog.Debug("skipping auto-discovered stack as it belongs to a different repository")
+
+			continue
 		}
+
+		if _, found := autoDiscoveredNames[stackName]; found {
+			stackLog.Debug("auto-discovered stack is present in current config, skipping obsolete cleanup")
+
+			processedStacks = append(processedStacks, stackName)
+
+			continue
+		}
+
+		stackLog.Debug("checking auto-discovered stack for obsolescence")
+
+		autoDiscoverCfg := docker.ParseAutoDiscoveryConfig(labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig])
+
+		if !autoDiscoverCfg.Delete {
+			stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
+
+			processedStacks = append(processedStacks, stackName)
+
+			continue
+		}
+
+		stackLog.Info("removing obsolete auto-discovered stack")
+
+		notifyMetadata := metadata
+		notifyMetadata.Target = stackConfigTarget
+		notifyMetadata.Stack = stackName
+		notifyMetadata.Context = contextName
+
+		removeConfig := &deployConfig.Config{Name: stackName}
+		removeConfig.Destroy.Enabled = true
+		removeConfig.Destroy.RemoveVolumes = autoDiscoverCfg.RemoveVolumes
+		removeConfig.Destroy.RemoveImages = autoDiscoverCfg.RemoveImages
+		removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
+
+		err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig, swarmMode)
+		if err != nil {
+			return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
+		}
+
+		err = notifier.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, notifyMetadata)
+		if err != nil {
+			stackLog.Error("failed to send notification", logger.ErrAttr(err))
+		}
+
+		stackLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
+		processedStacks = append(processedStacks, stackName)
 	}
 
 	return nil

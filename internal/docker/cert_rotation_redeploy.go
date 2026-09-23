@@ -17,7 +17,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -77,7 +76,11 @@ func RotateProjectCertificates(
 			ErrComposeSourceRevisionConflict, ref.Project, err)
 	}
 
-	unlockSource := sourcecache.AcquirePathLock(sourceRepoPath)
+	unlockSource, err := lockScheduledSource(ref, opts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
+	if err != nil {
+		return fmt.Errorf("%w: lock cached source for project %s: %v",
+			ErrComposeSourceRevisionConflict, ref.Project, err)
+	}
 	defer unlockSource()
 
 	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, opts.Scheduled)
@@ -150,7 +153,11 @@ func rotateSwarmProjectCertificates(
 			ErrComposeSourceRevisionConflict, ref.Project, err)
 	}
 
-	unlockSource := sourcecache.AcquirePathLock(sourceRepoPath)
+	unlockSource, err := lockScheduledSource(ref, certOpts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
+	if err != nil {
+		return fmt.Errorf("%w: lock cached source for project %s: %v",
+			ErrComposeSourceRevisionConflict, ref.Project, err)
+	}
 	defer unlockSource()
 
 	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, certOpts.Scheduled)

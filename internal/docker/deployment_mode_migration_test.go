@@ -118,6 +118,33 @@ func TestMigrateDeploymentMode_SkipsMigrationWhenSwarmUnavailable(t *testing.T) 
 	}
 }
 
+func TestDeploymentModeMigrationRequiredDoesNotMutate(t *testing.T) {
+	t.Parallel()
+
+	apiClient := &deploymentModeMigrationClient{
+		containers: []containerTypes.Summary{{
+			Names:  []string{"/example_web_1"},
+			Labels: migrationTestOwnershipLabels(),
+		}},
+	}
+	dockerCli := deploymentModeMigrationCLI{apiClient: apiClient}
+
+	required, err := DeploymentModeMigrationRequired(
+		t.Context(), dockerCli, "", "example", "owner/repo", true, true,
+	)
+	if err != nil {
+		t.Fatalf("DeploymentModeMigrationRequired() error = %v", err)
+	}
+
+	if !required {
+		t.Fatal("DeploymentModeMigrationRequired() = false, want true")
+	}
+
+	if apiClient.containerListCalls != 1 || apiClient.serviceListCalls != 1 {
+		t.Fatalf("unexpected inspection API calls: ContainerList=%d ServiceList=%d", apiClient.containerListCalls, apiClient.serviceListCalls)
+	}
+}
+
 func TestMigrationSourceMatches(t *testing.T) {
 	t.Parallel()
 

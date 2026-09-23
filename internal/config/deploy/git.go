@@ -13,4 +13,9 @@ type GitOptions struct {
 	HttpProxy               transport.ProxyOptions
 	GitCloneSubmodules      bool
 	GitCloneDepth           int
+	SourceURL               string
+	// SourceBaseDir is the directory every source's store lives under (DATA_MOUNT_PATH).
+	// Auto-discovery of a config that names its own repository_url needs it to place that repository's store beside the
+	// others, since repoRoot is a published artifact directory and nothing about that path leads back to the shared root.
+	SourceBaseDir string
 }

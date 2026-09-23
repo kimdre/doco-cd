@@ -18,10 +18,9 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
-	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
+	"github.com/kimdre/doco-cd/internal/source/store"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -367,10 +366,14 @@ func recreateManagedProject(
 			ErrComposeSourceRevisionConflict, ref.Project, err)
 	}
 
-	unlockSource := sourcecache.AcquirePathLock(sourceRepoPath)
+	unlockSource, err := lockScheduledSource(ref, opts.ComposeLoad.DataMountPath, sourceRepoPath)
+	if err != nil {
+		return fmt.Errorf("%w: lock cached source for project %s: %v",
+			ErrComposeSourceRevisionConflict, ref.Project, err)
+	}
 	defer unlockSource()
 
-	if err := validateManagedRecreateRevision(ref, labels, opts, sourceRepoPath, sourceType); err != nil {
+	if err := validateManagedRecreateRevision(ref, labels, sourceRepoPath, sourceType); err != nil {
 		return err
 	}
 
@@ -433,7 +436,6 @@ func recreateManagedProject(
 func validateManagedRecreateRevision(
 	ref composeScheduledServiceRef,
 	labels map[string]string,
-	opts ScheduledComposeOptions,
 	sourceRepoPath string,
 	sourceType config.SourceType,
 ) error {
@@ -443,25 +445,33 @@ func validateManagedRecreateRevision(
 			ErrComposeSourceRevisionConflict, ref.Project)
 	}
 
+	// sourceRepoPath is a store base directory (holds mirror/ or the OCI pull cache, plus artifacts/<revision>),
+	// not a checked-out working tree - the expected revision is still cached only if it was published as its own artifact.
 	switch sourceType {
 	case config.SourceTypeGit:
-		matches, err := git.HeadMatchesCommit(sourceRepoPath, expected)
+		gitStore, err := store.NewGitStore(store.GitStoreOptions{CloneURL: ref.RepositoryURL, BaseDir: sourceRepoPath})
 		if err != nil {
 			return fmt.Errorf("%w: cannot verify cached Git source for project %s: %v",
 				ErrComposeSourceRevisionConflict, ref.Project, err)
 		}
 
-		if matches {
+		if _, matches, err := gitStore.Lookup(store.Revision(expected)); err != nil {
+			return fmt.Errorf("%w: cannot verify cached Git source for project %s: %v",
+				ErrComposeSourceRevisionConflict, ref.Project, err)
+		} else if matches {
 			return nil
 		}
 	case config.SourceTypeOCI:
-		revision, err := sourcecache.ReadRevision(opts.ComposeLoad.DataMountPath, sourceRepoPath, sourceType)
+		ociStore, err := store.NewOCIStore(store.OCIStoreOptions{ArtifactRef: ref.RepositoryURL, BaseDir: sourceRepoPath})
 		if err != nil {
-			return fmt.Errorf("%w: cannot verify cached OCI source for project %s: %v; run a normal deployment before recreating",
+			return fmt.Errorf("%w: cannot verify cached OCI source for project %s: %v",
 				ErrComposeSourceRevisionConflict, ref.Project, err)
 		}
 
-		if revision == expected {
+		if _, matches, err := ociStore.Lookup(store.Revision(expected)); err != nil {
+			return fmt.Errorf("%w: cannot verify cached OCI source for project %s: %v",
+				ErrComposeSourceRevisionConflict, ref.Project, err)
+		} else if matches {
 			return nil
 		}
 	}

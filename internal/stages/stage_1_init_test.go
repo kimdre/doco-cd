@@ -1,9 +1,11 @@
 package stages
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 )
 
@@ -70,4 +72,48 @@ func TestSourceURLForLabels(t *testing.T) {
 			t.Fatalf("sourceURLForLabels() = %q, want source %q", got, repository.SourceUrl)
 		}
 	})
+}
+
+func TestUseDeploymentGitRepositorySwitchesOCIConfigSourceToGit(t *testing.T) {
+	t.Parallel()
+
+	repository := &RepositoryData{
+		Source:          config.SourceTypeOCI,
+		SourceUrl:       "ghcr.io/owner/config:latest",
+		ConfigSourceUrl: "ghcr.io/owner/config:latest",
+	}
+
+	useDeploymentGitRepository(repository, "https://github.com/owner/app.git")
+
+	if repository.Source != config.SourceTypeGit {
+		t.Fatalf("Source = %q, want %q", repository.Source, config.SourceTypeGit)
+	}
+
+	if repository.SourceUrl != "https://github.com/owner/app.git" {
+		t.Fatalf("SourceUrl = %q, want deployment Git URL", repository.SourceUrl)
+	}
+
+	if repository.Name != "github.com/owner/app" {
+		t.Fatalf("Name = %q, want deployment Git store name", repository.Name)
+	}
+
+	if repository.ConfigSourceUrl != "ghcr.io/owner/config:latest" {
+		t.Fatalf("ConfigSourceUrl = %q, want original OCI config source", repository.ConfigSourceUrl)
+	}
+}
+
+func TestLoadConfigSourceFilesReusesPreviouslyLoadedValues(t *testing.T) {
+	t.Parallel()
+
+	deployConfig := deploy.New("app", "main")
+	deployConfig.Internal.ConfigSourceFilesLoaded = true
+	deployConfig.Internal.Environment = map[string]string{"FROM_CONFIG_SOURCE": "preserved"}
+
+	if err := loadConfigSourceFiles(deployConfig, filepath.Join(t.TempDir(), "removed-artifact")); err != nil {
+		t.Fatalf("loadConfigSourceFiles() error = %v", err)
+	}
+
+	if got := deployConfig.Internal.Environment["FROM_CONFIG_SOURCE"]; got != "preserved" {
+		t.Fatalf("loaded environment value = %q, want preserved", got)
+	}
 }

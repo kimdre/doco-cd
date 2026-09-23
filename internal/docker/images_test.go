@@ -323,8 +323,9 @@ func TestDeployedServicesWithChangedImageDigests(t *testing.T) {
 }
 
 func TestRegistryDigestForRefPrefersHEAD(t *testing.T) {
-	t.Parallel()
-
+	// Not parallel: overrides the package-level registryDigestHeadLookup/
+	// registryDigestDistributionLookup vars, which race with the other
+	// registryDigestForRef tests doing the same thing.
 	oldHeadLookup := registryDigestHeadLookup
 	oldDistributionLookup := registryDigestDistributionLookup
 
@@ -352,8 +353,7 @@ func TestRegistryDigestForRefPrefersHEAD(t *testing.T) {
 }
 
 func TestRegistryDigestForRef_FallsBackToDistributionInspect(t *testing.T) {
-	t.Parallel()
-
+	// Not parallel: see TestRegistryDigestForRefPrefersHEAD.
 	oldHeadLookup := registryDigestHeadLookup
 	oldDistributionLookup := registryDigestDistributionLookup
 
@@ -380,7 +380,7 @@ func TestRegistryDigestForRef_FallsBackToDistributionInspect(t *testing.T) {
 }
 
 func TestRegistryDigestForRef_FallsBackWhenHEADMissingDigestHeader(t *testing.T) {
-	t.Parallel()
+	// Not parallel: see TestRegistryDigestForRefPrefersHEAD.
 
 	// HEAD server returns 200 but omits Docker-Content-Digest, so the HEAD path errors.
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

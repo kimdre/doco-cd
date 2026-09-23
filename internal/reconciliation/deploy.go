@@ -109,6 +109,8 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 	var wg sync.WaitGroup
 
 	resultCh := make(chan error, len(req.DeployConfigs))
+	gitChanges := stages.NewGitChangeCache()
+	gitAncestry := stages.NewGitAncestryCache()
 
 	for _, deployCfg := range req.DeployConfigs {
 		deployLog := req.Logger.
@@ -137,6 +139,18 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 			defer wg.Done()
 			defer m.deployments.finish(req.Repository.Name, dc.Context, dc.Name)
 
+			// A panic here (e.g. from a lower-level library bug) must never take
+			// down the whole process: it would abort every other concurrently
+			// running deployment too. Recover, log it, and report this stack's
+			// deployment as failed instead.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logger.LogRecoveredPanic(deployLog, "stack deployment", recovered)
+
+					resultCh <- fmt.Errorf("panic during deployment of stack %q: %v", dc.Name, recovered)
+				}
+			}()
+
 			contextName := docker.NormalizeContextName(dc.Context)
 
 			entry, ok := contextCLIs[contextName]
@@ -150,7 +164,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 				return
 			}
 
-			err := m.handleOneDeploy(ctx, req, deployLog, entry.cli, entry.swarmMode, dc)
+			err := m.handleOneDeploy(ctx, req, deployLog, entry.cli, entry.swarmMode, dc, gitChanges, gitAncestry)
 
 			resultCh <- err
 		}(deployCfg)
@@ -251,7 +265,8 @@ func resolveDeployContext(ctx context.Context, contexts *docker.ContextRegistry,
 }
 
 func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deployLog *slog.Logger,
-	deploymentDockerCli command.Cli, swarmAvailable bool, dc *deployConfig.Config,
+	deploymentDockerCli command.Cli, swarmAvailable bool, dc *deployConfig.Config, gitChanges *stages.GitChangeCache,
+	gitAncestry *stages.GitAncestryCache,
 ) error {
 	swarmMode, err := dc.ResolveSwarmMode(swarmAvailable)
 	if err != nil {
@@ -261,10 +276,12 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 
 	stageMgr, err := stages.NewStageManager(
 		stages.Dependencies{
-			AppConfig:      m.appConfig,
-			SecretProvider: m.secretProvider,
-			Notifier:       m.notifier,
-			SchedulerHolds: m,
+			AppConfig:       m.appConfig,
+			SecretProvider:  m.secretProvider,
+			Notifier:        m.notifier,
+			SchedulerHolds:  m,
+			Contexts:        m.contexts,
+			LeftoverTracker: m.leftoverTracker,
 		},
 		stages.RunInput{
 			Log:        deployLog,
@@ -280,6 +297,8 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 			Payload:      req.Payload,
 			DeployConfig: dc,
 			Metadata:     req.Metadata,
+			GitChanges:   gitChanges,
+			GitAncestry:  gitAncestry,
 		},
 	)
 	if err != nil {
@@ -290,37 +309,80 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 		return stages.ErrWebhookFilterMismatch
 	}
 
-	if m.limiter != nil {
-		deployLog.Debug("queuing deployment")
-
-		queueStarted := time.Now()
-		unlock, lErr := m.limiter.acquire(ctx, req.Repository.Name, NormalizeReference(dc.Reference))
-
-		queueOutcome := "admitted"
-		if lErr != nil {
-			queueOutcome = "canceled"
+	if dc.Destroy.Enabled {
+		release, admissionErr := m.acquireDeploymentPhase(ctx, deployLog, req.Repository.Name, phaseDeployment, m.limiter, true)
+		if admissionErr != nil {
+			return admissionErr
 		}
+		defer release()
 
-		prometheus.DeploymentQueueDuration.WithLabelValues(
-			resolveDeploymentQueueRepository(req.Repository.Name),
-			queueOutcome,
-		).Observe(time.Since(queueStarted).Seconds())
-
-		if lErr != nil {
-			return lErr
-		}
-
-		defer unlock()
+		return stageMgr.RunStages(ctx, nil)
 	}
 
-	err = stageMgr.RunStages(ctx)
+	releasePreDeploy, err := m.acquireDeploymentPhase(ctx, deployLog, req.Repository.Name, phasePreDeploy, m.preDeployLimiter, true)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if releasePreDeploy != nil {
+			releasePreDeploy()
+		}
+	}()
 
-	return nil
+	return stageMgr.RunStages(ctx, func(ctx context.Context) (func(), error) {
+		releasePreDeploy()
+		releasePreDeploy = nil
+
+		return m.acquireDeploymentPhase(ctx, deployLog, req.Repository.Name, phaseDeployment, m.limiter, false)
+	})
 }
 
+// acquireDeploymentPhase acquires a deploymentPhase (phasePreDeploy or phaseDeployment) from the given limiter.
+// It returns a release function that must be called to release the acquired phase,
+// and an error if the acquisition failed.
+func (m *Manager) acquireDeploymentPhase(
+	ctx context.Context,
+	deployLog *slog.Logger,
+	repository string,
+	phase deploymentPhase,
+	limiter *DeployerLimiter,
+	recordLegacyQueue bool,
+) (func(), error) {
+	if limiter == nil {
+		return func() {}, nil
+	}
+
+	if phase == phaseDeployment {
+		deployLog.Debug("queuing deployment")
+	} else {
+		deployLog.Debug("queuing pre-deployment")
+	}
+
+	startedAt := time.Now()
+	release, err := limiter.acquire(ctx, repository)
+
+	outcome := "admitted"
+	if err != nil {
+		outcome = "canceled"
+	}
+
+	elapsed := time.Since(startedAt).Seconds()
+	metricRepository := resolveDeploymentQueueRepository(repository)
+
+	prometheus.DeploymentAdmissionDuration.WithLabelValues(metricRepository, string(phase), outcome).Observe(elapsed)
+
+	if recordLegacyQueue {
+		prometheus.DeploymentQueueDuration.WithLabelValues(metricRepository, outcome).Observe(elapsed)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return release, nil
+}
+
+// resolveDeploymentQueueRepository returns a sanitized repository name for use in Prometheus metrics.
 func resolveDeploymentQueueRepository(repository string) string {
 	repository = strings.TrimSpace(repository)
 	if repository == "" {

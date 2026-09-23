@@ -28,8 +28,11 @@ If you prefer running commands directly instead of Make targets:
 python3 -m venv .venv-wiki
 source .venv-wiki/bin/activate
 pip install -r wiki/requirements.txt
-zensical serve --config-file wiki/zensical.toml
+PYTHONPATH=wiki zensical serve --config-file wiki/zensical.toml
 ```
+
+> [!NOTE]
+> `PYTHONPATH=wiki` makes the custom Markdown extensions in `wiki/hooks/` importable. It is required for `zensical build`/`serve` to work correctly.
 
 ## Cleaning the build cache
 

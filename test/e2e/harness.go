@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	"github.com/testcontainers/testcontainers-go"
@@ -48,16 +50,27 @@ type Harness struct {
 	repoPath     string // bare repo dir the gitserver container mounts read-only
 	worktree     string // host worktree dir used to build fixture/commits
 	pollConfig   string
+	pollDocument string // overrides the default single-git-entry poll config
 	pollInterval time.Duration
 	dataVolume   string
 	volumes      []string
+	extraStacks  []string
 	env          map[string]string
 
-	wt     *git.Worktree
-	docker *client.Client
-	net    *testcontainers.DockerNetwork
-	gitSrv testcontainers.Container
-	daemon testcontainers.Container
+	// preCommitHook runs after the fixture is copied into the worktree but
+	// before the initial commit, for scenarios that need to inject a value
+	// only known once the scenario network exists (e.g. PushOCIArtifact's
+	// registry reference) into a fixture file before it's committed.
+	preCommitHook func()
+	ociRegistry   *ociTestRegistry // registry PushOCIArtifact attached to h.net, if any
+
+	repo     *git.Repository
+	wt       *git.Worktree
+	gitlinks map[string]plumbing.Hash // submodule paths staged as gitlinks on the next RepoPush
+	docker   *client.Client
+	net      *testcontainers.DockerNetwork
+	gitSrv   testcontainers.Container
+	daemon   testcontainers.Container
 
 	selfUpdate    bool
 	selfStack     string
@@ -138,6 +151,14 @@ func (h *Harness) TrackVolume(name string) {
 	h.volumes = append(h.volumes, name)
 }
 
+// TrackStack registers a stack for teardown whose name cannot be discovered
+// from the scenario's own .doco-cd.yml files - an OCI-sourced deployment, say,
+// where the deploy config lives inside the artifact.
+func (h *Harness) TrackStack(name string) {
+	h.t.Helper()
+	h.extraStacks = append(h.extraStacks, name)
+}
+
 // SetEnv adds an environment variable to the test daemon, overriding the
 // harness default of the same name. Call before Start.
 func (h *Harness) SetEnv(key, value string) {
@@ -157,6 +178,104 @@ func (h *Harness) SetPollInterval(interval time.Duration) {
 	h.pollInterval = interval
 }
 
+// SetPollDocument replaces the harness default poll configuration (a single
+// git entry pointing at the scenario repo) with the given YAML document, for
+// scenarios that poll something else - an OCI artifact, say. Call before Start.
+func (h *Harness) SetPollDocument(doc string) {
+	h.t.Helper()
+	h.pollDocument = doc
+}
+
+// SetPreCommitHook registers fn to run after the fixture is copied into the
+// worktree but before the initial commit. Use it when a fixture file needs a
+// value that's only known once the scenario network exists, such as the
+// registry reference PushOCIArtifact returns. Call before Start.
+func (h *Harness) SetPreCommitHook(fn func()) {
+	h.t.Helper()
+	h.preCommitHook = fn
+}
+
+// ensureNetwork creates the scenario's Docker network on first use. Start
+// calls it unconditionally, but helpers that need the network earlier (e.g.
+// PushOCIArtifact, called before Start to compute a poll document) can call
+// it directly without creating a second network.
+func (h *Harness) ensureNetwork() *testcontainers.DockerNetwork {
+	h.t.Helper()
+
+	if h.net != nil {
+		return h.net
+	}
+
+	net, err := tcnetwork.New(h.ctx)
+	if err != nil {
+		h.t.Fatalf("create network: %v", err)
+	}
+
+	h.net = net
+
+	return h.net
+}
+
+// PushOCIArtifact builds files as a doco-cd v1 OCI artifact under tag and
+// pushes it to the suite's shared test registry (started once and reused
+// across every scenario) instead of relying on an externally published
+// fixture image. It returns a reference reachable from containers on this
+// harness's own network - see ociTestRegistry.pushArtifact for why that
+// reference works without extra insecure-registry configuration.
+//
+// Call before Start when the reference has to go straight into a poll
+// document, or from a function registered with SetPreCommitHook when it has
+// to be substituted into a fixture file before the initial commit.
+func (h *Harness) PushOCIArtifact(tag string, files map[string]string) string {
+	h.t.Helper()
+
+	return h.pushOCI(tag, func(ref name.Reference) error {
+		_, err := pushOCIArtifact(ref, files)
+
+		return err
+	})
+}
+
+// PushComposeOCIArtifact builds files as a compose project OCI artifact (the
+// shape docker/compose's own "include: oci://..." loader expects, not
+// doco-cd's OCI source format) and pushes it under tag to the suite's shared
+// test registry. See PushOCIArtifact for the shared setup and returned
+// reference.
+func (h *Harness) PushComposeOCIArtifact(tag string, files map[string]string) string {
+	h.t.Helper()
+
+	return h.pushOCI(tag, func(ref name.Reference) error {
+		_, err := pushComposeOCIArtifact(ref, files)
+
+		return err
+	})
+}
+
+// pushOCI starts (or reuses) the suite's shared test registry, attaches it to
+// this harness's network, and runs push against a reference resolved on that
+// registry, returning the reference reachable from containers on h.net.
+func (h *Harness) pushOCI(tag string, push func(ref name.Reference) error) string {
+	h.t.Helper()
+
+	reg, err := ensureOCIRegistry(h.ctx, h.docker)
+	if err != nil {
+		h.t.Fatalf("start OCI test registry: %v", err)
+	}
+
+	h.ensureNetwork()
+
+	h.ociRegistry = reg
+
+	repo := h.scenario + "-" + tag
+
+	containerRef, err := reg.pushArtifact(h.ctx, h.net.Name, repo, tag, push)
+	if err != nil {
+		h.t.Fatalf("push OCI test artifact: %v", err)
+	}
+
+	return containerRef
+}
+
 // Start creates the initial fixture commit, builds and starts the gitserver
 // + doco-cd containers, and waits for the daemon to become healthy.
 func (h *Harness) Start() {
@@ -171,17 +290,14 @@ func (h *Harness) Start() {
 
 	prewarmImages()
 
+	h.ensureNetwork()
+
 	h.initRepo()
 	h.copyFixture(fixtureDir)
 
-	// The network exists before the first commit so a self-update fixture can
-	// join it by name through the generated .env file.
-	net, err := tcnetwork.New(h.ctx)
-	if err != nil {
-		h.t.Fatalf("create network: %v", err)
+	if h.preCommitHook != nil {
+		h.preCommitHook()
 	}
-
-	h.net = net
 
 	if h.selfUpdate {
 		h.prepareSelfUpdateFixture()
@@ -545,7 +661,10 @@ func (h *Harness) writePollConfig() string {
 		interval = 10 * time.Second
 	}
 
-	content := fmt.Sprintf("- url: http://gitserver/%s.git\n  reference: refs/heads/main\n  interval: %s\n", h.scenario, interval)
+	content := h.pollDocument
+	if content == "" {
+		content = fmt.Sprintf("- url: http://gitserver/%s.git\n  reference: refs/heads/main\n  interval: %s\n", h.scenario, interval)
+	}
 
 	path := filepath.Join(h.workDir, "poll.yaml")
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -619,6 +738,10 @@ func (h *Harness) teardownInternal() {
 
 		if h.gitSrv != nil {
 			h.terminateContainer(h.gitSrv)
+		}
+
+		if h.ociRegistry != nil && h.net != nil {
+			h.ociRegistry.detachFromNetwork(h.ctx, h.net.Name)
 		}
 
 		if h.net != nil {

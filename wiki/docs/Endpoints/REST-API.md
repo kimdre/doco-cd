@@ -21,7 +21,7 @@ Set `OPENAPI_ENABLED=true` to expose the public [OpenAPI](https://www.openapis.o
 
 ## Authentication
 
-Set the `API_SECRET` or `API_SECRET_FILE` environment variable in the container to enable the API, see [App Settings](../App-Settings.md#general-settings).
+Set the `API_SECRET` or `API_SECRET_FILE` environment variable in the container to enable the API, see [App Settings](../App-Settings.md#api-and-webhook-settings).
 
 Use the `x-api-key` header to authenticate requests to the API using the secret value.
 

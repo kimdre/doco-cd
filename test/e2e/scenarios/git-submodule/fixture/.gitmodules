@@ -1,0 +1,3 @@
+[submodule "shared"]
+	path = shared
+	url = ../git-submodule-shared.git

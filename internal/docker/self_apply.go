@@ -16,7 +16,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -52,14 +51,17 @@ func ApplySelfUpdate(ctx context.Context, dockerCli command.Cli, opts ApplySelfO
 		return fmt.Errorf("rebuild the compose reference for the self stack: %w", err)
 	}
 
-	// Reloading the project decrypts files in place, so take the same lock the
-	// poll path and the managed-recreate path use.
+	// Take the same locks the poll path and the managed-recreate path take, so
+	// the reload cannot race a concurrent Prepare or a GC sweep of the artifact.
 	sourceRepoPath, err := resolveScheduledSourceRepoPath(ref, opts.Scheduled.ComposeLoad.DataMountPath)
 	if err != nil {
 		return fmt.Errorf("resolve the cached source for the self stack: %w", err)
 	}
 
-	unlockSource := sourcecache.AcquirePathLock(sourceRepoPath)
+	unlockSource, err := lockScheduledSource(ref, opts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
+	if err != nil {
+		return fmt.Errorf("lock the cached source for the self stack: %w", err)
+	}
 	defer unlockSource()
 
 	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, opts.SecretProvider, opts.Scheduled)

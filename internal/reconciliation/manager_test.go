@@ -19,6 +19,27 @@ func TestNewManagerAppliesDefaultDeploymentLimit(t *testing.T) {
 	if got := cap(manager.limiter.sem); got != 1 {
 		t.Fatalf("default deployment limit = %d, want 1", got)
 	}
+
+	if got := cap(manager.preDeployLimiter.sem); got != 1 {
+		t.Fatalf("default pre-deployment limit = %d, want 1", got)
+	}
+}
+
+func TestNewManagerUsesSeparatePreDeploymentLimit(t *testing.T) {
+	t.Parallel()
+
+	manager := newTestManagerWithDependencies(t, Dependencies{
+		MaxConcurrentDeployments:    2,
+		MaxConcurrentPreDeployments: 8,
+	})
+
+	if got := cap(manager.limiter.sem); got != 2 {
+		t.Fatalf("deployment limit = %d, want 2", got)
+	}
+
+	if got := cap(manager.preDeployLimiter.sem); got != 8 {
+		t.Fatalf("pre-deployment limit = %d, want 8", got)
+	}
 }
 
 func TestNewManagerDoesNotApplyDefaultsToAppConfig(t *testing.T) {
