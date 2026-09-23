@@ -2,24 +2,32 @@ package deploy
 
 import (
 	"bytes"
+	"container/list"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
-	"strconv"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
+	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	gitInternal "github.com/kimdre/doco-cd/internal/git"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 // AutoDiscoveryConfig holds auto-discovery settings for a deployment.
@@ -31,14 +39,162 @@ type AutoDiscoveryConfig struct {
 	RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`    // RemoveImages removes the images of an auto-discovered deployment when it is deleted
 }
 
-var autoDiscoveryCache = struct {
-	mu      sync.RWMutex
-	entries map[string][]*Config
-}{
-	entries: map[string][]*Config{},
+// discoveryCache is an LRU cache for auto-discovery results.
+type discoveryCache struct {
+	mu      sync.Mutex
+	entries map[discoveryCacheKey]*list.Element
+	recent  list.List
+	bytes   int
 }
 
-const maxAutoDiscoveryCacheEntries = 64
+// autoDiscoveryCache is a global cache for auto-discovery results,
+// keyed by repository, tree, settings, and remaining depth.
+var autoDiscoveryCache = discoveryCache{
+	entries: make(map[discoveryCacheKey]*list.Element),
+}
+
+// Maximum number of entries in the auto-discovery proof cache.
+// Each entry is a Git subtree hash, repository hash, and settings hash.
+const maxAutoDiscoveryProofEntries = 4096
+
+// discoveryProofKey is a unique key for a Git subtree proof,
+// consisting of the tree hash, repository hash, and settings hash.
+type discoveryProofKey struct {
+	tree       plumbing.Hash
+	repository [sha256.Size]byte
+	settings   [sha256.Size]byte
+}
+
+// discoveryProofCache is an LRU cache for Git subtree proofs,
+// allowing reuse of verified subtrees across different artifacts.
+type discoveryProofCache struct {
+	mu      sync.Mutex
+	entries map[discoveryProofKey]*list.Element
+	recent  list.List
+}
+
+// autoDiscoveryProof is a global cache for Git subtree proofs,
+// allowing reuse of verified subtrees across different artifacts.
+var autoDiscoveryProof = discoveryProofCache{
+	entries: make(map[discoveryProofKey]*list.Element),
+}
+
+// get checks if a proof for the given key exists in the cache.
+func (c *discoveryProofCache) get(key discoveryProofKey) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	element, ok := c.entries[key]
+	if !ok {
+		return false
+	}
+
+	c.recent.MoveToBack(element)
+
+	return true
+}
+
+// put adds a proof for the given key to the cache, evicting the oldest entry if necessary.
+func (c *discoveryProofCache) put(key discoveryProofKey) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.entries == nil {
+		c.entries = make(map[discoveryProofKey]*list.Element)
+	}
+
+	if element, ok := c.entries[key]; ok {
+		c.recent.MoveToBack(element)
+		return
+	}
+
+	if len(c.entries) >= maxAutoDiscoveryProofEntries {
+		oldest := c.recent.Front()
+		delete(c.entries, oldest.Value.(discoveryProofKey))
+		c.recent.Remove(oldest)
+	}
+
+	c.entries[key] = c.recent.PushBack(key)
+}
+
+// Maximum number of entries in the auto-discovery cache.
+// Each entry is a repository, tree, settings, and remaining depth.
+const (
+	maxAutoDiscoveryCacheEntries    = 4096
+	maxAutoDiscoveryCacheBytes      = 8 << 20
+	maxAutoDiscoveryCacheEntryBytes = 256 << 10
+)
+
+type discoveryCacheKey struct {
+	repository, tree, settings string
+	remainingDepth             int
+}
+
+type discoveryCacheEntry struct {
+	key     discoveryCacheKey
+	matches []discoveryMatch
+	size    int
+}
+
+// Paths in the cache are relative to the cached subtree, not to a revision's artifact.
+// Overrides contain parsed user fields only; the base Config (including Internal) is
+// cloned and applied afresh for every discovery.
+type discoveryMatch struct {
+	dir          string
+	override     *Config
+	overrideSize int
+}
+
+// get retrieves the matches for the given key from the cache, returning false if not found.
+func (c *discoveryCache) get(key discoveryCacheKey) ([]discoveryMatch, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	element, ok := c.entries[key]
+	if !ok {
+		return nil, false
+	}
+
+	c.recent.MoveToBack(element)
+
+	return element.Value.(*discoveryCacheEntry).matches, true
+}
+
+// put adds the matches for the given key to the cache, evicting the oldest entries if necessary.
+func (c *discoveryCache) put(key discoveryCacheKey, matches []discoveryMatch) {
+	size := 128 + len(key.repository) + len(key.tree) + len(key.settings)
+	for _, match := range matches {
+		size += 96 + len(match.dir) + match.overrideSize
+		if size > maxAutoDiscoveryCacheEntryBytes {
+			return
+		}
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.entries == nil {
+		c.entries = make(map[discoveryCacheKey]*list.Element)
+	}
+
+	if element, exists := c.entries[key]; exists {
+		c.recent.MoveToBack(element)
+		return
+	}
+
+	// Evict oldest entries until the cache is within limits.
+	for len(c.entries) >= maxAutoDiscoveryCacheEntries || c.bytes+size > maxAutoDiscoveryCacheBytes {
+		oldest := c.recent.Front()
+		entry := oldest.Value.(*discoveryCacheEntry)
+		c.bytes -= entry.size
+		delete(c.entries, entry.key)
+		c.recent.Remove(oldest)
+	}
+
+	entry := &discoveryCacheEntry{key: key, matches: matches, size: size}
+	c.entries[key] = c.recent.PushBack(entry)
+	c.bytes += size
+}
 
 func (c *AutoDiscoveryConfig) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
@@ -94,10 +250,9 @@ func (c *AutoDiscoveryConfig) UnmarshalJSON(data []byte) error {
 // expandInlineAutoDiscoverConfigs replaces enabled inline auto-discovery entries with deployments under repoRoot.
 // labelRoot is a revision-stable directory naming the repository; repoRoot itself is usually a per-revision
 // artifact directory. revisionKey overrides the repository HEAD when repoRoot is not a Git checkout.
-func expandInlineAutoDiscoverConfigs(repoRoot, labelRoot, revisionKey string, deployments []*Config) ([]*Config, error) {
+func expandInlineAutoDiscoverConfigs(repoRoot, labelRoot, mirrorRoot, revisionKey string, deployments []*Config) ([]*Config, error) {
 	expanded := make([]*Config, 0, len(deployments))
 
-	fsys := os.DirFS(repoRoot)
 	if revisionKey == "" {
 		revisionKey = revisionKeyForRepoRoot(repoRoot)
 	}
@@ -108,7 +263,13 @@ func expandInlineAutoDiscoverConfigs(repoRoot, labelRoot, revisionKey string, de
 			continue
 		}
 
+		fsys, release := publishedGitDiscoveryFS(repoRoot, labelRoot, mirrorRoot, plumbing.NewHash(revisionKey), deployment)
 		discoveredConfigs, err := autoDiscoverDeployments(fsys, labelRoot, revisionKey, deployment)
+
+		if release != nil {
+			release()
+		}
+
 		if err != nil {
 			return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 		}
@@ -119,9 +280,44 @@ func expandInlineAutoDiscoverConfigs(repoRoot, labelRoot, revisionKey string, de
 	return expanded, nil
 }
 
+// publishedGitDiscoveryFS uses the object tree only when the published disk
+// artifact has been proved equivalent for discovery.
+// The caller releases the mirror read lock after scanning the returned TreeFS.
+func publishedGitDiscoveryFS(repoRoot, labelRoot, mirrorRoot string, revision plumbing.Hash, base *Config) (fs.FS, func()) {
+	disk := os.DirFS(repoRoot)
+	if revision.IsZero() || !isPublishedPrimaryGitArtifact(repoRoot, mirrorRoot, revision) {
+		return disk, nil
+	}
+
+	unlock := sourcecache.AcquireSharedPathLock(mirrorRoot)
+
+	repo, err := git.PlainOpen(mirrorRoot)
+	if err != nil {
+		unlock()
+		slog.Debug("could not open discovery mirror; using published artifact", "reason", err)
+
+		return disk, nil
+	}
+
+	tree, err := gitInternal.NewTreeFSAtCommit(repo, revision)
+	if err != nil {
+		unlock()
+		slog.Debug("could not open discovery tree; using published artifact", "reason", err)
+
+		return disk, nil
+	}
+
+	if !plainGitDiscoveryTree(tree, disk, labelRoot, base) {
+		unlock()
+		return disk, nil
+	}
+
+	return tree, unlock
+}
+
 // revisionKeyForRepoRoot returns the current HEAD commit hash for repoRoot,
-// or "" if repoRoot is not a git repository (e.g. an OCI source), which
-// disables the auto-discovery cache for the call.
+// or "" if repoRoot is not a git repository. A disk scan never uses Git tree
+// hashes for subtree caching: materialized contents may differ from HEAD.
 func revisionKeyForRepoRoot(repoRoot string) string {
 	repo, err := git.PlainOpen(repoRoot)
 	if err != nil {
@@ -137,173 +333,355 @@ func revisionKeyForRepoRoot(repoRoot string) string {
 }
 
 // autoDiscoverDeployments scans fsys for compose files and creates a Config for each matching subdirectory.
-// revisionKey identifies the exposed revision; repoRoot supplies labels and relative paths.
+// Only an object-backed TreeFS with a matching revision can reuse Git subtree metadata;
+// disk artifacts, submodules and OCI sources cannot be identified by Git tree hashes.
 func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfig *Config) ([]*Config, error) {
+	start := time.Now()
 	repositoryLabel := filepath.Base(filepath.Clean(repoRoot))
-
-	cacheKey, cacheable := autoDiscoveryCacheKey(repoRoot, revisionKey, baseConfig)
-	if cacheable {
-		autoDiscoveryCache.mu.RLock()
-		cached, ok := autoDiscoveryCache.entries[cacheKey]
-		autoDiscoveryCache.mu.RUnlock()
-
-		if ok {
-			recordAutoDiscoveryCacheLookup(repositoryLabel, "hit")
-			return cloneConfigSlice(cached), nil
-		}
-
-		recordAutoDiscoveryCacheLookup(repositoryLabel, "miss")
+	scanner := discoveryScanner{
+		fsys:       fsys,
+		repository: repoRoot,
+		label:      repositoryLabel,
+		base:       baseConfig,
+		compose:    set.New(baseConfig.ComposeFiles...),
 	}
 
-	var configs []*Config
+	// A TreeFS never materializes submodules or decrypted files. Do not use this
+	// optimization for os.DirFS, even when its path names a published Git revision.
+	if tree, ok := fsys.(gitTreeDiscoveryFS); ok && revisionKey != "" && tree.Commit().String() == revisionKey {
+		names := append([]string(nil), baseConfig.ComposeFiles...)
+		sort.Strings(names)
+		settings, _ := json.Marshal(struct {
+			ComposeFiles []string
+			ConfigFiles  []string
+		}{names, DefaultDeploymentConfigFileNames})
+		scanner.tree, scanner.settings = tree, string(settings)
+	}
+
+	mode := "tree"
+	if scanner.tree == nil {
+		mode = "full"
+
+		recordAutoDiscoveryCacheLookup(repositoryLabel, "bypass")
+	}
+
+	defer func() {
+		slog.Debug("auto-discovery scan", "mode", mode, "duration", time.Since(start),
+			"directory_reads", scanner.directoryReads, "cache_hits", scanner.cacheHits, "cache_misses", scanner.cacheMisses)
+	}()
 
 	searchPath := path.Clean(baseConfig.WorkingDirectory)
-	if searchPath == "" {
-		searchPath = "."
+
+	info, err := fs.Stat(fsys, searchPath)
+	if err != nil {
+		return nil, err
 	}
 
-	composeFileNames := set.New(baseConfig.ComposeFiles...)
+	if !info.IsDir() {
+		return nil, nil
+	}
 
-	err := fs.WalkDir(fsys, searchPath, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	if _, err := scanner.scan(searchPath, 0); err != nil {
+		return nil, err
+	}
+
+	return scanner.configs, nil
+}
+
+type gitTreeDiscoveryFS interface {
+	fs.FS
+	Commit() plumbing.Hash
+	SubtreeHash(string) (plumbing.Hash, error)
+}
+
+// Ensure gitInternal.TreeFS implements gitTreeDiscoveryFS.
+var _ gitTreeDiscoveryFS = (*gitInternal.TreeFS)(nil)
+
+// plainGitDiscoveryTree compares directory inventories and nested config bytes
+// against a GitStore-published artifact. Gitlinks become directories, symlinks
+// redirect reads, and SOPS can replace nested configs: none can use TreeFS.
+// Positive proofs transfer to other immutable artifacts with identical Git
+// subtree hashes; unproven or failed subtrees always fall back to disk.
+// Reuse relies on GitStore's contract that published artifacts are not modified
+// after verification; Git hashes cannot detect external writes to those paths.
+func plainGitDiscoveryTree(tree gitTreeDiscoveryFS, disk fs.FS, repository string, base *Config) bool {
+	root := path.Clean(base.WorkingDirectory)
+	if !fs.ValidPath(root) {
+		return false
+	}
+
+	settings, _ := json.Marshal(struct {
+		ConfigFiles []string
+		Root        string
+		Depth       int
+	}{DefaultDeploymentConfigFileNames, root, base.AutoDiscovery.ScanDepth})
+
+	return provePlainGitSubtree(tree, disk, ".", root, base.AutoDiscovery.ScanDepth,
+		sha256.Sum256([]byte(repository)), sha256.Sum256(settings))
+}
+
+// provePlainGitSubtree recursively compares a Git subtree against a disk artifact.
+// It returns true if the subtree is proven equivalent to the disk artifact, false otherwise.
+// The proof is cached by subtree hash, repository hash, and settings hash.
+func provePlainGitSubtree(tree gitTreeDiscoveryFS, disk fs.FS, p, root string, depth int, repository, settings [sha256.Size]byte) bool {
+	hash, err := tree.SubtreeHash(p)
+	if err != nil {
+		return false
+	}
+
+	key := discoveryProofKey{tree: hash, repository: repository, settings: settings}
+	if autoDiscoveryProof.get(key) {
+		return true
+	}
+
+	entries, err := fs.ReadDir(tree, p)
+	if err != nil {
+		return false
+	}
+
+	diskEntries, err := fs.ReadDir(disk, p)
+	if err != nil || len(entries) != len(diskEntries) {
+		return false
+	}
+
+	for i, entry := range entries {
+		// TreeFS marks gitlinks irregular. ExportTree turns even an unfetched
+		// gitlink into a directory, so skipping it would lose disk inventory.
+		if entry.Name() != diskEntries[i].Name() || entry.IsDir() != diskEntries[i].IsDir() ||
+			(entry.Type()&fs.ModeType != 0 && !entry.IsDir()) ||
+			(diskEntries[i].Type()&fs.ModeType != 0 && !diskEntries[i].IsDir()) {
+			return false
 		}
 
-		// fs.WalkDir paths are "/"-separated and rooted at fsys, so a simple
-		// prefix trim gives the depth relative to searchPath.
-		rel := "."
-		if p != searchPath {
-			rel = strings.TrimPrefix(p, searchPath+"/")
+		child := path.Join(p, entry.Name())
+		if entry.IsDir() {
+			if !discoveryProofVisits(child, entry.Name(), root, depth) {
+				continue
+			}
+
+			if !provePlainGitSubtree(tree, disk, child, root, depth, repository, settings) {
+				return false
+			}
+
+			continue
 		}
 
-		depth := 0
-		if rel != "." {
-			depth = strings.Count(rel, "/") + 1
-		}
+		for _, name := range DefaultDeploymentConfigFileNames {
+			if entry.Name() != name {
+				continue
+			}
 
-		// Skip directories that exceed the maximum depth if ScanDepth is set greater than 0
-		if d.IsDir() && depth > baseConfig.AutoDiscovery.ScanDepth && baseConfig.AutoDiscovery.ScanDepth > 0 {
-			return fs.SkipDir
-		}
+			contents, readErr := fs.ReadFile(tree, child)
+			if readErr != nil {
+				return false
+			}
 
-		if d.IsDir() {
-			if filesystem.IsIgnoredDir(d.Name()) && p != searchPath {
-				return fs.SkipDir
+			diskContents, readErr := fs.ReadFile(disk, child)
+			if readErr != nil || !bytes.Equal(contents, diskContents) {
+				return false
+			}
+
+			if _, encrypted := encryption.DetectFormat(contents, child); encrypted {
+				return false
 			}
 		}
+	}
 
-		if !d.IsDir() {
-			return nil
+	autoDiscoveryProof.put(key)
+
+	return true
+}
+
+// discoveryProofVisits determines whether a child directory should be visited during proof verification.
+// It returns true if the child is within the root directory and within the specified depth limit.
+func discoveryProofVisits(child, name, root string, depth int) bool {
+	if root != "." {
+		if child == root || strings.HasPrefix(root, child+"/") {
+			return true
 		}
 
-		// Read directory entries once, avoiding one stat per candidate compose filename.
-		dirEntries, err := fs.ReadDir(fsys, p)
+		if !strings.HasPrefix(child, root+"/") {
+			return false
+		}
+	}
+
+	if filesystem.IsIgnoredDir(name) {
+		return false
+	}
+
+	if depth == 0 {
+		return true
+	}
+
+	rel := child
+	if root != "." {
+		rel = strings.TrimPrefix(child, root+"/")
+	}
+
+	return strings.Count(rel, "/")+1 <= depth
+}
+
+// discoveryScanner scans a filesystem for docker-compose files
+// and creates Configs for each matching subdirectory.
+type discoveryScanner struct {
+	fsys       fs.FS
+	tree       gitTreeDiscoveryFS
+	repository string
+	label      string
+	settings   string
+	base       *Config
+	compose    set.Set[string]
+	configs    []*Config
+
+	directoryReads, cacheHits, cacheMisses int
+}
+
+// appendConfig clones the base Config, applies any overrides from the discovery match,
+// and appends it to the scanner's configs slice. It returns an error if the resulting
+// Config is invalid.
+func (s *discoveryScanner) appendConfig(p string, match discoveryMatch) error {
+	c := clone.New(s.base)
+
+	stackDirName := path.Base(p)
+	if p == "." {
+		stackDirName = s.label
+	}
+
+	if s.base.Name != "" && stackDirName == s.label {
+		c.Name = s.base.Name
+	} else {
+		c.Name = stackDirName
+	}
+
+	c.WorkingDirectory = p
+	if match.override != nil {
+		mergeConfig(c, clone.New(match.override))
+	}
+
+	if err := c.Validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+
+	s.configs = append(s.configs, c)
+
+	return nil
+}
+
+// scan visits directories in fs.WalkDir's lexicographic, parent-first order.
+// Each visited directory is read only once, for both matches and child traversal.
+func (s *discoveryScanner) scan(p string, depth int) ([]discoveryMatch, error) {
+	var key discoveryCacheKey
+
+	if s.tree != nil {
+		hash, err := s.tree.SubtreeHash(p)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		if !dirContainsAnyComposeFile(dirEntries, composeFileNames) {
-			return nil
+		remaining := -1
+		if s.base.AutoDiscovery.ScanDepth > 0 {
+			remaining = s.base.AutoDiscovery.ScanDepth - depth
 		}
 
-		c := clone.New(baseConfig)
+		key = discoveryCacheKey{s.repository, hash.String(), s.settings, remaining}
+		if matches, ok := autoDiscoveryCache.get(key); ok {
+			s.cacheHits++
+			recordAutoDiscoveryCacheLookup(s.label, "hit")
 
-		// Stack name is the compose file's directory name. At the search root
-		// with no WorkingDirectory, p is "." (fs.FS has no repo dir name), so
-		// fall back to repositoryLabel.
-		stackDirName := path.Base(p)
-		if p == "." {
-			stackDirName = repositoryLabel
+			for _, match := range matches {
+				if err := s.appendConfig(path.Join(p, match.dir), match); err != nil {
+					return nil, err
+				}
+			}
+
+			return matches, nil
 		}
 
-		if baseConfig.Name != "" && stackDirName == repositoryLabel {
-			c.Name = baseConfig.Name
-		} else {
-			c.Name = stackDirName
-		}
+		s.cacheMisses++
+		recordAutoDiscoveryCacheLookup(s.label, "miss")
+	}
 
-		c.WorkingDirectory = p
+	entries, err := fs.ReadDir(s.fsys, p)
+	if err != nil {
+		return nil, err
+	}
 
-		// Check for a nested .doco-cd config file alongside the compose file and
-		// merge any overridable fields from it on top of the base config copy.
-		// Reuse the already-read dirEntries instead of issuing additional Stat calls.
+	s.directoryReads++
+
+	var matches []discoveryMatch
+
+	if dirContainsAnyComposeFile(entries, s.compose) {
+		match := discoveryMatch{dir: "."}
+
+		// A local .yaml takes precedence over .yml, and only a directory with
+		// a matching compose file reads or validates its nested config.
 		for _, cfgName := range DefaultDeploymentConfigFileNames {
-			if !dirHasFile(dirEntries, cfgName) {
+			if !dirHasFile(entries, cfgName) {
 				continue
 			}
 
 			localCfgPath := path.Join(p, cfgName)
 
-			b, readErr := fs.ReadFile(fsys, localCfgPath)
+			b, readErr := fs.ReadFile(s.fsys, localCfgPath)
 			if readErr != nil {
-				return fmt.Errorf("failed to read nested .doco-cd config at %s: %w", localCfgPath, readErr)
+				return nil, fmt.Errorf("failed to read nested .doco-cd config at %s: %w", localCfgPath, readErr)
 			}
 
 			localConfigs, parseErr := getConfigFromYAMLBytes(b, localCfgPath, false)
 			if parseErr != nil {
-				return fmt.Errorf("failed to parse nested .doco-cd config at %s: %w", localCfgPath, parseErr)
+				return nil, fmt.Errorf("failed to parse nested .doco-cd config at %s: %w", localCfgPath, parseErr)
 			}
 
 			if len(localConfigs) > 1 {
-				return fmt.Errorf("%w: %s contains %d documents", ErrMultipleYAMLDocuments, localCfgPath, len(localConfigs))
+				return nil, fmt.Errorf("%w: %s contains %d documents", ErrMultipleYAMLDocuments, localCfgPath, len(localConfigs))
 			}
 
-			mergeConfig(c, localConfigs[0])
+			match.override = localConfigs[0]
+			match.override.Internal.File = ""
 
-			break // use first found config file name (.yaml preferred over .yml)
-		}
-
-		if err = c.Validate(); err != nil {
-			return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
-		}
-
-		configs = append(configs, c)
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if cacheable {
-		autoDiscoveryCache.mu.Lock()
-		if _, exists := autoDiscoveryCache.entries[cacheKey]; !exists && len(autoDiscoveryCache.entries) >= maxAutoDiscoveryCacheEntries {
-			for key := range autoDiscoveryCache.entries {
-				delete(autoDiscoveryCache.entries, key)
-				break
+			// Bound cached contents by the size of the parsed value, not only
+			// the source bytes (YAML aliases can expand during decoding).
+			if s.tree != nil {
+				encoded, marshalErr := json.Marshal(match.override)
+				if marshalErr != nil {
+					match.overrideSize = maxAutoDiscoveryCacheEntryBytes + 1
+				} else {
+					match.overrideSize = len(encoded) * 4
+				}
 			}
+
+			break
 		}
 
-		autoDiscoveryCache.entries[cacheKey] = cloneConfigSlice(configs)
-		autoDiscoveryCache.mu.Unlock()
+		if err := s.appendConfig(p, match); err != nil {
+			return nil, err
+		}
+
+		matches = append(matches, match)
 	}
 
-	return configs, nil
-}
+	for _, entry := range entries {
+		if !entry.IsDir() || filesystem.IsIgnoredDir(entry.Name()) ||
+			(s.base.AutoDiscovery.ScanDepth > 0 && depth >= s.base.AutoDiscovery.ScanDepth) {
+			continue
+		}
 
-// autoDiscoveryCacheKey generates a unique cache key for the auto-discovery
-// results. revisionKey identifies the exact content snapshot that was
-// scanned (e.g. a resolved commit SHA); an empty revisionKey disables
-// caching rather than risk a collision between different content.
-func autoDiscoveryCacheKey(repoRoot, revisionKey string, baseConfig *Config) (string, bool) {
-	if revisionKey == "" {
-		return "", false
+		child, err := s.scan(path.Join(p, entry.Name()), depth+1)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, match := range child {
+			match.dir = path.Join(entry.Name(), match.dir)
+			matches = append(matches, match)
+		}
 	}
 
-	configHash, err := baseConfig.Hash()
-	if err != nil {
-		return "", false
+	if s.tree != nil {
+		autoDiscoveryCache.put(key, matches)
 	}
 
-	return strings.Join([]string{
-		repoRoot,
-		revisionKey,
-		configHash,
-		baseConfig.Internal.File,
-		baseConfig.Internal.ConfigTarget,
-		baseConfig.Internal.Hash,
-		strconv.FormatBool(baseConfig.Internal.OciTrustPolicyOverrideTrusted),
-	}, "|"), true
+	return matches, nil
 }
 
 // cloneConfigSlice creates a deep copy of a slice of Config pointers.

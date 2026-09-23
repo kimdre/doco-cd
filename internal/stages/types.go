@@ -205,6 +205,7 @@ type StageManager struct {
 	Repository     *RepositoryData
 	GitChanges     *GitChangeCache
 	GitAncestry    *GitAncestryCache
+	ProjectSkips   *ProjectSkipCache
 	SecretProvider secretprovider.SecretProvider
 	Notifier       notification.Sender
 	Metadata       notification.Metadata // Notification metadata (may include reconciliation event info)
@@ -255,6 +256,7 @@ type RunInput struct {
 	Metadata     notification.Metadata
 	GitChanges   *GitChangeCache
 	GitAncestry  *GitAncestryCache
+	ProjectSkips *ProjectSkipCache
 }
 
 // NewStageManager validates dependencies and run, then creates and initializes a new
@@ -280,6 +282,7 @@ func NewStageManager(dependencies Dependencies, run RunInput) (*StageManager, er
 		Repository:      run.Repository,
 		GitChanges:      run.GitChanges,
 		GitAncestry:     run.GitAncestry,
+		ProjectSkips:    run.ProjectSkips,
 		SecretProvider:  dependencies.SecretProvider,
 		Notifier:        dependencies.Notifier,
 		SchedulerHolds:  dependencies.SchedulerHolds,

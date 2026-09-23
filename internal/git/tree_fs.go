@@ -58,6 +58,17 @@ func (t *TreeFS) Commit() plumbing.Hash {
 	return t.commit
 }
 
+// SubtreeHash returns the Git object identity of a directory in this view.
+// This describes only the Git tree, not materialized submodule or decrypted content.
+func (t *TreeFS) SubtreeHash(name string) (plumbing.Hash, error) {
+	sub, err := t.subtree(name)
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+
+	return sub.Hash, nil
+}
+
 // subtree resolves name (an fs.FS-style slash path, "." for the root) to the
 // *object.Tree it identifies.
 func (t *TreeFS) subtree(name string) (*object.Tree, error) {
@@ -199,6 +210,10 @@ func (e treeDirEntry) Type() fs.FileMode {
 
 	if e.entry.Mode == filemode.Symlink {
 		return fs.ModeSymlink
+	}
+
+	if e.entry.Mode == filemode.Submodule {
+		return fs.ModeIrregular
 	}
 
 	return 0

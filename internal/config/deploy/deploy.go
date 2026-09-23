@@ -604,9 +604,7 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 
 					switch {
 					case matchesPrimary:
-						// Already at the target reference: read repoRoot's content directly so submodules and locally
-						// materialized content (e.g. decrypted files) remain visible.
-						fsys = os.DirFS(repoRoot)
+						fsys, releaseDiscoveryLock = publishedGitDiscoveryFS(repoRoot, gitRepoLabelRoot, gitMirrorRoot, hash, c)
 					case opts.GitCloneSubmodules && gitMirrorRoot != "" && opts.SourceURL != "":
 						baseDir := filepath.Dir(gitMirrorRoot)
 
@@ -747,6 +745,27 @@ func matchesPrimaryContent(baseRepo *git.Repository, hash plumbing.Hash, primary
 	return hash == headRef.Hash(), nil
 }
 
+// isPublishedPrimaryGitArtifact limits object-tree discovery to the immutable
+// path layout produced by GitStore.Publish. A checkout or arbitrary directory
+// with a matching HEAD/revision is not evidence of identical disk contents.
+func isPublishedPrimaryGitArtifact(repoRoot, mirrorRoot string, revision plumbing.Hash) bool {
+	if !filepath.IsAbs(repoRoot) || !filepath.IsAbs(mirrorRoot) ||
+		filepath.Base(filepath.Clean(mirrorRoot)) != store.MirrorSubdir {
+		return false
+	}
+
+	baseDir := filepath.Dir(filepath.Clean(mirrorRoot))
+
+	root, artifactRevision, ok := store.ArtifactRoot(baseDir, filepath.Clean(repoRoot))
+	if !ok || root != filepath.Clean(repoRoot) || string(artifactRevision) != revision.String() {
+		return false
+	}
+
+	info, err := os.Lstat(repoRoot)
+
+	return err == nil && info.IsDir()
+}
+
 // getConfigsFromFile returns the deployment configurations from the repository or nil if not found.
 func getConfigsFromFile(dir string, files []os.DirEntry, configFile string) ([]*Config, error) {
 	for _, f := range files {
@@ -844,7 +863,7 @@ func ResolveConfigs(ctx context.Context, inlineDeployments []*Config, customTarg
 			}
 		}
 
-		configs, err := expandInlineAutoDiscoverConfigs(repoRoot, repositoryLabelRoot(repoRoot, gitMirrorRoot), primaryRevision, inlineDeployments)
+		configs, err := expandInlineAutoDiscoverConfigs(repoRoot, repositoryLabelRoot(repoRoot, gitMirrorRoot), gitMirrorRoot, primaryRevision, inlineDeployments)
 		if err != nil {
 			return nil, err
 		}

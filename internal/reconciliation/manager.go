@@ -99,6 +99,7 @@ type Manager struct {
 	// on-disk leftovers, so the cleanup stage can skip redundant checks for them; see
 	// migration.LeftoverTracker.
 	leftoverTracker *migration.LeftoverTracker
+	projectSkips    *stages.ProjectSkipCache
 }
 
 // NewManager validates dependencies and creates an isolated reconciliation manager.
@@ -133,6 +134,7 @@ func NewManager(dependencies Dependencies) (*Manager, error) {
 		notifier:         dependencies.Notifier,
 		runtimeQueries:   dependencies.RuntimeQueries,
 		leftoverTracker:  migration.NewLeftoverTracker(),
+		projectSkips:     stages.NewProjectSkipCache(),
 	}, nil
 }
 
