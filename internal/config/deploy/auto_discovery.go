@@ -415,9 +415,13 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 			recordAutoDiscoveryCacheLookup(repositoryLabel, "bypass")
 		}
 
-		slog.Debug("auto-discovery scan", "mode", mode, "duration", fmt.Sprintf("%.3fms", time.Since(start).Seconds()*1000),
+		slog.Debug("auto-discovery scan",
+			slog.Group("scan",
+				"mode", mode,
+				"duration", fmt.Sprintf("%.3fms", time.Since(start).Seconds()*1000),
+				"dirs_enumerated", scanner.directoryReads,
+			),
 			slog.Group("cache",
-				"directory_reads", scanner.directoryReads,
 				"hits", scanner.cacheHits,
 				"misses", scanner.cacheMisses,
 			),
@@ -425,7 +429,7 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 				"duration", fmt.Sprintf("%.3fms", scanner.proofDuration().Seconds()*1000),
 			),
 			slog.Group("fallback",
-				"disk_branches", scanner.diskBranches,
+				"disk_scan_dirs", scanner.diskBranches,
 				"reasons", scanner.fallbackReasons(),
 			))
 	}()
