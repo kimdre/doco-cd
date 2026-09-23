@@ -3,6 +3,7 @@ package stages
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
@@ -23,6 +26,8 @@ import (
 )
 
 const maxProjectSkipCacheEntries = 512
+
+var errProjectHasSubmodule = errors.New("project directory contains a Git submodule")
 
 // projectSkipKey is a unique identifier for a cached project snapshot.
 // It is based on the repository mirror, working directory, and deployment configuration.
@@ -319,25 +324,36 @@ func (s *StageManager) localProjectInputs(project *types.Project) bool {
 	return true
 }
 
-// staticProjectEnvironment returns true if the project environment is static and
-// does not depend on external mutable inputs. This is the case when the project
-// is not configured to pass through the process environment and does not use
-// Git submodules, or if it does use submodules but there is no .gitmodules file
-// in the repository.
+// staticProjectEnvironment returns true if the project environment does not
+// pass through the mutable process environment. Submodules are checked per
+// project subtree when a snapshot is stored (see projectHasGitlink).
 func (s *StageManager) staticProjectEnvironment() bool {
-	if s.AppConfig == nil || s.AppConfig.PassEnv {
-		return false
+	return s.AppConfig != nil && !s.AppConfig.PassEnv
+}
+
+// projectHasGitlink reports whether a cloned submodule could materialize inputs
+// inside the project directory. Its tree hash pins only the submodule commit,
+// not the checked-out contents, so such projects always use the full path.
+// A cached snapshot can only match the same subtree hash, which proves that
+// the later revision contains no gitlink either.
+func projectHasGitlink(tree *object.Tree) (bool, error) {
+	walker := object.NewTreeWalker(tree, true, nil)
+	defer walker.Close()
+
+	for {
+		_, entry, err := walker.Next()
+		if errors.Is(err, io.EOF) {
+			return false, nil
+		}
+
+		if err != nil {
+			return false, err
+		}
+
+		if entry.Mode == filemode.Submodule {
+			return true, nil
+		}
 	}
-
-	if !s.AppConfig.GitCloneSubmodules {
-		return true
-	}
-
-	// With no submodule manifest, enabling the default clone option cannot
-	// materialize inputs outside this revision's Git tree.
-	_, err := os.Lstat(filepath.Join(s.Repository.PathInternal, ".gitmodules"))
-
-	return errors.Is(err, fs.ErrNotExist)
 }
 
 // hasComposeIncludes checks if a YAML node contains any
@@ -409,9 +425,25 @@ func (s *StageManager) cacheUnchangedProject(stageLog *slog.Logger, deployedComm
 	err = s.withMirrorRead(func(repo *gogit.Repository) error {
 		var err error
 
-		treeHash, err = projectTreeHash(repo, plumbing.NewHash(s.Repository.Revision), s.DeployConfig.WorkingDirectory)
+		tree, err := projectTree(repo, plumbing.NewHash(s.Repository.Revision), s.DeployConfig.WorkingDirectory)
+		if err != nil {
+			return err
+		}
 
-		return err
+		if s.AppConfig.GitCloneSubmodules {
+			gitlink, err := projectHasGitlink(tree)
+			if err != nil {
+				return err
+			}
+
+			if gitlink {
+				return errProjectHasSubmodule
+			}
+		}
+
+		treeHash = tree.Hash
+
+		return nil
 	})
 	if err != nil {
 		stageLog.Debug("could not cache project Git tree; using full pre-deploy next run", slog.String("reason", err.Error()))
@@ -451,24 +483,31 @@ func (s *StageManager) projectSkipConfigHash() (string, error) {
 
 // projectTreeHash returns the Git tree hash for the specified commit and directory.
 func projectTreeHash(repo *gogit.Repository, hash plumbing.Hash, dir string) (plumbing.Hash, error) {
-	commit, err := repo.CommitObject(hash)
+	tree, err := projectTree(repo, hash, dir)
 	if err != nil {
 		return plumbing.ZeroHash, err
+	}
+
+	return tree.Hash, nil
+}
+
+// projectTree returns the Git tree for the specified commit and directory.
+func projectTree(repo *gogit.Repository, hash plumbing.Hash, dir string) (*object.Tree, error) {
+	commit, err := repo.CommitObject(hash)
+	if err != nil {
+		return nil, err
 	}
 
 	tree, err := commit.Tree()
 	if err != nil {
-		return plumbing.ZeroHash, err
+		return nil, err
 	}
 
-	if dir != "." {
-		tree, err = tree.Tree(dir)
-		if err != nil {
-			return plumbing.ZeroHash, err
-		}
+	if dir == "." {
+		return tree, nil
 	}
 
-	return tree.Hash, nil
+	return tree.Tree(dir)
 }
 
 // skipFromCachedProject determines whether the current project can be skipped

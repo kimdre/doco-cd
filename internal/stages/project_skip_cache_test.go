@@ -14,6 +14,8 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
+	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -167,19 +169,6 @@ func TestProjectSkipCacheOnlySkipsUnchangedProjectTree(t *testing.T) {
 		t.Fatal("default submodule cloning should permit a repository without submodules")
 	}
 
-	modulesPath := filepath.Join(root, ".gitmodules")
-	if err := os.WriteFile(modulesPath, []byte("[submodule \"shared\"]\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	if s.skipFromCachedProject(log, first.String(), "hash", status) {
-		t.Fatal("newly materialized submodules must bypass the cached project")
-	}
-
-	if err := os.Remove(modulesPath); err != nil {
-		t.Fatal(err)
-	}
-
 	two := 2
 	s.Docker.SwarmMode = true
 	s.Docker.Project.Services["web"] = types.ServiceConfig{
@@ -314,8 +303,9 @@ func TestProjectSkipCacheRejectsExternalInputsAndIncludes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if s.localProjectInputs(project) {
-		t.Fatal("repos with submodules require the full path when cloning is enabled")
+	// Gitlinks are checked per project subtree when a snapshot is stored.
+	if !s.localProjectInputs(project) {
+		t.Fatal("a submodule elsewhere in the repository is not a project input")
 	}
 
 	s.AppConfig.GitCloneSubmodules = false
@@ -618,5 +608,103 @@ func TestProjectSkipCacheSchedulerHoldsAndPKIRoles(t *testing.T) {
 
 	if s.skipFromCachedProject(log, commit, "hash", running) {
 		t.Fatal("a changed non-pki secret value must invalidate the cached project")
+	}
+}
+
+func TestProjectSkipCacheSubmodulesOnlyBlockTheirOwnProject(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	for _, dir := range []string{"plain", "linked"} {
+		if err := os.Mkdir(filepath.Join(root, dir), 0o750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(root, dir, "compose.yaml"), []byte("services:\n  web:\n    image: nginx\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(root, ".gitmodules"),
+		[]byte("[submodule \"module\"]\n\tpath = linked/module\n\turl = https://example.com/module.git\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo, err := gogit.PlainInit(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, file := range []string{".gitmodules", "plain/compose.yaml", "linked/compose.yaml"} {
+		if _, err := wt.Add(file); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	idx, err := repo.Storer.Index()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	idx.Entries = append(idx.Entries, &index.Entry{
+		Name: "linked/module",
+		Hash: plumbing.NewHash("1111111111111111111111111111111111111111"),
+		Mode: filemode.Submodule,
+	})
+	if err := repo.Storer.SetIndex(idx); err != nil {
+		t.Fatal(err)
+	}
+
+	revision := commitN(t, wt, 1, 0)[0].String()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	status := map[docker.Service]docker.ServiceStatus{"web": {Replicas: 1}}
+
+	newStage := func(dir string, submodules bool) *StageManager {
+		cfg := &deploy.Config{
+			Name:             dir,
+			WorkingDirectory: dir,
+			ComposeFiles:     []string{"compose.yaml"},
+			AutoDiscovery:    deploy.AutoDiscoveryConfig{Enabled: true},
+		}
+		cfg.Internal.Hash = "effective-config"
+
+		return &StageManager{
+			Repository: &RepositoryData{
+				Source: config.SourceTypeGit, MirrorDir: root, Revision: revision,
+				PathInternal: root, PathExternal: root,
+			},
+			DeployConfig: cfg,
+			AppConfig:    &app.Config{GitCloneSubmodules: submodules},
+			Docker: &Docker{Project: &types.Project{
+				ComposeFiles: []string{filepath.Join(root, dir, "compose.yaml")},
+				Services:     types.Services{"web": {Name: "web"}},
+			}},
+			ProjectSkips: NewProjectSkipCache(),
+			GitAncestry:  NewGitAncestryCache(),
+		}
+	}
+
+	tests := []struct {
+		dir        string
+		submodules bool
+		want       bool
+	}{
+		{dir: "plain", submodules: true, want: true},
+		{dir: "linked", submodules: true, want: false},
+		{dir: "linked", submodules: false, want: true},
+	}
+
+	for _, tt := range tests {
+		s := newStage(tt.dir, tt.submodules)
+		s.cacheUnchangedProject(log, revision, "hash")
+
+		if got := s.skipFromCachedProject(log, revision, "hash", status); got != tt.want {
+			t.Fatalf("%s with submodules=%t: skip = %t, want %t", tt.dir, tt.submodules, got, tt.want)
+		}
 	}
 }
