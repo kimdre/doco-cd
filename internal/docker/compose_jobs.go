@@ -395,14 +395,14 @@ func projectForStart(project *types.Project, jobServices, stoppedAutostartServic
 }
 
 type serviceStartStatus struct {
+	terminal       string
 	seen           int
+	completed      int
+	failedExitCode int
 	running        bool
 	unhealthy      bool
-	completed      int
-	terminal       string
 	dead           bool
 	failedExit     bool
-	failedExitCode int
 }
 
 func assessStartedServiceStates(containers []api.ContainerSummary, targetServices, oneShotServices set.Set[string]) (bool, []string, error) {

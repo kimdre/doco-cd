@@ -56,7 +56,7 @@ var (
 	AutoDiscoveryCacheTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "auto_discovery_cache_total",
-		Help:      "Auto-discovery cache lookups by result",
+		Help:      "Auto-discovery cache lookups by result (hit, miss, or bypass for scans read fully or partly from disk)",
 	}, []string{"repository", "result"})
 	WebhookRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
