@@ -81,6 +81,18 @@ var autoDiscoveryProof = discoveryProofCache{
 	entries: make(map[discoveryProofKey]*list.Element),
 }
 
+// discoveryScanMode represents the mode of auto-discovery scanning.
+type discoveryScanMode string
+
+const (
+	// discoveryScanModeTree uses verified Git-tree subtrees throughout the scan.
+	discoveryScanModeTree discoveryScanMode = "tree"
+	// discoveryScanModeFull scans from disk because no Git tree is available.
+	discoveryScanModeFull discoveryScanMode = "full"
+	// discoveryScanModeMixed uses the Git tree where verified and disk for fallbacks.
+	discoveryScanModeMixed discoveryScanMode = "mixed"
+)
+
 // get checks if a proof for the given key exists in the cache.
 func (c *discoveryProofCache) get(key discoveryProofKey) bool {
 	c.mu.Lock()
@@ -406,18 +418,18 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 	}
 
 	defer func() {
-		mode := "tree" // Default: Git tree with verified subtrees and cache hits
+		mode := discoveryScanModeTree
 		if scanner.tree == nil {
-			mode = "full" // No Git tree; full disk scan with no cache hits
+			mode = discoveryScanModeFull
 		} else if scanner.diskBranches > 0 {
-			mode = "mixed" // Some subtrees fell back to disk while others used the Git tree.
+			mode = discoveryScanModeMixed
 
 			recordAutoDiscoveryCacheLookup(repositoryLabel, "bypass")
 		}
 
 		slog.Debug("auto-discovery scan",
 			slog.Group("scan",
-				"mode", mode,
+				"mode", string(mode),
 				"duration", fmt.Sprintf("%.3fms", time.Since(start).Seconds()*1000),
 				"directories_read", scanner.directoryReads,
 			),
