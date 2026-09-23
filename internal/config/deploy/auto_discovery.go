@@ -458,6 +458,7 @@ type discoveryVerifier struct {
 	repository [sha256.Size]byte
 	settings   [sha256.Size]byte
 	proven     map[string]bool
+	absent     set.Set[string]
 	duration   time.Duration
 	reasons    map[string]int
 }
@@ -479,6 +480,7 @@ func newDiscoveryVerifier(tree gitTreeDiscoveryFS, disk fs.FS, repository string
 		repository: sha256.Sum256([]byte(repository)),
 		settings:   sha256.Sum256(settings),
 		proven:     make(map[string]bool),
+		absent:     set.New[string](),
 		reasons:    make(map[string]int),
 	}
 }
@@ -504,6 +506,15 @@ func (v *discoveryVerifier) verify(p string) bool {
 func (v *discoveryVerifier) prove(p string) bool {
 	if valid, ok := v.proven[p]; ok {
 		return valid
+	}
+
+	// Contents of a materialized submodule have no Git tree either. Record the
+	// fallback once at its root instead of once per nested directory.
+	if p != "." && v.absent.Contains(path.Dir(p)) {
+		v.absent.Add(p)
+		v.proven[p] = false
+
+		return false
 	}
 
 	valid := v.proveSubtree(p)
@@ -534,6 +545,8 @@ func plainGitDiscoveryTree(tree gitTreeDiscoveryFS, disk fs.FS, repository strin
 func (v *discoveryVerifier) proveSubtree(p string) bool {
 	hash, err := v.tree.SubtreeHash(p)
 	if err != nil {
+		v.absent.Add(p)
+
 		return v.reject("unavailable_tree")
 	}
 

@@ -2699,3 +2699,46 @@ func commitAll(t testing.TB, repo *git.Repository, message string) error {
 
 	return err
 }
+
+func TestDiscoveryVerifier_RecordsMissingTreeOnceForNestedDiskDirectories(t *testing.T) {
+	sourceRoot := t.TempDir()
+
+	repo, err := git.PlainInit(sourceRoot, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(sourceRoot, "README.md"), "fixture\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := commitAll(t, repo, "tree without the materialized directory"); err != nil {
+		t.Fatal(err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tree, err := gitInternal.NewTreeFSAtCommit(repo, head.Hash())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	disk := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(disk, "module", "nested", "deeper"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	verifier := newDiscoveryVerifier(tree, os.DirFS(disk), "repo", &Config{WorkingDirectory: "."})
+	for _, dir := range []string{"module", "module/nested", "module/nested/deeper"} {
+		if verifier.verify(dir) {
+			t.Fatalf("%s has no Git tree and must use disk", dir)
+		}
+	}
+
+	if got := verifier.reasons; len(got) != 1 || got["unavailable_tree"] != 1 {
+		t.Fatalf("fallback reasons = %v, want one unavailable_tree", got)
+	}
+}
