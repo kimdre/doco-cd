@@ -366,7 +366,7 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 	}
 
 	defer func() {
-		slog.Debug("auto-discovery scan", "mode", mode, "duration", time.Since(start),
+		slog.Debug("auto-discovery scan", "mode", mode, "duration", fmt.Sprintf("%.3fms", time.Since(start).Seconds()*1000),
 			"directory_reads", scanner.directoryReads, "cache_hits", scanner.cacheHits, "cache_misses", scanner.cacheMisses)
 	}()
 
