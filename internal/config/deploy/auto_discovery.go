@@ -419,7 +419,7 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 			slog.Group("scan",
 				"mode", mode,
 				"duration", fmt.Sprintf("%.3fms", time.Since(start).Seconds()*1000),
-				"dirs_enumerated", scanner.directoryReads,
+				"directories_read", scanner.directoryReads,
 			),
 			slog.Group("cache",
 				"hits", scanner.cacheHits,
@@ -429,7 +429,7 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 				"duration", fmt.Sprintf("%.3fms", scanner.proofDuration().Seconds()*1000),
 			),
 			slog.Group("fallback",
-				"disk_scan_dirs", scanner.diskBranches,
+				"directories_from_disk", scanner.diskBranches,
 				"reasons", scanner.fallbackReasons(),
 			))
 	}()
