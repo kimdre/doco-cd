@@ -57,6 +57,45 @@ func TestGitAncestryCacheSharesHistoryAcrossDifferentDeployedCommits(t *testing.
 	}
 }
 
+func TestGitAncestryCacheVisitedCommitDoesNotReadHandle(t *testing.T) {
+	t.Parallel()
+
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hashes := commitN(t, wt, 5, 0)
+	cache := NewGitAncestryCache()
+	latest := hashes[len(hashes)-1]
+
+	if got, err := cache.isAncestorFromHistory(repo, "repo", hashes[0], latest); err != nil || !got {
+		t.Fatalf("initial walk: ancestor = %t, err = %v", got, err)
+	}
+
+	// Each stack opens its own mirror handle. A commit already visited by the
+	// shared walk must be answered without reading through the new handle.
+	empty, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, deployed := range hashes {
+		if got, err := cache.isAncestorFromHistory(empty, "repo", deployed, latest); err != nil || !got {
+			t.Fatalf("visited %s: ancestor = %t, err = %v", deployed, got, err)
+		}
+	}
+
+	if _, err := cache.isAncestorFromHistory(empty, "repo", plumbing.NewHash("1234"), latest); err == nil {
+		t.Fatal("unvisited commit missing from the handle returned no error")
+	}
+}
+
 func TestGitAncestryCacheHistoryDivergenceAndMissingCommit(t *testing.T) {
 	t.Parallel()
 

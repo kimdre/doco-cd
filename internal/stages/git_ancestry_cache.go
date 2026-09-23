@@ -78,12 +78,24 @@ func (c *GitAncestryCache) isAncestorFromHistory(
 	}
 	c.historyMu.Unlock()
 
+	// Visited commits were read from this mirror during the job, so they need
+	// no existence check through this stack's handle.
 	history.mu.Lock()
-	defer history.mu.Unlock()
+	found := history.visited.Contains(ancestor)
+	history.mu.Unlock()
 
+	if found {
+		return true, nil
+	}
+
+	// A fresh handle loads every pack index on its first object read. Do that
+	// outside the shared walk so stacks do not warm their handles one by one.
 	if _, err := repo.CommitObject(ancestor); err != nil {
 		return false, fmt.Errorf("failed to get commit %s: %w", ancestor, err)
 	}
+
+	history.mu.Lock()
+	defer history.mu.Unlock()
 
 	if history.visited.Contains(ancestor) {
 		return true, nil
