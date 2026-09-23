@@ -406,11 +406,11 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 	}
 
 	defer func() {
-		mode := "tree"
+		mode := "tree" // Default: Git tree with verified subtrees and cache hits
 		if scanner.tree == nil {
-			mode = "full"
+			mode = "full" // No Git tree; full disk scan with no cache hits
 		} else if scanner.diskBranches > 0 {
-			mode = "hybrid"
+			mode = "mixed" // Some subtrees fell back to disk while others used the Git tree.
 
 			recordAutoDiscoveryCacheLookup(repositoryLabel, "bypass")
 		}
