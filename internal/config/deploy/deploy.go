@@ -542,7 +542,13 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 
 						var discoveryErr error
 
-						discoveredConfigs, discoveryErr = autoDiscoverDeployments(os.DirFS(artifact.Path), repoDir, string(revision), c)
+						fsys, releaseDiscoveryLock := publishedGitDiscoveryFS(
+							artifact.Path, repoDir, remoteStore.MirrorDir(), plumbing.NewHash(string(revision)), c)
+						discoveredConfigs, discoveryErr = autoDiscoverDeployments(fsys, repoDir, string(revision), c)
+
+						if releaseDiscoveryLock != nil {
+							releaseDiscoveryLock()
+						}
 
 						unlockGC()
 
@@ -635,8 +641,17 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 							return nil, fmt.Errorf("failed to publish reference %s: %w", c.Reference, errPublish)
 						}
 
-						fsys = os.DirFS(artifact.Path)
-						releaseDiscoveryLock = unlockGC
+						var releaseMirror func()
+
+						fsys, releaseMirror = publishedGitDiscoveryFS(
+							artifact.Path, gitRepoLabelRoot, gitMirrorRoot, hash, c)
+						releaseDiscoveryLock = func() {
+							if releaseMirror != nil {
+								releaseMirror()
+							}
+
+							unlockGC()
+						}
 					default:
 						// Different reference: read from the object database
 						// instead of checking out, to avoid mutating the shared

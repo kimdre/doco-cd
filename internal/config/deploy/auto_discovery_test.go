@@ -1345,6 +1345,83 @@ func TestPlainGitDiscoveryTree_RespectsScanBoundary(t *testing.T) {
 	checkReads(2, map[string]int{".": 1, "work": 1, "work/stack": 1, "work/stack/deep": 1})
 }
 
+func TestPlainGitDiscoveryTree_ProofDoesNotTransferAcrossPathsAtDifferentDepths(t *testing.T) {
+	sourceRoot := t.TempDir()
+
+	repo, err := git.PlainInit(sourceRoot, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{"a/deep/child", "z/child"} {
+		if err := os.MkdirAll(filepath.Join(sourceRoot, dir), 0o750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := createTestFile(t, filepath.Join(sourceRoot, dir, "compose.yaml"), "services: {}\n"); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := createTestFile(t, filepath.Join(sourceRoot, dir, ".doco-cd.yaml"),
+			"environment:\n  SOURCE: git\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := commitAll(t, repo, "identical subtrees at different depths"); err != nil {
+		t.Fatal(err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tree, err := gitInternal.NewTreeFSAtCommit(repo, head.Hash())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deepHash, err := tree.SubtreeHash("a/deep")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shallowHash, err := tree.SubtreeHash("z")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if deepHash != shallowHash {
+		t.Fatalf("fixture must share a subtree hash: deep=%s, shallow=%s", deepHash, shallowHash)
+	}
+
+	artifact := t.TempDir()
+	if err := gitInternal.ExportTree(artifact, repo, head.Hash(), gitInternal.ExportOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(artifact, "z", "child", ".doco-cd.yaml"),
+		"environment:\n  SOURCE: materialized\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	base := &Config{WorkingDirectory: ".", AutoDiscovery: AutoDiscoveryConfig{ScanDepth: 2}}
+
+	verifier := newDiscoveryVerifier(tree, os.DirFS(artifact), sourceRoot, base)
+	if !verifier.verify("a/deep") {
+		t.Fatal("deep subtree should be proven: its child is outside the scan depth")
+	}
+
+	if verifier.verify("z") {
+		t.Fatal("the same Git hash at a shallower path must verify its changed in-scope child")
+	}
+
+	if plainGitDiscoveryTree(tree, os.DirFS(artifact), sourceRoot, base) {
+		t.Fatal("the root must not be proven from a cached proof at the wrong directory")
+	}
+}
+
 func TestGetConfigs_PrimaryPublishedGitArtifactReusesSubtrees(t *testing.T) {
 	sourceRoot := t.TempDir()
 
@@ -1829,6 +1906,14 @@ func TestGetConfigs_PrimaryPublishedSubmoduleUsesDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := os.Mkdir(filepath.Join(sourceRoot, "sibling"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(sourceRoot, "sibling", "compose.yaml"), "services: {}\n"); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := createTestFile(t, filepath.Join(sourceRoot, ".gitmodules"),
 		"[submodule \"module\"]\n  path = module\n  url = "+sourceRoot+"\n"); err != nil {
 		t.Fatal(err)
@@ -1880,18 +1965,437 @@ func TestGetConfigs_PrimaryPublishedSubmoduleUsesDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	foundModule := false
-
+	var paths []string
 	for _, cfg := range configs {
-		if cfg.WorkingDirectory == "module" {
-			foundModule = true
+		paths = append(paths, cfg.WorkingDirectory)
+	}
+
+	if !reflect.DeepEqual(paths, []string{".", "module", "sibling"}) ||
+		counts["bypass"] != 1 || counts["hit"]+counts["miss"] == 0 {
+		t.Fatalf("materialized module must be scanned from disk beside a tree-backed sibling: paths=%v, counts=%v",
+			paths, counts)
+	}
+
+	counts = make(map[string]int)
+
+	repeated, err := GetConfigs(context.Background(), artifact.Path, ".", "", "main",
+		gitStore.MirrorDir(), string(revision), &GitOptions{GitCloneSubmodules: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	paths = nil
+	for _, cfg := range repeated {
+		paths = append(paths, cfg.WorkingDirectory)
+	}
+
+	if !reflect.DeepEqual(paths, []string{".", "module", "sibling"}) ||
+		counts["bypass"] != 1 || counts["hit"] == 0 {
+		t.Fatalf("repeat scan must reuse the proven sibling without caching the materialized module: paths=%v, counts=%v",
+			paths, counts)
+	}
+}
+
+func TestGetConfigs_MaterializedAlternateReferenceReusesSubtrees(t *testing.T) {
+	sourceRoot := t.TempDir()
+
+	source, err := git.PlainInitWithOptions(sourceRoot, &git.PlainInitOptions{DefaultBranch: DefaultReference})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(sourceRoot, ".doco-cd.yaml"),
+		"reference: feature\ncompose_files: [compose.yaml]\nauto_discovery: true\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := commitAll(t, source, "main config"); err != nil {
+		t.Fatal(err)
+	}
+
+	worktree, err := source.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName("feature"),
+		Create: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"alpha", "beta"} {
+		if err := os.Mkdir(filepath.Join(sourceRoot, name), 0o750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := createTestFile(t, filepath.Join(sourceRoot, name, "compose.yaml"), "services: {}\n"); err != nil {
+			t.Fatal(err)
 		}
 	}
 
-	if len(configs) != 2 || !foundModule || counts["bypass"] != 1 ||
-		counts["hit"] != 0 || counts["miss"] != 0 {
-		t.Fatalf("materialized submodule inventory must come from disk: configs=%v, counts=%v", configs, counts)
+	if err := commitAll(t, source, "feature stacks"); err != nil {
+		t.Fatal(err)
 	}
+
+	if err := worktree.Checkout(&git.CheckoutOptions{Branch: plumbing.NewBranchReferenceName("main")}); err != nil {
+		t.Fatal(err)
+	}
+
+	gitStore, err := store.NewGitStore(store.GitStoreOptions{
+		CloneURL: sourceRoot, BaseDir: t.TempDir(), CloneSubmodules: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := gitStore.Resolve(context.Background(), "feature"); err != nil {
+		t.Fatal(err)
+	}
+
+	mainRevision, err := gitStore.Resolve(context.Background(), "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	artifact, err := gitStore.Publish(context.Background(), mainRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	autoDiscoveryCacheObserverMu.RLock()
+
+	previousObserver := autoDiscoveryCacheObserver
+
+	autoDiscoveryCacheObserverMu.RUnlock()
+
+	defer SetAutoDiscoveryCacheObserver(previousObserver)
+
+	discover := func() ([]*Config, map[string]int) {
+		t.Helper()
+
+		counts := make(map[string]int)
+
+		SetAutoDiscoveryCacheObserver(func(_, result string) { counts[result]++ })
+
+		configs, err := GetConfigs(context.Background(), artifact.Path, ".", "", "main",
+			gitStore.MirrorDir(), string(mainRevision),
+			&GitOptions{GitCloneSubmodules: true, SourceURL: sourceRoot})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return configs, counts
+	}
+
+	first, firstCounts := discover()
+	if len(first) != 2 || first[0].Name != "alpha" || first[1].Name != "beta" ||
+		firstCounts["bypass"] != 0 || firstCounts["miss"] == 0 {
+		t.Fatalf("materialized alternate reference must discover and cache both stacks: configs=%v, counts=%v",
+			first, firstCounts)
+	}
+
+	again, nextCounts := discover()
+	if len(again) != 2 || nextCounts["hit"] == 0 || nextCounts["bypass"] != 0 {
+		t.Fatalf("materialized alternate reference must reuse its verified tree: configs=%v, counts=%v",
+			again, nextCounts)
+	}
+}
+
+func TestGetConfigs_PrimaryPublishedNestedSubmoduleRetainsCompleteInventory(t *testing.T) {
+	sourceRoot := t.TempDir()
+
+	source, err := git.PlainInitWithOptions(sourceRoot, &git.PlainInitOptions{DefaultBranch: DefaultReference})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	moduleRoot := t.TempDir()
+
+	module, err := git.PlainInitWithOptions(moduleRoot, &git.PlainInitOptions{DefaultBranch: DefaultReference})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writeStack := func(root, name string) {
+		t.Helper()
+
+		if err := os.MkdirAll(filepath.Join(root, name), 0o750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := createTestFile(t, filepath.Join(root, name, "compose.yaml"), "services: {}\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeStack(moduleRoot, ".")
+	writeStack(moduleRoot, "old-child")
+	writeStack(moduleRoot, "removed-child")
+
+	if err := createTestFile(t, filepath.Join(moduleRoot, ".doco-cd.yaml"),
+		"environment:\n  SOURCE: first\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := commitAll(t, module, "first module revision"); err != nil {
+		t.Fatal(err)
+	}
+
+	moduleHead, err := module.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(sourceRoot, ".doco-cd.yaml"),
+		"working_dir: stacks\ncompose_files: [compose.yaml]\nauto_discovery:\n  enabled: true\n  delete: true\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(sourceRoot, ".gitmodules"),
+		"[submodule \"module\"]\n  path = stacks/userscript/module\n  url = "+moduleRoot+"\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"stacks", "stacks/alpha", "stacks/beta", "stacks/stable", "stacks/userscript"} {
+		writeStack(sourceRoot, name)
+	}
+
+	if err := commitAll(t, source, "initial stacks and module declaration"); err != nil {
+		t.Fatal(err)
+	}
+
+	addTestGitlink(t, source, "stacks/userscript/module", moduleHead.Hash())
+
+	gitStore, err := store.NewGitStore(store.GitStoreOptions{
+		CloneURL: sourceRoot, BaseDir: t.TempDir(), CloneSubmodules: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	discover := func(materialize func(string)) ([]*Config, map[string]int, string, string) {
+		t.Helper()
+
+		revision, resolveErr := gitStore.Resolve(context.Background(), "main")
+		if resolveErr != nil {
+			t.Fatal(resolveErr)
+		}
+
+		artifact, publishErr := gitStore.Publish(context.Background(), revision)
+		if publishErr != nil {
+			t.Fatal(publishErr)
+		}
+
+		if _, statErr := os.Stat(filepath.Join(artifact.Path, "stacks", "userscript", "module", "compose.yaml")); statErr != nil {
+			t.Fatalf("expected a materialized nested gitlink: %v", statErr)
+		}
+
+		if materialize != nil {
+			materialize(artifact.Path)
+		}
+
+		counts := make(map[string]int)
+
+		autoDiscoveryCacheObserverMu.RLock()
+
+		previousObserver := autoDiscoveryCacheObserver
+
+		autoDiscoveryCacheObserverMu.RUnlock()
+
+		SetAutoDiscoveryCacheObserver(func(_, result string) { counts[result]++ })
+		defer SetAutoDiscoveryCacheObserver(previousObserver)
+
+		configs, discoverErr := GetConfigs(context.Background(), artifact.Path, ".", "", "main",
+			gitStore.MirrorDir(), string(revision), &GitOptions{GitCloneSubmodules: true})
+		if discoverErr != nil {
+			t.Fatal(discoverErr)
+		}
+
+		return configs, counts, artifact.Path, string(revision)
+	}
+
+	checkInventory := func(configs []*Config, want []string, moduleSource string) {
+		t.Helper()
+
+		var paths []string
+		for _, cfg := range configs {
+			paths = append(paths, cfg.WorkingDirectory)
+			if cfg.Name != filepath.Base(cfg.WorkingDirectory) {
+				t.Fatalf("cleanup stack name does not match %q: got %q", cfg.WorkingDirectory, cfg.Name)
+			}
+
+			if !cfg.AutoDiscovery.Delete {
+				t.Fatalf("cleanup setting lost for %q: %+v", cfg.WorkingDirectory, cfg.AutoDiscovery)
+			}
+
+			if cfg.WorkingDirectory == "stacks/userscript/module" && cfg.Environment["SOURCE"] != moduleSource {
+				t.Fatalf("materialized module config is stale: got %q, want %q", cfg.Environment["SOURCE"], moduleSource)
+			}
+		}
+
+		if !reflect.DeepEqual(paths, want) {
+			t.Fatalf("incomplete obsolete-stack cleanup inventory: got %v, want %v", paths, want)
+		}
+	}
+
+	first, firstCounts, _, _ := discover(nil)
+	checkInventory(first, []string{
+		"stacks", "stacks/alpha", "stacks/beta", "stacks/stable", "stacks/userscript",
+		"stacks/userscript/module", "stacks/userscript/module/old-child", "stacks/userscript/module/removed-child",
+	}, "first")
+
+	if firstCounts["bypass"] != 1 || firstCounts["miss"] == 0 || firstCounts["hit"] == 0 {
+		t.Fatalf("initial hybrid scan must use disk for the gitlink and cache ordinary siblings: %v", firstCounts)
+	}
+
+	if err := createTestFile(t, filepath.Join(sourceRoot, "README.md"), "unrelated revision\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := commitAll(t, source, "unrelated superproject revision"); err != nil {
+		t.Fatal(err)
+	}
+	// The superproject worktree has no materialized submodule, so restore the
+	// gitlink in the committed tree after committing its ordinary files.
+	addTestGitlink(t, source, "stacks/userscript/module", moduleHead.Hash())
+
+	// Simulate refreshed materialized contents in a new published artifact
+	// without changing the superproject's pinned gitlink.
+	unchanged, unchangedCounts, _, _ := discover(func(artifactPath string) {
+		modulePath := filepath.Join(artifactPath, "stacks", "userscript", "module")
+		if err := os.Rename(filepath.Join(modulePath, "old-child"), filepath.Join(modulePath, "disk-renamed")); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.RemoveAll(filepath.Join(modulePath, "removed-child")); err != nil {
+			t.Fatal(err)
+		}
+
+		writeStack(modulePath, "disk-added")
+
+		if err := createTestFile(t, filepath.Join(modulePath, ".doco-cd.yaml"),
+			"environment:\n  SOURCE: materialized\n"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	checkInventory(unchanged, []string{
+		"stacks", "stacks/alpha", "stacks/beta", "stacks/stable", "stacks/userscript",
+		"stacks/userscript/module", "stacks/userscript/module/disk-added", "stacks/userscript/module/disk-renamed",
+	}, "materialized")
+
+	if unchangedCounts["hit"] < 2 || unchangedCounts["bypass"] != 1 {
+		t.Fatalf("unchanged Git siblings must be reused while changed materialized gitlink contents come from disk: %v",
+			unchangedCounts)
+	}
+
+	if err := os.Rename(filepath.Join(moduleRoot, "old-child"), filepath.Join(moduleRoot, "new-child")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.RemoveAll(filepath.Join(moduleRoot, "removed-child")); err != nil {
+		t.Fatal(err)
+	}
+
+	writeStack(moduleRoot, "added-child")
+
+	if err := createTestFile(t, filepath.Join(moduleRoot, ".doco-cd.yaml"),
+		"environment:\n  SOURCE: second\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := commitAll(t, module, "change module stack and child"); err != nil {
+		t.Fatal(err)
+	}
+
+	moduleHead, err = module.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Rename(filepath.Join(sourceRoot, "stacks", "alpha"),
+		filepath.Join(sourceRoot, "stacks", "renamed")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.RemoveAll(filepath.Join(sourceRoot, "stacks", "beta")); err != nil {
+		t.Fatal(err)
+	}
+
+	writeStack(sourceRoot, "stacks/added")
+
+	if err := createTestFile(t, filepath.Join(sourceRoot, "stacks", "added", ".doco-cd.yaml"),
+		"environment:\n  SOURCE: added\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := commitAll(t, source, "rename delete and add sibling stacks"); err != nil {
+		t.Fatal(err)
+	}
+
+	addTestGitlink(t, source, "stacks/userscript/module", moduleHead.Hash())
+
+	changed, changedCounts, artifactPath, revision := discover(nil)
+	checkInventory(changed, []string{
+		"stacks", "stacks/added", "stacks/renamed", "stacks/stable", "stacks/userscript",
+		"stacks/userscript/module", "stacks/userscript/module/added-child", "stacks/userscript/module/new-child",
+	}, "second")
+
+	if changed[1].Environment["SOURCE"] != "added" || changedCounts["hit"] < 1 ||
+		changedCounts["bypass"] != 1 {
+		t.Fatalf("changed module and sibling inventory must combine cached Git and disk results: configs=%v, counts=%v",
+			changed, changedCounts)
+	}
+
+	t.Run("failed hybrid read returns no cleanup inventory", func(t *testing.T) {
+		base := &Config{
+			WorkingDirectory: "stacks", ComposeFiles: []string{"compose.yaml"},
+			AutoDiscovery: AutoDiscoveryConfig{Enabled: true, Delete: true},
+		}
+
+		fsys, release := publishedGitDiscoveryFS(artifactPath, sourceRoot, gitStore.MirrorDir(),
+			plumbing.NewHash(revision), base)
+		if release != nil {
+			defer release()
+		}
+
+		published, ok := fsys.(*publishedDiscoveryFS)
+		if !ok {
+			t.Fatal("expected the published artifact to retain its Git tree and disk views")
+		}
+
+		failing := &failingDiscoveryFS{FS: published.FS, fail: "stacks/userscript/module"}
+		published.FS = failing
+		published.verifier.disk = failing
+
+		configs, scanErr := autoDiscoverDeployments(published, sourceRoot, revision, base)
+		if !errors.Is(scanErr, fs.ErrPermission) || configs != nil {
+			t.Fatalf("failed materialized branch must not return a partial deletion inventory: configs=%v, err=%v",
+				configs, scanErr)
+		}
+	})
+}
+
+type failingDiscoveryFS struct {
+	fs.FS
+	fail string
+}
+
+func (f *failingDiscoveryFS) Open(name string) (fs.File, error) {
+	if name == f.fail {
+		return nil, fs.ErrPermission
+	}
+
+	return f.FS.Open(name)
+}
+
+func (f *failingDiscoveryFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if name == f.fail {
+		return nil, fs.ErrPermission
+	}
+
+	return fs.ReadDir(f.FS, name)
 }
 
 func addTestGitlink(t *testing.T, repo *git.Repository, name string, pinned plumbing.Hash) {
@@ -1912,18 +2416,7 @@ func addTestGitlink(t *testing.T, repo *git.Repository, name string, pinned plum
 		t.Fatal(err)
 	}
 
-	tree.Entries = append(tree.Entries, object.TreeEntry{Name: name, Mode: filemode.Submodule, Hash: pinned})
-	sort.Slice(tree.Entries, func(i, j int) bool { return tree.Entries[i].Name < tree.Entries[j].Name })
-
-	encodedTree := repo.Storer.NewEncodedObject()
-	if err := tree.Encode(encodedTree); err != nil {
-		t.Fatal(err)
-	}
-
-	treeHash, err := repo.Storer.SetEncodedObject(encodedTree)
-	if err != nil {
-		t.Fatal(err)
-	}
+	treeHash := setTestGitlinkInTree(t, repo, tree, strings.Split(name, "/"), pinned)
 
 	signature := object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
 	commit := &object.Commit{
@@ -1947,6 +2440,52 @@ func addTestGitlink(t *testing.T, repo *git.Repository, name string, pinned plum
 	if err := repo.Storer.SetReference(plumbing.NewHashReference(head.Name(), commitHash)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func setTestGitlinkInTree(t *testing.T, repo *git.Repository, tree *object.Tree, parts []string, pinned plumbing.Hash) plumbing.Hash {
+	t.Helper()
+
+	name := parts[0]
+	index := -1
+
+	for i := range tree.Entries {
+		if tree.Entries[i].Name == name {
+			index = i
+			break
+		}
+	}
+
+	switch {
+	case len(parts) > 1:
+		if index < 0 || tree.Entries[index].Mode != filemode.Dir {
+			t.Fatalf("missing parent directory for gitlink %q", strings.Join(parts, "/"))
+		}
+
+		subtree, err := object.GetTree(repo.Storer, tree.Entries[index].Hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tree.Entries[index].Hash = setTestGitlinkInTree(t, repo, subtree, parts[1:], pinned)
+	case index >= 0:
+		tree.Entries[index] = object.TreeEntry{Name: name, Mode: filemode.Submodule, Hash: pinned}
+	default:
+		tree.Entries = append(tree.Entries, object.TreeEntry{Name: name, Mode: filemode.Submodule, Hash: pinned})
+	}
+
+	sort.Slice(tree.Entries, func(i, j int) bool { return tree.Entries[i].Name < tree.Entries[j].Name })
+
+	encodedTree := repo.Storer.NewEncodedObject()
+	if err := tree.Encode(encodedTree); err != nil {
+		t.Fatal(err)
+	}
+
+	hash, err := repo.Storer.SetEncodedObject(encodedTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return hash
 }
 
 func TestResolveConfigs_InlinePublishedGitArtifactReusesSubtrees(t *testing.T) {

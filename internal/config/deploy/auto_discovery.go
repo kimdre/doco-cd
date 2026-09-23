@@ -54,15 +54,17 @@ var autoDiscoveryCache = discoveryCache{
 }
 
 // Maximum number of entries in the auto-discovery proof cache.
-// Each entry is a Git subtree hash, repository hash, and settings hash.
+// Each entry is a Git subtree hash, repository hash, settings hash, and path.
 const maxAutoDiscoveryProofEntries = 4096
 
 // discoveryProofKey is a unique key for a Git subtree proof,
-// consisting of the tree hash, repository hash, and settings hash.
+// including the path because scan boundaries can differ for identical trees
+// at different locations.
 type discoveryProofKey struct {
 	tree       plumbing.Hash
 	repository [sha256.Size]byte
 	settings   [sha256.Size]byte
+	directory  string
 }
 
 // discoveryProofCache is an LRU cache for Git subtree proofs,
@@ -280,12 +282,18 @@ func expandInlineAutoDiscoverConfigs(repoRoot, labelRoot, mirrorRoot, revisionKe
 	return expanded, nil
 }
 
-// publishedGitDiscoveryFS uses the object tree only when the published disk
-// artifact has been proved equivalent for discovery.
-// The caller releases the mirror read lock after scanning the returned TreeFS.
+// publishedGitDiscoveryFS retains both views of a published artifact.
+// A verified subtree can use the Git tree and its cache, while materialized
+// submodules and other unverified branches are discovered from disk.
+// The caller releases the mirror read lock after scanning the returned FS.
 func publishedGitDiscoveryFS(repoRoot, labelRoot, mirrorRoot string, revision plumbing.Hash, base *Config) (fs.FS, func()) {
 	disk := os.DirFS(repoRoot)
 	if revision.IsZero() || !isPublishedPrimaryGitArtifact(repoRoot, mirrorRoot, revision) {
+		return disk, nil
+	}
+
+	root := path.Clean(base.WorkingDirectory)
+	if !fs.ValidPath(root) || !regularDiscoveryRoot(repoRoot, root) {
 		return disk, nil
 	}
 
@@ -307,12 +315,40 @@ func publishedGitDiscoveryFS(repoRoot, labelRoot, mirrorRoot string, revision pl
 		return disk, nil
 	}
 
-	if !plainGitDiscoveryTree(tree, disk, labelRoot, base) {
-		unlock()
-		return disk, nil
+	return &publishedDiscoveryFS{
+		FS:       disk,
+		tree:     tree,
+		verifier: newDiscoveryVerifier(tree, disk, labelRoot, base),
+	}, unlock
+}
+
+// A working directory reached through a symlink cannot be identified by its
+// Git tree hash even if the target happens to have the same contents today.
+func regularDiscoveryRoot(repoRoot, root string) bool {
+	if root == "." {
+		return true
 	}
 
-	return tree, unlock
+	current := repoRoot
+	for part := range strings.SplitSeq(root, "/") {
+		current = filepath.Join(current, part)
+
+		info, err := os.Lstat(current)
+		if err != nil || !info.IsDir() {
+			return false
+		}
+	}
+
+	return true
+}
+
+// publishedDiscoveryFS retains both views of a published artifact.
+// A verified subtree can use the Git tree and its cache, while materialized
+// submodules and other unverified branches are discovered from disk.
+type publishedDiscoveryFS struct {
+	fs.FS
+	tree     gitTreeDiscoveryFS
+	verifier *discoveryVerifier
 }
 
 // revisionKeyForRepoRoot returns the current HEAD commit hash for repoRoot,
@@ -346,28 +382,44 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 		compose:    set.New(baseConfig.ComposeFiles...),
 	}
 
-	// A TreeFS never materializes submodules or decrypted files. Do not use this
-	// optimization for os.DirFS, even when its path names a published Git revision.
+	// A plain TreeFS has no materialized inputs. A published artifact has both
+	// views, and verifies each subtree before allowing Git-backed cache use.
 	if tree, ok := fsys.(gitTreeDiscoveryFS); ok && revisionKey != "" && tree.Commit().String() == revisionKey {
+		scanner.tree = tree
+	} else if published, ok := fsys.(*publishedDiscoveryFS); ok &&
+		revisionKey != "" && published.tree.Commit().String() == revisionKey {
+		scanner.tree, scanner.verifier = published.tree, published.verifier
+	}
+
+	if scanner.tree != nil {
 		names := append([]string(nil), baseConfig.ComposeFiles...)
 		sort.Strings(names)
 		settings, _ := json.Marshal(struct {
 			ComposeFiles []string
 			ConfigFiles  []string
 		}{names, DefaultDeploymentConfigFileNames})
-		scanner.tree, scanner.settings = tree, string(settings)
+		scanner.settings = string(settings)
 	}
 
-	mode := "tree"
 	if scanner.tree == nil {
-		mode = "full"
-
 		recordAutoDiscoveryCacheLookup(repositoryLabel, "bypass")
 	}
 
 	defer func() {
+		mode := "tree"
+		if scanner.tree == nil {
+			mode = "full"
+		} else if scanner.diskBranches > 0 {
+			mode = "hybrid"
+
+			recordAutoDiscoveryCacheLookup(repositoryLabel, "bypass")
+		}
+
 		slog.Debug("auto-discovery scan", "mode", mode, "duration", fmt.Sprintf("%.3fms", time.Since(start).Seconds()*1000),
-			"directory_reads", scanner.directoryReads, "cache_hits", scanner.cacheHits, "cache_misses", scanner.cacheMisses)
+			"directory_reads", scanner.directoryReads, "cache_hits", scanner.cacheHits,
+			"cache_misses", scanner.cacheMisses, "disk_branches", scanner.diskBranches,
+			"proof_duration", fmt.Sprintf("%.3fms", scanner.proofDuration().Seconds()*1000),
+			"fallback_reasons", scanner.fallbackReasons())
 	}()
 
 	searchPath := path.Clean(baseConfig.WorkingDirectory)
@@ -397,11 +449,75 @@ type gitTreeDiscoveryFS interface {
 // Ensure gitInternal.TreeFS implements gitTreeDiscoveryFS.
 var _ gitTreeDiscoveryFS = (*gitInternal.TreeFS)(nil)
 
+// discoveryVerifier verifies that a Git tree matches the disk contents for a given subtree.
+type discoveryVerifier struct {
+	tree       gitTreeDiscoveryFS
+	disk       fs.FS
+	root       string
+	depth      int
+	repository [sha256.Size]byte
+	settings   [sha256.Size]byte
+	proven     map[string]bool
+	duration   time.Duration
+	reasons    map[string]int
+}
+
+// newDiscoveryVerifier creates a new discoveryVerifier for the given Git tree, disk FS, repository label, and base Config.
+func newDiscoveryVerifier(tree gitTreeDiscoveryFS, disk fs.FS, repository string, base *Config) *discoveryVerifier {
+	root := path.Clean(base.WorkingDirectory)
+	settings, _ := json.Marshal(struct {
+		ConfigFiles []string
+		Root        string
+		Depth       int
+	}{DefaultDeploymentConfigFileNames, root, base.AutoDiscovery.ScanDepth})
+
+	return &discoveryVerifier{
+		tree:       tree,
+		disk:       disk,
+		root:       root,
+		depth:      base.AutoDiscovery.ScanDepth,
+		repository: sha256.Sum256([]byte(repository)),
+		settings:   sha256.Sum256(settings),
+		proven:     make(map[string]bool),
+		reasons:    make(map[string]int),
+	}
+}
+
+// reject records a reason for rejecting a subtree and returns false.
+func (v *discoveryVerifier) reject(reason string) bool {
+	v.reasons[reason]++
+
+	return false
+}
+
+// verify checks if the subtree at path p is valid by comparing the Git tree and disk contents.
+// It measures the duration of the verification process and updates the total duration.
+func (v *discoveryVerifier) verify(p string) bool {
+	started := time.Now()
+	defer func() { v.duration += time.Since(started) }()
+
+	return v.prove(p)
+}
+
+// prove checks if the subtree at path p has already been proven valid.
+// If not, it calls proveSubtree to perform the verification and caches the result.
+func (v *discoveryVerifier) prove(p string) bool {
+	if valid, ok := v.proven[p]; ok {
+		return valid
+	}
+
+	valid := v.proveSubtree(p)
+	v.proven[p] = valid
+
+	return valid
+}
+
 // plainGitDiscoveryTree compares directory inventories and nested config bytes
 // against a GitStore-published artifact. Gitlinks become directories, symlinks
-// redirect reads, and SOPS can replace nested configs: none can use TreeFS.
-// Positive proofs transfer to other immutable artifacts with identical Git
-// subtree hashes; unproven or failed subtrees always fall back to disk.
+// redirect reads, and SOPS can replace nested configs: affected branches
+// cannot use TreeFS. Positive proofs transfer to later artifacts with the
+// same Git subtree at the same path and scan boundary; failed branches fall
+// back to disk.
 // Reuse relies on GitStore's contract that published artifacts are not modified
 // after verification; Git hashes cannot detect external writes to those paths.
 func plainGitDiscoveryTree(tree gitTreeDiscoveryFS, disk fs.FS, repository string, base *Config) bool {
@@ -410,56 +526,60 @@ func plainGitDiscoveryTree(tree gitTreeDiscoveryFS, disk fs.FS, repository strin
 		return false
 	}
 
-	settings, _ := json.Marshal(struct {
-		ConfigFiles []string
-		Root        string
-		Depth       int
-	}{DefaultDeploymentConfigFileNames, root, base.AutoDiscovery.ScanDepth})
-
-	return provePlainGitSubtree(tree, disk, ".", root, base.AutoDiscovery.ScanDepth,
-		sha256.Sum256([]byte(repository)), sha256.Sum256(settings))
+	return newDiscoveryVerifier(tree, disk, repository, base).verify(".")
 }
 
-// provePlainGitSubtree recursively compares a Git subtree against a disk artifact.
-// It returns true if the subtree is proven equivalent to the disk artifact, false otherwise.
-// The proof is cached by subtree hash, repository hash, and settings hash.
-func provePlainGitSubtree(tree gitTreeDiscoveryFS, disk fs.FS, p, root string, depth int, repository, settings [sha256.Size]byte) bool {
-	hash, err := tree.SubtreeHash(p)
+// proveSubtree compares the Git and disk inventories within the scan boundary.
+// Only complete positive proofs can be reused across published revisions.
+func (v *discoveryVerifier) proveSubtree(p string) bool {
+	hash, err := v.tree.SubtreeHash(p)
 	if err != nil {
-		return false
+		return v.reject("unavailable_tree")
 	}
 
-	key := discoveryProofKey{tree: hash, repository: repository, settings: settings}
+	key := discoveryProofKey{tree: hash, repository: v.repository, settings: v.settings, directory: p}
 	if autoDiscoveryProof.get(key) {
 		return true
 	}
 
-	entries, err := fs.ReadDir(tree, p)
+	entries, err := fs.ReadDir(v.tree, p)
 	if err != nil {
-		return false
+		return v.reject("read_error")
 	}
 
-	diskEntries, err := fs.ReadDir(disk, p)
-	if err != nil || len(entries) != len(diskEntries) {
-		return false
+	diskEntries, err := fs.ReadDir(v.disk, p)
+	if err != nil {
+		return v.reject("read_error")
+	}
+
+	if len(entries) != len(diskEntries) {
+		return v.reject("inventory_mismatch")
 	}
 
 	for i, entry := range entries {
 		// TreeFS marks gitlinks irregular. ExportTree turns even an unfetched
 		// gitlink into a directory, so skipping it would lose disk inventory.
+		if entry.Type()&fs.ModeIrregular != 0 {
+			return v.reject("gitlink")
+		}
+
+		if entry.Type()&fs.ModeSymlink != 0 || diskEntries[i].Type()&fs.ModeSymlink != 0 {
+			return v.reject("symlink")
+		}
+
 		if entry.Name() != diskEntries[i].Name() || entry.IsDir() != diskEntries[i].IsDir() ||
 			(entry.Type()&fs.ModeType != 0 && !entry.IsDir()) ||
 			(diskEntries[i].Type()&fs.ModeType != 0 && !diskEntries[i].IsDir()) {
-			return false
+			return v.reject("unsupported_or_mismatched_entry")
 		}
 
 		child := path.Join(p, entry.Name())
 		if entry.IsDir() {
-			if !discoveryProofVisits(child, entry.Name(), root, depth) {
+			if !discoveryProofVisits(child, entry.Name(), v.root, v.depth) {
 				continue
 			}
 
-			if !provePlainGitSubtree(tree, disk, child, root, depth, repository, settings) {
+			if !v.prove(child) {
 				return false
 			}
 
@@ -471,18 +591,22 @@ func provePlainGitSubtree(tree gitTreeDiscoveryFS, disk fs.FS, p, root string, d
 				continue
 			}
 
-			contents, readErr := fs.ReadFile(tree, child)
+			contents, readErr := fs.ReadFile(v.tree, child)
 			if readErr != nil {
-				return false
+				return v.reject("read_error")
 			}
 
-			diskContents, readErr := fs.ReadFile(disk, child)
-			if readErr != nil || !bytes.Equal(contents, diskContents) {
-				return false
+			diskContents, readErr := fs.ReadFile(v.disk, child)
+			if readErr != nil {
+				return v.reject("read_error")
+			}
+
+			if !bytes.Equal(contents, diskContents) {
+				return v.reject("config_mismatch")
 			}
 
 			if _, encrypted := encryption.DetectFormat(contents, child); encrypted {
-				return false
+				return v.reject("encrypted_config")
 			}
 		}
 	}
@@ -526,6 +650,7 @@ func discoveryProofVisits(child, name, root string, depth int) bool {
 type discoveryScanner struct {
 	fsys       fs.FS
 	tree       gitTreeDiscoveryFS
+	verifier   *discoveryVerifier
 	repository string
 	label      string
 	settings   string
@@ -533,7 +658,25 @@ type discoveryScanner struct {
 	compose    set.Set[string]
 	configs    []*Config
 
-	directoryReads, cacheHits, cacheMisses int
+	directoryReads, cacheHits, cacheMisses, diskBranches int
+}
+
+// proofDuration returns the total duration spent verifying Git subtree proofs during the scan.
+func (s *discoveryScanner) proofDuration() time.Duration {
+	if s.verifier == nil {
+		return 0
+	}
+
+	return s.verifier.duration
+}
+
+// fallbackReasons returns a map of reasons for fallback during the scan.
+func (s *discoveryScanner) fallbackReasons() map[string]int {
+	if s.verifier == nil {
+		return nil
+	}
+
+	return s.verifier.reasons
 }
 
 // appendConfig clones the base Config, applies any overrides from the discovery match,
@@ -572,7 +715,12 @@ func (s *discoveryScanner) appendConfig(p string, match discoveryMatch) error {
 func (s *discoveryScanner) scan(p string, depth int) ([]discoveryMatch, error) {
 	var key discoveryCacheKey
 
-	if s.tree != nil {
+	useTree := s.tree != nil && (s.verifier == nil || s.verifier.verify(p))
+
+	readFS := s.fsys
+	if useTree {
+		readFS = s.tree
+
 		hash, err := s.tree.SubtreeHash(p)
 		if err != nil {
 			return nil, err
@@ -599,9 +747,11 @@ func (s *discoveryScanner) scan(p string, depth int) ([]discoveryMatch, error) {
 
 		s.cacheMisses++
 		recordAutoDiscoveryCacheLookup(s.label, "miss")
+	} else if s.verifier != nil {
+		s.diskBranches++
 	}
 
-	entries, err := fs.ReadDir(s.fsys, p)
+	entries, err := fs.ReadDir(readFS, p)
 	if err != nil {
 		return nil, err
 	}
@@ -622,7 +772,7 @@ func (s *discoveryScanner) scan(p string, depth int) ([]discoveryMatch, error) {
 
 			localCfgPath := path.Join(p, cfgName)
 
-			b, readErr := fs.ReadFile(s.fsys, localCfgPath)
+			b, readErr := fs.ReadFile(readFS, localCfgPath)
 			if readErr != nil {
 				return nil, fmt.Errorf("failed to read nested .doco-cd config at %s: %w", localCfgPath, readErr)
 			}
@@ -641,7 +791,7 @@ func (s *discoveryScanner) scan(p string, depth int) ([]discoveryMatch, error) {
 
 			// Bound cached contents by the size of the parsed value, not only
 			// the source bytes (YAML aliases can expand during decoding).
-			if s.tree != nil {
+			if useTree {
 				encoded, marshalErr := json.Marshal(match.override)
 				if marshalErr != nil {
 					match.overrideSize = maxAutoDiscoveryCacheEntryBytes + 1
@@ -677,7 +827,7 @@ func (s *discoveryScanner) scan(p string, depth int) ([]discoveryMatch, error) {
 		}
 	}
 
-	if s.tree != nil {
+	if useTree {
 		autoDiscoveryCache.put(key, matches)
 	}
 
