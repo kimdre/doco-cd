@@ -416,10 +416,18 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 		}
 
 		slog.Debug("auto-discovery scan", "mode", mode, "duration", fmt.Sprintf("%.3fms", time.Since(start).Seconds()*1000),
-			"directory_reads", scanner.directoryReads, "cache_hits", scanner.cacheHits,
-			"cache_misses", scanner.cacheMisses, "disk_branches", scanner.diskBranches,
-			"proof_duration", fmt.Sprintf("%.3fms", scanner.proofDuration().Seconds()*1000),
-			"fallback_reasons", scanner.fallbackReasons())
+			slog.Group("cache",
+				"directory_reads", scanner.directoryReads,
+				"hits", scanner.cacheHits,
+				"misses", scanner.cacheMisses,
+			),
+			slog.Group("verification",
+				"duration", fmt.Sprintf("%.3fms", scanner.proofDuration().Seconds()*1000),
+			),
+			slog.Group("fallback",
+				"disk_branches", scanner.diskBranches,
+				"reasons", scanner.fallbackReasons(),
+			))
 	}()
 
 	searchPath := path.Clean(baseConfig.WorkingDirectory)
