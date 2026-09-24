@@ -69,32 +69,21 @@ func ApplySelfUpdate(ctx context.Context, dockerCli command.Cli, opts ApplySelfO
 		unlockSource func()
 	)
 
-	for attempt := 0; attempt <= applierRestartRetries; attempt++ {
-		err = nil
+	err = selfupdate.Retry(ctx, func() error {
 		if record.Deploy.NetworkDrift {
-			err = ensureSelfApplierPreflightNetworks(ctx, apiClient, record)
-		}
-
-		if err == nil {
-			project, deployConfig, service, unlockSource, err = prepareSelfApply(ctx, dockerCli, opts, record)
-		}
-
-		if err == nil {
-			break
-		}
-
-		log.Warn("self-update: could not prepare applier",
-			slog.Int("attempt", attempt+1), slog.Any("error", err))
-
-		if attempt < applierRestartRetries {
-			select {
-			case <-ctx.Done():
-				attempt = applierRestartRetries
-			case <-time.After(time.Second):
+			if err := ensureSelfApplierPreflightNetworks(ctx, apiClient, record); err != nil {
+				return err
 			}
 		}
-	}
 
+		var prepareErr error
+
+		project, deployConfig, service, unlockSource, prepareErr = prepareSelfApply(ctx, dockerCli, opts, record)
+
+		return prepareErr
+	}, func(attempt int, err error) {
+		log.Warn("self-update: could not prepare applier", slog.Int("attempt", attempt), slog.Any("error", err))
+	})
 	if err != nil {
 		return finishSelfApplyFailure(ctx, apiClient, opts.Store, record, err, log)
 	}
@@ -408,7 +397,7 @@ func finishSelfApplyFailure(
 	applyErr error,
 	log *slog.Logger,
 ) error {
-	for attempt := 0; attempt <= applierRestartRetries; attempt++ {
+	for attempt := 0; attempt <= selfupdate.RecoveryRetries; attempt++ {
 		err := finishSelfApplyFailureOnce(ctx, apiClient, store, record, applyErr, log)
 		if !errors.Is(err, selfupdate.ErrStaleRecord) {
 			return err
@@ -458,19 +447,17 @@ func finishSelfApplyFailureOnce(
 	var restoreErr error
 
 	if record.DriftStarted {
-		for attempt := 0; attempt <= applierRestartRetries; attempt++ {
-			record.Restored, restoreErr = restoreSelfDriftProject(ctx, apiClient, record, log)
-			if restoreErr == nil {
-				state = selfupdate.StateRolledBack
-				break
-			}
+		restoreErr = selfupdate.Retry(context.WithoutCancel(ctx), func() error {
+			var attemptErr error
 
-			log.Warn("self-update: network rollback did not complete",
-				slog.Int("attempt", attempt+1), slog.Any("error", restoreErr))
+			record.Restored, attemptErr = restoreSelfDriftProject(ctx, apiClient, record, log)
 
-			if attempt < applierRestartRetries {
-				time.Sleep(time.Second)
-			}
+			return attemptErr
+		}, func(attempt int, err error) {
+			log.Warn("self-update: network rollback did not complete", slog.Int("attempt", attempt), slog.Any("error", err))
+		})
+		if restoreErr == nil {
+			state = selfupdate.StateRolledBack
 		}
 	} else {
 		current, err := apiClient.ContainerInspect(context.WithoutCancel(ctx), record.Predecessor.ID, client.ContainerInspectOptions{})

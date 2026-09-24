@@ -30,8 +30,6 @@ const SelfApplierLabel = "cd.doco.self.applier"
 // SelfStackLabel names the stack an applier container is updating.
 const SelfStackLabel = "cd.doco.self.stack"
 
-const scaleOutCleanupRetries = 2
-
 // prepareSelfUpdate splits a project that contains this instance into the part
 // that deploys normally and a closure that performs the handover afterwards.
 // It returns the reduced project, the reduced forced-service list, the step, and
@@ -269,19 +267,12 @@ func cleanupFailedScaleOut(
 	}
 
 	if record.Successor.ID != "" {
-		for attempt := 0; attempt <= scaleOutCleanupRetries; attempt++ {
-			_, err := apiClient.ContainerRemove(cleanupCtx, record.Successor.ID, client.ContainerRemoveOptions{Force: true})
-			if err == nil || errdefs.IsNotFound(err) {
-				return false, cause
-			}
-
-			if attempt == scaleOutCleanupRetries {
-				cause = errors.Join(cause, fmt.Errorf("remove failed scale-out successor %s: %w", record.Successor.ID, err))
-				break
-			}
-
-			time.Sleep(time.Second)
+		err := removeContainerWithRetry(cleanupCtx, apiClient, record.Successor.ID)
+		if err == nil {
+			return false, cause
 		}
+
+		cause = errors.Join(cause, fmt.Errorf("remove failed scale-out successor %s: %w", record.Successor.ID, err))
 	}
 
 	record.Error = cause.Error()
@@ -309,46 +300,18 @@ func cleanupFailedApplierStage(
 	record *selfupdate.Record,
 	cause error,
 ) (bool, error) {
-	cleanupCtx := context.WithoutCancel(ctx)
-
-	var removeErr error
-	for attempt := 0; attempt <= applierRestartRetries; attempt++ {
-		_, removeErr = apiClient.ContainerRemove(cleanupCtx, record.Applier.ID, client.ContainerRemoveOptions{Force: true})
-		if removeErr == nil || errdefs.IsNotFound(removeErr) {
-			current, err := store.Load(record.ID)
-			if err != nil {
-				return true, errors.Join(cause, fmt.Errorf("check journal after removing applier: %w", err))
-			}
-
-			if current.State != record.State || len(current.History) != len(record.History) ||
-				(current.Applier.ID != "" && current.Applier.ID != record.Applier.ID) {
-				*record = current
-				return true, errors.Join(cause, fmt.Errorf("%w: applier journal changed during clone cleanup", selfupdate.ErrStaleRecord))
-			}
-
-			return false, cause
-		}
-
-		if attempt < applierRestartRetries {
-			time.Sleep(time.Second)
-		}
+	removeErr := removeContainerWithRetry(context.WithoutCancel(ctx), apiClient, record.Applier.ID)
+	if removeErr != nil {
+		cause = errors.Join(cause, fmt.Errorf("remove failed applier %s: %w", record.Applier.ID, removeErr))
 	}
 
-	cause = errors.Join(cause, fmt.Errorf("remove failed applier %s: %w", record.Applier.ID, removeErr))
-
-	current, err := store.Load(record.ID)
+	current, err := reloadUnchangedApplierRecord(store, record)
 	if err != nil {
-		return true, errors.Join(cause, fmt.Errorf("load journal for failed applier cleanup: %w", err))
+		return true, errors.Join(cause, err)
 	}
 
-	if current.State != record.State || len(current.History) != len(record.History) {
-		*record = current
-		return true, errors.Join(cause, fmt.Errorf("%w: applier journal changed during clone cleanup", selfupdate.ErrStaleRecord))
-	}
-
-	if current.Applier.ID != "" && current.Applier.ID != record.Applier.ID {
-		*record = current
-		return true, errors.Join(cause, fmt.Errorf("%w: journal tracks another applier %s", selfupdate.ErrStaleRecord, current.Applier.ID))
+	if removeErr == nil {
+		return false, cause
 	}
 
 	current.Applier = record.Applier
@@ -371,6 +334,41 @@ func cleanupFailedApplierStage(
 	*record = updated
 
 	return true, cause
+}
+
+// removeContainerWithRetry force-removes a container, treating an already
+// removed one as success.
+func removeContainerWithRetry(ctx context.Context, apiClient client.APIClient, id string) error {
+	return selfupdate.Retry(ctx, func() error {
+		_, err := apiClient.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true})
+		if errdefs.IsNotFound(err) {
+			return nil
+		}
+
+		return err
+	}, nil)
+}
+
+// reloadUnchangedApplierRecord returns the persisted record unless another
+// process advanced it or assigned another applier. In that case, record is
+// replaced with the persisted version and the error wraps ErrStaleRecord.
+func reloadUnchangedApplierRecord(store *selfupdate.Store, record *selfupdate.Record) (selfupdate.Record, error) {
+	current, err := store.Load(record.ID)
+	if err != nil {
+		return current, fmt.Errorf("reload journal for applier cleanup: %w", err)
+	}
+
+	if !current.SameProgress(*record) {
+		*record = current
+		return current, fmt.Errorf("%w: applier journal changed during clone cleanup", selfupdate.ErrStaleRecord)
+	}
+
+	if current.Applier.ID != "" && current.Applier.ID != record.Applier.ID {
+		*record = current
+		return current, fmt.Errorf("%w: journal tracks another applier %s", selfupdate.ErrStaleRecord, current.Applier.ID)
+	}
+
+	return current, nil
 }
 
 // successorLabels returns the labels the successor is deployed with. Sources are

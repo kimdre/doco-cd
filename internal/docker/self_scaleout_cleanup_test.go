@@ -101,7 +101,7 @@ func TestCleanupFailedScaleOutPreservesJournalForRetry(t *testing.T) {
 			if tc.listErr == nil {
 				if after.Successor.ID != "new" || after.Successor.Number != 2 ||
 					!strings.Contains(after.Error, "Docker remove unavailable") ||
-					len(fake.removed) != scaleOutCleanupRetries+1 {
+					len(fake.removed) != selfupdate.RecoveryRetries+1 {
 					t.Errorf("candidate cleanup = %+v, removals=%v, reason=%q", after.Successor, fake.removed, after.Error)
 				}
 			} else if len(fake.removed) != 0 || !strings.Contains(after.Error, tc.listErr.Error()) {

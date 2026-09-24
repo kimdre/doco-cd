@@ -18,11 +18,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
-// applierRestartRetries bounds in-process setup and rollback attempts. Docker
-// retries a failed applier without a limit, since the predecessor may already
-// have been stopped and cannot recover itself.
-const applierRestartRetries = 2
-
 // BuildSelfApplierCreate derives the create options for a throwaway clone of
 // the running doco-cd container that finishes the self-update from outside.
 func BuildSelfApplierCreate(inspect container.InspectResponse, journalID, stack string) client.ContainerCreateOptions {
