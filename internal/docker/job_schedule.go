@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
+
+	"github.com/kimdre/doco-cd/internal/common/validation"
 )
 
 type JobExecutionMode string
@@ -27,6 +29,7 @@ const (
 
 type JobScheduleConfig struct {
 	Schedule      string
+	Owner         string
 	ExecutionMode JobExecutionMode
 	NotifyOn      JobNotifyOn
 	StopServices  []StopServiceRef
@@ -114,6 +117,11 @@ func ParseJobScheduleLabels(labels map[string]string) (JobScheduleConfig, bool, 
 
 	cfg.Schedule = schedule
 
+	cfg.Owner, err = parseJobOwner(labels)
+	if err != nil {
+		return cfg, false, err
+	}
+
 	if skipRaw, ok := labels[docoCDJobLabelNames.JobSkipRunning]; ok {
 		skip, parseErr := strconv.ParseBool(strings.TrimSpace(skipRaw))
 		if parseErr != nil {
@@ -186,6 +194,21 @@ func ParseJobScheduleLabels(labels map[string]string) (JobScheduleConfig, bool, 
 	}
 
 	return cfg, true, nil
+}
+
+// parseJobOwner extracts the job owner from the labels and validates it.
+func parseJobOwner(labels map[string]string) (string, error) {
+	raw, ok := labels[docoCDJobLabelNames.JobOwner]
+	if !ok {
+		return "", nil
+	}
+
+	owner := strings.TrimSpace(raw)
+	if err := validation.ValidateSchedulerOwnerID(owner); err != nil {
+		return "", fmt.Errorf("invalid %s label value %q: %w", docoCDJobLabelNames.JobOwner, raw, err)
+	}
+
+	return owner, nil
 }
 
 // ValidateStopServicesSelfReference returns an error if refs contains an entry

@@ -19,6 +19,7 @@ var (
 	ErrScheduledJobNotFound  = errors.New("scheduled job not found")
 	ErrScheduledJobDisabled  = errors.New("scheduled job is disabled")
 	ErrScheduledJobAmbiguous = errors.New("multiple scheduled jobs matched, narrow your selection")
+	ErrScheduledJobNotOwned  = errors.New("scheduled job is not owned by this instance")
 )
 
 type scheduledJobMode string
@@ -73,8 +74,10 @@ type scheduler struct {
 	// a scheduled run (see docker.ScheduledComposeOptions), resolved explicitly by the caller
 	// instead of being read from the application configuration deep inside the Docker package.
 	composeOptions docker.ScheduledComposeOptions
+	ownership      OwnershipOptions
 
-	states map[string]scheduledJobState
+	states  map[string]scheduledJobState
+	skipped map[string]string
 
 	// stopHolds reference-counts services currently held stopped by
 	// stopServicesForJob/startServicesForJob. It is keyed by (mode, resolved
@@ -131,17 +134,20 @@ type JobInfo struct {
 	Status         string                  `json:"status,omitempty"`
 	Repository     string                  `json:"repository,omitempty"`
 	ScheduleError  string                  `json:"schedule_error,omitempty"`
+	Owner          string                  `json:"owner,omitempty"`
+	SkipReason     string                  `json:"skip_reason,omitempty"`
 	StopServices   []string                `json:"stop_services,omitempty"`
 	Replicas       uint64                  `json:"replicas,omitempty"`
 	Enabled        bool                    `json:"enabled"`
 	SkipRunning    bool                    `json:"skip_running"`
 	Valid          bool                    `json:"valid"`
+	Eligible       bool                    `json:"eligible"`
 }
 
 // newSchedulerForMode builds a scheduler worker bound to a single Docker
 // context and runtime mode. log and wg may be nil for short-lived, one-shot
 // workers (e.g. a single ListJobs/TriggerNow call) that never call run().
-func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions) *scheduler {
+func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions, ownership ...OwnershipOptions) *scheduler {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -151,6 +157,11 @@ func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *sl
 	}
 
 	contextName := docker.NormalizeContextName(cc.Name)
+
+	var policy OwnershipOptions
+	if len(ownership) > 0 {
+		policy = ownership[0]
+	}
 
 	return &scheduler{
 		dockerCli:       cc.Cli,
@@ -165,7 +176,9 @@ func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *sl
 		runtime:         runtime,
 		executions:      newExecutionStore(composeOptions.ComposeLoad.DataMountPath),
 		composeOptions:  composeOptions,
+		ownership:       policy,
 		states:          map[string]scheduledJobState{},
+		skipped:         map[string]string{},
 		stopHolds:       map[stopHoldKey]*stopHoldState{},
 		recovering:      set.New[string](),
 	}

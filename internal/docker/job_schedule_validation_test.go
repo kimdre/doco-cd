@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -232,6 +233,67 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 			err := validateScheduledJobPolicies(tt.project, tt.swarmMode)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("validateScheduledJobPolicies() err=%v wantErr=%v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateScheduledJobPoliciesSwarmDeployOwner(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name        string
+		swarmMode   bool
+		jobEnabled  string
+		taskOwner   string
+		deployOwner string
+		ownerSet    bool
+		wantErr     bool
+	}{
+		{name: "invalid effective deploy owner", swarmMode: true, jobEnabled: "true", deployOwner: "bad/owner", wantErr: true},
+		{name: "empty effective deploy owner", swarmMode: true, jobEnabled: "true", ownerSet: true, wantErr: true},
+		{name: "whitespace effective deploy owner", swarmMode: true, jobEnabled: "true", deployOwner: " ", wantErr: true},
+		{name: "valid effective deploy owner", swarmMode: true, jobEnabled: "true", deployOwner: "instance-a"},
+		{name: "task owner overrides invalid deploy owner", swarmMode: true, jobEnabled: "true", taskOwner: "instance-a", deployOwner: "bad/owner"},
+		{name: "invalid task owner is not hidden by deploy owner", swarmMode: true, jobEnabled: "true", taskOwner: "bad/owner", deployOwner: "instance-a", wantErr: true},
+		{name: "disabled job ignores deploy owner", swarmMode: true, jobEnabled: "false", deployOwner: "bad/owner"},
+		{name: "standalone ignores swarm deploy owner", jobEnabled: "true", deployOwner: "bad/owner"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			labels := types.Labels{
+				DocoCDJobLabels.JobEnabled:  tc.jobEnabled,
+				DocoCDJobLabels.JobSchedule: "@hourly",
+			}
+			if tc.taskOwner != "" {
+				labels[DocoCDJobLabels.JobOwner] = tc.taskOwner
+			}
+
+			deployLabels := types.Labels{}
+			if tc.deployOwner != "" || tc.ownerSet {
+				deployLabels[DocoCDJobLabels.JobOwner] = tc.deployOwner
+			}
+
+			project := &types.Project{Services: types.Services{
+				"backup": {
+					Name:   "backup",
+					Labels: labels,
+					Deploy: &types.DeployConfig{Labels: deployLabels},
+				},
+			}}
+
+			err := validateScheduledJobPolicies(project, tc.swarmMode)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("validateScheduledJobPolicies() error = %v, wantErr=%t", err, tc.wantErr)
+			}
+
+			if tc.wantErr && !strings.Contains(err.Error(), DocoCDJobLabels.JobOwner) {
+				t.Errorf("expected owner label in error, got %v", err)
+			}
+
+			if _, ok := labels[DocoCDJobLabels.JobOwner]; ok != (tc.taskOwner != "") {
+				t.Error("validation mutated task-template labels")
 			}
 		})
 	}

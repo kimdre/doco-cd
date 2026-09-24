@@ -69,6 +69,7 @@ func TestParseJobScheduleLabels(t *testing.T) {
 	labels := map[string]string{
 		docoCDJobLabelNames.JobEnabled:       "true",
 		docoCDJobLabelNames.JobSchedule:      "*/10 * * * *",
+		docoCDJobLabelNames.JobOwner:         "host-a",
 		docoCDJobLabelNames.JobSkipRunning:   "true",
 		docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
 		docoCDJobLabelNames.JobNotifyOn:      string(JobNotifyFailure),
@@ -82,6 +83,10 @@ func TestParseJobScheduleLabels(t *testing.T) {
 
 	if !enabled {
 		t.Fatalf("expected enabled=true")
+	}
+
+	if cfg.Owner != "host-a" {
+		t.Fatalf("owner = %q, want host-a", cfg.Owner)
 	}
 
 	if cfg.ExecutionMode != JobExecutionModeOneOff {
@@ -98,6 +103,21 @@ func TestParseJobScheduleLabels(t *testing.T) {
 
 	if cfg.SwarmReplicas != 3 {
 		t.Fatalf("unexpected swarm replicas: %d", cfg.SwarmReplicas)
+	}
+}
+
+func TestParseJobScheduleLabels_InvalidOwner(t *testing.T) {
+	t.Parallel()
+
+	for _, owner := range []string{"", " ", "host a", "bad/owner"} {
+		_, _, err := ParseJobScheduleLabels(map[string]string{
+			docoCDJobLabelNames.JobEnabled:  "true",
+			docoCDJobLabelNames.JobSchedule: "@hourly",
+			docoCDJobLabelNames.JobOwner:    owner,
+		})
+		if err == nil {
+			t.Errorf("owner %q: expected validation error", owner)
+		}
 	}
 }
 

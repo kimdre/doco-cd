@@ -11,6 +11,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
+
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
@@ -69,6 +71,9 @@ type Config struct {
 	SkipTLSVerification           bool                   `env:"SKIP_TLS_VERIFICATION,notEmpty" envDefault:"false"`                                               // SkipTLSVerification skips the TLS verification when cloning repositories.
 	DockerQuietDeploy             bool                   `env:"DOCKER_QUIET_DEPLOY,notEmpty" envDefault:"true"`                                                  // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
 	SchedulerEnabled              bool                   `env:"SCHEDULER_ENABLED,notEmpty" envDefault:"true"`                                                    // SchedulerEnabled controls whether the built-in scheduled job runner is started in this doco-cd instance
+	SchedulerInstanceID           string                 `env:"SCHEDULER_INSTANCE_ID"`                                                                           // SchedulerInstanceID is the stable ID stamped on scheduled jobs deployed by this instance.
+	SchedulerOwnerContextsRaw     string                 `env:"SCHEDULER_REQUIRE_OWNER_CONTEXTS"`                                                                // SchedulerOwnerContextsRaw lists contexts where unlabeled jobs are not scheduled.
+	SchedulerOwnerContexts        []string               `yaml:"-"`                                                                                              // SchedulerOwnerContexts holds normalized Docker context names (empty string means default).
 	McpEnabled                    bool                   `env:"MCP_ENABLED,notEmpty" envDefault:"false"`                                                         // McpEnabled enables the built-in MCP server and requires API_SECRET.
 	OpenAPIEnabled                bool                   `env:"OPENAPI_ENABLED,notEmpty" envDefault:"false"`                                                     // OpenAPIEnabled exposes the runtime OpenAPI document and Swagger UI.
 	DockerSwarmFeatures           bool                   `env:"DOCKER_SWARM_FEATURES,notEmpty" envDefault:"true"`                                                // DockerSwarmFeatures enables the usage Docker Swarm features in the application if it has detected that it is running in a Docker Swarm environment
@@ -139,6 +144,47 @@ func GetConfig() (*Config, error) {
 
 	if cfg.McpEnabled && cfg.ApiSecret == "" {
 		return nil, errors.New("MCP_ENABLED requires API_SECRET")
+	}
+
+	if cfg.SchedulerInstanceID != "" && strings.TrimSpace(cfg.SchedulerInstanceID) == "" {
+		return nil, errors.New("SCHEDULER_INSTANCE_ID must not be blank")
+	}
+
+	cfg.SchedulerInstanceID = strings.TrimSpace(cfg.SchedulerInstanceID)
+	if cfg.SchedulerInstanceID != "" {
+		if err = validation.ValidateSchedulerOwnerID(cfg.SchedulerInstanceID); err != nil {
+			return nil, fmt.Errorf("invalid SCHEDULER_INSTANCE_ID: %w", err)
+		}
+	}
+
+	if cfg.SchedulerOwnerContextsRaw != "" && strings.TrimSpace(cfg.SchedulerOwnerContextsRaw) == "" {
+		return nil, errors.New("SCHEDULER_REQUIRE_OWNER_CONTEXTS must not be blank")
+	}
+
+	if raw := strings.TrimSpace(cfg.SchedulerOwnerContextsRaw); raw != "" {
+		if cfg.SchedulerInstanceID == "" {
+			return nil, errors.New("SCHEDULER_REQUIRE_OWNER_CONTEXTS requires SCHEDULER_INSTANCE_ID")
+		}
+
+		seen := set.New[string]()
+
+		for part := range strings.SplitSeq(raw, ",") {
+			name := strings.TrimSpace(part)
+			if name == "" {
+				return nil, errors.New("SCHEDULER_REQUIRE_OWNER_CONTEXTS contains an empty context")
+			}
+
+			if strings.EqualFold(name, "default") {
+				name = ""
+			}
+
+			if seen.Contains(name) {
+				return nil, fmt.Errorf("SCHEDULER_REQUIRE_OWNER_CONTEXTS contains duplicate context %q", name)
+			}
+
+			seen.Add(name)
+			cfg.SchedulerOwnerContexts = append(cfg.SchedulerOwnerContexts, name)
+		}
 	}
 
 	err = cfg.parsePollConfig()

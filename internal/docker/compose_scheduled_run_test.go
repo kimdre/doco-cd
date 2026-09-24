@@ -1306,6 +1306,32 @@ func TestGetServiceSchedulerLabels(t *testing.T) {
 func TestPrepareComposeProjectForOneOffRun(t *testing.T) {
 	t.Parallel()
 
+	t.Run("inherits deployed owner's label even if the cached definition differs", func(t *testing.T) {
+		t.Parallel()
+
+		for _, explicitOwner := range []string{"", "instance-a"} {
+			service := types.ServiceConfig{Name: "backup"}
+			if explicitOwner != "" {
+				service.Labels = types.Labels{DocoCDJobLabels.JobOwner: explicitOwner}
+			}
+
+			project := &types.Project{Services: types.Services{"backup": service}}
+
+			got, err := prepareComposeProjectForOneOffRunWithOptions(project, "backup", ComposeOneOffOptions{Owner: "instance-b"})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if owner := getServiceSchedulerLabels(got.Services["backup"])[DocoCDJobLabels.JobOwner]; owner != "instance-b" {
+				t.Errorf("explicit owner %q: clone owner = %q, want instance-b", explicitOwner, owner)
+			}
+
+			if _, ok := project.Services["backup"].CustomLabels[DocoCDJobLabels.JobOwner]; ok {
+				t.Error("input project owner was mutated")
+			}
+		}
+	})
+
 	t.Run("marks target service as ephemeral without mutating input project", func(t *testing.T) {
 		t.Parallel()
 

@@ -181,6 +181,7 @@ func isActiveSwarmTask(task swarmTypes.Task) bool {
 func getScheduleFingerprint(cfg docker.JobScheduleConfig) string {
 	return strings.Join([]string{
 		cfg.Schedule,
+		cfg.Owner,
 		string(cfg.ExecutionMode),
 		strconv.FormatBool(cfg.SkipRunning),
 		string(cfg.NotifyOn),

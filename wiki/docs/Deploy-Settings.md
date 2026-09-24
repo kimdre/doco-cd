@@ -615,7 +615,7 @@ name: some-project
 wait_running_jobs: true
 ```
 
-You can override this per scheduled job service with the `cd.doco.job.wait_running_jobs` label (see [Job Scheduling](Advanced/Job-Scheduling.md#configuration)).
+You can override this per scheduled job service with the `cd.doco.job.wait_running_jobs` label (see [Job Scheduling](Advanced/Job-Scheduling.md#configuration-labels)).
 
 Precedence:
 

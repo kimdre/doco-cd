@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -284,6 +285,30 @@ func run() error {
 		}
 	}()
 
+	if len(c.SchedulerOwnerContexts) > 0 {
+		names, listErr := contexts.Names()
+		if listErr != nil {
+			return fmt.Errorf("validate SCHEDULER_REQUIRE_OWNER_CONTEXTS: %w", listErr)
+		}
+
+		for _, name := range c.SchedulerOwnerContexts {
+			if !slices.Contains(names, name) {
+				return fmt.Errorf("SCHEDULER_REQUIRE_OWNER_CONTEXTS references unknown Docker context %q", docker.DisplayContextName(name))
+			}
+		}
+	}
+
+	if c.SchedulerInstanceID != "" {
+		strictContexts := make([]string, 0, len(c.SchedulerOwnerContexts))
+		for _, name := range c.SchedulerOwnerContexts {
+			strictContexts = append(strictContexts, docker.DisplayContextName(name))
+		}
+
+		log.Info("scheduler job ownership configured",
+			slog.String("instance_id", c.SchedulerInstanceID),
+			slog.Any("require_owner_contexts", strictContexts))
+	}
+
 	defaultContext, err := contexts.Get(ctx, docker.DefaultContextName)
 	if err != nil {
 		log.Critical("failed to check default Docker context capabilities", logger.ErrAttr(err))
@@ -416,7 +441,9 @@ func run() error {
 		return err
 	}
 
-	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider, notifier, reconciliationManager, docker.NewScheduledComposeOptions(c))
+	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider, notifier, reconciliationManager, docker.NewScheduledComposeOptions(c), scheduler.OwnershipOptions{
+		InstanceID: c.SchedulerInstanceID, RequireOwnerContexts: c.SchedulerOwnerContexts,
+	})
 	controlPlaneRuns := controlplane.NewRuns(
 		ctx,
 		log.Logger,

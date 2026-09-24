@@ -323,7 +323,7 @@ func RecreateProject(
 	}
 
 	if ref.DeploymentName != "" && ref.RepositoryURL != "" {
-		return recreateManagedProject(ctx, dockerCli, ref, labels, serviceName, timeout, secretProvider, opts)
+		return recreateManagedProject(ctx, dockerCli, ref, labels, containers, serviceName, timeout, secretProvider, opts)
 	}
 
 	return recreateStandardProject(ctx, dockerCli, ref, labels, containers, serviceName, timeout, opts.ComposeLoad)
@@ -355,6 +355,7 @@ func recreateManagedProject(
 	dockerCli command.Cli,
 	ref composeScheduledServiceRef,
 	labels map[string]string,
+	containers []api.ContainerSummary,
 	serviceName string,
 	timeout time.Duration,
 	secretProvider secretprovider.SecretProvider,
@@ -389,6 +390,10 @@ func recreateManagedProject(
 		return err
 	}
 
+	if err := preserveComposeJobOwners(project, containers); err != nil {
+		return fmt.Errorf("preserve managed compose job owners: %w", err)
+	}
+
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 	payload := &webhook.ParsedPayload{
@@ -409,7 +414,13 @@ func recreateManagedProject(
 		ComposeVersion,
 		strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA]),
 		strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash]),
+		"",
 	)
+
+	if err := validateComposeJobOwners(project); err != nil {
+		return fmt.Errorf("validate managed compose job owners: %w", err)
+	}
+
 	addComposeVolumeLabels(
 		project,
 		deployConfig,

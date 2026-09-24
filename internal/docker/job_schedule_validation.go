@@ -2,6 +2,7 @@ package docker
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -9,7 +10,21 @@ import (
 
 func validateScheduledJobPolicies(project *types.Project, swarmMode bool) error {
 	for serviceName, svc := range project.Services {
-		cfg, enabled, err := ParseJobScheduleLabels(svc.Labels)
+		labels := svc.Labels
+		if swarmMode && svc.Deploy != nil {
+			if owner, ok := svc.Deploy.Labels[DocoCDJobLabels.JobOwner]; ok {
+				if _, taskOwner := svc.Labels[DocoCDJobLabels.JobOwner]; !taskOwner {
+					labels = maps.Clone(svc.Labels)
+					if labels == nil {
+						labels = make(types.Labels)
+					}
+
+					labels[DocoCDJobLabels.JobOwner] = owner
+				}
+			}
+		}
+
+		cfg, enabled, err := ParseJobScheduleLabels(labels)
 		if err != nil {
 			return fmt.Errorf("service %s: %w", serviceName, err)
 		}

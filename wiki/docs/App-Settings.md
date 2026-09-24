@@ -7,15 +7,16 @@ tags:
 
 The settings are grouped below by the part of the application they configure.
 
-## Runtime Settings
+## General Settings
 
-| Key                 | Type    | Description                                                                                                                                                                                                                 | Default |
-|---------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| `LOG_LEVEL`         | string  | Log level of the app. Possible values: `debug`, `info`, `warn`, `error`                                                                                                                                                     | `INFO`  |
-| `SCHEDULER_ENABLED` | boolean | Controls whether this doco-cd instance starts the built-in [job scheduler](Advanced/Job-Scheduling.md). Disable it on secondary/[self-updater](Advanced/Self-Updating.md) instances that should not trigger scheduled jobs. | `true`  |
-| `TZ`                | string  | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container.                                                                                                                         | `UTC`   |
+| Key         | Type   | Description                                                                                         | Default |
+|-------------|--------|-----------------------------------------------------------------------------------------------------|---------|
+| `LOG_LEVEL` | string | Log level of the app. Possible values: `debug`, `info`, `warn`, `error`                             | `INFO`  |
+| `TZ`        | string | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container. | `UTC`   |
 
 ## API and Webhook Settings
+
+These settings control the [REST API](Endpoints/REST-API.md), [webhooks](Endpoints/Webhook-Listener.md) and [MCP server](Endpoints/MCP-Server.md).
 
 | Key                   | Type    | Description                                                                                                                                                                                   | Default                                         |
 |-----------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------|
@@ -39,6 +40,10 @@ The settings are grouped below by the part of the application they configure.
 | `TRUSTED_PROXY_HEADER`   | string | HTTP header name containing the client's original IP address. Only used when the remote peer's IP is in `TRUSTED_PROXY_NETWORKS`. Header names are matched case-insensitively. When set to `X-Forwarded-For` (the default), falls back to the [RFC 7239](https://tools.ietf.org/html/rfc7239) `Forwarded` header if `X-Forwarded-For` is absent. A custom header is used exclusively, with no fallback. | `X-Forwarded-For`                                             |
 | `TRUSTED_PROXY_NETWORKS` | list   | Comma-separated CIDR ranges that identify trusted proxies. When the remote peer matches one of these ranges, doco-cd reads the client IP from the header specified in `TRUSTED_PROXY_HEADER`.                                                                                                                                                                                                           | `127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128` |
 
+## Job Scheduling Settings
+
+See [Job Scheduling](Advanced/Job-Scheduling.md#app-configuration) for details on how to configure the job scheduler.
+
 ## Storage Settings
 
 | Key               | Type   | Description                                                                                                                                                    | Default                |
@@ -61,7 +66,7 @@ The settings are grouped below by the part of the application they configure.
 |---------------------------|------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------|
 | `OCI_INSECURE_REGISTRIES` | list | Comma-separated OCI registry `host[:port]` entries for [Compose includes](https://docs.docker.com/compose/how-tos/multiple-compose-files/include). **TLS verification is disabled** for these registries; use only for trusted registries. | Ignored when not specified |
 
-### Pulling images from a private registry
+### Container Registry Authentication
 
 If you want to pull images from a private registry, see [Container Registry Authentication](Advanced/Container-Registry-Authentication.md).
 

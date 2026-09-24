@@ -82,6 +82,18 @@ func TestGetJobDeploymentIdentity(t *testing.T) {
 	}
 }
 
+func TestGetScheduleFingerprint_ChangesWithOwner(t *testing.T) {
+	t.Parallel()
+
+	first := docker.JobScheduleConfig{Schedule: "@every 1h", Owner: "host-a"}
+	second := first
+
+	second.Owner = "host-b"
+	if getScheduleFingerprint(first) == getScheduleFingerprint(second) {
+		t.Fatal("changing owner must invalidate scheduling state")
+	}
+}
+
 func TestShouldStopContainerForOneOffDeployRun(t *testing.T) {
 	t.Parallel()
 

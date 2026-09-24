@@ -11,11 +11,19 @@ tags:
 The built-in job scheduler allows you to run containers/services defined in your docker compose files as scheduled jobs based on cron-like schedules or predefined intervals.
 This is useful for running periodic tasks such as backups, maintenance scripts, or any recurring workloads without needing an external scheduler.
 
-!!! warning "Multiple doco-cd instances on the same Docker host"
-    The scheduler discovers runnable jobs from Docker labels and is not scoped by deployment target or by a specific `.doco-cd.*.yaml` file.
-    If you run multiple doco-cd instances against the same Docker socket, each instance can discover and trigger the same scheduled jobs.
+!!! warning "Multiple doco-cd instances on the same Docker daemon"
+    The scheduler discovers jobs from Docker labels, including jobs deployed by another instance.
+    If multiple schedulers reach the same daemon, configure [per-job ownership](#multiple-instances-on-one-docker-daemon) on **every** instance to avoid duplicate runs. Docker context names are local aliases, not daemon identities.
 
-    To avoid duplicate runs, enable the scheduler only on the instance that should own scheduled jobs and set [`SCHEDULER_ENABLED`](../App-Settings.md#:~:text=when%20not%20specified-,SCHEDULER_ENABLED,-boolean) to `false` on secondary or self-updater instances.
+## App Configuration
+
+These settings control the behavior of the built-in job scheduler and can be set in the environment of the doco-cd instance.
+
+| Key                                | Type    | Description                                                                                                                                                                                                                                                                                                                                           | Default |
+|------------------------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| `SCHEDULER_ENABLED`                | boolean | Controls whether this doco-cd instance starts the built-in job scheduler. Disable it on secondary/[self-updater](Self-Updating.md) instances that should not trigger any scheduled jobs.                                                                                                                                                              | `true`  |
+| `SCHEDULER_INSTANCE_ID`            | string  | Stable, manually assigned scheduler owner ID (letters, digits, `.`, `_`, `-`; at most 63 characters). When set, scheduled jobs deployed by this instance are stamped with this owner unless `cd.doco.job.owner` is set explicitly. Set a unique value per instance sharing a Docker daemon.                                                           | Unset   |
+| `SCHEDULER_REQUIRE_OWNER_CONTEXTS` | list    | Comma-separated local Docker context names where jobs without `cd.doco.job.owner` are not scheduled. Requires `SCHEDULER_INSTANCE_ID`; names must exist in the mounted Docker context store. Use `default` for the local daemon / default docker context. See [multi-instance scheduling](Job-Scheduling.md#multiple-instances-on-one-docker-daemon). | Unset   |
 
 ## Schedule formats
 
@@ -133,8 +141,7 @@ be created for each scheduled run and removed after completion and reporting.
 
     !!! note "Duplicate notifications"
         This does not apply to `restart` mode. Notification delivery is best-effort at-least-once: a termination
-        after a notification is sent but before it is recorded can result in a duplicate notification. Keep a
-        single scheduler-enabled doco-cd instance per Docker host/context.
+        after a notification is sent but before it is recorded can result in a duplicate notification.
 
 ??? info "`one_off` behavior in Docker Swarm"
 
@@ -154,7 +161,7 @@ be created for each scheduled run and removed after completion and reporting.
     | `restart`                    | Existing service     | Unchanged              |
     | `one_off`                    | Temporary clone      | Source unchanged       |
 
-## Configuration
+## Configuration Labels
 
 ??? example "How to set service labels in a docker compose file"
     To set service labels in a docker compose file, include them in the `labels` section of your service definition:
@@ -175,17 +182,18 @@ be created for each scheduled run and removed after completion and reporting.
 
 Use the following service labels to configure scheduled jobs:
 
-| Label                               | Type    | Description                                                                                                                                                                                       | Default     |
-|-------------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------|
-| `cd.doco.job.enabled`               | boolean | Enable scheduling for this service/container                                                                                                                                                      | `false`     |
-| `cd.doco.job.schedule`              | string  | [Schedule format](#schedule-formats) to use                                                                                                                                                       |             |
-| `cd.doco.job.wait_running_jobs`     | boolean | Override deploy-config-wide [`wait_running_jobs`](../Deploy-Settings.md#wait-for-running-scheduled-jobs-before-deployment) behavior for this job service during deployments                       | (inherit)   |
-| `cd.doco.job.execution_mode`        | string  | [`restart`](#restart) (default behavior) or [`one_off`](#one_off) (ephemeral execution)                                                                                                           | `restart`   |
-| `cd.doco.job.skip_running`          | boolean | Do not run the job if a previous scheduled run is still active/running                                                                                                                            | `false`     |
-| `cd.doco.job.notify_on`             | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`                                                                                                 | `all`       |
-| `cd.doco.job.swarm.replicas`        | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                                         | `1`         |
-| `cd.doco.job.stop_services`         | string  | Comma-separated services to [temporarily stop during a job run](#temporarily-stop-services-during-a-job-run) (supports `service` and `project/service`; Swarm requires `execution_mode: one_off`) |             |
-| `cd.doco.job.stop_services.timeout` | integer | Timeout in seconds when stopping `stop_services` targets; see [stop timeout behavior](#stop-timeout-behavior)                                                                                     | (see below) |
+| Label                               | Type    | Description                                                                                                                                                                                       | Default                         |
+|-------------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------|
+| `cd.doco.job.enabled`               | boolean | Enable scheduling for this service/container                                                                                                                                                      | `false`                         |
+| `cd.doco.job.schedule`              | string  | [Schedule format](#schedule-formats) to use                                                                                                                                                       |                                 |
+| `cd.doco.job.owner`                 | string  | Scheduler instance ID that owns the job; overrides the deploying instance's `SCHEDULER_INSTANCE_ID` stamp. Letters, digits, `.`, `_`, `-`; at most 63 characters.                                 | (deploying instance ID, if set) |
+| `cd.doco.job.wait_running_jobs`     | boolean | Override deploy-config-wide [`wait_running_jobs`](../Deploy-Settings.md#wait-for-running-scheduled-jobs-before-deployment) behavior for this job service during deployments                       | (inherit)                       |
+| `cd.doco.job.execution_mode`        | string  | [`restart`](#restart) (default behavior) or [`one_off`](#one_off) (ephemeral execution)                                                                                                           | `restart`                       |
+| `cd.doco.job.skip_running`          | boolean | Do not run the job if a previous scheduled run is still active/running                                                                                                                            | `false`                         |
+| `cd.doco.job.notify_on`             | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`                                                                                                 | `all`                           |
+| `cd.doco.job.swarm.replicas`        | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                                         | `1`                             |
+| `cd.doco.job.stop_services`         | string  | Comma-separated services to [temporarily stop during a job run](#temporarily-stop-services-during-a-job-run) (supports `service` and `project/service`; Swarm requires `execution_mode: one_off`) |                                 |
+| `cd.doco.job.stop_services.timeout` | integer | Timeout in seconds when stopping `stop_services` targets; see [stop timeout behavior](#stop-timeout-behavior)                                                                                     | (see below)                     |
 
 !!! note "Using scheduled jobs with multiple doco-cd instances"
     `cd.doco.job.skip_running` prevents overlapping runs within the same doco-cd process. For Swarm
@@ -193,7 +201,46 @@ Use the following service labels to configure scheduled jobs:
     It does not coordinate simultaneously triggered runs across multiple doco-cd instances that share
     the same Docker host.
 
-    For multi-instance setups, prefer a single scheduler owner by disabling the scheduler on the other instances with [`SCHEDULER_ENABLED`](../App-Settings.md#:~:text=when%20not%20specified-,SCHEDULER_ENABLED,-boolean).
+    Ownership is configured per job as described below; `skip_running` is not a cross-instance lock.
+
+### Multiple instances on one Docker daemon
+
+Give each scheduler-enabled instance a different, stable `SCHEDULER_INSTANCE_ID`. When the instance deploys a scheduled service, it stamps `cd.doco.job.owner` with its ID. Only the matching instance schedules or manually triggers that job; the other instances still show it in job listings with `eligible: false`, a skip reason and no `next_run_at`. You can set `cd.doco.job.owner` explicitly in Compose labels to assign a different owner than the deploying instance.
+
+On every context that reaches a **shared** daemon, set `SCHEDULER_REQUIRE_OWNER_CONTEXTS` to that instance's *local* name for the context. Jobs without an owner label are skipped with a warning there, rather than accidentally running twice. Contexts not listed still run unowned jobs as before.
+
+For example, A is on the Docker host, and B also reaches that daemon through its `docker-host` context:
+
+```yaml title="Instance A environment"
+SCHEDULER_ENABLED: "true"
+SCHEDULER_INSTANCE_ID: host-a
+SCHEDULER_REQUIRE_OWNER_CONTEXTS: default
+```
+
+```yaml title="Instance B environment"
+SCHEDULER_ENABLED: "true"
+SCHEDULER_INSTANCE_ID: host-b
+SCHEDULER_REQUIRE_OWNER_CONTEXTS: docker-host
+```
+
+Jobs deployed by A carry `owner=host-a`; jobs deployed by B carry `owner=host-b`. Both instances can schedule different jobs on the shared daemon. B's unlabeled jobs on its **local** `default` context still run.
+
+#### Migrating scheduler ownership
+
+??? abstract "Guide: One-time migration from a pre-ownership release (before v0.122.0)"
+
+    You can migrate gradually without redeploying every stack at once:
+
+    1. Upgrade **both** instances and assign different `SCHEDULER_INSTANCE_ID` values. Keep B's scheduler disabled until both instances are upgraded (`#!yaml SCHEDULER_ENABLED: false`).
+    2. Set `#!yaml SCHEDULER_REQUIRE_OWNER_CONTEXTS: docker-host` on B, but **leave A's shared-daemon `default` context out** of that setting for now. A continues scheduling existing unlabeled jobs; B skips them.
+    3. Enable B's scheduler. New jobs deployed by B receive `owner=host-b` (unless explicitly overridden) and run only on their owner. To transfer an existing unlabeled job to B, redeploy its stack from B or add an explicit `#!yaml cd.doco.job.owner: host-b` label and redeploy. Until then, A continues to run that job. Confirm in the [jobs API](../Endpoints/REST-API.md#scheduled-jobs) that it is `eligible` on B and ineligible on A.
+    4. As the remaining stacks are redeployed by their intended owners, their scheduled jobs receive owner labels. Once no shared-daemon jobs that should run remain unlabeled, add `default` to A's `SCHEDULER_REQUIRE_OWNER_CONTEXTS` as shown above.
+
+    During this transition, **A runs every unlabeled job on the shared daemon**, including jobs eventually intended for B. Adding `default` to A's strict contexts too early pauses those jobs; leaving B's shared context non-strict risks duplicate runs.
+
+Changing an instance's ID does not update jobs it already deployed. Until those jobs are redeployed with the new owner, the renamed instance skips them and rejects manual triggers. Update any explicit `cd.doco.job.owner` labels as well; they override automatic stamping. Trigger an actual deployment of each affected stack (a poll or webhook for an unchanged configuration may be skipped), then confirm the new owner in the jobs API. Automatic certificate rotation and managed recreation preserve the existing owner and do not migrate it.
+
+IDs must be unique and stable; two instances using the same ID will both run the job. If both instances deploy the same stack without an explicit owner, the last deployment changes its owner. A job whose owner is down will not run until an operator reassigns it; there is no automatic failover or shared cross-instance lease. Do not expose the same daemon to the *same instance* under multiple context names, or that instance can still schedule the job twice. Older releases ignore ownership labels and must not be left scheduler-enabled alongside ownership-aware instances on the shared daemon.
 
 ### Swarm `deploy.mode`
 

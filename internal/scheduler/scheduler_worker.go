@@ -75,6 +75,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 
 	active := set.New[string]()
 	discoveredByKey := make(map[string]scheduledJob, len(jobs))
+	skipped := make(map[string]string)
 
 	var nearestNextRun time.Time
 
@@ -93,6 +94,18 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 		}
 
 		if !enabled {
+			continue
+		}
+
+		if runnable, reason := s.ownership.decision(job.context, cfg.Owner); !runnable {
+			skipped[job.key] = reason
+			if s.skipped[job.key] != reason {
+				s.log.Warn("job not scheduled on this instance",
+					slog.String("job", job.name),
+					slog.String("mode", string(job.mode)),
+					slog.String("reason", reason))
+			}
+
 			continue
 		}
 
@@ -158,11 +171,16 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 	for key := range s.states {
 		if !active.Contains(key) {
 			if job, ok := discoveredByKey[key]; ok {
+				reason := "disabled"
+				if skippedReason, wasSkipped := skipped[key]; wasSkipped {
+					reason = skippedReason
+				}
+
 				s.log.Info("job unscheduled",
 					slog.String("job", job.name),
 					slog.String("stack", getJobStackName(job)),
 					slog.String("mode", string(job.mode)),
-					slog.String("reason", "disabled"),
+					slog.String("reason", reason),
 				)
 			} else {
 				s.log.Info("job unscheduled",
@@ -174,6 +192,8 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 			delete(s.states, key)
 		}
 	}
+
+	s.skipped = skipped
 
 	if nearestNextRun.IsZero() {
 		nearestNextRun, _ = getNearestNextRun(s.states)

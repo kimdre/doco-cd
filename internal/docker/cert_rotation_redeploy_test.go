@@ -249,7 +249,7 @@ external_secrets:
 
 	payload := &webhook.ParsedPayload{Trigger: certRotationTrigger}
 
-	addComposeServiceLabels(project, deployConfig, payload, "", ref.WorkingDir, "test", time.Now().UTC().Format(time.RFC3339), ComposeVersion, "", "")
+	addComposeServiceLabels(project, deployConfig, payload, "", ref.WorkingDir, "test", time.Now().UTC().Format(time.RFC3339), ComposeVersion, "", "", "")
 
 	svc, err = project.GetService("app")
 	if err != nil {
@@ -338,7 +338,7 @@ external_secrets:
 
 	payload := &webhook.ParsedPayload{Trigger: certRotationTrigger}
 
-	addComposeServiceLabels(project, deployConfig, payload, "", ref.WorkingDir, "test", time.Now().UTC().Format(time.RFC3339), ComposeVersion, "", "")
+	addComposeServiceLabels(project, deployConfig, payload, "", ref.WorkingDir, "test", time.Now().UTC().Format(time.RFC3339), ComposeVersion, "", "", "")
 
 	svc, err := project.GetService("app")
 	if err != nil {

@@ -58,6 +58,7 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 		if parseErr != nil {
 			info.Valid = false
 			info.ScheduleError = parseErr.Error()
+			info.SkipReason = parseErr.Error()
 			info.Status = formatRunStatus(job.containerState, job.containerStatus)
 			result = append(result, info)
 
@@ -66,6 +67,7 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 
 		info.Enabled = enabled
 		if !enabled {
+			info.SkipReason = "job is disabled"
 			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], running)
 			result = append(result, info)
 
@@ -73,16 +75,29 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 		}
 
 		info.Schedule = cfg.Schedule
+		info.Owner = cfg.Owner
 		info.ExecutionMode = cfg.ExecutionMode
 		info.SkipRunning = cfg.SkipRunning
 		info.NotifyOn = cfg.NotifyOn
 		info.Replicas = cfg.SwarmReplicas
 		info.StopServices = formatStopServiceRefs(cfg.StopServices)
 
+		if runnable, reason := s.ownership.decision(job.context, cfg.Owner); !runnable {
+			info.SkipReason = reason
+			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], running)
+			result = append(result, info)
+
+			continue
+		}
+
+		info.Eligible = true
+
 		schedule, scheduleErr := docker.ParseJobScheduleExpression(cfg.Schedule)
 		if scheduleErr != nil {
 			info.Valid = false
 			info.ScheduleError = scheduleErr.Error()
+			info.Eligible = false
+			info.SkipReason = scheduleErr.Error()
 			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], running)
 			result = append(result, info)
 
@@ -123,7 +138,7 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 		return "", fmt.Errorf("failed to discover scheduled jobs: %w", err)
 	}
 
-	job, cfg, err := findRunnableJob(jobs, strings.TrimSpace(jobName), strings.TrimSpace(stackName))
+	job, cfg, err := findRunnableJob(jobs, strings.TrimSpace(jobName), strings.TrimSpace(stackName), s.ownership)
 	if err != nil {
 		return "", err
 	}
@@ -218,11 +233,11 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 	return runID, nil
 }
 
-func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, secretProvider secretprovider.SecretProvider, notifier notification.Sender, runtime *runtimeStore, stackName string, composeOptions docker.ScheduledComposeOptions) ([]JobInfo, error) {
+func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, secretProvider secretprovider.SecretProvider, notifier notification.Sender, runtime *runtimeStore, stackName string, composeOptions docker.ScheduledComposeOptions, ownership ...OwnershipOptions) ([]JobInfo, error) {
 	var result []JobInfo
 
 	for _, mode := range modes {
-		jobs, err := newSchedulerForMode(cc, mode, log, nil, secretProvider, notifier, nil, runtime, composeOptions).listJobs(ctx, stackName)
+		jobs, err := newSchedulerForMode(cc, mode, log, nil, secretProvider, notifier, nil, runtime, composeOptions, ownership...).listJobs(ctx, stackName)
 		if err != nil {
 			return nil, err
 		}
@@ -233,13 +248,13 @@ func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.C
 	return result, nil
 }
 
-func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions) (string, error) {
+func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions, ownership ...OwnershipOptions) (string, error) {
 	workers := make(map[scheduledJobMode]*scheduler, len(modes))
 
 	var jobs []scheduledJob
 
 	for _, mode := range modes {
-		worker := newSchedulerForMode(cc, mode, log, nil, secretProvider, notifier, stopHoldTracker, runtime, composeOptions)
+		worker := newSchedulerForMode(cc, mode, log, nil, secretProvider, notifier, stopHoldTracker, runtime, composeOptions, ownership...)
 
 		discovered, err := worker.discoverJobs(ctx)
 		if err != nil {
@@ -251,7 +266,7 @@ func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker
 		jobs = append(jobs, discovered...)
 	}
 
-	job, _, err := findRunnableJob(jobs, strings.TrimSpace(jobName), strings.TrimSpace(stackName))
+	job, _, err := findRunnableJob(jobs, strings.TrimSpace(jobName), strings.TrimSpace(stackName), ownership...)
 	if err != nil {
 		return "", err
 	}
@@ -264,12 +279,16 @@ func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker
 	return worker.triggerNow(ctx, jobName, stackName)
 }
 
-func findRunnableJob(jobs []scheduledJob, jobName, stackName string) (scheduledJob, docker.JobScheduleConfig, error) {
+func findRunnableJob(jobs []scheduledJob, jobName, stackName string, ownership ...OwnershipOptions) (scheduledJob, docker.JobScheduleConfig, error) {
 	var (
 		matchedJob scheduledJob
 		matchedCfg docker.JobScheduleConfig
 		matches    int
+		policy     OwnershipOptions
 	)
+	if len(ownership) > 0 {
+		policy = ownership[0]
+	}
 
 	for _, job := range jobs {
 		if job.name != jobName {
@@ -300,6 +319,10 @@ func findRunnableJob(jobs []scheduledJob, jobName, stackName string) (scheduledJ
 
 	if matches > 1 {
 		return scheduledJob{}, docker.JobScheduleConfig{}, ErrScheduledJobAmbiguous
+	}
+
+	if runnable, reason := policy.decision(matchedJob.context, matchedCfg.Owner); !runnable {
+		return scheduledJob{}, docker.JobScheduleConfig{}, fmt.Errorf("%w: %s", ErrScheduledJobNotOwned, reason)
 	}
 
 	return matchedJob, matchedCfg, nil

@@ -56,6 +56,7 @@ type ComposeOneOffOptions struct {
 	SourceID    string
 	ScheduledAt string
 	StartedAt   string
+	Owner       string
 }
 
 func RunComposeScheduledContainer(
@@ -153,6 +154,10 @@ func RunComposeOneOffFromServiceDefinitionWithOptions(
 		return err
 	}
 
+	if owner, ok := labels[DocoCDJobLabels.JobOwner]; ok {
+		runOpts.Owner = owner
+	}
+
 	project, err = prepareComposeProjectForOneOffRunWithOptions(project, ref.Service, runOpts)
 	if err != nil {
 		return err
@@ -215,6 +220,10 @@ func prepareComposeProjectForOneOffRunWithOptions(project *types.Project, servic
 	}
 
 	svc.CustomLabels = composeServiceTrackingLabels(svc.CustomLabels, svc.Name, &projectCopy)
+
+	if opts.Owner != "" {
+		svc.CustomLabels[DocoCDJobLabels.JobOwner] = opts.Owner
+	}
 
 	svc.Labels[DocoCDJobLabels.JobEphemeral] = "true"
 
