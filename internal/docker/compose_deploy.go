@@ -37,6 +37,42 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
+	if recreateMode == "" {
+		recreateMode = api.RecreateDiverged
+	}
+
+	if deployConfig.ForceImagePull {
+		for i, s := range project.Services {
+			s.PullPolicy = types.PullPolicyAlways
+			project.Services[i] = s
+		}
+	}
+
+	// Validate the self-update strategy before signaling services or changing
+	// images/resources. Only after Pull and Build do we disable the self service
+	// in the project used for the pre-handover Create.
+	var (
+		selfStep        func() error
+		deferToApplier  bool
+		selfService     string
+		reducedServices []string
+	)
+
+	if target := selfUpdateFor(project, deployConfig.Context); target != nil {
+		if self != nil {
+			self.RecreateMode = recreateMode
+			self.Services = services
+			self.RemoveOrphans = deployConfig.RemoveOrphans
+		}
+
+		_, reducedServices, selfStep, deferToApplier, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, target, services, self)
+		if err != nil {
+			return err
+		}
+
+		selfService = target.Service
+	}
+
 	if len(needSignal) > 0 {
 		setDeploymentPhase(setPhase, "signaling services")
 
@@ -52,13 +88,6 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 			if !strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error()) {
 				return fmt.Errorf("failed to get existing images: %w", err)
 			}
-		}
-	}
-
-	if deployConfig.ForceImagePull {
-		for i, s := range project.Services {
-			s.PullPolicy = types.PullPolicyAlways
-			project.Services[i] = s
 		}
 	}
 
@@ -86,10 +115,6 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return fmt.Errorf("failed to pull images: %w", err)
 	}
 
-	if recreateMode == "" {
-		recreateMode = api.RecreateDiverged
-	}
-
 	// Convert deployConfig.BuildOpts.Args to types.MappingWithEquals
 	buildArgs := make(types.MappingWithEquals)
 	for k, v := range deployConfig.BuildOpts.Args {
@@ -111,17 +136,19 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
-	// The project contains this doco-cd instance: deploy every other service
-	// normally, then hand the self service to a strategy that survives its own
-	// container being replaced. Images were pulled above, so the handover window
-	// stays short.
-	var selfStep func() error
+	// Pull and Build need the full project. Recompute the reduced project
+	// afterwards so it also contains any image changes made during Build.
+	if selfStep != nil {
+		project = project.WithServicesDisabled(selfService)
+		services = reducedServices
+	}
 
-	if target := selfUpdateFor(project, deployConfig.Context); target != nil {
-		project, services, selfStep, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, target, services, self)
-		if err != nil {
-			return err
-		}
+	// Recreating a network shared with this process is unsafe even with the
+	// self service disabled: Compose still plans that network's removal. The
+	// applier performs the *whole* create/start after it has detached from the
+	// project network and the predecessor can safely be stopped.
+	if deferToApplier {
+		return selfStep()
 	}
 
 	createOpts := api.CreateOptions{
@@ -171,11 +198,23 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	// Docker Compose then recreates them with the desired configuration during service.Create.
 	setDeploymentPhase(setPhase, "preparing deployment resources")
 
+	if selfStep != nil {
+		if err = validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
+			return err
+		}
+	}
+
 	if err = removeMismatchedRecreatableVolumes(ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
 		return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
 	}
 
 	setDeploymentPhase(setPhase, "creating services")
+
+	if selfStep != nil {
+		if err = validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
+			return err
+		}
+	}
 
 	err = service.Create(ctx, project, createOpts)
 	if err != nil {

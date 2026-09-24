@@ -1,0 +1,4 @@
+name: e2e-crash-apply-drained
+working_dir: deploy
+compose_files: [compose.yaml]
+timeout: 60

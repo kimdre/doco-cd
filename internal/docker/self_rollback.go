@@ -66,9 +66,11 @@ func restoreSelfPredecessor(
 ) (selfupdate.ContainerRef, error) {
 	restoreCtx := context.WithoutCancel(ctx)
 
-	if _, err := apiClient.ContainerInspect(restoreCtx, record.Predecessor.ID, client.ContainerInspectOptions{}); err == nil {
-		if _, err = apiClient.ContainerStart(restoreCtx, record.Predecessor.ID, client.ContainerStartOptions{}); err != nil {
-			return selfupdate.ContainerRef{}, fmt.Errorf("restart the previous container: %w", err)
+	if inspected, err := apiClient.ContainerInspect(restoreCtx, record.Predecessor.ID, client.ContainerInspectOptions{}); err == nil {
+		if inspected.Container.State == nil || !inspected.Container.State.Running {
+			if _, err = apiClient.ContainerStart(restoreCtx, record.Predecessor.ID, client.ContainerStartOptions{}); err != nil {
+				return selfupdate.ContainerRef{}, fmt.Errorf("restart the previous container: %w", err)
+			}
 		}
 
 		log.Info("self-update: previous container restarted", slog.String("container_id", record.Predecessor.ID))
@@ -129,6 +131,8 @@ func removeOtherSelfContainers(
 		return fmt.Errorf("list self service containers: %w", err)
 	}
 
+	var removeErr error
+
 	for _, c := range list.Items {
 		if c.ID == keepID {
 			continue
@@ -137,8 +141,9 @@ func removeOtherSelfContainers(
 		if _, err = apiClient.ContainerRemove(ctx, c.ID, client.ContainerRemoveOptions{Force: true}); err != nil {
 			log.Warn("self-update: failed to remove a leftover container",
 				slog.String("container_id", c.ID), slog.Any("error", err))
+			removeErr = errors.Join(removeErr, fmt.Errorf("remove leftover container %s: %w", c.ID, err))
 		}
 	}
 
-	return nil
+	return removeErr
 }

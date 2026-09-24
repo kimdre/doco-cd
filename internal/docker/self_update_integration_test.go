@@ -2,10 +2,13 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +20,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 	internaltest "github.com/kimdre/doco-cd/internal/test"
 )
 
@@ -535,4 +539,239 @@ func TestSelfUpdateIntegration_StartWithExitedAndCreatedTemp(t *testing.T) {
 	}
 
 	t.Logf("Q5 RESULT: %d containers after Start: %v", len(list), running)
+}
+
+// selfNetworkDriftYAML builds a self stack with controllable network and
+// health settings for Docker integration tests.
+func selfNetworkDriftYAML(label, generation, health string) string {
+	return fmt.Sprintf(`
+services:
+  app:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    restart: unless-stopped
+    environment:
+      GENERATION: "%s"
+    healthcheck:
+      test: ["CMD", "%s"]
+      interval: 1s
+      retries: 2
+    networks: [backend]
+  sidecar:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    environment:
+      GENERATION: "%s"
+    networks: [backend]
+networks:
+  backend:
+    labels:
+      generation: "%s"
+`, generation, health, generation, label)
+}
+
+type failingRollbackStartClient struct {
+	client.APIClient
+}
+
+// ContainerStart injects a failure while restarting a rollback container.
+func (c failingRollbackStartClient) ContainerStart(context.Context, string, client.ContainerStartOptions) (client.ContainerStartResult, error) {
+	return client.ContainerStartResult{}, errors.New("cannot start previous container yet")
+}
+
+// TestSelfUpdateIntegration_NetworkDrift exercises recreation and rollback
+// of project networks under the applier strategy.
+func TestSelfUpdateIntegration_NetworkDrift(t *testing.T) {
+	requireSelfUpdateIntegrationGate(t)
+
+	for _, mode := range []string{"healthy", "unhealthy", "crash", "crash-before-detach", "rollback-retry"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx := t.Context()
+			stackName := internaltest.ConvertTestName(t.Name())
+			oldYAML := selfNetworkDriftYAML("old", "old", "true")
+			stack := internaltest.ComposeUp(ctx, t,
+				internaltest.WithName(stackName),
+				internaltest.WithYAML(oldYAML),
+			)
+			originalApp := stack.ServiceContainerID(ctx, t, "app")
+			originalSidecar := stack.ServiceContainerID(ctx, t, "sidecar")
+
+			health := "true"
+			if mode == "unhealthy" {
+				health = "false"
+			}
+
+			project := loadSelfUpdateProject(ctx, t, stackName, selfNetworkDriftYAML("new", "new", health))
+
+			drift, err := networkDrift(ctx, stack.Client, project, project.Services["app"])
+			if err != nil || !drift {
+				t.Fatalf("networkDrift() = %v, %v; want true", drift, err)
+			}
+
+			snapshot, err := captureSelfDriftSnapshot(ctx, stack.Client, project)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			store := selfupdate.NewStore(t.TempDir())
+
+			record := selfupdate.Record{
+				ID: "drift", State: selfupdate.StateApplying, Strategy: selfupdate.StrategyApplier,
+				Stack: stackName, Service: "app",
+				Predecessor: selfupdate.ContainerRef{ID: originalApp, Number: 1},
+				Drift:       snapshot,
+				Deploy:      selfupdate.DeployInfo{NetworkDrift: true, RecreateMode: api.RecreateDiverged, TimeoutSeconds: 12},
+			}
+			if err = store.Create(&record); err != nil {
+				t.Fatal(err)
+			}
+
+			// Model the throwaway applier independently of doco-cd's binary. It
+			// must survive removal of the project's network.
+			original, err := stack.Client.ContainerInspect(ctx, originalApp, client.ContainerInspectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			applierOpts := BuildSelfApplierCreate(original.Container, record.ID, stackName)
+			applierOpts.Config.Cmd = []string{"sleep", "600"}
+
+			clone, err := stack.Client.ContainerCreate(ctx, applierOpts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			t.Cleanup(func() {
+				_, _ = stack.Client.ContainerRemove(context.WithoutCancel(ctx), clone.ID, client.ContainerRemoveOptions{Force: true})
+			})
+
+			record.Applier = selfupdate.ContainerRef{ID: clone.ID}
+			if err = store.Save(record); err != nil {
+				t.Fatal(err)
+			}
+
+			if err = connectSelfApplierNetworks(ctx, stack.Client, clone.ID, original.Container, nil); err != nil {
+				t.Fatalf("join predecessor network for preflight: %v", err)
+			}
+
+			if _, err = stack.Client.ContainerStart(ctx, clone.ID, client.ContainerStartOptions{}); err != nil {
+				t.Fatal(err)
+			}
+
+			if mode != "crash-before-detach" {
+				if err = detachSelfApplierProjectNetworks(ctx, stack.Client, record); err != nil {
+					t.Fatalf("detach clone before network update: %v", err)
+				}
+			}
+
+			if mode == "crash" || mode == "crash-before-detach" || mode == "rollback-retry" {
+				record.DriftStarted = true
+				if mode == "rollback-retry" {
+					record.Error = "initialize secret provider: credentials unavailable"
+				}
+
+				if err = store.Save(record); err != nil {
+					t.Fatal(err)
+				}
+
+				if mode != "crash-before-detach" {
+					err = stack.Service.Create(ctx, project, api.CreateOptions{
+						Recreate: api.RecreateDiverged, RecreateDependencies: api.RecreateDiverged, QuietPull: true,
+					})
+					if err != nil {
+						t.Fatalf("partially apply network update: %v", err)
+					}
+				}
+
+				if mode == "rollback-retry" {
+					cli := selfApplyTestCli{apiClient: failingRollbackStartClient{APIClient: stack.Client}}
+					if err = ApplySelfUpdate(ctx, cli, ApplySelfOptions{Store: store, JournalID: record.ID, Log: slog.Default()}); err == nil {
+						t.Fatal("incomplete network rollback returned success")
+					}
+
+					pending, loadErr := store.Load(record.ID)
+					if loadErr != nil || pending.State != selfupdate.StateApplying ||
+						!strings.Contains(pending.Error, "cannot start previous container yet") ||
+						!strings.Contains(pending.Error, record.Error) {
+						t.Fatalf("incomplete rollback journal = %s/%q (%v); want applying with cause",
+							pending.State, pending.Error, loadErr)
+					}
+				}
+
+				err = ApplySelfUpdate(ctx, stack.DockerCli, ApplySelfOptions{Store: store, JournalID: record.ID, Log: slog.Default()})
+			} else {
+				err = applySelfDriftProject(ctx, stack.DockerCli, stack.Client, stack.Service,
+					project, &record, store, nil, "", slog.Default())
+				if mode == "unhealthy" && err != nil {
+					err = finishSelfApplyFailure(ctx, stack.Client, store, record, err, slog.Default())
+				}
+			}
+
+			if err != nil {
+				t.Fatalf("%s network update: %v", mode, err)
+			}
+
+			if mode == "healthy" {
+				for _, name := range []string{"app", "sidecar"} {
+					list := selfUpdateStackContainers(ctx, t, stack.Client, stackName, name)
+					if len(list) != 1 || list[0].State != container.StateRunning {
+						t.Fatalf("%s after network drift: %+v", name, list)
+					}
+
+					if list[0].ID == map[string]string{"app": originalApp, "sidecar": originalSidecar}[name] {
+						t.Errorf("%s not updated with its new environment", name)
+					}
+
+					insp, inspectErr := stack.Client.ContainerInspect(ctx, list[0].ID, client.ContainerInspectOptions{})
+					if inspectErr != nil || !slices.Contains(insp.Container.Config.Env, "GENERATION=new") {
+						t.Errorf("%s did not receive new configuration: %v", name, inspectErr)
+					}
+				}
+			} else {
+				terminal, loadErr := store.Load(record.ID)
+				if loadErr != nil || terminal.State != selfupdate.StateRolledBack {
+					t.Fatalf("recovery journal = %q, %v; want rolled back", terminal.State, loadErr)
+				}
+
+				if mode == "rollback-retry" && terminal.Error != record.Error {
+					t.Errorf("rollback error = %q; want original cause %q", terminal.Error, record.Error)
+				}
+
+				for _, name := range []string{"app", "sidecar"} {
+					list := selfUpdateStackContainers(ctx, t, stack.Client, stackName, name)
+					if len(list) != 1 || list[0].State != container.StateRunning {
+						t.Fatalf("%s after rollback: %+v", name, list)
+					}
+
+					insp, inspectErr := stack.Client.ContainerInspect(ctx, list[0].ID, client.ContainerInspectOptions{})
+					if inspectErr != nil || insp.Container.Config.Env == nil {
+						t.Fatalf("inspect restored %s: %v", name, inspectErr)
+					}
+
+					if !slices.Contains(insp.Container.Config.Env, "GENERATION=old") {
+						t.Errorf("%s retained new generation after rollback: %v", name, insp.Container.Config.Env)
+					}
+				}
+			}
+
+			cloneState, inspectErr := stack.Client.ContainerInspect(ctx, clone.ID, client.ContainerInspectOptions{})
+			if inspectErr != nil || !cloneState.Container.State.Running {
+				t.Errorf("applier did not survive network recreation: %v", inspectErr)
+			}
+
+			net, inspectErr := stack.Client.NetworkInspect(ctx, stackName+"_backend", client.NetworkInspectOptions{})
+			if inspectErr != nil {
+				t.Fatal(inspectErr)
+			}
+
+			expected := "new"
+			if mode != "healthy" {
+				expected = "old"
+			}
+
+			if net.Network.Labels["generation"] != expected {
+				t.Errorf("network generation = %q, want %q", net.Network.Labels["generation"], expected)
+			}
+		})
+	}
 }

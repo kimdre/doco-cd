@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -9,11 +10,11 @@ import (
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/google/uuid"
-	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -29,9 +30,12 @@ const SelfApplierLabel = "cd.doco.self.applier"
 // SelfStackLabel names the stack an applier container is updating.
 const SelfStackLabel = "cd.doco.self.stack"
 
+const scaleOutCleanupRetries = 2
+
 // prepareSelfUpdate splits a project that contains this instance into the part
 // that deploys normally and a closure that performs the handover afterwards.
-// It returns the reduced project, the reduced forced-service list, and the step.
+// It returns the reduced project, the reduced forced-service list, the step, and
+// whether the full deployment must instead run in the applier.
 func prepareSelfUpdate(
 	ctx context.Context,
 	dockerCli command.Cli,
@@ -40,7 +44,7 @@ func prepareSelfUpdate(
 	target *selfTarget,
 	services []string,
 	self *SelfDeployInput,
-) (*types.Project, []string, func() error, error) {
+) (*types.Project, []string, func() error, bool, error) {
 	opts := SelfUpdateConfig()
 
 	log := slog.Default()
@@ -49,20 +53,20 @@ func prepareSelfUpdate(
 	}
 
 	if !opts.Enabled {
-		return nil, nil, nil, fmt.Errorf(
+		return nil, nil, nil, false, fmt.Errorf(
 			"%w: stack %q contains this doco-cd instance (service %q); set SELF_UPDATE_ENABLED=true to let it update itself",
 			selfupdate.ErrDisabled, project.Name, target.Service)
 	}
 
 	if opts.Store == nil {
-		return nil, nil, nil, fmt.Errorf("%w: no self-update journal is configured", selfupdate.ErrUnsupported)
+		return nil, nil, nil, false, fmt.Errorf("%w: no self-update journal is configured", selfupdate.ErrUnsupported)
 	}
 
 	// One handover at a time. A record that is still being converged means the
 	// stack has two containers, and a second attempt would race the first.
 	active, err := opts.Store.Active()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, false, err
 	}
 
 	if active != nil {
@@ -74,7 +78,11 @@ func prepareSelfUpdate(
 			slog.String("state", string(active.State)),
 		)
 
-		return nil, nil, nil, selfupdate.ErrHandover
+		return nil, nil, nil, false, selfupdate.ErrHandover
+	}
+
+	if err := validatePredecessorRestartPolicy(ctx, dockerCli.Client(), opts.Identity.ContainerID); err != nil {
+		return nil, nil, nil, false, err
 	}
 
 	sourceType := ""
@@ -82,9 +90,13 @@ func prepareSelfUpdate(
 		sourceType = self.SourceType
 	}
 
-	strategy, err := selectSelfStrategy(ctx, dockerCli, project, target, sourceType, log)
+	strategy, drift, err := selectSelfStrategy(ctx, dockerCli, project, target, sourceType, log)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, false, err
+	}
+
+	if err := validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
+		return nil, nil, nil, false, err
 	}
 
 	// Disabled services are known to compose, so RemoveOrphans cannot reap the
@@ -100,10 +112,10 @@ func prepareSelfUpdate(
 	}
 
 	step := func() error {
-		return runSelfUpdate(ctx, dockerCli, project, deployConfig, target, strategy, self, log)
+		return runSelfUpdate(ctx, dockerCli, project, deployConfig, target, strategy, drift, self, log)
 	}
 
-	return others, reduced, step, nil
+	return others, reduced, step, drift, nil
 }
 
 // runSelfUpdate performs the handover for the self service.
@@ -114,6 +126,7 @@ func runSelfUpdate(
 	deployConfig *deploy.Config,
 	target *selfTarget,
 	strategy selfupdate.Strategy,
+	drift bool,
 	self *SelfDeployInput,
 	log *slog.Logger,
 ) error {
@@ -142,6 +155,7 @@ func runSelfUpdate(
 			TimeoutSeconds: deployConfig.Timeout,
 			RecreateMode:   api.RecreateForce,
 			Services:       []string{target.Service},
+			NetworkDrift:   drift,
 		},
 		Labels: successorLabels(project, target.Service, opts.Identity.Labels),
 	}
@@ -151,20 +165,56 @@ func runSelfUpdate(
 	}
 
 	if err = opts.Store.WriteSnapshot(record.ID, predecessor.Container); err != nil {
-		return fmt.Errorf("write self-update snapshot: %w", err)
+		err = fmt.Errorf("write self-update snapshot: %w", err)
+	} else if drift {
+		record.Drift, err = captureSelfDriftSnapshot(ctx, apiClient, project)
+		if err == nil {
+			if self != nil {
+				record.Deploy.RecreateMode = self.RecreateMode
+				record.Deploy.Services = self.Services
+				record.Deploy.RemoveOrphans = self.RemoveOrphans
+			} else {
+				record.Deploy.RecreateMode = api.RecreateDiverged
+				record.Deploy.Services = nil
+			}
+
+			err = opts.Store.Save(*record)
+		}
+
+		if err != nil {
+			err = fmt.Errorf("snapshot self stack before network drift: %w", err)
+		}
 	}
 
-	switch strategy {
-	case selfupdate.StrategyScaleOut:
-		err = selfUpdateScaleOut(ctx, dockerCli, project, deployConfig, target, record, log)
-	case selfupdate.StrategyApplier:
-		err = selfUpdateStageApplier(ctx, apiClient, record, log)
-	default:
-		err = fmt.Errorf("%w: strategy %q", selfupdate.ErrUnsupported, strategy)
+	scaleOutAttempted := false
+
+	if err == nil {
+		switch strategy {
+		case selfupdate.StrategyScaleOut:
+			scaleOutAttempted = true
+			err = selfUpdateScaleOut(ctx, dockerCli, project, deployConfig, target, record, log)
+		case selfupdate.StrategyApplier:
+			err = selfUpdateStageApplier(ctx, apiClient, record, log)
+		default:
+			err = fmt.Errorf("%w: strategy %q", selfupdate.ErrUnsupported, strategy)
+		}
 	}
 
 	if err != nil {
-		_ = opts.Store.Remove(record.ID)
+		preserveRecord := false
+		if scaleOutAttempted {
+			preserveRecord, err = cleanupFailedScaleOut(ctx, apiClient, opts.Store, record, target, err)
+		}
+
+		if strategy == selfupdate.StrategyApplier && record.Applier.ID != "" {
+			preserveRecord, err = cleanupFailedApplierStage(ctx, apiClient, opts.Store, record, err)
+		}
+
+		if !preserveRecord {
+			if removeErr := opts.Store.RemoveIfUnchanged(*record); removeErr != nil {
+				err = errors.Join(err, fmt.Errorf("remove failed self-update record: %w", removeErr))
+			}
+		}
 
 		poisonErr := opts.Store.AddPoison(selfupdate.Poison{
 			Context:     target.Context,
@@ -177,12 +227,150 @@ func runSelfUpdate(
 			log.Warn("self-update: failed to record the poison entry", slog.Any("error", poisonErr))
 		}
 
+		if preserveRecord {
+			// This only wakes recovery. The coordinator must check the
+			// journal; neither a staging failure nor an Applying record
+			// grants permission to drain a healthy predecessor.
+			selfupdate.RequestDrain()
+		}
+
 		return err
 	}
 
 	selfupdate.RequestDrain()
 
 	return selfupdate.ErrHandover
+}
+
+// cleanupFailedScaleOut only drops the journal after it can confirm there is
+// no surviving candidate. Otherwise an aborted record lets the predecessor
+// retry cleanup now or on its next boot.
+func cleanupFailedScaleOut(
+	ctx context.Context,
+	apiClient client.APIClient,
+	store *selfupdate.Store,
+	record *selfupdate.Record,
+	target *selfTarget,
+	cause error,
+) (bool, error) {
+	cleanupCtx := context.WithoutCancel(ctx)
+	if record.Successor.ID == "" {
+		candidates, err := listSelfSuccessors(cleanupCtx, apiClient, target, record.Predecessor.ID)
+		switch {
+		case err != nil:
+			cause = errors.Join(cause, fmt.Errorf("find failed scale-out candidates: %w", err))
+		case len(candidates) == 1:
+			record.Successor = candidates[0]
+		case len(candidates) > 1:
+			cause = errors.Join(cause, fmt.Errorf("found %d failed scale-out candidates; manual cleanup is unsafe", len(candidates)))
+		default:
+			return false, cause
+		}
+	}
+
+	if record.Successor.ID != "" {
+		for attempt := 0; attempt <= scaleOutCleanupRetries; attempt++ {
+			_, err := apiClient.ContainerRemove(cleanupCtx, record.Successor.ID, client.ContainerRemoveOptions{Force: true})
+			if err == nil || errdefs.IsNotFound(err) {
+				return false, cause
+			}
+
+			if attempt == scaleOutCleanupRetries {
+				cause = errors.Join(cause, fmt.Errorf("remove failed scale-out successor %s: %w", record.Successor.ID, err))
+				break
+			}
+
+			time.Sleep(time.Second)
+		}
+	}
+
+	record.Error = cause.Error()
+	if err := store.Save(*record); err != nil {
+		return true, errors.Join(cause, fmt.Errorf("save failed scale-out for recovery: %w", err))
+	}
+
+	updated, err := store.Update(*record, selfupdate.StateAborted, selfupdate.ActorPredecessor)
+	if err != nil {
+		return true, errors.Join(cause, fmt.Errorf("mark failed scale-out aborted: %w", err))
+	}
+
+	*record = updated
+
+	return true, cause
+}
+
+// cleanupFailedApplierStage removes a clone even if recording or starting it
+// failed. If removal remains uncertain, the journal retains its ID and a
+// terminal failure so the healthy predecessor can retry cleanup.
+func cleanupFailedApplierStage(
+	ctx context.Context,
+	apiClient client.APIClient,
+	store *selfupdate.Store,
+	record *selfupdate.Record,
+	cause error,
+) (bool, error) {
+	cleanupCtx := context.WithoutCancel(ctx)
+
+	var removeErr error
+	for attempt := 0; attempt <= applierRestartRetries; attempt++ {
+		_, removeErr = apiClient.ContainerRemove(cleanupCtx, record.Applier.ID, client.ContainerRemoveOptions{Force: true})
+		if removeErr == nil || errdefs.IsNotFound(removeErr) {
+			current, err := store.Load(record.ID)
+			if err != nil {
+				return true, errors.Join(cause, fmt.Errorf("check journal after removing applier: %w", err))
+			}
+
+			if current.State != record.State || len(current.History) != len(record.History) ||
+				(current.Applier.ID != "" && current.Applier.ID != record.Applier.ID) {
+				*record = current
+				return true, errors.Join(cause, fmt.Errorf("%w: applier journal changed during clone cleanup", selfupdate.ErrStaleRecord))
+			}
+
+			return false, cause
+		}
+
+		if attempt < applierRestartRetries {
+			time.Sleep(time.Second)
+		}
+	}
+
+	cause = errors.Join(cause, fmt.Errorf("remove failed applier %s: %w", record.Applier.ID, removeErr))
+
+	current, err := store.Load(record.ID)
+	if err != nil {
+		return true, errors.Join(cause, fmt.Errorf("load journal for failed applier cleanup: %w", err))
+	}
+
+	if current.State != record.State || len(current.History) != len(record.History) {
+		*record = current
+		return true, errors.Join(cause, fmt.Errorf("%w: applier journal changed during clone cleanup", selfupdate.ErrStaleRecord))
+	}
+
+	if current.Applier.ID != "" && current.Applier.ID != record.Applier.ID {
+		*record = current
+		return true, errors.Join(cause, fmt.Errorf("%w: journal tracks another applier %s", selfupdate.ErrStaleRecord, current.Applier.ID))
+	}
+
+	current.Applier = record.Applier
+
+	current.Error = cause.Error()
+	if err = store.Save(current); err != nil {
+		return true, errors.Join(cause, fmt.Errorf("save failed applier for recovery: %w", err))
+	}
+
+	to := selfupdate.StateAborted
+	if current.State == selfupdate.StateApplying {
+		to = selfupdate.StateFailed
+	}
+
+	updated, err := store.Update(current, to, selfupdate.ActorPredecessor)
+	if err != nil {
+		return true, errors.Join(cause, fmt.Errorf("mark failed applier for recovery: %w", err))
+	}
+
+	*record = updated
+
+	return true, cause
 }
 
 // successorLabels returns the labels the successor is deployed with. Sources are
@@ -223,6 +411,10 @@ func selfUpdateScaleOut(
 	two := 2
 	svc.Scale = &two
 	scaleProject.Services[target.Service] = svc
+
+	if err := validateSelfUpdateVolumes(ctx, apiClient, &scaleProject); err != nil {
+		return err
+	}
 
 	// RecreateNever leaves the diverged predecessor untouched, so compose only
 	// plans the scale-up node and creates container #2 with the new config.
@@ -305,6 +497,21 @@ func removeSuccessorAndFail(ctx context.Context, apiClient client.APIClient, suc
 // findSelfSuccessor returns the project container of the self service that is
 // not this instance.
 func findSelfSuccessor(ctx context.Context, apiClient client.APIClient, target *selfTarget, ownID string) (selfupdate.ContainerRef, error) {
+	found, err := listSelfSuccessors(ctx, apiClient, target, ownID)
+	if err != nil {
+		return selfupdate.ContainerRef{}, err
+	}
+
+	if len(found) != 1 {
+		return selfupdate.ContainerRef{}, fmt.Errorf("expected exactly one successor container, found %d", len(found))
+	}
+
+	return found[0], nil
+}
+
+// listSelfSuccessors finds replacement containers for the self service while
+// excluding the running predecessor.
+func listSelfSuccessors(ctx context.Context, apiClient client.APIClient, target *selfTarget, ownID string) ([]selfupdate.ContainerRef, error) {
 	list, err := apiClient.ContainerList(ctx, client.ContainerListOptions{
 		All: true,
 		Filters: make(client.Filters).
@@ -312,36 +519,30 @@ func findSelfSuccessor(ctx context.Context, apiClient client.APIClient, target *
 			Add("label", api.ServiceLabel+"="+target.Service),
 	})
 	if err != nil {
-		return selfupdate.ContainerRef{}, fmt.Errorf("list self service containers: %w", err)
+		return nil, fmt.Errorf("list self service containers: %w", err)
 	}
 
-	var found []container.Summary
+	var found []selfupdate.ContainerRef
 
 	for _, c := range list.Items {
 		if c.ID != ownID {
-			found = append(found, c)
+			ref := selfupdate.ContainerRef{ID: c.ID}
+			if len(c.Names) > 0 {
+				ref.Name = c.Names[0]
+				if len(ref.Name) > 0 && ref.Name[0] == '/' {
+					ref.Name = ref.Name[1:]
+				}
+			}
+
+			if number, convErr := strconv.Atoi(c.Labels[api.ContainerNumberLabel]); convErr == nil {
+				ref.Number = number
+			}
+
+			found = append(found, ref)
 		}
 	}
 
-	if len(found) != 1 {
-		return selfupdate.ContainerRef{}, fmt.Errorf("expected exactly one successor container, found %d", len(found))
-	}
-
-	c := found[0]
-	ref := selfupdate.ContainerRef{ID: c.ID}
-
-	if len(c.Names) > 0 {
-		ref.Name = c.Names[0]
-		if len(ref.Name) > 0 && ref.Name[0] == '/' {
-			ref.Name = ref.Name[1:]
-		}
-	}
-
-	if number, convErr := strconv.Atoi(c.Labels[api.ContainerNumberLabel]); convErr == nil {
-		ref.Number = number
-	}
-
-	return ref, nil
+	return found, nil
 }
 
 func selfSourceInfo(self *SelfDeployInput) selfupdate.SourceInfo {

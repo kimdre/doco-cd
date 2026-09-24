@@ -488,6 +488,7 @@ func TestSelfUpdateCrashRecovery(t *testing.T) {
 		stack    string
 	}{
 		{name: "crash after the successor is healthy", scenario: "self-update-crash-handover", stack: "e2e-crash-handover"},
+		{name: "crash after the applier drain", scenario: "self-update-crash-apply-drained", stack: "e2e-crash-apply-drained"},
 		{name: "crash after the applier applied", scenario: "self-update-crash-applied", stack: "e2e-crash-applied"},
 	}
 

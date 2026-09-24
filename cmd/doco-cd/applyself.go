@@ -67,22 +67,26 @@ func runApplySelf(ctx context.Context, log *logger.Logger, c *app.Config, args [
 		return runSelfBootstrap(ctx, log, c, dockerCli)
 	}
 
+	failBeforeApply := func(cause error) error {
+		log.Error("self-update: applier initialization failed", logger.ErrAttr(cause))
+
+		return docker.FailSelfUpdate(ctx, dockerCli, selfupdate.NewStore(c.DataMountPath), journalID, cause, log.Logger)
+	}
+
 	dataMountPoint, err := bootstrapDataMountPoint(ctx, c, dockerCli)
 	if err != nil {
-		return err
+		return failBeforeApply(err)
 	}
 
 	// Compose files are resolved by their host path, which only resolves inside
 	// the container through this symlink.
 	if err = CreateMountpointSymlink(dataMountPoint); err != nil {
-		return fmt.Errorf("create the data mount symlink: %w", err)
+		return failBeforeApply(fmt.Errorf("create the data mount symlink: %w", err))
 	}
 
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, app.Version)
 	if err != nil {
-		log.Log(ctx, logger.LevelCritical, "failed to initialize the secret provider", logger.ErrAttr(err))
-
-		return err
+		return failBeforeApply(fmt.Errorf("initialize the secret provider: %w", err))
 	}
 
 	if secretProvider != nil {

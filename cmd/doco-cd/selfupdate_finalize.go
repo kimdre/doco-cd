@@ -7,8 +7,11 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/containerd/errdefs"
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -16,9 +19,9 @@ import (
 )
 
 const (
-	// finalizeDrainWait bounds how long a successor waits for the predecessor
-	// to report that it finished its in-flight work.
-	finalizeDrainWait = 3 * time.Minute
+	// finalizeWaitLogInterval reports a stalled handover without terminating
+	// another stack's in-flight deployment or the applier's health gate.
+	finalizeWaitLogInterval = 3 * time.Minute
 	// finalizePollInterval is how often the successor re-reads the journal.
 	finalizePollInterval = time.Second
 )
@@ -65,6 +68,7 @@ func finalizeSelfUpdate(
 	notifier *notification.Notifier,
 	store *selfupdate.Store,
 	identity selfupdate.Identity,
+	runs *controlplane.Runs,
 ) (func(), error) {
 	record, err := store.Active()
 	if err != nil {
@@ -94,6 +98,34 @@ func finalizeSelfUpdate(
 			}
 		}, nil
 	case rolePredecessor:
+		if record.State == selfupdate.StateApplyDrained {
+			current, recoveryErr := failStoppedSelfApplier(ctx, apiClient, store, *record)
+			if recoveryErr != nil {
+				return nil, recoveryErr
+			}
+
+			record = &current
+		}
+
+		if record.State == selfupdate.StateApplyDrained || record.State == selfupdate.StateApplied ||
+			record.State == selfupdate.StateFinalising {
+			// The applier can act on the durable drain acknowledgement at any
+			// moment, or the successor may already be serving. Close admission
+			// before this restarted process serves.
+			runs.Drain()
+
+			current, loadErr := store.Load(record.ID)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+
+			if current.State != record.State {
+				return nil, fmt.Errorf("applier handover changed to %s during predecessor startup; restarting to restore admission", current.State)
+			}
+
+			record = &current
+		}
+
 		return nil, finalizeAsPredecessor(ctx, log, apiClient, notifier, store, *record)
 	default:
 		// Neither container of the record is us: the record belongs to a stack
@@ -146,7 +178,7 @@ func finalizeAsSuccessor(
 	case selfupdate.StateRolledBack, selfupdate.StateFailed, selfupdate.StateAborted:
 		// The predecessor is the one that reports these, not us.
 		return nil
-	case selfupdate.StateApplying:
+	case selfupdate.StateApplying, selfupdate.StateApplyReady, selfupdate.StateApplyDrained:
 		if err := waitForApplier(ctx, log, apiClient, record); err != nil {
 			return err
 		}
@@ -165,19 +197,35 @@ func finalizeAsSuccessor(
 		if record.State == selfupdate.StateRolledBack || record.State == selfupdate.StateFailed {
 			return nil
 		}
-	case selfupdate.StateHandover, selfupdate.StateStarted:
-		if err := waitForDrain(ctx, log, store, record); err != nil {
+
+		if record.State == selfupdate.StateApplying || record.State == selfupdate.StateApplyReady ||
+			record.State == selfupdate.StateApplyDrained {
+			return fmt.Errorf("self-update applier exited while record %s is still %s", record.ID, record.State)
+		}
+	case selfupdate.StateHandover, selfupdate.StateStarted, selfupdate.StateDrained:
+		current, ready, err := waitForDrain(ctx, log, store, record)
+		if err != nil {
 			return err
 		}
+
+		if !ready {
+			return nil
+		}
+
+		record = current
 	}
 
-	if record.State == selfupdate.StateHandover || record.State == selfupdate.StateDrained || record.State == selfupdate.StateApplied {
+	if record.State == selfupdate.StateApplied || record.State == selfupdate.StateDrained {
 		updated, err := store.Update(record, selfupdate.StateFinalising, selfupdate.ActorSuccessor)
 		if err != nil {
 			return err
 		}
 
 		record = updated
+	}
+
+	if record.State != selfupdate.StateFinalising {
+		return fmt.Errorf("self-update record %s is not ready for finalisation: %s", record.ID, record.State)
 	}
 
 	if err := removeSelfUpdateLeftovers(ctx, log, apiClient, record); err != nil {
@@ -227,7 +275,7 @@ func finalizeAsPredecessor(
 		reportSelfUpdateFailure(log, notifier, record)
 
 		if err := poisonSelfUpdate(store, record); err != nil {
-			log.Warn("self-update: failed to record the poison entry", logger.ErrAttr(err))
+			return fmt.Errorf("record failed self-update before clearing its journal: %w", err)
 		}
 
 		if err := removeSelfUpdateLeftovers(ctx, log, apiClient, record); err != nil {
@@ -237,10 +285,58 @@ func finalizeAsPredecessor(
 		return store.Remove(record.ID)
 
 	case selfupdate.StateStaged:
-		// Nothing was created, so the attempt can simply be dropped.
+		// A failed journal write can leave a clone that was created before its
+		// ID could be saved. Find it by this attempt's label before dropping
+		// the only recovery record.
+		if err := removeStagedSelfAppliers(ctx, apiClient, record); err != nil {
+			return err
+		}
+
 		return store.Remove(record.ID)
 
-	case selfupdate.StateStarted, selfupdate.StateHandover, selfupdate.StateDrained:
+	case selfupdate.StateStarted:
+		if record.Successor.ID == "" {
+			return fmt.Errorf("self-update record %s has no successor id", record.ID)
+		}
+
+		timeout := time.Duration(record.Deploy.TimeoutSeconds) * time.Second
+		if timeout <= 0 {
+			timeout = 90 * time.Second
+		}
+
+		if err := selfupdate.WaitHealthy(ctx, apiClient, record.Successor.ID, timeout, log.Logger); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			if _, removeErr := apiClient.ContainerRemove(context.WithoutCancel(ctx), record.Successor.ID, client.ContainerRemoveOptions{Force: true}); removeErr != nil &&
+				!errdefs.IsNotFound(removeErr) {
+				return fmt.Errorf("remove unhealthy self-update successor %s: %w", record.Successor.ID, removeErr)
+			}
+
+			record.Error = fmt.Sprintf("successor did not recover after predecessor restarted: %v", err)
+			if saveErr := store.Save(record); saveErr != nil {
+				return saveErr
+			}
+
+			aborted, updateErr := store.Update(record, selfupdate.StateAborted, selfupdate.ActorPredecessor)
+			if updateErr != nil {
+				return updateErr
+			}
+
+			return finalizeAsPredecessor(ctx, log, apiClient, notifier, store, aborted)
+		}
+
+		updated, err := store.Update(record, selfupdate.StateHandover, selfupdate.ActorPredecessor)
+		if err != nil {
+			return err
+		}
+
+		record = updated
+
+		fallthrough
+
+	case selfupdate.StateHandover, selfupdate.StateDrained:
 		// A successor exists and may still be coming up. Hand over again rather
 		// than racing it: the coordinator drains and waits to be stopped.
 		log.Info("self-update: resuming handover after a restart", slog.String("id", record.ID))
@@ -248,24 +344,26 @@ func finalizeAsPredecessor(
 
 		return nil
 
-	case selfupdate.StateApplying:
-		if err := waitForApplier(ctx, log, apiClient, record); err != nil {
-			return err
-		}
-
-		reloaded, err := store.Load(record.ID)
+	case selfupdate.StateApplying, selfupdate.StateApplyReady, selfupdate.StateApplyDrained:
+		// The applier waits for a durable drain acknowledgment. Blocking boot
+		// until it exits would deadlock the two processes.
+		current, err := failStoppedSelfApplier(ctx, apiClient, store, record)
 		if err != nil {
-			if errors.Is(err, selfupdate.ErrNoRecord) {
-				return nil
-			}
-
 			return err
 		}
 
-		if reloaded.State == selfupdate.StateRolledBack || reloaded.State == selfupdate.StateFailed {
-			return finalizeAsPredecessor(ctx, log, apiClient, notifier, store, reloaded)
+		if current.State == selfupdate.StateFailed || current.State == selfupdate.StateRolledBack {
+			return finalizeAsPredecessor(ctx, log, apiClient, notifier, store, current)
 		}
 
+		selfupdate.RequestDrain()
+
+		return nil
+
+	case selfupdate.StateApplied, selfupdate.StateFinalising:
+		// A successor may already be accepting traffic. The coordinator exits
+		// this drained predecessor rather than re-opening admission.
+		selfupdate.RequestDrain()
 		return nil
 
 	default:
@@ -273,81 +371,179 @@ func finalizeAsPredecessor(
 	}
 }
 
-// waitForDrain waits until the predecessor reports it finished its work, or
-// until it is gone.
-func waitForDrain(ctx context.Context, log *logger.Logger, store *selfupdate.Store, record selfupdate.Record) error {
-	deadline := time.Now().Add(finalizeDrainWait)
-
-	for time.Now().Before(deadline) {
-		current, err := store.Load(record.ID)
-		if err != nil {
-			if errors.Is(err, selfupdate.ErrNoRecord) {
-				return nil
-			}
-
-			return err
-		}
-
-		if current.State == selfupdate.StateDrained {
-			return nil
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(finalizePollInterval):
+// failStoppedSelfApplier recovers a missing, dead or cleanly exited applier.
+// A nonzero exit with on-failure restart is transient and must not be stolen
+// from Docker's restart loop.
+func failStoppedSelfApplier(
+	ctx context.Context, apiClient client.APIClient, store *selfupdate.Store, record selfupdate.Record,
+) (selfupdate.Record, error) {
+	stopped := record.Applier.ID == ""
+	if !stopped {
+		result, err := apiClient.ContainerInspect(ctx, record.Applier.ID, client.ContainerInspectOptions{})
+		switch {
+		case errdefs.IsNotFound(err):
+			stopped = true
+		case err != nil:
+			return record, fmt.Errorf("inspect self-update applier %s: %w", record.Applier.ID, err)
+		case result.Container.State == nil:
+			return record, fmt.Errorf("self-update applier %s has no container state", record.Applier.ID)
+		default:
+			state := result.Container.State
+			stopped = state.Dead || (!state.Running && !state.Restarting && state.ExitCode == 0)
 		}
 	}
 
-	log.Warn("self-update: predecessor did not report a drain in time, continuing",
-		slog.String("id", record.ID))
+	if !stopped {
+		return record, nil
+	}
+
+	current, err := store.Load(record.ID)
+	if err != nil {
+		return record, err
+	}
+
+	if current.State != selfupdate.StateApplying && current.State != selfupdate.StateApplyReady &&
+		current.State != selfupdate.StateApplyDrained {
+		return current, nil
+	}
+
+	current.Error = "self-update applier stopped without completing the handover"
+
+	return store.Update(current, selfupdate.StateFailed, selfupdate.ActorPredecessor)
+}
+
+// removeStagedSelfAppliers cleans up clones recorded in the journal or found
+// by their attempt label after an incomplete staging operation.
+func removeStagedSelfAppliers(ctx context.Context, apiClient client.APIClient, record selfupdate.Record) error {
+	if record.Applier.ID != "" {
+		if err := docker.RemoveSelfApplier(ctx, apiClient, record.Applier.ID); err != nil && !errdefs.IsNotFound(err) {
+			return err
+		}
+	}
+
+	appliers, err := docker.FindSelfAppliers(ctx, apiClient, record.Stack)
+	if err != nil {
+		return err
+	}
+
+	for _, applier := range appliers {
+		if applier.ID == record.Applier.ID || applier.Labels[docker.SelfApplierLabel] != record.ID {
+			continue
+		}
+
+		if err := docker.RemoveSelfApplier(ctx, apiClient, applier.ID); err != nil && !errdefs.IsNotFound(err) {
+			return err
+		}
+	}
 
 	return nil
 }
 
-// waitForApplier blocks until the applier container has exited.
-func waitForApplier(ctx context.Context, log *logger.Logger, apiClient client.APIClient, record selfupdate.Record) error {
-	if record.Applier.ID == "" {
-		return nil
-	}
+// waitForDrain only permits takeover after the predecessor has recorded its
+// completed drain. A removed or aborted record is not a successful handover.
+func waitForDrain(ctx context.Context, log *logger.Logger, store *selfupdate.Store, record selfupdate.Record) (selfupdate.Record, bool, error) {
+	poll := time.NewTicker(finalizePollInterval)
+	defer poll.Stop()
 
-	deadline := time.Now().Add(finalizeDrainWait)
+	progress := time.NewTicker(finalizeWaitLogInterval)
+	defer progress.Stop()
 
-	for time.Now().Before(deadline) {
-		result, err := apiClient.ContainerInspect(ctx, record.Applier.ID, client.ContainerInspectOptions{})
+	for {
+		current, err := store.Load(record.ID)
 		if err != nil {
-			// A removed applier cannot report anything more, so there is
-			// nothing left to wait for and nothing to propagate.
-			return nil // nolint:nilerr
+			if errors.Is(err, selfupdate.ErrNoRecord) {
+				return selfupdate.Record{}, false, nil
+			}
+
+			return selfupdate.Record{}, false, err
 		}
 
-		if result.Container.State == nil || !result.Container.State.Running {
+		switch current.State {
+		case selfupdate.StateDrained, selfupdate.StateFinalising:
+			return current, true, nil
+		case selfupdate.StateRolledBack, selfupdate.StateFailed, selfupdate.StateAborted:
+			return current, false, nil
+		case selfupdate.StateStarted, selfupdate.StateHandover:
+			// The predecessor is still health-checking or draining.
+		default:
+			return current, false, fmt.Errorf("unexpected self-update state while waiting for drain: %s", current.State)
+		}
+
+		select {
+		case <-ctx.Done():
+			return selfupdate.Record{}, false, ctx.Err()
+		case <-poll.C:
+		case <-progress.C:
+			log.Warn("self-update: still waiting for the predecessor to finish draining",
+				slog.String("id", record.ID),
+				slog.String("state", string(current.State)))
+		}
+	}
+}
+
+// waitForApplier blocks until the applier has finished, rather than mistaking
+// an on-failure restart between attempts for a completed handover.
+func waitForApplier(ctx context.Context, log *logger.Logger, apiClient client.APIClient, record selfupdate.Record) error {
+	if record.Applier.ID == "" {
+		return fmt.Errorf("self-update record %s has no applier id", record.ID)
+	}
+
+	poll := time.NewTicker(finalizePollInterval)
+	defer poll.Stop()
+
+	progress := time.NewTicker(finalizeWaitLogInterval)
+	defer progress.Stop()
+
+	for {
+		result, err := apiClient.ContainerInspect(ctx, record.Applier.ID, client.ContainerInspectOptions{})
+		if err != nil {
+			if errdefs.IsNotFound(err) {
+				return nil
+			}
+
+			return fmt.Errorf("inspect self-update applier %s: %w", record.Applier.ID, err)
+		}
+
+		if result.Container.State == nil {
+			return fmt.Errorf("self-update applier %s has no container state", record.Applier.ID)
+		}
+
+		state := result.Container.State
+		if !state.Running && !state.Restarting && (state.ExitCode == 0 || state.Dead) {
 			return nil
 		}
 
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(finalizePollInterval):
+		case <-poll.C:
+		case <-progress.C:
+			log.Warn("self-update: still waiting for the applier",
+				slog.String("applier_id", record.Applier.ID))
 		}
 	}
-
-	log.Warn("self-update: applier did not exit in time", slog.String("applier_id", record.Applier.ID))
-
-	return nil
 }
 
 // removeSelfUpdateLeftovers drops the predecessor and the applier, so the stack
 // is back to exactly one container per service.
 func removeSelfUpdateLeftovers(ctx context.Context, log *logger.Logger, apiClient client.APIClient, record selfupdate.Record) error {
+	if record.State == selfupdate.StateAborted {
+		if err := removeAbortedSuccessor(ctx, apiClient, record); err != nil {
+			return err
+		}
+	}
+
 	if record.Predecessor.ID != "" && record.Predecessor.ID != docker.SelfUpdateConfig().Identity.ContainerID {
 		timeout := 10
-		if _, err := apiClient.ContainerStop(ctx, record.Predecessor.ID, client.ContainerStopOptions{Timeout: &timeout}); err != nil {
-			log.Debug("self-update: predecessor was already stopped", logger.ErrAttr(err))
+		if _, err := apiClient.ContainerStop(ctx, record.Predecessor.ID, client.ContainerStopOptions{Timeout: &timeout}); err != nil &&
+			!errdefs.IsNotFound(err) && !errdefs.IsNotModified(err) {
+			return fmt.Errorf("stop self-update predecessor %s: %w", record.Predecessor.ID, err)
 		}
 
 		if _, err := apiClient.ContainerRemove(ctx, record.Predecessor.ID, client.ContainerRemoveOptions{Force: true}); err != nil {
-			log.Debug("self-update: predecessor was already removed", logger.ErrAttr(err))
+			if !errdefs.IsNotFound(err) {
+				return fmt.Errorf("remove self-update predecessor %s: %w", record.Predecessor.ID, err)
+			}
 		} else {
 			log.Info("self-update: predecessor removed", slog.String("predecessor_id", record.Predecessor.ID))
 		}
@@ -360,8 +556,49 @@ func removeSelfUpdateLeftovers(ctx context.Context, log *logger.Logger, apiClien
 
 	for _, applier := range appliers {
 		if err = docker.RemoveSelfApplier(ctx, apiClient, applier.ID); err != nil {
-			log.Warn("self-update: failed to remove an applier container", logger.ErrAttr(err))
+			if !errdefs.IsNotFound(err) {
+				return err
+			}
 		}
+	}
+
+	return nil
+}
+
+// removeAbortedSuccessor discovers and removes an abandoned replacement even
+// when its container ID was not persisted in the journal.
+func removeAbortedSuccessor(ctx context.Context, apiClient client.APIClient, record selfupdate.Record) error {
+	successorID := record.Successor.ID
+	if successorID == "" {
+		list, err := apiClient.ContainerList(ctx, client.ContainerListOptions{
+			All: true,
+			Filters: make(client.Filters).
+				Add("label", api.ProjectLabel+"="+record.Stack).
+				Add("label", api.ServiceLabel+"="+record.Service),
+		})
+		if err != nil {
+			return fmt.Errorf("find aborted self-update successor: %w", err)
+		}
+
+		for _, c := range list.Items {
+			if c.ID == record.Predecessor.ID {
+				continue
+			}
+
+			if successorID != "" {
+				return fmt.Errorf("multiple aborted self-update successors found for %s/%s", record.Stack, record.Service)
+			}
+
+			successorID = c.ID
+		}
+	}
+
+	if successorID == "" {
+		return nil
+	}
+
+	if _, err := apiClient.ContainerRemove(ctx, successorID, client.ContainerRemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("remove aborted self-update successor %s: %w", successorID, err)
 	}
 
 	return nil

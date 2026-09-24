@@ -2,8 +2,11 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,9 +18,9 @@ import (
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
-// applierRestartRetries lets Docker re-run a crashed applier, which resumes
-// from the journal. Docker rejects AutoRemove together with a restart policy,
-// so the successor removes the applier once it has reported.
+// applierRestartRetries bounds in-process setup and rollback attempts. Docker
+// retries a failed applier without a limit, since the predecessor may already
+// have been stopped and cannot recover itself.
 const applierRestartRetries = 2
 
 // BuildSelfApplierCreate derives the create options for a throwaway clone of
@@ -35,19 +38,19 @@ func BuildSelfApplierCreate(inspect container.InspectResponse, journalID, stack 
 	hostConfig := *inspect.HostConfig
 	hostConfig.PortBindings = nil
 	hostConfig.AutoRemove = false
+	// Bridge survives project-network recreation. The clone also joins the
+	// predecessor's networks for secret-provider DNS during preflight, then
+	// leaves project networks before Compose may recreate them.
+	hostConfig.NetworkMode = "bridge"
+	hostConfig.Links = nil
 	hostConfig.RestartPolicy = container.RestartPolicy{
-		Name:              container.RestartPolicyOnFailure,
-		MaximumRetryCount: applierRestartRetries,
+		Name: container.RestartPolicyOnFailure,
 	}
 
 	opts := client.ContainerCreateOptions{
 		Config:     &config,
 		HostConfig: &hostConfig,
 		Name:       applierName(inspect.Name),
-	}
-
-	if networking := applierNetworking(inspect, hostConfig.NetworkMode); networking != nil {
-		opts.NetworkingConfig = networking
 	}
 
 	return opts
@@ -81,30 +84,29 @@ func applierName(containerName string) string {
 	return base + "-self-applier-" + strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 }
 
-// applierNetworking attaches the clone to the same networks without aliases.
-func applierNetworking(inspect container.InspectResponse, mode container.NetworkMode) *network.NetworkingConfig {
-	if mode.IsHost() || mode.IsContainer() {
-		return nil
-	}
-
-	if inspect.NetworkSettings == nil || len(inspect.NetworkSettings.Networks) == 0 {
-		return nil
-	}
-
-	endpoints := make(map[string]*network.EndpointSettings, len(inspect.NetworkSettings.Networks))
-	for name := range inspect.NetworkSettings.Networks {
-		endpoints[name] = &network.EndpointSettings{}
-	}
-
-	return &network.NetworkingConfig{EndpointsConfig: endpoints}
-}
-
 // selfUpdateStageApplier starts the clone that replaces this container. The
 // predecessor keeps serving until the applier stops it.
 func selfUpdateStageApplier(ctx context.Context, apiClient client.APIClient, record *selfupdate.Record, log *slog.Logger) error {
 	opts := SelfUpdateConfig()
+	return stageSelfApplier(ctx, apiClient, opts.Store, opts.Identity.ContainerID, opts.DataMountPath, record, log)
+}
 
-	inspect, err := apiClient.ContainerInspect(ctx, opts.Identity.ContainerID, client.ContainerInspectOptions{})
+type selfApplierJournal interface {
+	Save(selfupdate.Record) error
+	Update(selfupdate.Record, selfupdate.State, selfupdate.Actor) (selfupdate.Record, error)
+}
+
+// stageSelfApplier creates and starts a recoverable clone, cleaning it up or
+// retaining its journal entry if any staging step fails.
+func stageSelfApplier(
+	ctx context.Context,
+	apiClient client.APIClient,
+	store selfApplierJournal,
+	ownID, dataMountPath string,
+	record *selfupdate.Record,
+	log *slog.Logger,
+) error {
+	inspect, err := apiClient.ContainerInspect(ctx, ownID, client.ContainerInspectOptions{})
 	if err != nil {
 		return fmt.Errorf("inspect own container for applier clone: %w", err)
 	}
@@ -118,23 +120,22 @@ func selfUpdateStageApplier(ctx context.Context, apiClient client.APIClient, rec
 
 	record.Applier = selfupdate.ContainerRef{ID: created.ID, Name: createOpts.Name}
 
-	if err = opts.Store.Save(*record); err != nil {
+	if err = connectSelfApplierNetworks(ctx, apiClient, created.ID, inspect.Container, nil); err != nil {
+		return fmt.Errorf("connect applier for preflight: %w", err)
+	}
+
+	if err = store.Save(*record); err != nil {
 		return fmt.Errorf("record applier: %w", err)
 	}
 
-	updated, err := opts.Store.Update(*record, selfupdate.StateApplying, selfupdate.ActorPredecessor)
+	updated, err := store.Update(*record, selfupdate.StateApplying, selfupdate.ActorPredecessor)
 	if err != nil {
-		return err
+		return fmt.Errorf("mark applier applying: %w", err)
 	}
 
 	*record = updated
 
 	if _, err = apiClient.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
-		removeCtx := context.WithoutCancel(ctx)
-		if _, removeErr := apiClient.ContainerRemove(removeCtx, created.ID, client.ContainerRemoveOptions{Force: true}); removeErr != nil {
-			log.Warn("self-update: failed to remove the applier that could not start", slog.Any("error", removeErr))
-		}
-
 		return fmt.Errorf("start applier container: %w", err)
 	}
 
@@ -143,7 +144,124 @@ func selfUpdateStageApplier(ctx context.Context, apiClient client.APIClient, rec
 		slog.String("applier_name", createOpts.Name),
 	)
 
-	selfupdate.MaybeCrash(opts.DataMountPath, string(selfupdate.StateApplying), log)
+	selfupdate.MaybeCrash(dataMountPath, string(selfupdate.StateApplying), log)
+
+	return nil
+}
+
+// connectSelfApplierNetworks gives the clone service DNS access without
+// inheriting the predecessor's aliases or addresses.
+func connectSelfApplierNetworks(
+	ctx context.Context, apiClient client.APIClient, applierID string,
+	predecessor container.InspectResponse, connected map[string]*network.EndpointSettings,
+) error {
+	if predecessor.NetworkSettings == nil {
+		return nil
+	}
+
+	for _, name := range slices.Sorted(maps.Keys(predecessor.NetworkSettings.Networks)) {
+		if name == "bridge" || name == "host" || name == "none" {
+			continue
+		}
+
+		if _, ok := connected[name]; ok {
+			continue
+		}
+
+		endpoint := predecessor.NetworkSettings.Networks[name]
+		if endpoint == nil {
+			return fmt.Errorf("predecessor network %s has no endpoint", name)
+		}
+
+		id := endpoint.NetworkID
+		if id == "" {
+			id = name
+		}
+		// Do not copy service aliases or addresses: the clone must be able to
+		// resolve services without answering requests as the predecessor.
+		if _, err := apiClient.NetworkConnect(ctx, id, client.NetworkConnectOptions{Container: applierID}); err != nil {
+			return fmt.Errorf("connect applier to network %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// ensureSelfApplierPreflightNetworks restores project-network access after an
+// applier restart so secret-provider preflight can still use service DNS.
+func ensureSelfApplierPreflightNetworks(
+	ctx context.Context, apiClient client.APIClient, record selfupdate.Record,
+) error {
+	if record.Drift == nil {
+		return errors.New("network drift has no recoverable project snapshot")
+	}
+
+	predecessor, ok := record.Drift.Containers[record.Predecessor.ID]
+	if !ok {
+		return fmt.Errorf("predecessor %s is missing from the network snapshot", record.Predecessor.ID)
+	}
+
+	applier, err := apiClient.ContainerInspect(ctx, record.Applier.ID, client.ContainerInspectOptions{})
+	if err != nil {
+		return fmt.Errorf("inspect applier preflight networks: %w", err)
+	}
+
+	var connected map[string]*network.EndpointSettings
+	if applier.Container.NetworkSettings != nil {
+		connected = applier.Container.NetworkSettings.Networks
+	}
+
+	return connectSelfApplierNetworks(ctx, apiClient, record.Applier.ID, predecessor, connected)
+}
+
+// detachSelfApplierProjectNetworks releases old networks before Compose
+// recreates them, retaining the clone's stable bridge connection.
+func detachSelfApplierProjectNetworks(
+	ctx context.Context, apiClient client.APIClient, record selfupdate.Record,
+) error {
+	if record.Drift == nil {
+		return errors.New("network drift has no recoverable project snapshot")
+	}
+
+	applier, err := apiClient.ContainerInspect(ctx, record.Applier.ID, client.ContainerInspectOptions{})
+	if err != nil {
+		return fmt.Errorf("inspect applier before network recreation: %w", err)
+	}
+
+	if applier.Container.NetworkSettings == nil || applier.Container.NetworkSettings.Networks["bridge"] == nil {
+		return fmt.Errorf("applier %s has no stable bridge connection for network recreation", record.Applier.ID)
+	}
+
+	for _, name := range slices.Sorted(maps.Keys(record.Drift.Networks)) {
+		endpoint := applier.Container.NetworkSettings.Networks[name]
+		if endpoint == nil {
+			continue
+		}
+
+		old := record.Drift.Networks[name]
+		if endpoint.NetworkID != "" && endpoint.NetworkID != old.ID {
+			return fmt.Errorf("applier network %s changed since the snapshot; refusing recreation", name)
+		}
+
+		if _, err := apiClient.NetworkDisconnect(ctx, old.ID, client.NetworkDisconnectOptions{Container: record.Applier.ID}); err != nil {
+			return fmt.Errorf("detach applier from network %s before recreation: %w", name, err)
+		}
+	}
+
+	applier, err = apiClient.ContainerInspect(ctx, record.Applier.ID, client.ContainerInspectOptions{})
+	if err != nil {
+		return fmt.Errorf("verify applier networks before recreation: %w", err)
+	}
+
+	if applier.Container.NetworkSettings == nil || applier.Container.NetworkSettings.Networks["bridge"] == nil {
+		return fmt.Errorf("applier %s lost its stable bridge connection", record.Applier.ID)
+	}
+
+	for name := range record.Drift.Networks {
+		if applier.Container.NetworkSettings.Networks[name] != nil {
+			return fmt.Errorf("applier is still attached to project network %s", name)
+		}
+	}
 
 	return nil
 }

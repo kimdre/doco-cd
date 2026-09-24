@@ -11,6 +11,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
+	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -62,6 +63,9 @@ type SelfDeployInput struct {
 	JobID          string
 	Trigger        string
 	TimeoutSeconds int
+	RecreateMode   string
+	Services       []string
+	RemoveOrphans  bool
 	Log            *slog.Logger
 }
 
@@ -123,6 +127,22 @@ func selfUpdateFor(project *types.Project, contextName string) *selfTarget {
 // must be recreated. Compose stops every attached container to recreate a
 // network, which would kill this process regardless of the strategy.
 func networkDrift(ctx context.Context, apiClient client.APIClient, project *types.Project, svc types.ServiceConfig) (bool, error) {
+	networks, err := selfDriftedNetworks(ctx, apiClient, project, svc)
+	return len(networks) > 0, err
+}
+
+// selfDriftedNetworks finds existing project networks that the desired self
+// service needs Compose to recreate.
+func selfDriftedNetworks(ctx context.Context, apiClient client.APIClient, project *types.Project, svc types.ServiceConfig) ([]network.Inspect, error) {
+	list, err := apiClient.NetworkList(ctx, client.NetworkListOptions{
+		Filters: make(client.Filters).Add("label", api.ProjectLabel+"="+project.Name),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list self stack networks: %w", err)
+	}
+
+	var drifted []network.Inspect
+
 	for name := range svc.Networks {
 		cfg, ok := project.Networks[name]
 		if !ok || bool(cfg.External) {
@@ -131,7 +151,7 @@ func networkDrift(ctx context.Context, apiClient client.APIClient, project *type
 
 		want, err := compose.NetworkHash(&cfg)
 		if err != nil {
-			return false, fmt.Errorf("hash network %s: %w", name, err)
+			return nil, fmt.Errorf("hash network %s: %w", name, err)
 		}
 
 		netName := cfg.Name
@@ -139,18 +159,31 @@ func networkDrift(ctx context.Context, apiClient client.APIClient, project *type
 			netName = project.Name + "_" + name
 		}
 
-		result, err := apiClient.NetworkInspect(ctx, netName, client.NetworkInspectOptions{})
-		if err != nil {
-			// A missing network is created, not recreated, so nothing is stopped.
+		var current string
+		for _, item := range list.Items {
+			if item.Labels[api.NetworkLabel] == name &&
+				(current == "" || item.Name == netName) {
+				current = item.ID
+			}
+		}
+
+		if current == "" {
+			// A genuinely new network does not require stopping the predecessor.
 			continue
 		}
 
-		if result.Network.Labels[api.ConfigHashLabel] != want {
-			return true, nil
+		result, err := apiClient.NetworkInspect(ctx, current, client.NetworkInspectOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("inspect self stack network %s: %w", name, err)
+		}
+
+		if result.Network.Name != netName ||
+			(result.Network.Labels[api.ConfigHashLabel] != "" && result.Network.Labels[api.ConfigHashLabel] != want) {
+			drifted = append(drifted, result.Network)
 		}
 	}
 
-	return false, nil
+	return drifted, nil
 }
 
 // selectSelfStrategy resolves the strategy for the self service, including the
@@ -162,18 +195,18 @@ func selectSelfStrategy(
 	target *selfTarget,
 	sourceType string,
 	log *slog.Logger,
-) (selfupdate.Strategy, error) {
+) (selfupdate.Strategy, bool, error) {
 	opts := SelfUpdateConfig()
 	svc := project.Services[target.Service]
 
 	drift, err := networkDrift(ctx, dockerCli.Client(), project, svc)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	strategy, reasons, err := selfupdate.Select(svc, sourceType, target.Context, opts.Strategy, selfupdate.Constraints{NetworkDrift: drift})
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if log != nil {
@@ -185,5 +218,5 @@ func selectSelfStrategy(
 		)
 	}
 
-	return strategy, nil
+	return strategy, drift, nil
 }

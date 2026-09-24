@@ -90,8 +90,8 @@ func TestBuildSelfApplierCreate(t *testing.T) {
 		t.Error("AutoRemove is set, which Docker rejects together with a restart policy")
 	}
 
-	if got := opts.HostConfig.RestartPolicy; got.Name != container.RestartPolicyOnFailure || got.MaximumRetryCount != applierRestartRetries {
-		t.Errorf("restart policy = %+v, want on-failure with %d retries", got, applierRestartRetries)
+	if got := opts.HostConfig.RestartPolicy; got.Name != container.RestartPolicyOnFailure || got.MaximumRetryCount != 0 {
+		t.Errorf("restart policy = %+v, want on-failure with unlimited retries", got)
 	}
 
 	if opts.Config.Hostname != "" {
@@ -102,13 +102,9 @@ func TestBuildSelfApplierCreate(t *testing.T) {
 		t.Errorf("name = %q, want a self-applier suffix", opts.Name)
 	}
 
-	endpoints := opts.NetworkingConfig.EndpointsConfig
-	if len(endpoints) != 1 {
-		t.Fatalf("clone attached to %d networks, want 1", len(endpoints))
-	}
-
-	if aliases := endpoints["doco-cd_default"].Aliases; len(aliases) != 0 {
-		t.Errorf("clone kept network aliases %v and would answer DNS for the service", aliases)
+	if opts.NetworkingConfig != nil || opts.HostConfig.NetworkMode != "bridge" {
+		t.Errorf("clone must use stable bridge network, got mode %q and endpoints %v",
+			opts.HostConfig.NetworkMode, opts.NetworkingConfig)
 	}
 
 	if got := opts.HostConfig.Binds; len(got) != 1 {
@@ -126,6 +122,10 @@ func TestBuildSelfApplierCreateHostNetwork(t *testing.T) {
 
 	if opts.NetworkingConfig != nil {
 		t.Error("host networking must not get an endpoint configuration")
+	}
+
+	if opts.HostConfig.NetworkMode != "bridge" {
+		t.Errorf("clone network mode = %q, want bridge", opts.HostConfig.NetworkMode)
 	}
 }
 
