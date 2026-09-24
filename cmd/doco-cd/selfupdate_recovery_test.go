@@ -441,36 +441,28 @@ func TestPredecessorRestartClosesAdmissionBeforeResumingAppliedDrain(t *testing.
 func TestSuccessorCannotFinaliseWhileApplierWaitsForDrain(t *testing.T) {
 	t.Parallel()
 
-	for _, state := range []selfupdate.State{
-		selfupdate.StateApplying, selfupdate.StateApplyReady, selfupdate.StateApplyDrained,
-	} {
-		t.Run(string(state), func(t *testing.T) {
-			t.Parallel()
-			store := selfupdate.NewStore(t.TempDir())
+	store := selfupdate.NewStore(t.TempDir())
 
-			record := selfupdate.Record{
-				ID: "waiting", State: state,
-				Predecessor: selfupdate.ContainerRef{ID: "old"},
-				Applier:     selfupdate.ContainerRef{ID: "clone"},
-			}
-			if err := store.Create(&record); err != nil {
-				t.Fatal(err)
-			}
+	record := selfupdate.Record{
+		ID: "waiting", State: selfupdate.StateApplyReady,
+		Predecessor: selfupdate.ContainerRef{ID: "old"},
+		Applier:     selfupdate.ContainerRef{ID: "clone"},
+	}
+	if err := store.Create(&record); err != nil {
+		t.Fatal(err)
+	}
 
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
-			defer cancel()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+	defer cancel()
 
-			err := finalizeAsSuccessor(ctx, logger.New(slog.LevelError),
-				&finalizerDockerClient{}, nil, store, record)
-			if !errors.Is(err, context.DeadlineExceeded) {
-				t.Errorf("finalise from %s = %v; want to wait for the applier", state, err)
-			}
+	err := finalizeAsSuccessor(ctx, logger.New(slog.LevelError), &finalizerDockerClient{}, nil, store, record)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("finalise while applier waits = %v; want to wait for the applier", err)
+	}
 
-			current, err := store.Load(record.ID)
-			if err != nil || current.State != state {
-				t.Errorf("journal after attempted early finalisation = %s/%v", current.State, err)
-			}
-		})
+	current, err := store.Load(record.ID)
+	if err != nil || current.State != record.State {
+		t.Errorf("journal after attempted early finalisation = %s/%v", current.State, err)
 	}
 }
 

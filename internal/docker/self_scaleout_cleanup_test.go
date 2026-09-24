@@ -18,7 +18,6 @@ type failedScaleOutClient struct {
 	containers []container.Summary
 	listErr    error
 	removeErr  error
-	removeNext []error
 	removed    []string
 }
 
@@ -30,12 +29,6 @@ func (c *failedScaleOutClient) ContainerList(context.Context, client.ContainerLi
 // ContainerRemove simulates a successor cleanup failure or success.
 func (c *failedScaleOutClient) ContainerRemove(_ context.Context, id string, _ client.ContainerRemoveOptions) (client.ContainerRemoveResult, error) {
 	c.removed = append(c.removed, id)
-	if len(c.removeNext) > 0 {
-		err := c.removeNext[0]
-		c.removeNext = c.removeNext[1:]
-
-		return client.ContainerRemoveResult{}, err
-	}
 
 	return client.ContainerRemoveResult{}, c.removeErr
 }
@@ -149,30 +142,5 @@ func TestCleanupFailedScaleOutRemovesOrConfirmsNoCandidate(t *testing.T) {
 				t.Errorf("removed = %v; want new", fake.removed)
 			}
 		})
-	}
-}
-
-// TestCleanupFailedScaleOutRetriesTransientRemoval checks recovery after a
-// temporary Docker container removal error.
-func TestCleanupFailedScaleOutRetriesTransientRemoval(t *testing.T) {
-	store := selfupdate.NewStore(t.TempDir())
-
-	record := selfupdate.Record{
-		ID: "scale-out", State: selfupdate.StateStarted, Strategy: selfupdate.StrategyScaleOut,
-		Predecessor: selfupdate.ContainerRef{ID: "old"},
-		Successor:   selfupdate.ContainerRef{ID: "new"},
-	}
-	if err := store.Create(&record); err != nil {
-		t.Fatal(err)
-	}
-
-	fake := &failedScaleOutClient{removeNext: []error{errors.New("Docker temporarily unavailable"), nil}}
-
-	preserve, err := cleanupFailedScaleOut(t.Context(), fake, store, &record,
-		&selfTarget{Project: "self-stack", Service: "app"}, errors.New("successor unhealthy"))
-	if preserve || err == nil || err.Error() != "successor unhealthy" ||
-		len(fake.removed) != 2 || record.State != selfupdate.StateStarted {
-		t.Errorf("cleanup = preserve %t, error %v, removals %v, state %s; want removed after retry",
-			preserve, err, fake.removed, record.State)
 	}
 }

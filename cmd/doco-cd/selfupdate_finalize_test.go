@@ -55,47 +55,23 @@ func TestResolveSelfUpdateRole(t *testing.T) {
 	}
 }
 
-// TestWaitForDrainDoesNotTreatTimeoutAsHandover verifies that a timeout cannot
-// authorize takeover before the predecessor records its drain.
-func TestWaitForDrainDoesNotTreatTimeoutAsHandover(t *testing.T) {
-	t.Parallel()
-
-	store := selfupdate.NewStore(t.TempDir())
-
-	record := selfupdate.Record{ID: "slow-drain", State: selfupdate.StateStarted}
-	if err := store.Create(&record); err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
-	defer cancel()
-
-	_, ready, err := waitForDrain(ctx, logger.New(slog.LevelError), store, record)
-	if !errors.Is(err, context.DeadlineExceeded) || ready {
-		t.Fatalf("waitForDrain() = ready %v, err %v; want deadline exceeded without takeover", ready, err)
-	}
-
-	current, err := store.Load(record.ID)
-	if err != nil || current.State != selfupdate.StateStarted {
-		t.Fatalf("journal state = %s, err %v; want started", current.State, err)
-	}
-}
-
 // TestWaitForDrainReadsCurrentJournal checks the persisted handover state
-// rather than trusting the caller's initial record.
+// rather than trusting the caller's initial record, and that a timeout cannot
+// authorize takeover before the predecessor records its drain.
 func TestWaitForDrainReadsCurrentJournal(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		advance bool
-		remove  bool
+		change  string
 		ready   bool
 		state   selfupdate.State
+		wantErr error
 	}{
-		{name: "drained", advance: true, ready: true, state: selfupdate.StateDrained},
-		{name: "aborted", state: selfupdate.StateAborted},
-		{name: "record removed", remove: true},
+		{name: "drained", change: "drain", ready: true, state: selfupdate.StateDrained},
+		{name: "aborted", change: "abort", state: selfupdate.StateAborted},
+		{name: "record removed", change: "remove"},
+		{name: "timeout before drain", state: selfupdate.StateStarted, wantErr: context.DeadlineExceeded},
 	}
 
 	for _, tt := range tests {
@@ -109,7 +85,8 @@ func TestWaitForDrainReadsCurrentJournal(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if tt.advance {
+			switch tt.change {
+			case "drain":
 				updated, err := store.Update(record, selfupdate.StateHandover, selfupdate.ActorPredecessor)
 				if err != nil {
 					t.Fatal(err)
@@ -118,17 +95,23 @@ func TestWaitForDrainReadsCurrentJournal(t *testing.T) {
 				if _, err = store.Update(updated, selfupdate.StateDrained, selfupdate.ActorPredecessor); err != nil {
 					t.Fatal(err)
 				}
-			} else if tt.remove {
+			case "abort":
+				if _, err := store.Update(record, selfupdate.StateAborted, selfupdate.ActorPredecessor); err != nil {
+					t.Fatal(err)
+				}
+			case "remove":
 				if err := store.Remove(record.ID); err != nil {
 					t.Fatal(err)
 				}
-			} else if _, err := store.Update(record, selfupdate.StateAborted, selfupdate.ActorPredecessor); err != nil {
-				t.Fatal(err)
 			}
 
-			current, ready, err := waitForDrain(t.Context(), logger.New(slog.LevelError), store, record)
-			if err != nil || ready != tt.ready || current.State != tt.state {
-				t.Fatalf("waitForDrain() = %s, %v, %v; want %s, %v, nil", current.State, ready, err, tt.state, tt.ready)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+			defer cancel()
+
+			current, ready, err := waitForDrain(ctx, logger.New(slog.LevelError), store, record)
+			if !errors.Is(err, tt.wantErr) || ready != tt.ready || current.State != tt.state {
+				t.Fatalf("waitForDrain() = %s, %v, %v; want %s, %v, %v",
+					current.State, ready, err, tt.state, tt.ready, tt.wantErr)
 			}
 		})
 	}

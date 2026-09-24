@@ -239,67 +239,54 @@ func TestFailSelfUpdateBeforeApplyRestoresStoppedPredecessor(t *testing.T) {
 	}
 }
 
-// TestFailSelfUpdateBeforeApplyKeepsRunningPredecessor prevents needless
-// replacement when setup fails before the predecessor is stopped.
-func TestFailSelfUpdateBeforeApplyKeepsRunningPredecessor(t *testing.T) {
-	store := selfupdate.NewStore(t.TempDir())
+// TestFailSelfUpdateRestoresOnlyStoppedPredecessor checks the recovery
+// outcome for each applier phase: a running predecessor is left untouched and
+// the update fails, a stopped one is restarted and the update rolls back.
+func TestFailSelfUpdateRestoresOnlyStoppedPredecessor(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		state     selfupdate.State
+		stopped   bool
+		wantState selfupdate.State
+	}{
+		{name: "applying running", state: selfupdate.StateApplying, wantState: selfupdate.StateFailed},
+		{name: "applying stopped", state: selfupdate.StateApplying, stopped: true, wantState: selfupdate.StateRolledBack},
+		{name: "ready stopped", state: selfupdate.StateApplyReady, stopped: true, wantState: selfupdate.StateRolledBack},
+		{name: "drained stopped", state: selfupdate.StateApplyDrained, stopped: true, wantState: selfupdate.StateRolledBack},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := selfupdate.NewStore(t.TempDir())
 
-	record := selfupdate.Record{
-		ID: "early-error", State: selfupdate.StateApplying, Stack: "self-stack", Service: "app",
-		Predecessor: selfupdate.ContainerRef{ID: "old", Name: "self-stack-app-1"},
-	}
-	if err := store.Create(&record); err != nil {
-		t.Fatal(err)
-	}
+			record := selfupdate.Record{
+				ID: "early-error", State: tc.state, Stack: "self-stack", Service: "app",
+				Predecessor: selfupdate.ContainerRef{ID: "old", Name: "self-stack-app-1"},
+			}
+			if err := store.Create(&record); err != nil {
+				t.Fatal(err)
+			}
 
-	fake := &selfApplyTestClient{}
+			fake := &selfApplyTestClient{stopped: tc.stopped}
 
-	cause := errors.New("resolve data mount: unavailable")
-	if err := FailSelfUpdate(t.Context(), selfApplyTestCli{apiClient: fake}, store, record.ID, cause, nil); err != nil {
-		t.Fatalf("recover failed applier startup: %v", err)
-	}
+			cause := errors.New("resolve data mount: unavailable")
+			if err := FailSelfUpdate(t.Context(), selfApplyTestCli{apiClient: fake}, store, record.ID, cause, nil); err != nil {
+				t.Fatalf("recover failed applier: %v", err)
+			}
 
-	terminal, err := store.Load(record.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+			terminal, err := store.Load(record.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	if terminal.State != selfupdate.StateFailed || terminal.Restored.ID != record.Predecessor.ID ||
-		terminal.Error != cause.Error() || fake.started != 0 || fake.removed != 0 {
-		t.Errorf("journal = %+v, predecessor starts/removes=%d/%d; want failed and untouched",
-			terminal, fake.started, fake.removed)
-	}
-}
+			wantStarts := 0
+			if tc.stopped {
+				wantStarts = 1
+			}
 
-// TestApplySelfUpdatePreflightFailureRestartsStoppedPredecessor checks
-// recovery from a failed preflight after the old container stopped.
-func TestApplySelfUpdatePreflightFailureRestartsStoppedPredecessor(t *testing.T) {
-	store := selfupdate.NewStore(t.TempDir())
-
-	record := selfupdate.Record{
-		ID: "preflight-stopped", State: selfupdate.StateApplying, Stack: "self-stack", Service: "app",
-		Predecessor: selfupdate.ContainerRef{ID: "old", Name: "self-stack-app-1"},
-	}
-	if err := store.Create(&record); err != nil {
-		t.Fatal(err)
-	}
-
-	fake := &selfApplyTestClient{stopped: true}
-	if err := ApplySelfUpdate(t.Context(), selfApplyTestCli{apiClient: fake}, ApplySelfOptions{
-		Store: store, JournalID: record.ID, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}); err != nil {
-		t.Fatalf("recover after preflight error: %v", err)
-	}
-
-	terminal, err := store.Load(record.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if terminal.State != selfupdate.StateRolledBack || terminal.Restored.ID != record.Predecessor.ID ||
-		!strings.Contains(terminal.Error, "rebuild the compose reference") ||
-		fake.stopped || fake.started != 1 {
-		t.Errorf("preflight recovery = %+v, predecessor stopped/starts=%v/%d; want rolled back and running",
-			terminal, fake.stopped, fake.started)
+			if terminal.State != tc.wantState || terminal.Restored.ID != record.Predecessor.ID ||
+				terminal.Error != cause.Error() || fake.stopped || fake.started != wantStarts || fake.removed != 0 {
+				t.Errorf("journal = %+v, predecessor stopped/starts/removes=%v/%d/%d; want %s with %d starts",
+					terminal, fake.stopped, fake.started, fake.removed, tc.wantState, wantStarts)
+			}
+		})
 	}
 }

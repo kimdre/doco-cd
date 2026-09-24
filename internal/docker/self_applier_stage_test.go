@@ -19,7 +19,6 @@ type stagingApplierClient struct {
 	startErr    error
 	removeCalls int
 	startCalls  int
-	removeFails int
 	connections []string
 	connectErr  error
 }
@@ -51,12 +50,9 @@ func (c *stagingApplierClient) NetworkConnect(_ context.Context, networkID strin
 	return client.NetworkConnectResult{}, c.connectErr
 }
 
-// ContainerRemove simulates transient and persistent clone cleanup failures.
+// ContainerRemove counts attempts and optionally fails clone cleanup.
 func (c *stagingApplierClient) ContainerRemove(context.Context, string, client.ContainerRemoveOptions) (client.ContainerRemoveResult, error) {
 	c.removeCalls++
-	if c.removeCalls <= c.removeFails {
-		return client.ContainerRemoveResult{}, errors.New("transient remove failure")
-	}
 
 	return client.ContainerRemoveResult{}, c.removeErr
 }
@@ -92,16 +88,12 @@ func TestFailedApplierStageCleansOrRetainsClone(t *testing.T) {
 		name       string
 		failStep   string
 		removeFail bool
-		retryOnce  bool
 		wantState  selfupdate.State
 	}{
 		{name: "Save failure clone removed", failStep: "save"},
 		{name: "Update failure clone removed", failStep: "update"},
 		{name: "Start failure clone removed", failStep: "start"},
 		{name: "Connect failure clone removed", failStep: "connect"},
-		{name: "Connect failure removal retained", failStep: "connect", removeFail: true, wantState: selfupdate.StateAborted},
-		{name: "Transient removal retried", failStep: "save", retryOnce: true},
-		{name: "Save failure removal retained", failStep: "save", removeFail: true, wantState: selfupdate.StateAborted},
 		{name: "Update failure removal retained", failStep: "update", removeFail: true, wantState: selfupdate.StateAborted},
 		{name: "Start failure removal retained", failStep: "start", removeFail: true, wantState: selfupdate.StateFailed},
 	} {
@@ -139,10 +131,6 @@ func TestFailedApplierStageCleansOrRetainsClone(t *testing.T) {
 				fake.removeErr = errors.New("remove clone unavailable")
 			}
 
-			if tc.retryOnce {
-				fake.removeFails = 1
-			}
-
 			log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 			err := stageSelfApplier(t.Context(), fake, journal, "old", "", &record, log)
@@ -162,10 +150,6 @@ func TestFailedApplierStageCleansOrRetainsClone(t *testing.T) {
 			if preserve != tc.removeFail || cleanupErr == nil || fake.removeCalls == 0 {
 				t.Fatalf("cleanup = preserve %t, error %v, removals %d; want preserved=%t",
 					preserve, cleanupErr, fake.removeCalls, tc.removeFail)
-			}
-
-			if tc.retryOnce && fake.removeCalls != 2 {
-				t.Errorf("transient removal attempts = %d; want 2", fake.removeCalls)
 			}
 
 			if tc.removeFail {

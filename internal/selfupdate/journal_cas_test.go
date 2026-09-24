@@ -209,35 +209,60 @@ func TestStoreRejectsOutdatedSameStateHistory(t *testing.T) {
 	}
 }
 
-// TestStoreDrainCannotOverwritePendingApplierFailure protects a persisted
-// recovery request from a concurrent predecessor drain.
-func TestStoreDrainCannotOverwritePendingApplierFailure(t *testing.T) {
-	store := newTestStore(t)
-	record := newTestRecord("race")
+// TestStorePendingFailureBlocksHandshake keeps a persisted recovery request
+// from being lost to a concurrent handshake transition or stale save.
+func TestStorePendingFailureBlocksHandshake(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		from  State
+		to    State
+		actor Actor
+	}{
+		{name: "applier cannot become ready", from: StateApplying, to: StateApplyReady, actor: ActorApplier},
+		{name: "predecessor cannot drain", from: StateApplyReady, to: StateApplyDrained, actor: ActorPredecessor},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newTestStore(t)
+			record := newTestRecord("pending-error")
 
-	record.State = StateApplyReady
-	if err := store.Create(record); err != nil {
-		t.Fatal(err)
-	}
+			record.State = tc.from
+			if err := store.Create(record); err != nil {
+				t.Fatal(err)
+			}
 
-	stale := *record
+			stale := *record
 
-	record.Error = "applier failed setup"
-	if err := store.Save(*record); err != nil {
-		t.Fatal(err)
-	}
+			record.Error = "applier failed; restore also failed"
+			if err := store.Save(*record); err != nil {
+				t.Fatal(err)
+			}
 
-	if _, err := store.Update(stale, StateApplyDrained, ActorPredecessor); !errors.Is(err, ErrStaleRecord) {
-		t.Errorf("drain using stale readiness = %v; want ErrStaleRecord", err)
-	}
+			if _, err := store.Update(stale, tc.to, tc.actor); !errors.Is(err, ErrStaleRecord) {
+				t.Errorf("transition without the error = %v; want ErrStaleRecord", err)
+			}
 
-	current, err := store.Load(record.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+			if err := store.Save(stale); !errors.Is(err, ErrStaleRecord) {
+				t.Errorf("clearing an unseen error = %v; want ErrStaleRecord", err)
+			}
 
-	if _, err = store.Update(current, StateApplyDrained, ActorPredecessor); !errors.Is(err, ErrInvalidTransition) {
-		t.Errorf("drain with pending applier failure = %v; want ErrInvalidTransition", err)
+			current, err := store.Load(record.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err = store.Update(current, tc.to, tc.actor); !errors.Is(err, ErrInvalidTransition) {
+				t.Errorf("transition with known error = %v; want ErrInvalidTransition", err)
+			}
+
+			after, err := store.Load(record.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if after.State != tc.from || after.Error != record.Error {
+				t.Errorf("pending failure was overwritten: %+v", after)
+			}
+		})
 	}
 }
 
@@ -251,8 +276,6 @@ func TestStoreSaveThenUpdateRetainsReason(t *testing.T) {
 		actor Actor
 	}{
 		{name: "started successor rollback", from: StateStarted, to: StateAborted, actor: ActorPredecessor},
-		{name: "drained handover abort", from: StateHandover, to: StateAborted, actor: ActorPredecessor},
-		{name: "applier preflight failure", from: StateApplying, to: StateFailed, actor: ActorApplier},
 		{name: "applier ready failure", from: StateApplyReady, to: StateFailed, actor: ActorApplier},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

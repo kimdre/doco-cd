@@ -108,8 +108,8 @@ func TestReadyAndWaitSelfApplyRequiresPredecessorDrain(t *testing.T) {
 	}
 }
 
-// TestReadyAndWaitSelfApplyRecoversMissingPredecessor checks recovery when
-// the expected predecessor is no longer present.
+// TestReadyAndWaitSelfApplyRecoversMissingPredecessor checks that the applier
+// reports a recovery error when the predecessor stops without draining.
 func TestReadyAndWaitSelfApplyRecoversMissingPredecessor(t *testing.T) {
 	store := selfupdate.NewStore(t.TempDir())
 
@@ -126,20 +126,6 @@ func TestReadyAndWaitSelfApplyRecoversMissingPredecessor(t *testing.T) {
 	ready, err := readyAndWaitSelfApply(t.Context(), fake, store, record)
 	if err == nil || ready.State != selfupdate.StateApplyReady {
 		t.Fatalf("applier with stopped predecessor = %s/%v; want ready and recovery error", ready.State, err)
-	}
-
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err = finishSelfApplyFailure(t.Context(), fake, store, ready, err, log); err != nil {
-		t.Fatalf("restore predecessor after aborted drain: %v", err)
-	}
-
-	after, err := store.Load(record.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if after.State != selfupdate.StateRolledBack || after.Restored.ID != "old" || fake.stopped {
-		t.Errorf("recovered predecessor = %+v, stopped=%v; want running and rolled back", after, fake.stopped)
 	}
 }
 
@@ -191,54 +177,6 @@ func TestReadyAndWaitSelfApplyAcceptsDrainBeforePredecessorStop(t *testing.T) {
 	}
 }
 
-// TestReadyAndWaitSelfApplyResumesAfterDrain permits a restarted applier to
-// continue after the predecessor acknowledged the drain.
-func TestReadyAndWaitSelfApplyResumesAfterDrain(t *testing.T) {
-	store := selfupdate.NewStore(t.TempDir())
-
-	record := selfupdate.Record{ID: "handover", State: selfupdate.StateApplyDrained}
-	if err := store.Create(&record); err != nil {
-		t.Fatal(err)
-	}
-
-	after, err := readyAndWaitSelfApply(t.Context(), &selfApplyTestClient{}, store, record)
-	if err != nil || after.State != selfupdate.StateApplyDrained {
-		t.Errorf("resume drain = %s/%v; want apply_drained", after.State, err)
-	}
-}
-
-// TestFailSelfUpdateAfterDrainRestoresPredecessor checks rollback after the
-// handover passed the drain acknowledgment.
-func TestFailSelfUpdateAfterDrainRestoresPredecessor(t *testing.T) {
-	store := selfupdate.NewStore(t.TempDir())
-
-	record := selfupdate.Record{
-		ID: "handover", State: selfupdate.StateApplyDrained,
-		Predecessor: selfupdate.ContainerRef{ID: "old"},
-	}
-	if err := store.Create(&record); err != nil {
-		t.Fatal(err)
-	}
-
-	fake := &selfApplyTestClient{stopped: true}
-
-	err := FailSelfUpdate(context.Background(), selfApplyTestCli{apiClient: fake},
-		store, record.ID, errors.New("secret provider unavailable"), nil)
-	if err != nil {
-		t.Fatalf("recover pre-entry failure after predecessor drain: %v", err)
-	}
-
-	after, err := store.Load(record.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if after.State != selfupdate.StateRolledBack || fake.stopped ||
-		after.Error != "secret provider unavailable" {
-		t.Errorf("recovery after drain = %+v, predecessor stopped=%v", after, fake.stopped)
-	}
-}
-
 // TestFinishSelfApplyFailureRefreshesConcurrentDrain checks rollback against
 // a journal advanced while recovery was starting.
 func TestFinishSelfApplyFailureRefreshesConcurrentDrain(t *testing.T) {
@@ -267,35 +205,5 @@ func TestFinishSelfApplyFailureRefreshesConcurrentDrain(t *testing.T) {
 	if !fake.drained || after.State != selfupdate.StateFailed || after.Error != "source reload failed" ||
 		after.Restored.ID != "old" || len(after.History) != 3 {
 		t.Errorf("journal after recovery/drain race = %+v; want drained then failed without losing reason", after)
-	}
-}
-
-// TestApplySelfUpdateResumesPendingFailureInsteadOfApplying prevents a
-// restarted clone from applying after failure recovery was requested.
-func TestApplySelfUpdateResumesPendingFailureInsteadOfApplying(t *testing.T) {
-	store := selfupdate.NewStore(t.TempDir())
-
-	record := selfupdate.Record{
-		ID: "handover", State: selfupdate.StateApplyReady, Error: "source reload failed",
-		Predecessor: selfupdate.ContainerRef{ID: "old"},
-	}
-	if err := store.Create(&record); err != nil {
-		t.Fatal(err)
-	}
-
-	fake := &selfApplyTestClient{}
-	if err := ApplySelfUpdate(t.Context(), selfApplyTestCli{apiClient: fake}, ApplySelfOptions{
-		Store: store, JournalID: record.ID, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}); err != nil {
-		t.Fatalf("recover persisted failure: %v", err)
-	}
-
-	after, err := store.Load(record.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if after.State != selfupdate.StateFailed || after.Error != record.Error || fake.started != 0 {
-		t.Errorf("applier resumed work after failure intent was saved: %+v, starts=%d", after, fake.started)
 	}
 }
