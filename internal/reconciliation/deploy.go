@@ -299,6 +299,7 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 			Metadata:     req.Metadata,
 			GitChanges:   gitChanges,
 			GitAncestry:  gitAncestry,
+			ProjectSkips: m.projectSkips,
 		},
 	)
 	if err != nil {

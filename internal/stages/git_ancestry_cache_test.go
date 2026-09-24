@@ -5,9 +5,245 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/go-git/go-billy/v5/memfs"
+	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/storage/memory"
+
+	"github.com/kimdre/doco-cd/internal/git"
 )
+
+func TestGitAncestryCacheSharesHistoryAcrossDifferentDeployedCommits(t *testing.T) {
+	t.Parallel()
+
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hashes := commitN(t, wt, 20, 0)
+	cache := NewGitAncestryCache()
+	latest := hashes[len(hashes)-1]
+
+	for _, deployed := range []plumbing.Hash{hashes[15], hashes[7], hashes[12], hashes[0]} {
+		got, err := cache.isAncestorFromHistory(repo, "repo", deployed, latest)
+		if err != nil || !got {
+			t.Fatalf("deployed %s: ancestor = %t, err = %v", deployed, got, err)
+		}
+
+		history := cache.histories[gitHistoryKey{"repo", latest}]
+		if !history.visited.Contains(deployed) {
+			t.Fatalf("history did not retain deployed commit %s", deployed)
+		}
+	}
+
+	for _, deployed := range hashes {
+		got, err := cache.isAncestorFromHistory(repo, "repo", deployed, latest)
+		if err != nil || !got {
+			t.Fatalf("deployed %s: ancestor = %t, err = %v", deployed, got, err)
+		}
+	}
+
+	if got := len(cache.histories[gitHistoryKey{"repo", latest}].visited); got != len(hashes) {
+		t.Fatalf("visited %d commits, want %d (each commit walked once)", got, len(hashes))
+	}
+}
+
+func TestGitAncestryCacheVisitedCommitDoesNotReadHandle(t *testing.T) {
+	t.Parallel()
+
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hashes := commitN(t, wt, 5, 0)
+	cache := NewGitAncestryCache()
+	latest := hashes[len(hashes)-1]
+
+	if got, err := cache.isAncestorFromHistory(repo, "repo", hashes[0], latest); err != nil || !got {
+		t.Fatalf("initial walk: ancestor = %t, err = %v", got, err)
+	}
+
+	// Each stack opens its own mirror handle. A commit already visited by the
+	// shared walk must be answered without reading through the new handle.
+	empty, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, deployed := range hashes {
+		if got, err := cache.isAncestorFromHistory(empty, "repo", deployed, latest); err != nil || !got {
+			t.Fatalf("visited %s: ancestor = %t, err = %v", deployed, got, err)
+		}
+	}
+
+	if _, err := cache.isAncestorFromHistory(empty, "repo", plumbing.NewHash("1234"), latest); err == nil {
+		t.Fatal("unvisited commit missing from the handle returned no error")
+	}
+}
+
+func TestGitAncestryCacheHistoryDivergenceAndMissingCommit(t *testing.T) {
+	t.Parallel()
+
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := commitN(t, wt, 1, 0)[0]
+
+	first := commitN(t, wt, 1, 1)[0]
+	if err := wt.Checkout(&gogit.CheckoutOptions{Hash: base}); err != nil {
+		t.Fatal(err)
+	}
+
+	second := commitN(t, wt, 1, 2)[0]
+	cache := NewGitAncestryCache()
+
+	for _, tc := range []struct {
+		ancestor   plumbing.Hash
+		descendant plumbing.Hash
+	}{
+		{first, second},
+		{base, second},
+		{second, first},
+		{second, second},
+	} {
+		want, err := git.IsAncestorCommit(repo, tc.ancestor, tc.descendant)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := cache.isAncestorFromHistory(repo, "repo", tc.ancestor, tc.descendant)
+		if err != nil || got != want {
+			t.Fatalf("ancestor %s of %s: got %t, want %t, err %v", tc.ancestor, tc.descendant, got, want, err)
+		}
+	}
+
+	missing := plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+	if _, err := cache.isAncestorFromHistory(repo, "repo", missing, second); err == nil {
+		t.Fatal("missing commit must not be treated as unrelated history")
+	}
+
+	got, err := cache.isAncestorFromHistory(repo, "repo", base, second)
+	if err != nil || !got {
+		t.Fatalf("history after missing commit: got %t, err %v", got, err)
+	}
+}
+
+func TestGitAncestryCacheConcurrentDifferentDeployedCommits(t *testing.T) {
+	t.Parallel()
+
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hashes := commitN(t, wt, 30, 0)
+	cache := NewGitAncestryCache()
+	latest := hashes[len(hashes)-1]
+	results := make(chan error, len(hashes))
+
+	var wg sync.WaitGroup
+	for _, deployed := range hashes {
+		wg.Go(func() {
+			got, err := cache.isAncestorFromHistory(repo, "repo", deployed, latest)
+			if err == nil && !got {
+				err = errors.New("reachable commit not found")
+			}
+
+			results <- err
+		})
+	}
+
+	wg.Wait()
+	close(results)
+
+	for err := range results {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := len(cache.histories[gitHistoryKey{"repo", latest}].visited); got != len(hashes) {
+		t.Fatalf("visited %d commits, want %d", got, len(hashes))
+	}
+}
+
+func BenchmarkGitAncestryAcrossStacks(b *testing.B) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	hashes := make([]plumbing.Hash, 200)
+	for i := range hashes {
+		hash, err := wt.Commit("commit", &gogit.CommitOptions{
+			AllowEmptyCommits: true,
+			Author: &object.Signature{
+				Name: "test", Email: "test@example.com", When: time.Date(2026, 1, 1, 0, i, 0, 0, time.UTC),
+			},
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		hashes[i] = hash
+	}
+
+	latest := hashes[len(hashes)-1]
+	deployed := hashes[:40]
+
+	b.Run("independent walks", func(b *testing.B) {
+		for range b.N {
+			for _, hash := range deployed {
+				if _, err := git.IsAncestorCommit(repo, hash, latest); err != nil {
+					b.Fatal(err)
+				}
+			}
+		}
+	})
+
+	b.Run("shared history", func(b *testing.B) {
+		for range b.N {
+			cache := NewGitAncestryCache()
+			for _, hash := range deployed {
+				if _, err := cache.isAncestorFromHistory(repo, "repo", hash, latest); err != nil {
+					b.Fatal(err)
+				}
+			}
+		}
+	})
+}
 
 func TestGitAncestryCacheCoalescesConcurrentComputations(t *testing.T) {
 	t.Parallel()

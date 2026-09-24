@@ -43,6 +43,17 @@ func shouldSkipDeployment(retryAfterFailure bool,
 		len(mismatchServices) == 0
 }
 
+// shouldTryCachedProjectSkip reports whether the warm-skip cache may be consulted.
+// A changed auto-discovery config label must recreate the stack so
+// obsolete-stack cleanup reads current delete settings, and retries and mode
+// migrations must run the full pre-deploy path.
+func shouldTryCachedProjectSkip(autoDiscovery, retryAfterFailure, modeMigrationNeeded, autoDiscoveryConfigChanged bool) bool {
+	return autoDiscovery && !retryAfterFailure && !modeMigrationNeeded && !autoDiscoveryConfigChanged
+}
+
+// autoDiscoveryConfigLabelDriftServices compares the deployed auto-discovery config label
+// on each service with the expected config. It returns a list of services whose label differs
+// from the expected config, and the first observed deployed label value (or empty if none).
 func autoDiscoveryConfigLabelDriftServices(deployedStatus map[docker.Service]docker.ServiceStatus, expectedCfg deployConfig.AutoDiscoveryConfig) ([]string, string) {
 	if len(deployedStatus) == 0 {
 		return nil, ""
@@ -128,15 +139,15 @@ func shouldRecoverFromMissingDeployedCommit(err error) bool {
 // when that check comes back false (diverged history, rollback, or rebase) do we fall back to the
 // expensive reverse check, which must walk deployedHash's entire reachable history to prove non-ancestry.
 //
-// cache deduplicates the walk itself: in a monorepo of many stacks, several stacks are often last
-// deployed at the exact same commit, so their (deployedHash, latestHash) pairs are identical and only
-// need to be walked once per job. cache may be nil, in which case each call computes its own result.
+// cache shares the forward walk across stacks at the same latest revision,
+// even when they were last deployed at different commits. Exact pairs are
+// also deduplicated. cache may be nil, in which case each call walks alone.
 func isStaleDeployment(
 	repo *gogit.Repository, repository string, latestHash, deployedHash plumbing.Hash,
 	cache *GitAncestryCache, stageLog *slog.Logger,
 ) bool {
 	deployedIsAncestor, err := cache.isAncestor(repository, deployedHash, latestHash, func() (bool, error) {
-		return git.IsAncestorCommit(repo, deployedHash, latestHash)
+		return cache.isAncestorFromHistory(repo, repository, deployedHash, latestHash)
 	})
 	if err != nil {
 		stageLog.Debug("could not determine ancestry between deployed and latest commit, proceeding with deployment",
@@ -314,6 +325,29 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				slog.String("expected", docker.MarshalAutoDiscoveryConfig(s.DeployConfig.AutoDiscovery)),
 			),
 		)
+	}
+
+	cachedSkip := false
+
+	if shouldTryCachedProjectSkip(s.DeployConfig.AutoDiscovery.Enabled, retryAfterFailure,
+		s.DeployState.modeMigrationNeeded, autoDiscoveryConfigChanged) {
+		startedAt := time.Now()
+		cachedSkip = s.skipFromCachedProject(stageLog, deployedState.GetDeploymentCommitSHA(),
+			deployedState.GetDeploymentComposeHash(), deployedState.DeployedStatus)
+
+		outcome := "fallback"
+		if cachedSkip {
+			outcome = "skip"
+		}
+
+		prometheus.PreDeployOperationDuration.WithLabelValues("cached_project_preflight", outcome).Observe(time.Since(startedAt).Seconds())
+	}
+
+	if cachedSkip {
+		s.DeployState.DeployedCommit = deployedState.GetDeploymentCommitSHA()
+		s.DeployState.latestCommit = s.Repository.Revision
+
+		return ErrSkipDeployment
 	}
 
 	if s.Repository.Source == config.SourceTypeOCI {
@@ -547,6 +581,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
 
+			if ignoredInfo.IsEmpty() {
+				s.cacheUnchangedProject(stageLog, deployedCommit, newHash)
+			}
+
 			return ErrSkipDeployment
 		}
 
@@ -598,11 +636,23 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 // same scope: holds are registered for Compose-mode jobs only, so Swarm
 // deployments are left alone.
 func (s *StageManager) dropSchedulerHeldMismatches(mismatches []docker.ServiceMismatch, stageLog *slog.Logger) []docker.ServiceMismatch {
+	if s.Docker == nil || s.Docker.Project == nil {
+		return mismatches
+	}
+
+	return s.dropSchedulerHeldProjectMismatches(mismatches, s.Docker.Project.Name, stageLog)
+}
+
+// dropSchedulerHeldProjectMismatches applies dropSchedulerHeldMismatches to a
+// named project, for callers that have not loaded the Compose project.
+func (s *StageManager) dropSchedulerHeldProjectMismatches(
+	mismatches []docker.ServiceMismatch, projectName string, stageLog *slog.Logger,
+) []docker.ServiceMismatch {
 	if len(mismatches) == 0 || s.SchedulerHolds == nil {
 		return mismatches
 	}
 
-	if s.Docker == nil || s.Docker.SwarmMode || s.Docker.Project == nil || s.Docker.Project.Name == "" {
+	if s.Docker == nil || s.Docker.SwarmMode || projectName == "" {
 		return mismatches
 	}
 
@@ -616,7 +666,7 @@ func (s *StageManager) dropSchedulerHeldMismatches(mismatches []docker.ServiceMi
 	var held []string
 
 	for _, mismatch := range mismatches {
-		if s.SchedulerHolds.IsSchedulerStopHeld(contextName, s.Docker.Project.Name, mismatch.ServiceName) {
+		if s.SchedulerHolds.IsSchedulerStopHeld(contextName, projectName, mismatch.ServiceName) {
 			held = append(held, mismatch.ServiceName)
 			continue
 		}
@@ -626,7 +676,7 @@ func (s *StageManager) dropSchedulerHeldMismatches(mismatches []docker.ServiceMi
 
 	if len(held) > 0 && stageLog != nil {
 		stageLog.Debug("ignoring service mismatch for services intentionally held stopped by job scheduler",
-			slog.String("project", s.Docker.Project.Name),
+			slog.String("project", projectName),
 			slog.Any("services", held),
 		)
 	}
