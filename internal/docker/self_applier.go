@@ -38,11 +38,16 @@ func BuildSelfApplierCreate(inspect container.InspectResponse, journalID, stack 
 	hostConfig := *inspect.HostConfig
 	hostConfig.PortBindings = nil
 	hostConfig.AutoRemove = false
+	hostConfig.Links = nil
 	// Bridge survives project-network recreation. The clone also joins the
 	// predecessor's networks for secret-provider DNS during preflight, then
 	// leaves project networks before Compose may recreate them.
-	hostConfig.NetworkMode = "bridge"
-	hostConfig.Links = nil
+	// Host, container and none modes have no project networks to drift, so they
+	// keep the predecessor's mode (e.g. for a secret provider on localhost).
+	if mode := hostConfig.NetworkMode; !mode.IsHost() && !mode.IsContainer() && !mode.IsNone() {
+		hostConfig.NetworkMode = "bridge"
+	}
+
 	hostConfig.RestartPolicy = container.RestartPolicy{
 		Name: container.RestartPolicyOnFailure,
 	}

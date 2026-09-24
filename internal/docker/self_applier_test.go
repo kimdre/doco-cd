@@ -112,20 +112,26 @@ func TestBuildSelfApplierCreate(t *testing.T) {
 	}
 }
 
-func TestBuildSelfApplierCreateHostNetwork(t *testing.T) {
+func TestBuildSelfApplierCreateKeepsNamespaceNetworkModes(t *testing.T) {
 	t.Parallel()
 
-	inspect := applierSourceInspect()
-	inspect.HostConfig.NetworkMode = "host"
+	for _, mode := range []container.NetworkMode{"host", "container:sidecar", "none"} {
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
 
-	opts := BuildSelfApplierCreate(inspect, "run-1", "doco-cd")
+			inspect := applierSourceInspect()
+			inspect.HostConfig.NetworkMode = mode
 
-	if opts.NetworkingConfig != nil {
-		t.Error("host networking must not get an endpoint configuration")
-	}
+			opts := BuildSelfApplierCreate(inspect, "run-1", "doco-cd")
 
-	if opts.HostConfig.NetworkMode != "bridge" {
-		t.Errorf("clone network mode = %q, want bridge", opts.HostConfig.NetworkMode)
+			if opts.NetworkingConfig != nil {
+				t.Errorf("%s networking must not get an endpoint configuration", mode)
+			}
+
+			if opts.HostConfig.NetworkMode != mode {
+				t.Errorf("clone network mode = %q, want %q", opts.HostConfig.NetworkMode, mode)
+			}
+		})
 	}
 }
 
