@@ -2,7 +2,7 @@ services:
   doco-cd:
     # Pin by tag + digest and let Renovate open the bump PR. A moving tag turns
     # every restart into an unreviewed upgrade.
-    image: ghcr.io/kimdre/doco-cd:0.118.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    image: ghcr.io/kimdre/doco-cd:0.121.0@sha256:c07f6d0b0df5026ce67708bfda7ff26e0e645c284914dd8be3a9b8277375603b
     restart: unless-stopped
 
     # No container_name and no host ports: both force the applier strategy,
@@ -13,7 +13,6 @@ services:
       TZ: Europe/Berlin
       SELF_UPDATE_ENABLED: "true"
       SELF_UPDATE_STRATEGY: auto
-      GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN}
       POLL_CONFIG: |
         - url: https://github.com/example/infra.git
           reference: main

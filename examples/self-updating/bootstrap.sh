@@ -5,7 +5,7 @@
 set -eu
 
 REPO_URL="https://github.com/example/infra.git"
-IMAGE="ghcr.io/kimdre/doco-cd:0.118.0"
+IMAGE="ghcr.io/kimdre/doco-cd:0.121.0"
 DATA_VOLUME="doco-cd_data"
 
 docker volume create "$DATA_VOLUME" >/dev/null

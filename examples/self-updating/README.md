@@ -31,17 +31,22 @@ bootstrap.sh              # run once per host, then never again
 
 ## Try it
 
-1. Push `infra-repo/` contents to a Git repository.
-2. Edit `bootstrap.sh` and `infra-repo/doco-cd/compose.yaml` to point at it.
-3. Run `./bootstrap.sh` on the host.
+1. Set the repository URL in `bootstrap.sh` and
+   `infra-repo/doco-cd/compose.yaml`.
+2. The example pins `0.121.0` by tag in
+   `infra-repo/doco-cd/compose.yaml` and `bootstrap.sh`. To use another
+   version, run `docker buildx imagetools inspect ghcr.io/kimdre/doco-cd:<version>`
+   and update both image references to the chosen tag.
+3. Push `infra-repo/` contents to a Git repository.
+4. Run `./bootstrap.sh` on the host.
 
 The bootstrap container clones the repo, deploys both stacks and exits. What is
 left is a doco-cd container carrying the full `com.docker.compose.*` and
 `cd.doco.*` label set, which is what lets the next poll recognise the stack as
 its own.
 
-From here, bump the image in `doco-cd/compose.yaml`, push, and doco-cd replaces
-itself.
+From here, bump the pinned image in `doco-cd/compose.yaml`, push, and doco-cd
+replaces itself.
 
 ## How an update runs
 
@@ -61,8 +66,8 @@ With `scale_out` (the default when nothing rules it out):
 With `applier`, doco-cd instead clones its own container into a throwaway
 `doco-cd apply-self` container. That clone recreates the doco-cd service from
 outside, health-gates it, and exits. If the new version is unhealthy it
-restores the previous container from a snapshot. Expect a few seconds of
-downtime while the replacement starts.
+restores the previous container from a snapshot. Expect downtime while the
+replacement starts and becomes healthy; its duration varies.
 
 Either way the handover is journaled on `/data`. A crash at any point is
 resolved on the next boot: whoever comes up finishes or reverses it.
@@ -74,6 +79,14 @@ cannot share a name or a host port, so either forces the `applier` strategy.
 Drop both from the doco-cd service and reach it through a reverse proxy on the
 compose network. `SELF_UPDATE_STRATEGY` accepts `auto`, `scale_out` or
 `applier`; `scale_out` errors out rather than silently degrading.
+
+**Changes to a network used by doco-cd require the applier.** Recreating that
+network also briefly interrupts any other services attached to it. If the
+update fails, the applier restores the previous network and affected services.
+
+**Changes to existing named volumes are refused during a self-update.**
+Compose may replace a changed volume, and a rollback cannot restore its data.
+Handle volume migrations separately, with a backup.
 
 **The container number grows.** Each `scale_out` update leaves the container
 named `doco-cd-2`, then `-3`. Cosmetic, and compose tracks it correctly.
@@ -88,13 +101,20 @@ plus Renovate keeps a human in the loop per release. With a moving tag the
 controller upgrades itself whenever the tag moves, and a breaking change lands
 unreviewed.
 
+**Private repositories need credentials in both containers.** Pass access
+credentials to the one-shot bootstrap and configure the managed doco-cd
+service to read them from a mounted secret file. Do not put a Git token in
+the committed compose file.
+
 **A failed update is tried once.** After a rollback the commit is recorded as
 poisoned and skipped until a new commit arrives, so a broken version cannot
 loop. The reason is in the logs and the failure notification.
 
-**During the handover doco-cd refuses new work.** Webhooks get 503 for a few
-seconds while the old instance drains. Deploys already running are allowed to
-finish; they are not cancelled.
+**During the handover doco-cd refuses new work.** Once admission closes,
+webhooks may receive 503; requests can also fail during replacement.
+Configure the sender to retry. The old instance waits for all running
+deployments to finish, so this can take longer than a few seconds. They are
+not cancelled.
 
 **Not covered.** Swarm-mode self stacks already update themselves through
 rolling updates and need none of this. OCI-sourced self stacks, self stacks on
