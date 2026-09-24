@@ -18,8 +18,7 @@ error rather than attempted.
 !!! warning "Pin the image"
     Use `image: ghcr.io/kimdre/doco-cd:<version>@sha256:<digest>` and let a bot
     such as Renovate open the bump. With a moving tag like `latest`, doco-cd
-    upgrades itself whenever the tag moves and a breaking change lands
-    unreviewed.
+    upgrades itself whenever the tag moves and a breaking change lands unreviewed.
 
 A full worked setup is in
 [`examples/self-updating`](https://github.com/kimdre/doco-cd/tree/main/examples/self-updating).
@@ -27,8 +26,7 @@ A full worked setup is in
 ## Bootstrap
 
 The first container must already carry the labels of a managed stack, otherwise
-the running instance cannot recognise the stack as its own. Run the one-shot
-bootstrap once per host:
+the running instance cannot recognize the stack as its own. Run the one-shot bootstrap once per host:
 
 ```shell
 docker volume create doco-cd_data
@@ -43,9 +41,13 @@ docker run --rm \
   ghcr.io/kimdre/doco-cd:latest apply-self --bootstrap
 ```
 
-It clones the repository, deploys every configured target once, and exits. What
-remains is a doco-cd container created by the normal deploy path, with the
+It clones the repository, deploys every configured target once, and exits.
+What remains is a doco-cd container created by the normal deploy path, with the
 correct `com.docker.compose.*` and `cd.doco.*` labels.
+Replace the image reference when using a different release, keeping it the
+same as the managed compose file; the
+[worked example](https://github.com/kimdre/doco-cd/tree/main/examples/self-updating)
+includes a bootstrap script and compose file pinned to the same release.
 
 ## Strategies
 
@@ -70,7 +72,9 @@ out.
 host ports, uses `network_mode: host`, or when a project network must be
 recreated. Two containers cannot share a name or a host port. Drop both from
 the doco-cd service and reach the API through a reverse proxy on the compose
-network.
+network. Recreating a project network through the `applier` also briefly
+interrupts other services attached to it; a failed update restores their
+previous state.
 
 ### `applier` (short restart)
 
@@ -79,14 +83,18 @@ doco-cd clones its own container into a throwaway container running
 waits for health, and exits. If the new version never becomes healthy, the
 clone restores the previous container from a snapshot taken before the attempt.
 
-Expect a few seconds without doco-cd while the replacement starts. Webhooks
-sent in that window are lost; the next poll catches up.
+Expect a brief interruption while the replacement starts and becomes healthy;
+it can take longer. Webhook requests during the interruption may receive 503;
+configure the sender to retry. The next poll catches up with missed changes.
 
 ## Requirements
 
 - The doco-cd service needs a restart policy (`always`, `unless-stopped` or
   `on-failure`). Crash recovery depends on Docker bringing the container back.
 - The self service must run exactly one replica.
+- An existing named volume's configuration or name cannot change during a
+  self-update. Compose may replace the volume, but rollback cannot restore its
+  data. Handle volume migrations separately, with a backup.
 - The self stack must be on the default Docker context and must not come from
   an OCI source.
 - Give the service a `healthcheck`. Without one doco-cd falls back to running
@@ -102,8 +110,10 @@ A self-update that fails is recorded against that commit and **not retried**
 until a new commit arrives, so a broken version cannot loop. The reason appears
 in the logs and in the failure notification.
 
-While a handover runs, new webhook and poll work is refused for a few seconds.
-Deploys of other stacks that are already running are allowed to finish.
+Once admission closes for a handover, new webhook and poll work is refused
+until service resumes. The predecessor waits for all in-flight deployments
+without a fixed timeout, so this can take longer than a few seconds. Webhook
+senders should retry requests that receive 503.
 
 !!! note "Swarm"
     Docker Swarm already replaces a service through a rolling update performed
