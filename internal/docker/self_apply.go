@@ -541,16 +541,7 @@ func applySelfService(
 		return fmt.Errorf("start the new container: %w", err)
 	}
 
-	timeout := time.Duration(record.Deploy.TimeoutSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = defaultSelfHealthTimeout
-	}
-
-	if deployConfig != nil && deployConfig.Timeout > 0 {
-		timeout = time.Duration(deployConfig.Timeout) * time.Second
-	}
-
-	return selfupdate.WaitHealthy(ctx, apiClient, successor.ID, timeout, log)
+	return selfupdate.WaitHealthy(ctx, apiClient, successor.ID, selfHealthTimeout(record, deployConfig), log)
 }
 
 // resolveScheduledSourceRepoPath exposes the cached source path for a service

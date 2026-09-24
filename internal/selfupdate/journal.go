@@ -104,6 +104,11 @@ type DeployInfo struct {
 	RemoveOrphans  bool     `json:"remove_orphans,omitempty"`
 }
 
+// HealthTimeout is how long the successor may take to become healthy.
+func (d DeployInfo) HealthTimeout() time.Duration {
+	return HealthTimeout(d.TimeoutSeconds)
+}
+
 // Transition is one entry of a record's audit trail.
 type Transition struct {
 	State State     `json:"state"`

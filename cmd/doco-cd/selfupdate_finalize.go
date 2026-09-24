@@ -299,12 +299,7 @@ func finalizeAsPredecessor(
 			return fmt.Errorf("self-update record %s has no successor id", record.ID)
 		}
 
-		timeout := time.Duration(record.Deploy.TimeoutSeconds) * time.Second
-		if timeout <= 0 {
-			timeout = 90 * time.Second
-		}
-
-		if err := selfupdate.WaitHealthy(ctx, apiClient, record.Successor.ID, timeout, log.Logger); err != nil {
+		if err := selfupdate.WaitHealthy(ctx, apiClient, record.Successor.ID, record.Deploy.HealthTimeout(), log.Logger); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}

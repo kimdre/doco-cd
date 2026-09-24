@@ -21,14 +21,21 @@ import (
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
-// defaultSelfHealthTimeout is used when the deploy config sets no timeout.
-const defaultSelfHealthTimeout = 90 * time.Second
-
 // SelfApplierLabel marks a throwaway applier container with its journal ID.
 const SelfApplierLabel = "cd.doco.self.applier"
 
 // SelfStackLabel names the stack an applier container is updating.
 const SelfStackLabel = "cd.doco.self.stack"
+
+// selfHealthTimeout is how long the successor may take to become healthy. The
+// applier's freshly loaded deploy config takes precedence over the journal.
+func selfHealthTimeout(record selfupdate.Record, deployConfig *deploy.Config) time.Duration {
+	if deployConfig != nil && deployConfig.Timeout > 0 {
+		return selfupdate.HealthTimeout(deployConfig.Timeout)
+	}
+
+	return record.Deploy.HealthTimeout()
+}
 
 // prepareSelfUpdate splits a project that contains this instance into the part
 // that deploys normally and a closure that performs the handover afterwards.
@@ -456,12 +463,7 @@ func selfUpdateScaleOut(
 		slog.Int("timeout_seconds", deployConfig.Timeout),
 	)
 
-	timeout := time.Duration(deployConfig.Timeout) * time.Second
-	if timeout <= 0 {
-		timeout = defaultSelfHealthTimeout
-	}
-
-	if err = selfupdate.WaitHealthy(ctx, apiClient, successor.ID, timeout, log); err != nil {
+	if err = selfupdate.WaitHealthy(ctx, apiClient, successor.ID, selfHealthTimeout(*record, deployConfig), log); err != nil {
 		return removeSuccessorAndFail(ctx, apiClient, successor.ID, err, log)
 	}
 

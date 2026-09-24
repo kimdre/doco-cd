@@ -17,6 +17,19 @@ const (
 	healthExecStartWait = 500 * time.Millisecond
 )
 
+// DefaultHealthTimeout is used when the deploy config sets no timeout.
+const DefaultHealthTimeout = 90 * time.Second
+
+// HealthTimeout converts a deploy timeout in seconds, falling back to
+// DefaultHealthTimeout when it is unset.
+func HealthTimeout(seconds int) time.Duration {
+	if seconds <= 0 {
+		return DefaultHealthTimeout
+	}
+
+	return time.Duration(seconds) * time.Second
+}
+
 // ErrUnhealthy is returned when a container failed its health gate.
 var ErrUnhealthy = errors.New("container did not become healthy")
 

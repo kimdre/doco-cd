@@ -8,7 +8,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/containerd/errdefs"
@@ -202,29 +201,17 @@ func applySelfDriftProject(
 		return fmt.Errorf("record self-update successor: %w", err)
 	}
 
+	timeout := selfHealthTimeout(*record, deployConfig)
+
 	if len(startServices) > 0 {
 		err = service.Start(ctx, project.Name, api.StartOptions{Project: startProject, Services: startServices})
 		if err != nil && !errors.Is(err, ErrNoContainerToStart) {
 			return fmt.Errorf("start the updated services: %w", err)
 		}
 
-		timeout := time.Duration(record.Deploy.TimeoutSeconds) * time.Second
-		if timeout <= 0 {
-			timeout = defaultSelfHealthTimeout
-		}
-
 		if err = waitForStartedServices(ctx, dockerCli, project.Name, startServices, jobs, oneShot, timeout); err != nil {
 			return fmt.Errorf("wait for updated services: %w", err)
 		}
-	}
-
-	timeout := time.Duration(record.Deploy.TimeoutSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = defaultSelfHealthTimeout
-	}
-
-	if deployConfig != nil && deployConfig.Timeout > 0 {
-		timeout = time.Duration(deployConfig.Timeout) * time.Second
 	}
 
 	return selfupdate.WaitHealthy(ctx, apiClient, successor.ID, timeout, log)
