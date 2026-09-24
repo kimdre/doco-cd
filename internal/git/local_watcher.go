@@ -239,6 +239,7 @@ func resolveLocalGitDir(repoPath string) (string, error) {
 	target = filepath.Clean(target)
 
 	// Linked worktrees share the main repo's object store via a "commondir" file.
+	//nolint:gosec // G703: target is the gitdir recorded in the watched repository's own .git file
 	if data, err := os.ReadFile(filepath.Join(target, "commondir")); err == nil {
 		commonDir := strings.TrimSpace(string(data))
 		if !filepath.IsAbs(commonDir) {
