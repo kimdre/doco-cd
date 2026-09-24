@@ -15,6 +15,7 @@ bin/
 *.dylib
 # anchored: a bare "doco-cd" also ignores the cmd/doco-cd/ directory
 /doco-cd
+/out/
 
 # Test binary, built with `go test -c`
 *.test
