@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 // RecordVersion is bumped when the on-disk record layout changes.
@@ -25,16 +27,18 @@ type State string
 type Actor string
 
 const (
-	StateStaged     State = "staged"      // predecessor: nothing created yet
-	StateStarted    State = "started"     // predecessor (scale-out): successor created and started, health pending
-	StateHandover   State = "handover"    // predecessor (scale-out): successor healthy
-	StateDrained    State = "drained"     // predecessor (scale-out): no in-flight work, safe to stop me
-	StateApplying   State = "applying"    // predecessor then applier: applier running
-	StateApplied    State = "applied"     // applier: successor healthy, predecessor gone
-	StateRolledBack State = "rolled_back" // applier: successor unhealthy, predecessor restored
-	StateFailed     State = "failed"      // applier: error, predecessor restored or still alive
-	StateFinalising State = "finalising"  // successor: predecessor removed, reporting pending
-	StateAborted    State = "aborted"     // predecessor: gave up on the successor
+	StateStaged       State = "staged"        // predecessor: nothing created yet
+	StateStarted      State = "started"       // predecessor (scale-out): successor created and started, health pending
+	StateHandover     State = "handover"      // predecessor (scale-out): successor healthy
+	StateDrained      State = "drained"       // predecessor (scale-out): no in-flight work, safe to stop me
+	StateApplying     State = "applying"      // predecessor then applier: applier running
+	StateApplyReady   State = "apply_ready"   // applier: preflight complete; predecessor may drain
+	StateApplyDrained State = "apply_drained" // predecessor: admission drained; applier may change containers
+	StateApplied      State = "applied"       // applier: successor healthy, predecessor gone
+	StateRolledBack   State = "rolled_back"   // applier: successor unhealthy, predecessor restored
+	StateFailed       State = "failed"        // applier: error, predecessor restored or still alive
+	StateFinalising   State = "finalising"    // successor: predecessor removed, reporting pending
+	StateAborted      State = "aborted"       // predecessor: gave up on the successor
 )
 
 const (
@@ -52,9 +56,19 @@ var transitions = map[State]map[State][]Actor{
 	StateDrained:  {StateFinalising: {ActorSuccessor}, StateAborted: {ActorPredecessor}},
 	StateApplying: {
 		StateApplying:   {ActorApplier},
+		StateApplyReady: {ActorApplier},
+		StateRolledBack: {ActorApplier},
+		StateFailed:     {ActorApplier, ActorPredecessor},
+	},
+	StateApplyReady: {
+		StateApplyDrained: {ActorPredecessor},
+		StateRolledBack:   {ActorApplier},
+		StateFailed:       {ActorApplier, ActorPredecessor},
+	},
+	StateApplyDrained: {
 		StateApplied:    {ActorApplier},
 		StateRolledBack: {ActorApplier},
-		StateFailed:     {ActorApplier},
+		StateFailed:     {ActorApplier, ActorPredecessor},
 	},
 	StateApplied: {StateFinalising: {ActorSuccessor}},
 }
@@ -86,6 +100,8 @@ type DeployInfo struct {
 	TimeoutSeconds int      `json:"timeout_seconds"`
 	RecreateMode   string   `json:"recreate_mode"`
 	Services       []string `json:"services,omitempty"`
+	NetworkDrift   bool     `json:"network_drift,omitempty"`
+	RemoveOrphans  bool     `json:"remove_orphans,omitempty"`
 }
 
 // Transition is one entry of a record's audit trail.
@@ -97,24 +113,26 @@ type Transition struct {
 
 // Record is the on-disk handover journal for one self-update.
 type Record struct {
-	Version     int               `json:"version"`
-	ID          string            `json:"id"`
-	State       State             `json:"state"`
-	Strategy    Strategy          `json:"strategy"`
-	Stack       string            `json:"stack"`
-	Context     string            `json:"context"`
-	Service     string            `json:"service"`
-	Predecessor ContainerRef      `json:"predecessor"`
-	Successor   ContainerRef      `json:"successor,omitzero"`
-	Applier     ContainerRef      `json:"applier,omitzero"`
-	Restored    ContainerRef      `json:"restored,omitzero"`
-	Source      SourceInfo        `json:"source"`
-	Deploy      DeployInfo        `json:"deploy"`
-	Labels      map[string]string `json:"labels"`
-	Error       string            `json:"error,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
-	History     []Transition      `json:"history"`
+	Version      int               `json:"version"`
+	ID           string            `json:"id"`
+	State        State             `json:"state"`
+	Strategy     Strategy          `json:"strategy"`
+	Stack        string            `json:"stack"`
+	Context      string            `json:"context"`
+	Service      string            `json:"service"`
+	Predecessor  ContainerRef      `json:"predecessor"`
+	Successor    ContainerRef      `json:"successor,omitzero"`
+	Applier      ContainerRef      `json:"applier,omitzero"`
+	Restored     ContainerRef      `json:"restored,omitzero"`
+	Source       SourceInfo        `json:"source"`
+	Deploy       DeployInfo        `json:"deploy"`
+	Drift        *DriftSnapshot    `json:"drift,omitempty"`
+	DriftStarted bool              `json:"drift_started,omitempty"`
+	Labels       map[string]string `json:"labels"`
+	Error        string            `json:"error,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
+	History      []Transition      `json:"history"`
 }
 
 // Store persists handover records on the data volume.
@@ -137,6 +155,54 @@ func (s *Store) path(id string) string {
 	return filepath.Join(s.root, id+".json")
 }
 
+// lockJournal serializes journal changes across Store instances and processes.
+func (s *Store) lockJournal() (func(), error) {
+	// This lock path is stable across atomic record renames and Store
+	// instances, including instances in different containers on the volume.
+	unlock, err := sourcecache.AcquireRequiredExclusivePathLock(filepath.Join(s.root, ".journal-state"))
+	if err != nil {
+		return nil, fmt.Errorf("lock self-update journal: %w", err)
+	}
+
+	return unlock, nil
+}
+
+// sameRecordState compares a record's state and full transition history.
+func sameRecordState(current, expected Record) bool {
+	if current.State != expected.State || len(current.History) != len(expected.History) {
+		return false
+	}
+
+	for i := range current.History {
+		if current.History[i].State != expected.History[i].State ||
+			current.History[i].Actor != expected.History[i].Actor ||
+			!current.History[i].At.Equal(expected.History[i].At) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// checkRecordState rejects stale journal writes before changing disk state.
+func (s *Store) checkRecordState(expected Record) (Record, error) {
+	current, err := s.Load(expected.ID)
+	if errors.Is(err, ErrNoRecord) {
+		return Record{}, fmt.Errorf("%w: record %s was removed", ErrStaleRecord, expected.ID)
+	}
+
+	if err != nil {
+		return Record{}, err
+	}
+
+	if !sameRecordState(current, expected) {
+		return current, fmt.Errorf("%w: record %s changed from %s (%d transitions) to %s (%d transitions)",
+			ErrStaleRecord, expected.ID, expected.State, len(expected.History), current.State, len(current.History))
+	}
+
+	return current, nil
+}
+
 // Create writes the initial record. The caller sets everything but the
 // bookkeeping fields.
 func (s *Store) Create(record *Record) error {
@@ -150,28 +216,59 @@ func (s *Store) Create(record *Record) error {
 	record.UpdatedAt = now
 	record.History = []Transition{{State: record.State, Actor: ActorPredecessor, At: now}}
 
+	unlock, err := s.lockJournal()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	if _, err = s.Load(record.ID); err == nil {
+		return fmt.Errorf("%w: record %s already exists", ErrStaleRecord, record.ID)
+	}
+
+	if !errors.Is(err, ErrNoRecord) {
+		return err
+	}
+
 	return s.write(*record)
 }
 
-// Update advances a record to the next state after checking that actor is
-// allowed to make that change.
+// Update advances a record if its state and transition history still match the
+// persisted version. UpdatedAt is not part of the comparison: callers may
+// Save(record) then Update(record, ...) using the same value.
 func (s *Store) Update(record Record, to State, actor Actor) (Record, error) {
 	allowed, ok := transitions[record.State][to]
 	if !ok {
 		return record, fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, record.State, to)
 	}
 
-	permitted := false
-
-	for _, a := range allowed {
-		if a == actor {
-			permitted = true
-			break
-		}
-	}
+	permitted := slices.Contains(allowed, actor)
 
 	if !permitted {
 		return record, fmt.Errorf("%w: %s -> %s is not for actor %s", ErrInvalidTransition, record.State, to, actor)
+	}
+
+	unlock, err := s.lockJournal()
+	if err != nil {
+		return record, err
+	}
+	defer unlock()
+
+	current, err := s.checkRecordState(record)
+	if err != nil {
+		return record, err
+	}
+
+	if current.Error != "" && record.Error == "" {
+		return record, fmt.Errorf("%w: record %s has a pending recovery error", ErrStaleRecord, record.ID)
+	}
+
+	if (to == StateApplyReady || to == StateApplyDrained) && current.Error != "" {
+		if current.Error != record.Error {
+			return record, fmt.Errorf("%w: applier recorded a failure before readiness or drain", ErrStaleRecord)
+		}
+
+		return record, fmt.Errorf("%w: applier recovery is pending before readiness or drain", ErrInvalidTransition)
 	}
 
 	now := time.Now().UTC()
@@ -182,8 +279,25 @@ func (s *Store) Update(record Record, to State, actor Actor) (Record, error) {
 	return record, s.write(record)
 }
 
-// Save persists a record without a state change, for reference and error updates.
+// Save persists metadata only while the record's state and transition history
+// remain unchanged. It cannot recreate a removed record or overwrite a
+// transition or clear a newly recorded recovery error written by another process.
 func (s *Store) Save(record Record) error {
+	unlock, err := s.lockJournal()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	current, err := s.checkRecordState(record)
+	if err != nil {
+		return err
+	}
+
+	if current.Error != "" && record.Error == "" {
+		return fmt.Errorf("%w: record %s has a pending recovery error", ErrStaleRecord, record.ID)
+	}
+
 	record.UpdatedAt = time.Now().UTC()
 
 	return s.write(record)
@@ -263,6 +377,41 @@ func (s *Store) Active() (*Record, error) {
 
 // Remove deletes a record and its snapshot.
 func (s *Store) Remove(id string) error {
+	unlock, err := s.lockJournal()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	return s.removeLocked(id)
+}
+
+// RemoveIfUnchanged prevents a failed staging attempt from deleting a record
+// that another process has advanced or assigned to another container.
+func (s *Store) RemoveIfUnchanged(expected Record) error {
+	unlock, err := s.lockJournal()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	current, err := s.checkRecordState(expected)
+	if err != nil {
+		return err
+	}
+
+	if (current.Applier.ID != "" && current.Applier.ID != expected.Applier.ID) ||
+		(current.Successor.ID != "" && current.Successor.ID != expected.Successor.ID) ||
+		(current.Error != "" && current.Error != expected.Error) ||
+		current.DriftStarted != expected.DriftStarted {
+		return fmt.Errorf("%w: record %s acquired recovery metadata", ErrStaleRecord, expected.ID)
+	}
+
+	return s.removeLocked(expected.ID)
+}
+
+// removeLocked removes a journal entry while the caller holds the journal lock.
+func (s *Store) removeLocked(id string) error {
 	if err := os.Remove(s.path(id)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove self-update record %s: %w", id, err)
 	}
@@ -276,6 +425,12 @@ func (s *Store) Remove(id string) error {
 
 // Quarantine renames an unreadable record so it stops blocking startup.
 func (s *Store) Quarantine(id string) error {
+	unlock, err := s.lockJournal()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	if err := os.Rename(s.path(id), s.path(id)+".corrupt"); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("quarantine self-update record %s: %w", id, err)
 	}
@@ -293,6 +448,12 @@ func (s *Store) WriteSnapshot(id string, inspect container.InspectResponse) erro
 	if err != nil {
 		return fmt.Errorf("encode self-update snapshot %s: %w", id, err)
 	}
+
+	unlock, err := s.lockJournal()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	return s.atomicWrite(s.snapshotPath(id), data)
 }

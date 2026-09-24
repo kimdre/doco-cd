@@ -18,6 +18,10 @@ var (
 	// ErrInvalidTransition is returned when a journal state change is not allowed.
 	ErrInvalidTransition = errors.New("invalid self-update state transition")
 
+	// ErrStaleRecord is returned when another process advanced or removed a
+	// journal record before a Save or Update could persist its changes.
+	ErrStaleRecord = errors.New("stale self-update record")
+
 	// ErrNoRecord is returned when no journal record exists for an ID.
 	ErrNoRecord = errors.New("no self-update record")
 )

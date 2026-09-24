@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -111,9 +112,17 @@ func TestStoreTransitions(t *testing.T) {
 		{name: "handover to finalising", from: StateHandover, to: StateFinalising, actor: ActorSuccessor},
 		{name: "drained to finalising", from: StateDrained, to: StateFinalising, actor: ActorSuccessor},
 		{name: "applying to applying", from: StateApplying, to: StateApplying, actor: ActorApplier},
-		{name: "applying to applied", from: StateApplying, to: StateApplied, actor: ActorApplier},
+		{name: "applier completed preflight", from: StateApplying, to: StateApplyReady, actor: ActorApplier},
+		{name: "predecessor drained for applier", from: StateApplyReady, to: StateApplyDrained, actor: ActorPredecessor},
+		{name: "drained applier applied", from: StateApplyDrained, to: StateApplied, actor: ActorApplier},
+		{name: "ready applier failed", from: StateApplyReady, to: StateFailed, actor: ActorApplier},
+		{name: "ready applier restored stopped predecessor", from: StateApplyReady, to: StateRolledBack, actor: ActorApplier},
+		{name: "predecessor recovers exited ready applier", from: StateApplyReady, to: StateFailed, actor: ActorPredecessor},
+		{name: "predecessor recovers exited drained applier", from: StateApplyDrained, to: StateFailed, actor: ActorPredecessor},
+		{name: "drained applier rolled back", from: StateApplyDrained, to: StateRolledBack, actor: ActorApplier},
 		{name: "applying to rolled back", from: StateApplying, to: StateRolledBack, actor: ActorApplier},
 		{name: "applying to failed", from: StateApplying, to: StateFailed, actor: ActorApplier},
+		{name: "predecessor recovers an exited applier", from: StateApplying, to: StateFailed, actor: ActorPredecessor},
 		{name: "applied to finalising", from: StateApplied, to: StateFinalising, actor: ActorSuccessor},
 
 		{name: "staged to applied is not allowed", from: StateStaged, to: StateApplied, actor: ActorPredecessor, wantErr: true},
@@ -123,6 +132,10 @@ func TestStoreTransitions(t *testing.T) {
 		{name: "unknown source state", from: State("nonsense"), to: StateStaged, actor: ActorPredecessor, wantErr: true},
 		{name: "empty target state", from: StateStaged, to: State(""), actor: ActorPredecessor, wantErr: true},
 		{name: "applying by predecessor is not allowed", from: StateApplying, to: StateApplied, actor: ActorPredecessor, wantErr: true},
+		{name: "applier cannot apply before drain", from: StateApplying, to: StateApplied, actor: ActorApplier, wantErr: true},
+		{name: "applier cannot apply while predecessor draining", from: StateApplyReady, to: StateApplied, actor: ActorApplier, wantErr: true},
+		{name: "predecessor cannot skip applier readiness", from: StateApplying, to: StateApplyDrained, actor: ActorPredecessor, wantErr: true},
+		{name: "successor cannot finalize applier drain", from: StateApplyDrained, to: StateFinalising, actor: ActorSuccessor, wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -248,5 +261,41 @@ func TestLoadMissingRecord(t *testing.T) {
 
 	if _, err := store.Load("nope"); !errors.Is(err, ErrNoRecord) {
 		t.Errorf("err = %v, want ErrNoRecord", err)
+	}
+}
+
+// TestDriftSnapshotSurvivesApplierRestart ensures rollback data stays
+// available after the applier reloads its journal.
+func TestDriftSnapshotSurvivesApplierRestart(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	record := newTestRecord("network-run")
+	record.State = StateApplying
+	record.DriftStarted = true
+
+	record.Drift = &DriftSnapshot{
+		Networks: map[string]network.Inspect{
+			"doco-cd_backend": {Network: network.Network{
+				Name: "doco-cd_backend", Labels: map[string]string{"generation": "old"},
+			}},
+		},
+		Containers: map[string]container.InspectResponse{
+			"abc123": {ID: "abc123", Image: "sha256:old"},
+		},
+	}
+	if err := store.Create(record); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.Load(record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !loaded.DriftStarted || loaded.Drift == nil ||
+		loaded.Drift.Networks["doco-cd_backend"].Labels["generation"] != "old" ||
+		loaded.Drift.Containers["abc123"].Image != "sha256:old" {
+		t.Errorf("network rollback snapshot lost on reload: %+v", loaded.Drift)
 	}
 }
