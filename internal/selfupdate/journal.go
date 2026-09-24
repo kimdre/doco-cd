@@ -167,16 +167,17 @@ func (s *Store) lockJournal() (func(), error) {
 	return unlock, nil
 }
 
-// sameRecordState compares a record's state and full transition history.
-func sameRecordState(current, expected Record) bool {
-	if current.State != expected.State || len(current.History) != len(expected.History) {
+// SameProgress reports whether r has the same state and full transition
+// history as other, i.e. no process advanced one past the other.
+func (r Record) SameProgress(other Record) bool {
+	if r.State != other.State || len(r.History) != len(other.History) {
 		return false
 	}
 
-	for i := range current.History {
-		if current.History[i].State != expected.History[i].State ||
-			current.History[i].Actor != expected.History[i].Actor ||
-			!current.History[i].At.Equal(expected.History[i].At) {
+	for i := range r.History {
+		if r.History[i].State != other.History[i].State ||
+			r.History[i].Actor != other.History[i].Actor ||
+			!r.History[i].At.Equal(other.History[i].At) {
 			return false
 		}
 	}
@@ -184,7 +185,8 @@ func sameRecordState(current, expected Record) bool {
 	return true
 }
 
-// checkRecordState rejects stale journal writes before changing disk state.
+// checkRecordState rejects stale journal writes before changing disk state,
+// including writes that would clear a recovery error recorded by another process.
 func (s *Store) checkRecordState(expected Record) (Record, error) {
 	current, err := s.Load(expected.ID)
 	if errors.Is(err, ErrNoRecord) {
@@ -195,9 +197,13 @@ func (s *Store) checkRecordState(expected Record) (Record, error) {
 		return Record{}, err
 	}
 
-	if !sameRecordState(current, expected) {
+	if !current.SameProgress(expected) {
 		return current, fmt.Errorf("%w: record %s changed from %s (%d transitions) to %s (%d transitions)",
 			ErrStaleRecord, expected.ID, expected.State, len(expected.History), current.State, len(current.History))
+	}
+
+	if current.Error != "" && expected.Error == "" {
+		return current, fmt.Errorf("%w: record %s has a pending recovery error", ErrStaleRecord, expected.ID)
 	}
 
 	return current, nil
@@ -259,10 +265,6 @@ func (s *Store) Update(record Record, to State, actor Actor) (Record, error) {
 		return record, err
 	}
 
-	if current.Error != "" && record.Error == "" {
-		return record, fmt.Errorf("%w: record %s has a pending recovery error", ErrStaleRecord, record.ID)
-	}
-
 	if (to == StateApplyReady || to == StateApplyDrained) && current.Error != "" {
 		if current.Error != record.Error {
 			return record, fmt.Errorf("%w: applier recorded a failure before readiness or drain", ErrStaleRecord)
@@ -289,13 +291,8 @@ func (s *Store) Save(record Record) error {
 	}
 	defer unlock()
 
-	current, err := s.checkRecordState(record)
-	if err != nil {
+	if _, err = s.checkRecordState(record); err != nil {
 		return err
-	}
-
-	if current.Error != "" && record.Error == "" {
-		return fmt.Errorf("%w: record %s has a pending recovery error", ErrStaleRecord, record.ID)
 	}
 
 	record.UpdatedAt = time.Now().UTC()
