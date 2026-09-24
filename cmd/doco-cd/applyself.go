@@ -84,7 +84,7 @@ func runApplySelf(ctx context.Context, log *logger.Logger, c *app.Config, args [
 		return failBeforeApply(fmt.Errorf("create the data mount symlink: %w", err))
 	}
 
-	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, app.Version)
+	secretProvider, err := initApplierSecretProvider(ctx, log, c)
 	if err != nil {
 		return failBeforeApply(fmt.Errorf("initialize the secret provider: %w", err))
 	}
@@ -110,6 +110,30 @@ func runApplySelf(ctx context.Context, log *logger.Logger, c *app.Config, args [
 	}
 
 	return nil
+}
+
+// initApplierSecretProvider retries transient provider failures, since a
+// failed applier setup fails and poisons the whole self-update.
+func initApplierSecretProvider(ctx context.Context, log *logger.Logger, c *app.Config) (secretprovider.SecretProvider, error) {
+	var provider secretprovider.SecretProvider
+
+	err := selfupdate.Retry(ctx, func() error {
+		var err error
+
+		provider, err = secretprovider.Initialize(ctx, c.SecretProvider, app.Version)
+
+		return err
+	}, func(attempt int, err error) {
+		if attempt <= selfupdate.RecoveryRetries {
+			log.Warn("self-update: could not initialize the secret provider; retrying",
+				slog.Int("attempt", attempt), logger.ErrAttr(err))
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return provider, nil
 }
 
 // runSelfBootstrap deploys every configured poll target once, then exits. It is
