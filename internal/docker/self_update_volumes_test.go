@@ -174,10 +174,10 @@ func TestSelfUpdateVolumeValidationBeforeStaging(t *testing.T) {
 			opts.Strategy = tc.strategy
 			ConfigureSelfUpdate(opts)
 
-			_, _, step, deferred, err := prepareSelfUpdate(t.Context(), selfApplyTestCli{apiClient: fake}, project,
+			plan, err := prepareSelfUpdate(t.Context(), selfApplyTestCli{apiClient: fake}, project,
 				&deploy.Config{}, &selfTarget{Project: "stack", Service: "app"}, nil, &SelfDeployInput{SourceType: "git"})
-			if !errors.Is(err, selfupdate.ErrUnsupported) || step != nil || deferred {
-				t.Fatalf("preflight = step %v, deferred %t, error %v; want refusal before staging", step != nil, deferred, err)
+			if !errors.Is(err, selfupdate.ErrUnsupported) || plan.Step != nil || plan.DeferToApplier {
+				t.Fatalf("preflight = step %v, deferred %t, error %v; want refusal before staging", plan.Step != nil, plan.DeferToApplier, err)
 			}
 		})
 	}

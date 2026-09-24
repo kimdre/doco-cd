@@ -27,6 +27,18 @@ const SelfApplierLabel = "cd.doco.self.applier"
 // SelfStackLabel names the stack an applier container is updating.
 const SelfStackLabel = "cd.doco.self.stack"
 
+// selfUpdatePlan is how deployCompose continues once a project contains this
+// instance.
+type selfUpdatePlan struct {
+	// Services is the forced-service list without the self service.
+	Services []string
+	// Step performs the handover after the rest of the project deployed.
+	Step func() error
+	// DeferToApplier means the whole project must deploy in the applier
+	// because its networks change underneath this instance.
+	DeferToApplier bool
+}
+
 // selfHealthTimeout is how long the successor may take to become healthy. The
 // applier's freshly loaded deploy config takes precedence over the journal.
 func selfHealthTimeout(record selfupdate.Record, deployConfig *deploy.Config) time.Duration {
@@ -39,8 +51,6 @@ func selfHealthTimeout(record selfupdate.Record, deployConfig *deploy.Config) ti
 
 // prepareSelfUpdate splits a project that contains this instance into the part
 // that deploys normally and a closure that performs the handover afterwards.
-// It returns the reduced project, the reduced forced-service list, the step, and
-// whether the full deployment must instead run in the applier.
 func prepareSelfUpdate(
 	ctx context.Context,
 	dockerCli command.Cli,
@@ -49,7 +59,7 @@ func prepareSelfUpdate(
 	target *selfTarget,
 	services []string,
 	self *SelfDeployInput,
-) (*types.Project, []string, func() error, bool, error) {
+) (selfUpdatePlan, error) {
 	opts := SelfUpdateConfig()
 
 	log := slog.Default()
@@ -58,20 +68,20 @@ func prepareSelfUpdate(
 	}
 
 	if !opts.Enabled {
-		return nil, nil, nil, false, fmt.Errorf(
+		return selfUpdatePlan{}, fmt.Errorf(
 			"%w: stack %q contains this doco-cd instance (service %q); set SELF_UPDATE_ENABLED=true to let it update itself",
 			selfupdate.ErrDisabled, project.Name, target.Service)
 	}
 
 	if opts.Store == nil {
-		return nil, nil, nil, false, fmt.Errorf("%w: no self-update journal is configured", selfupdate.ErrUnsupported)
+		return selfUpdatePlan{}, fmt.Errorf("%w: no self-update journal is configured", selfupdate.ErrUnsupported)
 	}
 
 	// One handover at a time. A record that is still being converged means the
 	// stack has two containers, and a second attempt would race the first.
 	active, err := opts.Store.Active()
 	if err != nil {
-		return nil, nil, nil, false, err
+		return selfUpdatePlan{}, err
 	}
 
 	if active != nil {
@@ -83,11 +93,11 @@ func prepareSelfUpdate(
 			slog.String("state", string(active.State)),
 		)
 
-		return nil, nil, nil, false, selfupdate.ErrHandover
+		return selfUpdatePlan{}, selfupdate.ErrHandover
 	}
 
 	if err := validatePredecessorRestartPolicy(ctx, dockerCli.Client(), opts.Identity.ContainerID); err != nil {
-		return nil, nil, nil, false, err
+		return selfUpdatePlan{}, err
 	}
 
 	sourceType := ""
@@ -97,16 +107,12 @@ func prepareSelfUpdate(
 
 	strategy, drift, err := selectSelfStrategy(ctx, dockerCli, project, target, sourceType, log)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return selfUpdatePlan{}, err
 	}
 
 	if err := validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
-		return nil, nil, nil, false, err
+		return selfUpdatePlan{}, err
 	}
-
-	// Disabled services are known to compose, so RemoveOrphans cannot reap the
-	// self container while the rest of the project deploys.
-	others := project.WithServicesDisabled(target.Service)
 
 	reduced := make([]string, 0, len(services))
 
@@ -116,11 +122,13 @@ func prepareSelfUpdate(
 		}
 	}
 
-	step := func() error {
-		return runSelfUpdate(ctx, dockerCli, project, deployConfig, target, strategy, drift, self, log)
-	}
-
-	return others, reduced, step, drift, nil
+	return selfUpdatePlan{
+		Services: reduced,
+		Step: func() error {
+			return runSelfUpdate(ctx, dockerCli, project, deployConfig, target, strategy, drift, self, log)
+		},
+		DeferToApplier: drift,
+	}, nil
 }
 
 // runSelfUpdate performs the handover for the self service.

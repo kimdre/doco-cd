@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -69,7 +70,8 @@ func TestSelfNetworkDriftDefersFullProject(t *testing.T) {
 				ID: "network-id", Name: tc.liveName,
 				Labels: map[string]string{
 					api.ProjectLabel: "self-stack", api.NetworkLabel: "backend", api.ConfigHashLabel: tc.hash,
-				}}
+				},
+			}
 			docker := selfApplyTestCli{apiClient: driftNetworkClient{network: n}}
 
 			drift, err := networkDrift(t.Context(), docker.Client(), project, svc)
@@ -87,15 +89,15 @@ func TestSelfNetworkDriftDefersFullProject(t *testing.T) {
 			opts.Store = selfupdate.NewStore(t.TempDir())
 			ConfigureSelfUpdate(opts)
 
-			reduced, _, step, deferred, err := prepareSelfUpdate(
+			plan, err := prepareSelfUpdate(
 				t.Context(), docker, project, &deploy.Config{}, &selfTarget{Project: project.Name, Service: "app"},
-				nil, &SelfDeployInput{SourceType: "git"})
+				[]string{"app", "worker"}, &SelfDeployInput{SourceType: "git"})
 			if err != nil {
 				t.Fatalf("prepareSelfUpdate(): %v", err)
 			}
 
-			if !deferred || step == nil || reduced.Services["app"].Name != "" {
-				t.Fatalf("network drift was not deferred to applier: deferred=%v reduced=%v", deferred, reduced.ServiceNames())
+			if !plan.DeferToApplier || plan.Step == nil || !slices.Equal(plan.Services, []string{"worker"}) {
+				t.Fatalf("network drift was not deferred to applier: deferred=%v services=%v", plan.DeferToApplier, plan.Services)
 			}
 		})
 	}

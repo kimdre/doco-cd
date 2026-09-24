@@ -52,10 +52,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	// images/resources. Only after Pull and Build do we disable the self service
 	// in the project used for the pre-handover Create.
 	var (
-		selfStep        func() error
-		deferToApplier  bool
-		selfService     string
-		reducedServices []string
+		selfPlan    selfUpdatePlan
+		selfService string
 	)
 
 	if target := selfUpdateFor(project, deployConfig.Context); target != nil {
@@ -65,7 +63,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 			self.RemoveOrphans = deployConfig.RemoveOrphans
 		}
 
-		_, reducedServices, selfStep, deferToApplier, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, target, services, self)
+		selfPlan, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, target, services, self)
 		if err != nil {
 			return err
 		}
@@ -136,19 +134,20 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
-	// Pull and Build need the full project. Recompute the reduced project
-	// afterwards so it also contains any image changes made during Build.
-	if selfStep != nil {
+	// Pull and Build need the full project. Reduce it afterwards so it also
+	// contains any image changes made during Build. Disabled services are known
+	// to Compose, so RemoveOrphans cannot reap the self container.
+	if selfPlan.Step != nil {
 		project = project.WithServicesDisabled(selfService)
-		services = reducedServices
+		services = selfPlan.Services
 	}
 
 	// Recreating a network shared with this process is unsafe even with the
 	// self service disabled: Compose still plans that network's removal. The
 	// applier performs the *whole* create/start after it has detached from the
 	// project network and the predecessor can safely be stopped.
-	if deferToApplier {
-		return selfStep()
+	if selfPlan.DeferToApplier {
+		return selfPlan.Step()
 	}
 
 	createOpts := api.CreateOptions{
@@ -198,7 +197,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	// Docker Compose then recreates them with the desired configuration during service.Create.
 	setDeploymentPhase(setPhase, "preparing deployment resources")
 
-	if selfStep != nil {
+	if selfPlan.Step != nil {
 		if err = validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
 			return err
 		}
@@ -276,8 +275,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 	}
 
-	if selfStep != nil {
-		return selfStep()
+	if selfPlan.Step != nil {
+		return selfPlan.Step()
 	}
 
 	return nil
