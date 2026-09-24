@@ -48,8 +48,8 @@ func ApplySelfUpdate(ctx context.Context, dockerCli command.Cli, opts ApplySelfO
 		return err
 	}
 
-	if !selfApplyInProgress(record.State) {
-		if selfApplyTerminal(record.State) {
+	if !record.State.InApplierPhase() {
+		if record.State.ApplierFinished() {
 			return nil
 		}
 
@@ -129,11 +129,11 @@ func ApplySelfUpdate(ctx context.Context, dockerCli command.Cli, opts ApplySelfO
 
 	record, err = readyAndWaitSelfApply(ctx, apiClient, opts.Store, record)
 	if err != nil {
-		if selfApplyTerminal(record.State) {
+		if record.State.ApplierFinished() {
 			return nil
 		}
 
-		if !selfApplyInProgress(record.State) {
+		if !record.State.InApplierPhase() {
 			return err
 		}
 
@@ -206,18 +206,6 @@ func pendingSelfApplyFailure(record selfupdate.Record) error {
 	}
 
 	return errors.New(reason)
-}
-
-// selfApplyInProgress reports states in which the applier can still recover.
-func selfApplyInProgress(state selfupdate.State) bool {
-	return state == selfupdate.StateApplying || state == selfupdate.StateApplyReady ||
-		state == selfupdate.StateApplyDrained
-}
-
-// selfApplyTerminal reports states that must not be applied or recovered again.
-func selfApplyTerminal(state selfupdate.State) bool {
-	return state == selfupdate.StateFailed || state == selfupdate.StateRolledBack ||
-		state == selfupdate.StateApplied || state == selfupdate.StateFinalising
 }
 
 // readyAndWaitSelfApply commits preflight readiness before waiting for the
@@ -332,8 +320,8 @@ func FailSelfUpdate(
 		return errors.Join(cause, fmt.Errorf("load self-update record for recovery: %w", err))
 	}
 
-	if !selfApplyInProgress(record.State) {
-		if selfApplyTerminal(record.State) {
+	if !record.State.InApplierPhase() {
+		if record.State.ApplierFinished() {
 			return nil
 		}
 
@@ -450,11 +438,11 @@ func finishSelfApplyFailureOnce(
 		return errors.Join(applyErr, fmt.Errorf("reload self-update record before recovery: %w", err))
 	}
 
-	if selfApplyTerminal(latest.State) {
+	if latest.State.ApplierFinished() {
 		return nil
 	}
 
-	if !selfApplyInProgress(latest.State) {
+	if !latest.State.InApplierPhase() {
 		return fmt.Errorf("cannot recover self-update after it entered state %s: %w", latest.State, applyErr)
 	}
 

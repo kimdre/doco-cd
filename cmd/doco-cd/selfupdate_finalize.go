@@ -194,12 +194,11 @@ func finalizeAsSuccessor(
 
 		record = reloaded
 
-		if record.State == selfupdate.StateRolledBack || record.State == selfupdate.StateFailed {
+		if record.State.RolledBackOrFailed() {
 			return nil
 		}
 
-		if record.State == selfupdate.StateApplying || record.State == selfupdate.StateApplyReady ||
-			record.State == selfupdate.StateApplyDrained {
+		if record.State.InApplierPhase() {
 			return fmt.Errorf("self-update applier exited while record %s is still %s", record.ID, record.State)
 		}
 	case selfupdate.StateHandover, selfupdate.StateStarted, selfupdate.StateDrained:
@@ -352,7 +351,7 @@ func finalizeAsPredecessor(
 			return err
 		}
 
-		if current.State == selfupdate.StateFailed || current.State == selfupdate.StateRolledBack {
+		if current.State.RolledBackOrFailed() {
 			return finalizeAsPredecessor(ctx, log, apiClient, notifier, store, current)
 		}
 
@@ -402,8 +401,7 @@ func failStoppedSelfApplier(
 		return record, err
 	}
 
-	if current.State != selfupdate.StateApplying && current.State != selfupdate.StateApplyReady &&
-		current.State != selfupdate.StateApplyDrained {
+	if !current.State.InApplierPhase() {
 		return current, nil
 	}
 
