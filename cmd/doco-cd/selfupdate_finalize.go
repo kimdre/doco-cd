@@ -9,6 +9,7 @@ import (
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/controlplane"
@@ -387,8 +388,7 @@ func failStoppedSelfApplier(
 		case result.Container.State == nil:
 			return record, fmt.Errorf("self-update applier %s has no container state", record.Applier.ID)
 		default:
-			state := result.Container.State
-			stopped = state.Dead || (!state.Running && !state.Restarting && state.ExitCode == 0)
+			stopped = applierFinished(result.Container.State)
 		}
 	}
 
@@ -413,6 +413,12 @@ func failStoppedSelfApplier(
 	}
 
 	return store.Update(current, selfupdate.StateFailed, selfupdate.ActorPredecessor)
+}
+
+// applierFinished reports whether Docker will not run the applier again. A
+// nonzero exit is not final: the on-failure restart policy retries it.
+func applierFinished(state *container.State) bool {
+	return state.Dead || (!state.Running && !state.Restarting && state.ExitCode == 0)
 }
 
 // removeStagedSelfAppliers cleans up clones recorded in the journal or found
@@ -445,43 +451,42 @@ func removeStagedSelfAppliers(ctx context.Context, apiClient client.APIClient, r
 // waitForDrain only permits takeover after the predecessor has recorded its
 // completed drain. A removed or aborted record is not a successful handover.
 func waitForDrain(ctx context.Context, log *logger.Logger, store *selfupdate.Store, record selfupdate.Record) (selfupdate.Record, bool, error) {
-	poll := time.NewTicker(finalizePollInterval)
-	defer poll.Stop()
+	var (
+		current selfupdate.Record
+		ready   bool
+	)
 
-	progress := time.NewTicker(finalizeWaitLogInterval)
-	defer progress.Stop()
+	err := pollUntil(ctx, func() {
+		log.Warn("self-update: still waiting for the predecessor to finish draining",
+			slog.String("id", record.ID),
+			slog.String("state", string(current.State)))
+	}, func() (bool, error) {
+		var err error
 
-	for {
-		current, err := store.Load(record.ID)
+		current, err = store.Load(record.ID)
+		if errors.Is(err, selfupdate.ErrNoRecord) {
+			return true, nil
+		}
+
 		if err != nil {
-			if errors.Is(err, selfupdate.ErrNoRecord) {
-				return selfupdate.Record{}, false, nil
-			}
-
-			return selfupdate.Record{}, false, err
+			return false, err
 		}
 
 		switch current.State {
 		case selfupdate.StateDrained, selfupdate.StateFinalising:
-			return current, true, nil
+			ready = true
+			return true, nil
 		case selfupdate.StateRolledBack, selfupdate.StateFailed, selfupdate.StateAborted:
-			return current, false, nil
+			return true, nil
 		case selfupdate.StateStarted, selfupdate.StateHandover:
 			// The predecessor is still health-checking or draining.
+			return false, nil
 		default:
-			return current, false, fmt.Errorf("unexpected self-update state while waiting for drain: %s", current.State)
+			return false, fmt.Errorf("unexpected self-update state while waiting for drain: %s", current.State)
 		}
+	})
 
-		select {
-		case <-ctx.Done():
-			return selfupdate.Record{}, false, ctx.Err()
-		case <-poll.C:
-		case <-progress.C:
-			log.Warn("self-update: still waiting for the predecessor to finish draining",
-				slog.String("id", record.ID),
-				slog.String("state", string(current.State)))
-		}
-	}
+	return current, ready && err == nil, err
 }
 
 // waitForApplier blocks until the applier has finished, rather than mistaking
@@ -491,6 +496,29 @@ func waitForApplier(ctx context.Context, log *logger.Logger, apiClient client.AP
 		return fmt.Errorf("self-update record %s has no applier id", record.ID)
 	}
 
+	return pollUntil(ctx, func() {
+		log.Warn("self-update: still waiting for the applier", slog.String("applier_id", record.Applier.ID))
+	}, func() (bool, error) {
+		result, err := apiClient.ContainerInspect(ctx, record.Applier.ID, client.ContainerInspectOptions{})
+		if errdefs.IsNotFound(err) {
+			return true, nil
+		}
+
+		if err != nil {
+			return false, fmt.Errorf("inspect self-update applier %s: %w", record.Applier.ID, err)
+		}
+
+		if result.Container.State == nil {
+			return false, fmt.Errorf("self-update applier %s has no container state", record.Applier.ID)
+		}
+
+		return applierFinished(result.Container.State), nil
+	})
+}
+
+// pollUntil calls check every finalizePollInterval until it reports done or
+// fails, calling onProgress every finalizeWaitLogInterval in between.
+func pollUntil(ctx context.Context, onProgress func(), check func() (bool, error)) error {
 	poll := time.NewTicker(finalizePollInterval)
 	defer poll.Stop()
 
@@ -498,22 +526,8 @@ func waitForApplier(ctx context.Context, log *logger.Logger, apiClient client.AP
 	defer progress.Stop()
 
 	for {
-		result, err := apiClient.ContainerInspect(ctx, record.Applier.ID, client.ContainerInspectOptions{})
-		if err != nil {
-			if errdefs.IsNotFound(err) {
-				return nil
-			}
-
-			return fmt.Errorf("inspect self-update applier %s: %w", record.Applier.ID, err)
-		}
-
-		if result.Container.State == nil {
-			return fmt.Errorf("self-update applier %s has no container state", record.Applier.ID)
-		}
-
-		state := result.Container.State
-		if !state.Running && !state.Restarting && (state.ExitCode == 0 || state.Dead) {
-			return nil
+		if done, err := check(); done || err != nil {
+			return err
 		}
 
 		select {
@@ -521,8 +535,7 @@ func waitForApplier(ctx context.Context, log *logger.Logger, apiClient client.AP
 			return ctx.Err()
 		case <-poll.C:
 		case <-progress.C:
-			log.Warn("self-update: still waiting for the applier",
-				slog.String("applier_id", record.Applier.ID))
+			onProgress()
 		}
 	}
 }
