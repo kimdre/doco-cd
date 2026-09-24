@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,6 +66,34 @@ func TestPredecessorRecoversExitedApplierWithoutTerminalState(t *testing.T) {
 
 	if _, poisoned, err := store.IsPoisoned("", "self", "bad", "changed"); err != nil || !poisoned {
 		t.Errorf("failed revision not poisoned: poisoned=%v, err=%v", poisoned, err)
+	}
+}
+
+// TestFailStoppedSelfApplierKeepsRecordedReason checks that recovering a
+// stopped applier keeps the failure reason the applier already saved.
+func TestFailStoppedSelfApplierKeepsRecordedReason(t *testing.T) {
+	t.Parallel()
+
+	store := selfupdate.NewStore(t.TempDir())
+
+	record := selfupdate.Record{
+		ID:          "failed-applier",
+		State:       selfupdate.StateApplyReady,
+		Predecessor: selfupdate.ContainerRef{ID: "old"},
+		Applier:     selfupdate.ContainerRef{ID: "clone"},
+		Error:       "load the self stack: boom",
+	}
+	if err := store.Create(&record); err != nil {
+		t.Fatal(err)
+	}
+
+	failed, err := failStoppedSelfApplier(t.Context(), &exitedApplierClient{}, store, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if failed.State != selfupdate.StateFailed || !strings.HasPrefix(failed.Error, record.Error+"; ") {
+		t.Errorf("recovered applier = %s/%q; want failed with the recorded reason kept", failed.State, failed.Error)
 	}
 }
 

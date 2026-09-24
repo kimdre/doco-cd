@@ -405,7 +405,12 @@ func failStoppedSelfApplier(
 		return current, nil
 	}
 
-	current.Error = "self-update applier stopped without completing the handover"
+	const reason = "self-update applier stopped without completing the handover"
+	if current.Error == "" {
+		current.Error = reason
+	} else {
+		current.Error = current.Error + "; " + reason
+	}
 
 	return store.Update(current, selfupdate.StateFailed, selfupdate.ActorPredecessor)
 }
