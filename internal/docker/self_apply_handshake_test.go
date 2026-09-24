@@ -143,6 +143,54 @@ func TestReadyAndWaitSelfApplyRecoversMissingPredecessor(t *testing.T) {
 	}
 }
 
+// drainThenStopClient records the predecessor's drain and reports it stopped,
+// as if it crashed right after acknowledging the drain.
+type drainThenStopClient struct {
+	*selfApplyTestClient
+	store    *selfupdate.Store
+	recordID string
+}
+
+// ContainerInspect drains and stops the mock predecessor on first inspection.
+func (c *drainThenStopClient) ContainerInspect(ctx context.Context, id string, opts client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+	if !c.stopped {
+		record, err := c.store.Load(c.recordID)
+		if err != nil {
+			return client.ContainerInspectResult{}, err
+		}
+
+		if _, err = c.store.Update(record, selfupdate.StateApplyDrained, selfupdate.ActorPredecessor); err != nil {
+			return client.ContainerInspectResult{}, err
+		}
+
+		c.stopped = true
+	}
+
+	return c.selfApplyTestClient.ContainerInspect(ctx, id, opts)
+}
+
+// TestReadyAndWaitSelfApplyAcceptsDrainBeforePredecessorStop verifies that a
+// predecessor stopping right after its drain acknowledgment is not mistaken
+// for a lost handover.
+func TestReadyAndWaitSelfApplyAcceptsDrainBeforePredecessorStop(t *testing.T) {
+	store := selfupdate.NewStore(t.TempDir())
+
+	record := selfupdate.Record{
+		ID: "handover", State: selfupdate.StateApplying,
+		Predecessor: selfupdate.ContainerRef{ID: "old"},
+	}
+	if err := store.Create(&record); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := &drainThenStopClient{selfApplyTestClient: &selfApplyTestClient{}, store: store, recordID: record.ID}
+
+	after, err := readyAndWaitSelfApply(t.Context(), fake, store, record)
+	if err != nil || after.State != selfupdate.StateApplyDrained {
+		t.Errorf("drain then stop = %s/%v; want apply_drained", after.State, err)
+	}
+}
+
 // TestReadyAndWaitSelfApplyResumesAfterDrain permits a restarted applier to
 // continue after the predecessor acknowledged the drain.
 func TestReadyAndWaitSelfApplyResumesAfterDrain(t *testing.T) {

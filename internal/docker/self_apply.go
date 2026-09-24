@@ -257,6 +257,8 @@ func readyAndWaitSelfApply(
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
+	predecessorStopped := false
+
 	for {
 		current, err := store.Load(record.ID)
 		if err != nil {
@@ -276,9 +278,16 @@ func readyAndWaitSelfApply(
 			return record, fmt.Errorf("predecessor drain stopped in state %s", record.State)
 		}
 
+		if predecessorStopped {
+			return record, errors.New("predecessor stopped before recording applier drain")
+		}
+
 		previous, err := apiClient.ContainerInspect(ctx, record.Predecessor.ID, client.ContainerInspectOptions{})
 		if errdefs.IsNotFound(err) || (err == nil && (previous.Container.State == nil || !previous.Container.State.Running)) {
-			return record, errors.New("predecessor stopped before recording applier drain")
+			// The predecessor may have recorded its drain and stopped after
+			// the load above. Re-read the journal before treating it as lost.
+			predecessorStopped = true
+			continue
 		}
 
 		select {
