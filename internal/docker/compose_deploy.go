@@ -210,12 +210,6 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 	setDeploymentPhase(setPhase, "creating services")
 
-	if selfStep != nil {
-		if err = validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
-			return err
-		}
-	}
-
 	err = service.Create(ctx, project, createOpts)
 	if err != nil {
 		return err

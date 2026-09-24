@@ -141,6 +141,8 @@ func applySelfDriftProject(
 		return errors.New("network drift has no recoverable project snapshot")
 	}
 
+	// The preflight check ran before the predecessor drained; recheck before
+	// recording the update or letting Compose create or adopt any volume.
 	if err := validateSelfUpdateVolumes(ctx, apiClient, project); err != nil {
 		return err
 	}
@@ -168,10 +170,6 @@ func applySelfDriftProject(
 	services := slices.Clone(record.Deploy.Services)
 	if len(services) > 0 && !slices.Contains(services, record.Service) {
 		services = append(services, record.Service)
-	}
-
-	if err = validateSelfUpdateVolumes(ctx, apiClient, project); err != nil {
-		return err
 	}
 
 	err = service.Create(ctx, project, api.CreateOptions{

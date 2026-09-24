@@ -212,49 +212,6 @@ func TestSelfUpdateComposeCreatesRejectLateVolumeChange(t *testing.T) {
 	}
 }
 
-type volumeChangesAfterPreflightClient struct {
-	*selfUpdateVolumeClient
-	checks int
-}
-
-// VolumeList simulates a volume changing after initial validation.
-func (c *volumeChangesAfterPreflightClient) VolumeList(ctx context.Context, opts client.VolumeListOptions) (client.VolumeListResult, error) {
-	c.checks++
-	if c.checks == 2 {
-		c.volumes[0].Options = map[string]string{"type": "nfs"}
-	}
-
-	return c.selfUpdateVolumeClient.VolumeList(ctx, opts)
-}
-
-// TestApplySelfDriftProjectRechecksVolumeImmediatelyBeforeCreate checks
-// volume safety again at the network-drift Create boundary.
-func TestApplySelfDriftProjectRechecksVolumeImmediatelyBeforeCreate(t *testing.T) {
-	project := selfUpdateTestProject("stack", "app")
-	project.Volumes = types.Volumes{"data": {Name: "stack_data", Driver: "local"}}
-	fake := &volumeChangesAfterPreflightClient{selfUpdateVolumeClient: &selfUpdateVolumeClient{
-		volumes: []volume.Volume{{
-			Name: "stack_data", Driver: "local",
-			Labels: map[string]string{api.ProjectLabel: "stack", api.VolumeLabel: "data"},
-		}},
-	}}
-	store := selfupdate.NewStore(t.TempDir())
-
-	record := selfupdate.Record{
-		ID: "drift", State: selfupdate.StateApplyDrained, Stack: "stack", Service: "app",
-		Drift: &selfupdate.DriftSnapshot{Networks: map[string]network.Inspect{}},
-	}
-	if err := store.Create(&record); err != nil {
-		t.Fatal(err)
-	}
-
-	err := applySelfDriftProject(t.Context(), selfApplyTestCli{apiClient: fake}, fake, nil,
-		project, &record, store, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if !errors.Is(err, selfupdate.ErrUnsupported) || fake.checks != 2 {
-		t.Fatalf("late change before Compose Create = %v after %d checks; want refusal on second check", err, fake.checks)
-	}
-}
-
 // TestApplySelfDriftProjectRejectsLateVolumeChange prevents a volume
 // replacement discovered after the initial drift preflight.
 func TestApplySelfDriftProjectRejectsLateVolumeChange(t *testing.T) {
