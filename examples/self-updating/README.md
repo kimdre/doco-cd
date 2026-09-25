@@ -83,6 +83,8 @@ compose network. `SELF_UPDATE_STRATEGY` accepts `auto`, `scale_out` or
 **Changes to a network used by doco-cd require the applier.** Recreating that
 network also briefly interrupts any other services attached to it. If the
 update fails, the applier restores the previous network and affected services.
+The applier waits on Docker's default `bridge` network meanwhile, so it must
+not be disabled on the host.
 
 **Changes to existing named volumes are refused during a self-update.**
 Compose may replace a changed volume, and a rollback cannot restore its data.

@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -48,7 +49,7 @@ func applierSourceInspect() container.InspectResponse {
 func TestBuildSelfApplierCreate(t *testing.T) {
 	t.Parallel()
 
-	opts := BuildSelfApplierCreate(applierSourceInspect(), "run-1", "doco-cd")
+	opts := BuildSelfApplierCreate(applierSourceInspect(), "run-1", "doco-cd", false)
 
 	if got := opts.Config.Cmd; len(got) != 2 || got[0] != "apply-self" || got[1] != "run-1" {
 		t.Errorf("cmd = %v, want [apply-self run-1]", got)
@@ -105,34 +106,41 @@ func TestBuildSelfApplierCreate(t *testing.T) {
 		t.Errorf("name = %q, want a self-applier suffix", opts.Name)
 	}
 
-	if opts.NetworkingConfig != nil || opts.HostConfig.NetworkMode != "bridge" {
-		t.Errorf("clone must use stable bridge network, got mode %q and endpoints %v",
-			opts.HostConfig.NetworkMode, opts.NetworkingConfig)
-	}
-
 	if got := opts.HostConfig.Binds; len(got) != 1 {
 		t.Errorf("binds = %v, want the source binds", got)
 	}
 }
 
-func TestBuildSelfApplierCreateKeepsNamespaceNetworkModes(t *testing.T) {
+// TestBuildSelfApplierCreateNetworkMode checks that only network drift moves
+// the clone to the default bridge, and never out of a namespace mode.
+func TestBuildSelfApplierCreateNetworkMode(t *testing.T) {
 	t.Parallel()
 
-	for _, mode := range []container.NetworkMode{"host", "container:sidecar", "none"} {
-		t.Run(string(mode), func(t *testing.T) {
+	for _, tc := range []struct {
+		mode  container.NetworkMode
+		drift bool
+		want  container.NetworkMode
+	}{
+		{mode: "doco-cd_default", want: "doco-cd_default"},
+		{mode: "doco-cd_default", drift: true, want: "bridge"},
+		{mode: "host", drift: true, want: "host"},
+		{mode: "container:sidecar", drift: true, want: "container:sidecar"},
+		{mode: "none", drift: true, want: "none"},
+	} {
+		t.Run(fmt.Sprintf("%s drift=%t", tc.mode, tc.drift), func(t *testing.T) {
 			t.Parallel()
 
 			inspect := applierSourceInspect()
-			inspect.HostConfig.NetworkMode = mode
+			inspect.HostConfig.NetworkMode = tc.mode
 
-			opts := BuildSelfApplierCreate(inspect, "run-1", "doco-cd")
+			opts := BuildSelfApplierCreate(inspect, "run-1", "doco-cd", tc.drift)
 
 			if opts.NetworkingConfig != nil {
-				t.Errorf("%s networking must not get an endpoint configuration", mode)
+				t.Errorf("clone got an endpoint configuration: %v", opts.NetworkingConfig)
 			}
 
-			if opts.HostConfig.NetworkMode != mode {
-				t.Errorf("clone network mode = %q, want %q", opts.HostConfig.NetworkMode, mode)
+			if opts.HostConfig.NetworkMode != tc.want {
+				t.Errorf("clone network mode = %q, want %q", opts.HostConfig.NetworkMode, tc.want)
 			}
 		})
 	}

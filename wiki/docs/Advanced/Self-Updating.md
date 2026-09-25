@@ -90,6 +90,9 @@ The next poll catches up with missed changes.
   Compose may replace the volume, but rollback cannot restore its data. 
   Handle volume migrations separately, with a backup.
 - The self stack must be on the default Docker context and must not come from an OCI source.
+- Recreating a project network requires Docker's default `bridge` network. The
+  applier stays on it while Compose recreates the project networks. Other
+  self-updates do not use it.
 - Give the service a `healthcheck`. Without one doco-cd falls back to running
   `doco-cd healthcheck` inside the new container, which is slower.
 

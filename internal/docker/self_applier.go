@@ -20,7 +20,8 @@ import (
 
 // BuildSelfApplierCreate derives the create options for a throwaway clone of
 // the running doco-cd container that finishes the self-update from outside.
-func BuildSelfApplierCreate(inspect container.InspectResponse, journalID, stack string) client.ContainerCreateOptions {
+// drift reports whether the update recreates project networks.
+func BuildSelfApplierCreate(inspect container.InspectResponse, journalID, stack string, drift bool) client.ContainerCreateOptions {
 	config := *inspect.Config
 	config.Cmd = []string{"apply-self", journalID}
 	config.Healthcheck = &container.HealthConfig{Test: []string{"NONE"}}
@@ -34,13 +35,15 @@ func BuildSelfApplierCreate(inspect container.InspectResponse, journalID, stack 
 	hostConfig.PortBindings = nil
 	hostConfig.AutoRemove = false
 	hostConfig.Links = nil
-	// Bridge survives project-network recreation. The clone also joins the
-	// predecessor's networks for secret-provider DNS during preflight, then
-	// leaves project networks before Compose may recreate them.
-	// Host, container and none modes have no project networks to drift, so they
-	// keep the predecessor's mode (e.g. for a secret provider on localhost).
-	if mode := hostConfig.NetworkMode; !mode.IsHost() && !mode.IsContainer() && !mode.IsNone() {
-		hostConfig.NetworkMode = "bridge"
+	// Without network drift the clone keeps the predecessor's network mode.
+	// With drift it moves to the default bridge, which survives project-network
+	// recreation. It still joins the predecessor's networks for secret-provider
+	// DNS during preflight, then leaves project networks before Compose may
+	// recreate them. Host, container and none modes have no project networks
+	// to drift, so they keep the predecessor's mode (e.g. for a secret provider
+	// on localhost).
+	if mode := hostConfig.NetworkMode; drift && !mode.IsHost() && !mode.IsContainer() && !mode.IsNone() {
+		hostConfig.NetworkMode = network.NetworkBridge
 	}
 
 	hostConfig.RestartPolicy = container.RestartPolicy{
@@ -112,16 +115,29 @@ func stageSelfApplier(
 		return fmt.Errorf("inspect own container for applier clone: %w", err)
 	}
 
-	createOpts := BuildSelfApplierCreate(inspect.Container, record.ID, record.Stack)
+	drift := record.Deploy.NetworkDrift
+	createOpts := BuildSelfApplierCreate(inspect.Container, record.ID, record.Stack, drift)
+
+	bridgeHint := ""
+	if drift && createOpts.HostConfig.NetworkMode.IsBridge() {
+		bridgeHint = " (network changes need Docker's default bridge network)"
+	}
 
 	created, err := apiClient.ContainerCreate(ctx, createOpts)
 	if err != nil {
-		return fmt.Errorf("create applier container: %w", err)
+		return fmt.Errorf("create applier container%s: %w", bridgeHint, err)
 	}
 
 	record.Applier = selfupdate.ContainerRef{ID: created.ID, Name: createOpts.Name}
 
-	if err = connectSelfApplierNetworks(ctx, apiClient, created.ID, inspect.Container, nil); err != nil {
+	// A clone that keeps the predecessor's network mode already joined that
+	// network on create; Docker rejects a second endpoint.
+	var joined map[string]*network.EndpointSettings
+	if !drift {
+		joined = primarySelfApplierNetwork(inspect.Container)
+	}
+
+	if err = connectSelfApplierNetworks(ctx, apiClient, created.ID, inspect.Container, joined); err != nil {
 		return fmt.Errorf("connect applier for preflight: %w", err)
 	}
 
@@ -137,7 +153,7 @@ func stageSelfApplier(
 	*record = updated
 
 	if _, err = apiClient.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
-		return fmt.Errorf("start applier container: %w", err)
+		return fmt.Errorf("start applier container%s: %w", bridgeHint, err)
 	}
 
 	log.Info("self-update: applier started",
@@ -150,8 +166,27 @@ func stageSelfApplier(
 	return nil
 }
 
+// primarySelfApplierNetwork returns the predecessor's endpoint on the network
+// its network mode names, keyed by network name.
+func primarySelfApplierNetwork(predecessor container.InspectResponse) map[string]*network.EndpointSettings {
+	if predecessor.HostConfig == nil || predecessor.NetworkSettings == nil {
+		return nil
+	}
+
+	mode := string(predecessor.HostConfig.NetworkMode)
+
+	for name, endpoint := range predecessor.NetworkSettings.Networks {
+		if name == mode || (endpoint != nil && endpoint.NetworkID == mode) {
+			return map[string]*network.EndpointSettings{name: endpoint}
+		}
+	}
+
+	return nil
+}
+
 // connectSelfApplierNetworks gives the clone service DNS access without
-// inheriting the predecessor's aliases or addresses.
+// inheriting the predecessor's aliases or addresses. It skips networks in
+// connected, which the clone already joined.
 func connectSelfApplierNetworks(
 	ctx context.Context, apiClient client.APIClient, applierID string,
 	predecessor container.InspectResponse, connected map[string]*network.EndpointSettings,

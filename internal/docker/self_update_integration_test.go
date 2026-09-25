@@ -633,7 +633,7 @@ func TestSelfUpdateIntegration_NetworkDrift(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			applierOpts := BuildSelfApplierCreate(original.Container, record.ID, stackName)
+			applierOpts := BuildSelfApplierCreate(original.Container, record.ID, stackName, true)
 			applierOpts.Config.Cmd = []string{"sleep", "600"}
 
 			clone, err := stack.Client.ContainerCreate(ctx, applierOpts)

@@ -5,9 +5,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/selfupdate"
@@ -15,6 +18,8 @@ import (
 
 type stagingApplierClient struct {
 	client.APIClient
+	source      *container.InspectResponse
+	created     client.ContainerCreateOptions
 	removeErr   error
 	startErr    error
 	removeCalls int
@@ -25,11 +30,17 @@ type stagingApplierClient struct {
 
 // ContainerInspect supplies the source container for clone staging tests.
 func (c *stagingApplierClient) ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+	if c.source != nil {
+		return client.ContainerInspectResult{Container: *c.source}, nil
+	}
+
 	return client.ContainerInspectResult{Container: applierSourceInspect()}, nil
 }
 
-// ContainerCreate returns the mock clone ID used for cleanup assertions.
-func (c *stagingApplierClient) ContainerCreate(context.Context, client.ContainerCreateOptions) (client.ContainerCreateResult, error) {
+// ContainerCreate records the clone options and returns the mock clone ID.
+func (c *stagingApplierClient) ContainerCreate(_ context.Context, opts client.ContainerCreateOptions) (client.ContainerCreateResult, error) {
+	c.created = opts
+
 	return client.ContainerCreateResult{ID: "clone"}, nil
 }
 
@@ -103,6 +114,7 @@ func TestFailedApplierStageCleansOrRetainsClone(t *testing.T) {
 			record := selfupdate.Record{
 				ID: "staging", State: selfupdate.StateStaged, Strategy: selfupdate.StrategyApplier,
 				Stack: "self-stack", Predecessor: selfupdate.ContainerRef{ID: "old"},
+				Deploy: selfupdate.DeployInfo{NetworkDrift: true},
 			}
 			if err := store.Create(&record); err != nil {
 				t.Fatal(err)
@@ -178,6 +190,62 @@ func TestFailedApplierStageCleansOrRetainsClone(t *testing.T) {
 
 			if active, err := store.Active(); err != nil || active != nil {
 				t.Errorf("orphan journal after successful cleanup: %+v (%v)", active, err)
+			}
+		})
+	}
+}
+
+// TestStageSelfApplierNetworks checks that without drift the clone keeps the
+// predecessor's network mode and joins only its other networks, while drift
+// moves it to the bridge and joins every predecessor network.
+func TestStageSelfApplierNetworks(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name            string
+		mode            container.NetworkMode
+		drift           bool
+		wantMode        container.NetworkMode
+		wantConnections []string
+	}{
+		{name: "mode by name", mode: "doco-cd_default", wantMode: "doco-cd_default", wantConnections: []string{"backend-id"}},
+		{name: "mode by ID", mode: "default-id", wantMode: "default-id", wantConnections: []string{"backend-id"}},
+		{name: "drift", mode: "doco-cd_default", drift: true, wantMode: "bridge", wantConnections: []string{"backend-id", "default-id"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := applierSourceInspect()
+			source.HostConfig.NetworkMode = tc.mode
+			source.NetworkSettings.Networks = map[string]*network.EndpointSettings{
+				"doco-cd_default": {NetworkID: "default-id", Aliases: []string{"app"}},
+				"doco-cd_backend": {NetworkID: "backend-id", Aliases: []string{"app"}},
+			}
+
+			store := selfupdate.NewStore(t.TempDir())
+
+			record := selfupdate.Record{
+				ID: "staging", State: selfupdate.StateStaged, Strategy: selfupdate.StrategyApplier,
+				Stack: "self-stack", Predecessor: selfupdate.ContainerRef{ID: "old"},
+				Deploy: selfupdate.DeployInfo{NetworkDrift: tc.drift},
+			}
+			if err := store.Create(&record); err != nil {
+				t.Fatal(err)
+			}
+
+			fake := &stagingApplierClient{source: &source}
+			log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+			if err := stageSelfApplier(t.Context(), fake, store, "old", "", &record, log); err != nil {
+				t.Fatal(err)
+			}
+
+			if got := fake.created.HostConfig.NetworkMode; got != tc.wantMode {
+				t.Errorf("clone network mode = %q, want %q", got, tc.wantMode)
+			}
+
+			if !slices.Equal(fake.connections, tc.wantConnections) {
+				t.Errorf("clone connections = %v, want %v", fake.connections, tc.wantConnections)
 			}
 		})
 	}

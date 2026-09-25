@@ -49,7 +49,7 @@ networks:
 		t.Fatal(err)
 	}
 
-	cloneOpts := BuildSelfApplierCreate(original.Container, "preflight", stackName)
+	cloneOpts := BuildSelfApplierCreate(original.Container, "preflight", stackName, true)
 	cloneOpts.Config.Cmd = []string{"sleep", "600"}
 
 	clone, err := stack.Client.ContainerCreate(ctx, cloneOpts)
