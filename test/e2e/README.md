@@ -93,8 +93,9 @@ Consequences for scenario code:
   older offset. A background collector snapshots logs every 250ms, because a
   handover deletes containers within seconds and their output is the only
   record of what happened.
-- `SelfContainers`, `SelfAppliers`, `SelfContainerID` and `RunsSelfImage` query
-  by label instead of holding a container handle.
+- `SelfContainers`, `SelfAppliers`, `SelfContainerID`, `RunsSelfImage` and
+  `StackNetwork` query by label instead of holding a container or network
+  handle, since a handover can replace both.
 - The fixture image is tagged `<scenario>:v1` and `:v2` from the same build, so
   bumping the tag in the fixture is a pure config change with no rebuild. Use
   `pull_policy: never` for it: the tag exists only on the local daemon.

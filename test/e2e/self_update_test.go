@@ -406,6 +406,135 @@ func TestSelfUpdateRollback(t *testing.T) {
 	}
 }
 
+// TestSelfUpdateNetworkDrift proves a change to a project network doco-cd uses
+// goes through the applier: it recreates the network with every attached
+// service and, when the new version fails, restores the previous network and
+// services from the snapshot.
+func TestSelfUpdateNetworkDrift(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		scenario string
+		stack    string
+		broken   bool
+	}{
+		{
+			name:     "recreates the network with the new version",
+			scenario: "self-update-network-drift",
+			stack:    "e2e-network-drift",
+		},
+		{
+			name:     "restores the network and services on failure",
+			scenario: "self-update-network-drift-rollback",
+			stack:    "e2e-network-drift-rollback",
+			broken:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := NewHarness(t, tt.scenario)
+			h.EnableSelfUpdate(tt.stack, "doco-cd")
+			h.Start()
+
+			t.Cleanup(func() {
+				if t.Failed() {
+					h.dumpSelfState()
+				}
+			})
+
+			if h.SelfContainerID() == "" {
+				t.Fatal("no running self container after bootstrap")
+			}
+
+			mark := h.LogMark()
+
+			h.ReplaceInWorktree("deploy/compose.yaml", `e2e.generation: "1"`, `e2e.generation: "2"`)
+
+			wantTag, wantGeneration := "v2", "2"
+			if tt.broken {
+				wantTag, wantGeneration = "v1", "1"
+
+				// HTTP_PORT does not fit a uint16, so the new container fails
+				// config validation at boot and never reports healthy.
+				h.ReplaceInWorktree("deploy/compose.yaml", `E2E_GENERATION: "1"`,
+					"E2E_GENERATION: \"2\"\n      HTTP_PORT: \"99999\"")
+				h.RepoPush("change the backend network and break the doco-cd config")
+			} else {
+				h.ReplaceInWorktree("deploy/compose.yaml", ":v1", ":v2")
+				h.RepoPush("change the backend network and bump the doco-cd image")
+			}
+
+			// No container_name or published port rules out scale-out here, so
+			// an applier proves the network change forced it.
+			h.WaitFor(3*time.Minute, "an applier container appears", func() bool {
+				return len(h.SelfAppliers(true)) == 1
+			})
+
+			if logs := h.logsSince(mark); strings.Contains(logs, "self-update: strategy selected") &&
+				!strings.Contains(logs, "a project network must be recreated") {
+				t.Error("the applier strategy was not attributed to the network change")
+			}
+
+			if tt.broken {
+				h.WaitForLogAfter("self-update: rolled back", mark, 4*time.Minute)
+			} else {
+				h.WaitForLogAfter("self-update finalised", mark, 4*time.Minute)
+			}
+
+			h.WaitFor(2*time.Minute, "one healthy self container is serving", func() bool {
+				running := h.SelfContainers(false)
+
+				return len(running) == 1 && h.ContainerHealthy(running[0].ID)
+			})
+
+			h.WaitFor(2*time.Minute, "the applier is cleaned up", func() bool {
+				return len(h.SelfAppliers(true)) == 0
+			})
+
+			selfID := h.SelfContainerID()
+			if !h.RunsSelfImage(selfID, wantTag) {
+				t.Errorf("self container image = %q, want %s", h.ContainerImage(selfID), wantTag)
+			}
+
+			// Network labels are immutable, so the label proves which network
+			// definition is live.
+			backend := h.StackNetwork("backend")
+			if got := backend.Labels["e2e.generation"]; got != wantGeneration {
+				t.Errorf("backend network generation = %q, want %q", got, wantGeneration)
+			}
+
+			workerID := h.ContainerID(tt.stack, "worker")
+			if workerID == "" || !h.ContainerRunning(workerID) {
+				t.Fatal("worker is not running after the self-update")
+			}
+
+			for service, id := range map[string]string{"doco-cd": selfID, "worker": workerID} {
+				if !h.ContainerOnNetwork(id, backend.ID) {
+					t.Errorf("%s is not attached to the live backend network", service)
+				}
+			}
+
+			mark2 := h.LogMark()
+			if tt.broken {
+				h.WaitForLogOccurrencesAfter("self-update poisoned, skipping until a new commit", mark2, 2, 90*time.Second)
+
+				if n := h.LogCountAfter("self-update: strategy selected", mark); n != 1 {
+					t.Errorf("self-update was attempted %d times for one broken commit, want 1", n)
+				}
+			} else {
+				// A recreated network must not look changed to the next poll.
+				h.WaitForLogOccurrencesAfter("no changes detected, skipping deployment", mark2, 2, 90*time.Second)
+			}
+
+			h.assertNoSelfLeftovers()
+		})
+	}
+}
+
 // TestSelfUpdateRegression proves the feature does not change how other stacks
 // are deployed: a self-managed doco-cd still reconciles a normal stack, and a
 // commit that touches both still lands both.

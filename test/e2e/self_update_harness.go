@@ -14,6 +14,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -302,6 +303,43 @@ func (h *Harness) ContainerExitCode(containerID string) (int, bool) {
 	}
 
 	return state.ExitCode, true
+}
+
+// StackNetwork returns the self stack's project network with the given compose
+// key, failing the test unless exactly one exists.
+func (h *Harness) StackNetwork(key string) network.Summary {
+	h.t.Helper()
+
+	list, err := h.docker.NetworkList(h.ctx, client.NetworkListOptions{
+		Filters: make(client.Filters).
+			Add("label", "com.docker.compose.project="+h.selfStack).
+			Add("label", "com.docker.compose.network="+key),
+	})
+	if err != nil {
+		h.t.Fatalf("list %s networks: %v", key, err)
+	}
+
+	if len(list.Items) != 1 {
+		h.t.Fatalf("stack has %d %s networks, want 1", len(list.Items), key)
+	}
+
+	return list.Items[0]
+}
+
+// ContainerOnNetwork reports whether a container is attached to a network ID.
+func (h *Harness) ContainerOnNetwork(containerID, networkID string) bool {
+	result, err := h.docker.ContainerInspect(h.ctx, containerID, client.ContainerInspectOptions{})
+	if err != nil || result.Container.NetworkSettings == nil {
+		return false
+	}
+
+	for _, endpoint := range result.Container.NetworkSettings.Networks {
+		if endpoint != nil && endpoint.NetworkID == networkID {
+			return true
+		}
+	}
+
+	return false
 }
 
 // RepoHead returns the current commit SHA of the scenario repository.
