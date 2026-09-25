@@ -239,7 +239,7 @@ func resolveLocalGitDir(repoPath string) (string, error) {
 	target = filepath.Clean(target)
 
 	// Linked worktrees share the main repo's object store via a "commondir" file.
-	if data, err := os.ReadFile(filepath.Join(target, "commondir")); err == nil {
+	if data, err := os.ReadFile(filepath.Join(target, "commondir")); err == nil { // #nosec G703 -- Git worktree gitdir pointers may legitimately point outside the checkout.
 		commonDir := strings.TrimSpace(string(data))
 		if !filepath.IsAbs(commonDir) {
 			commonDir = filepath.Join(target, commonDir)
