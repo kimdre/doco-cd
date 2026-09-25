@@ -27,7 +27,7 @@ type State string
 type Actor string
 
 const (
-	StateStaged       State = "staged"        // predecessor: nothing created yet
+	StateStaged       State = "staged"        // predecessor: creating the successor or applier
 	StateStarted      State = "started"       // predecessor (scale-out): successor created and started, health pending
 	StateHandover     State = "handover"      // predecessor (scale-out): successor healthy
 	StateDrained      State = "drained"       // predecessor (scale-out): no in-flight work, safe to stop me

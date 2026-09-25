@@ -502,8 +502,9 @@ func waitForDrain(ctx context.Context, log *logger.Logger, store *selfupdate.Sto
 			return true, nil
 		case selfupdate.StateRolledBack, selfupdate.StateFailed, selfupdate.StateAborted:
 			return true, nil
-		case selfupdate.StateStarted, selfupdate.StateHandover:
-			// The predecessor is still health-checking or draining.
+		case selfupdate.StateStaged, selfupdate.StateStarted, selfupdate.StateHandover:
+			// The predecessor records the start only after this container
+			// started, then health-checks it and drains.
 			return false, nil
 		default:
 			return false, fmt.Errorf("unexpected self-update state while waiting for drain: %s", current.State)

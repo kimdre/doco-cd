@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -63,6 +64,7 @@ func TestWaitForDrainReadsCurrentJournal(t *testing.T) {
 
 	tests := []struct {
 		name    string
+		initial selfupdate.State
 		change  string
 		ready   bool
 		state   selfupdate.State
@@ -72,6 +74,7 @@ func TestWaitForDrainReadsCurrentJournal(t *testing.T) {
 		{name: "aborted", change: "abort", state: selfupdate.StateAborted},
 		{name: "record removed", change: "remove"},
 		{name: "timeout before drain", state: selfupdate.StateStarted, wantErr: context.DeadlineExceeded},
+		{name: "start not yet recorded", initial: selfupdate.StateStaged, state: selfupdate.StateStaged, wantErr: context.DeadlineExceeded},
 	}
 
 	for _, tt := range tests {
@@ -80,7 +83,7 @@ func TestWaitForDrainReadsCurrentJournal(t *testing.T) {
 
 			store := selfupdate.NewStore(t.TempDir())
 
-			record := selfupdate.Record{ID: "handover", State: selfupdate.StateStarted}
+			record := selfupdate.Record{ID: "handover", State: cmp.Or(tt.initial, selfupdate.StateStarted)}
 			if err := store.Create(&record); err != nil {
 				t.Fatal(err)
 			}
@@ -114,6 +117,31 @@ func TestWaitForDrainReadsCurrentJournal(t *testing.T) {
 					current.State, ready, err, tt.state, tt.ready, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestSuccessorWaitsForRecordedStart checks that a scale-out successor which
+// booted before the predecessor recorded its start waits instead of giving up.
+func TestSuccessorWaitsForRecordedStart(t *testing.T) {
+	t.Parallel()
+
+	store := selfupdate.NewStore(t.TempDir())
+
+	record := selfupdate.Record{
+		ID: "handover", State: selfupdate.StateStaged, Strategy: selfupdate.StrategyScaleOut,
+		Predecessor: selfupdate.ContainerRef{ID: "old"},
+		Successor:   selfupdate.ContainerRef{ID: "new"},
+	}
+	if err := store.Create(&record); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+	defer cancel()
+
+	err := finalizeAsSuccessor(ctx, logger.New(slog.LevelError), &finalizerDockerClient{}, nil, store, record, "new")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("finalizeAsSuccessor() = %v, want it to keep waiting", err)
 	}
 }
 
