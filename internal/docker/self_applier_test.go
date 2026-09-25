@@ -7,6 +7,8 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
+
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
 func applierSourceInspect() container.InspectResponse {
@@ -90,8 +92,9 @@ func TestBuildSelfApplierCreate(t *testing.T) {
 		t.Error("AutoRemove is set, which Docker rejects together with a restart policy")
 	}
 
-	if got := opts.HostConfig.RestartPolicy; got.Name != container.RestartPolicyOnFailure || got.MaximumRetryCount != 0 {
-		t.Errorf("restart policy = %+v, want on-failure with unlimited retries", got)
+	if got := opts.HostConfig.RestartPolicy; got.Name != container.RestartPolicyOnFailure ||
+		got.MaximumRetryCount != selfupdate.ApplierMaxRestarts {
+		t.Errorf("restart policy = %+v, want on-failure with %d retries", got, selfupdate.ApplierMaxRestarts)
 	}
 
 	if opts.Config.Hostname != "" {

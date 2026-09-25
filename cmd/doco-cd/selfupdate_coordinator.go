@@ -13,6 +13,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/controlplane"
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
@@ -187,7 +188,7 @@ func recoverAndExit(ctx context.Context, log *logger.Logger, deps selfUpdateCoor
 // permits the applier to change containers. On failure it exits, recovering
 // first if the applier already gave up.
 func acknowledgeApplierDrain(ctx context.Context, log *logger.Logger, deps selfUpdateCoordinatorDeps, record selfupdate.Record) selfupdate.Record {
-	updated, err := deps.store.Update(record, selfupdate.StateApplyDrained, selfupdate.ActorPredecessor)
+	updated, err := recordApplierDrain(ctx, deps.client, deps.store, record)
 	if err == nil {
 		return updated
 	}
@@ -208,6 +209,24 @@ func acknowledgeApplierDrain(ctx context.Context, log *logger.Logger, deps selfU
 	os.Exit(handoverExitCode)
 
 	return record
+}
+
+// recordApplierDrain lifts the applier's restart limit, then records the drain.
+// If the limit stays, it records the error instead, so the applier fails the
+// handover rather than depend on bounded restarts after the drain.
+func recordApplierDrain(
+	ctx context.Context, apiClient client.APIClient, store *selfupdate.Store, record selfupdate.Record,
+) (selfupdate.Record, error) {
+	if err := docker.ReleaseSelfApplierRestartLimit(ctx, apiClient, record.Applier.ID); err != nil {
+		record.Error = fmt.Sprintf("predecessor could not lift the applier restart limit: %v", err)
+		if saveErr := store.Save(record); saveErr != nil {
+			return record, errors.Join(err, fmt.Errorf("save the drain failure: %w", saveErr))
+		}
+
+		return record, err
+	}
+
+	return store.Update(record, selfupdate.StateApplyDrained, selfupdate.ActorPredecessor)
 }
 
 // retrySelfUpdateRecovery schedules another attempt unless shutdown was requested.
@@ -369,7 +388,7 @@ func waitForApplierHandover(ctx context.Context, log *logger.Logger, deps selfUp
 			os.Exit(handoverExitCode)
 		}
 
-		if applierFinished(result.Container.State) {
+		if applierFinished(result.Container) {
 			log.Warn("self-update: the applier exited without replacing this container, exiting for recovery",
 				slog.String("applier_id", record.Applier.ID),
 				slog.Int("exit_code", result.Container.State.ExitCode))

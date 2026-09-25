@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
@@ -94,6 +95,139 @@ func TestFailStoppedSelfApplierKeepsRecordedReason(t *testing.T) {
 
 	if failed.State != selfupdate.StateFailed || !strings.HasPrefix(failed.Error, record.Error+"; ") {
 		t.Errorf("recovered applier = %s/%q; want failed with the recorded reason kept", failed.State, failed.Error)
+	}
+}
+
+type inspectedApplierClient struct {
+	finalizerDockerClient
+	inspect container.InspectResponse
+}
+
+// ContainerInspect returns the configured applier inspect result.
+func (c *inspectedApplierClient) ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+	return client.ContainerInspectResult{Container: c.inspect}, nil
+}
+
+// TestFailStoppedSelfApplierFailsExhaustedApplier checks that an applier Docker
+// stopped restarting fails the handover, while one with restarts left does not.
+func TestFailStoppedSelfApplierFailsExhaustedApplier(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		restarts  int
+		wantState selfupdate.State
+	}{
+		{name: "restarts exhausted", restarts: selfupdate.ApplierMaxRestarts, wantState: selfupdate.StateFailed},
+		{name: "restarts left", restarts: selfupdate.ApplierMaxRestarts - 1, wantState: selfupdate.StateApplying},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := selfupdate.NewStore(t.TempDir())
+
+			record := selfupdate.Record{
+				ID: "crashing-applier", State: selfupdate.StateApplying,
+				Predecessor: selfupdate.ContainerRef{ID: "old"},
+				Applier:     selfupdate.ContainerRef{ID: "clone"},
+			}
+			if err := store.Create(&record); err != nil {
+				t.Fatal(err)
+			}
+
+			apiClient := &inspectedApplierClient{inspect: container.InspectResponse{
+				State:        &container.State{ExitCode: 1},
+				RestartCount: tc.restarts,
+				HostConfig: &container.HostConfig{RestartPolicy: container.RestartPolicy{
+					Name: container.RestartPolicyOnFailure, MaximumRetryCount: selfupdate.ApplierMaxRestarts,
+				}},
+			}}
+
+			current, err := failStoppedSelfApplier(t.Context(), apiClient, store, record)
+			if err != nil || current.State != tc.wantState {
+				t.Errorf("crashing applier = %s/%v; want %s", current.State, err, tc.wantState)
+			}
+		})
+	}
+}
+
+type restartPolicyClient struct {
+	finalizerDockerClient
+	store     *selfupdate.Store
+	journalID string
+	updateErr error
+	policies  []container.RestartPolicy
+	states    []selfupdate.State
+}
+
+// ContainerUpdate records the policy and the journal state it was applied in.
+func (c *restartPolicyClient) ContainerUpdate(_ context.Context, _ string, opts client.ContainerUpdateOptions) (client.ContainerUpdateResult, error) {
+	record, err := c.store.Load(c.journalID)
+	if err != nil {
+		return client.ContainerUpdateResult{}, err
+	}
+
+	c.policies = append(c.policies, *opts.RestartPolicy)
+	c.states = append(c.states, record.State)
+
+	return client.ContainerUpdateResult{}, c.updateErr
+}
+
+// TestRecordApplierDrainLiftsRestartLimitFirst checks that the applier restarts
+// without a bound before the drain is recorded, and that a failed update
+// records the error instead of draining.
+func TestRecordApplierDrainLiftsRestartLimitFirst(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		updateErr error
+		wantState selfupdate.State
+	}{
+		{name: "limit lifted", wantState: selfupdate.StateApplyDrained},
+		{name: "update fails", updateErr: errdefs.ErrUnavailable, wantState: selfupdate.StateApplyReady},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := selfupdate.NewStore(t.TempDir())
+
+			record := selfupdate.Record{
+				ID: "draining", State: selfupdate.StateApplyReady, Strategy: selfupdate.StrategyApplier,
+				Predecessor: selfupdate.ContainerRef{ID: "old"},
+				Applier:     selfupdate.ContainerRef{ID: "clone"},
+			}
+			if err := store.Create(&record); err != nil {
+				t.Fatal(err)
+			}
+
+			apiClient := &restartPolicyClient{store: store, journalID: record.ID, updateErr: tc.updateErr}
+
+			_, err := recordApplierDrain(t.Context(), apiClient, store, record)
+			if (err != nil) != (tc.updateErr != nil) {
+				t.Fatalf("recordApplierDrain() error = %v", err)
+			}
+
+			for i, policy := range apiClient.policies {
+				if policy.Name != container.RestartPolicyOnFailure || policy.MaximumRetryCount != 0 ||
+					apiClient.states[i] != selfupdate.StateApplyReady {
+					t.Errorf("update %d = %+v in state %s; want unbounded on-failure before the drain", i, policy, apiClient.states[i])
+				}
+			}
+
+			if len(apiClient.policies) == 0 {
+				t.Error("restart limit was not lifted")
+			}
+
+			stored, err := store.Load(record.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if stored.State != tc.wantState || (stored.Error != "") != (tc.updateErr != nil) {
+				t.Errorf("journal = %s/%q; want %s with an error only on failure", stored.State, stored.Error, tc.wantState)
+			}
+		})
 	}
 }
 

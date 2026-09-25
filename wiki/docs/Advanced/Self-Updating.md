@@ -102,6 +102,11 @@ A self-update that fails is recorded against that commit and **not retried**
 until a new commit arrives, so a broken version cannot loop. 
 The reason appears in the logs and in the failure notification.
 
+Docker restarts a crashing applier at most three times while the running
+instance still serves; after that the update fails. Once the running instance
+has handed over, Docker keeps restarting the applier until it finishes or
+restores the previous container.
+
 Once admission closes for a handover, new webhook and poll work is refused
 until service resumes. The predecessor waits for all in-flight deployments
 without a fixed timeout, so this can take longer than a few seconds. 

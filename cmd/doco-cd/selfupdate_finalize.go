@@ -366,9 +366,9 @@ func finalizeAsPredecessor(
 	}
 }
 
-// failStoppedSelfApplier recovers a missing, dead or cleanly exited applier.
-// A nonzero exit with on-failure restart is transient and must not be stolen
-// from Docker's restart loop.
+// failStoppedSelfApplier recovers a missing or finished applier. A nonzero exit
+// with on-failure restarts left is transient and must not be stolen from
+// Docker's restart loop.
 func failStoppedSelfApplier(
 	ctx context.Context, apiClient client.APIClient, store *selfupdate.Store, record selfupdate.Record,
 ) (selfupdate.Record, error) {
@@ -383,7 +383,7 @@ func failStoppedSelfApplier(
 		case result.Container.State == nil:
 			return record, fmt.Errorf("self-update applier %s has no container state", record.Applier.ID)
 		default:
-			stopped = applierFinished(result.Container.State)
+			stopped = applierFinished(result.Container)
 		}
 	}
 
@@ -411,9 +411,27 @@ func failStoppedSelfApplier(
 }
 
 // applierFinished reports whether Docker will not run the applier again. A
-// nonzero exit is not final: the on-failure restart policy retries it.
-func applierFinished(state *container.State) bool {
-	return state.Dead || (!state.Running && !state.Restarting && state.ExitCode == 0)
+// nonzero exit is not final while the on-failure policy has restarts left.
+// inspect.State must not be nil.
+func applierFinished(inspect container.InspectResponse) bool {
+	state := inspect.State
+
+	switch {
+	case state.Dead:
+		return true
+	case state.Running || state.Restarting:
+		return false
+	case state.ExitCode == 0:
+		return true
+	}
+
+	if inspect.HostConfig == nil {
+		return false
+	}
+
+	policy := inspect.HostConfig.RestartPolicy
+
+	return policy.IsOnFailure() && policy.MaximumRetryCount > 0 && inspect.RestartCount >= policy.MaximumRetryCount
 }
 
 // removeStagedSelfAppliers cleans up clones recorded in the journal or found
@@ -507,7 +525,7 @@ func waitForApplier(ctx context.Context, log *logger.Logger, apiClient client.AP
 			return false, fmt.Errorf("self-update applier %s has no container state", record.Applier.ID)
 		}
 
-		return applierFinished(result.Container.State), nil
+		return applierFinished(result.Container), nil
 	})
 }
 

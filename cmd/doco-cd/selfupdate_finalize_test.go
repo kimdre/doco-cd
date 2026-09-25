@@ -150,6 +150,12 @@ func (c *finalizerDockerClient) ContainerList(context.Context, client.ContainerL
 	return client.ContainerListResult{Items: c.list}, c.listErr
 }
 
+// ContainerUpdate accepts restart-policy updates, such as lifting the applier's
+// restart limit before the drain.
+func (c *finalizerDockerClient) ContainerUpdate(context.Context, string, client.ContainerUpdateOptions) (client.ContainerUpdateResult, error) {
+	return client.ContainerUpdateResult{}, nil
+}
+
 // ContainerInspect returns the configured successor state for recovery tests.
 func (c *finalizerDockerClient) ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
 	if c.inspectErr != nil {
@@ -298,5 +304,37 @@ func TestRemoveAbortedSuccessorDiscoversUnrecordedCandidate(t *testing.T) {
 
 	if len(apiClient.removedIDs) != 0 {
 		t.Errorf("removed candidates despite ambiguity: %v", apiClient.removedIDs)
+	}
+}
+
+// TestApplierFinished checks when Docker will not run the applier again.
+func TestApplierFinished(t *testing.T) {
+	t.Parallel()
+
+	bounded := &container.HostConfig{RestartPolicy: container.RestartPolicy{
+		Name: container.RestartPolicyOnFailure, MaximumRetryCount: 3,
+	}}
+	unbounded := &container.HostConfig{RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyOnFailure}}
+
+	for _, tc := range []struct {
+		name     string
+		inspect  container.InspectResponse
+		finished bool
+	}{
+		{name: "running", inspect: container.InspectResponse{State: &container.State{Running: true}, HostConfig: bounded}},
+		{name: "restarting", inspect: container.InspectResponse{State: &container.State{Restarting: true, ExitCode: 1}, RestartCount: 3, HostConfig: bounded}},
+		{name: "clean exit", inspect: container.InspectResponse{State: &container.State{}, HostConfig: bounded}, finished: true},
+		{name: "dead", inspect: container.InspectResponse{State: &container.State{Dead: true}, HostConfig: bounded}, finished: true},
+		{name: "failed with restarts left", inspect: container.InspectResponse{State: &container.State{ExitCode: 1}, RestartCount: 2, HostConfig: bounded}},
+		{name: "failed with restarts exhausted", inspect: container.InspectResponse{State: &container.State{ExitCode: 1}, RestartCount: 3, HostConfig: bounded}, finished: true},
+		{name: "failed without restart limit", inspect: container.InspectResponse{State: &container.State{ExitCode: 1}, RestartCount: 9, HostConfig: unbounded}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := applierFinished(tc.inspect); got != tc.finished {
+				t.Errorf("applierFinished() = %t, want %t", got, tc.finished)
+			}
+		})
 	}
 }

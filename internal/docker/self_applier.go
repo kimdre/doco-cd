@@ -44,7 +44,8 @@ func BuildSelfApplierCreate(inspect container.InspectResponse, journalID, stack 
 	}
 
 	hostConfig.RestartPolicy = container.RestartPolicy{
-		Name: container.RestartPolicyOnFailure,
+		Name:              container.RestartPolicyOnFailure,
+		MaximumRetryCount: selfupdate.ApplierMaxRestarts,
 	}
 
 	opts := client.ContainerCreateOptions{
@@ -277,6 +278,22 @@ func FindSelfAppliers(ctx context.Context, apiClient client.APIClient, stack str
 	}
 
 	return list.Items, nil
+}
+
+// ReleaseSelfApplierRestartLimit lets Docker restart the applier without a
+// bound. The predecessor calls it right before it drains, after which only the
+// applier can finish or roll back the handover.
+func ReleaseSelfApplierRestartLimit(ctx context.Context, apiClient client.APIClient, applierID string) error {
+	return selfupdate.Retry(ctx, func() error {
+		_, err := apiClient.ContainerUpdate(ctx, applierID, client.ContainerUpdateOptions{
+			RestartPolicy: &container.RestartPolicy{Name: container.RestartPolicyOnFailure},
+		})
+		if err != nil {
+			return fmt.Errorf("update applier container %s restart policy: %w", applierID, err)
+		}
+
+		return nil
+	}, nil)
 }
 
 // RemoveSelfApplier deletes a finished applier container.

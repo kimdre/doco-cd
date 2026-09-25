@@ -11,6 +11,12 @@ import (
 // Docker or filesystem hiccups.
 const RecoveryRetries = 2
 
+// ApplierMaxRestarts bounds Docker's restarts of a failing applier while the
+// predecessor still serves and can recover the handover. The predecessor lifts
+// the bound right before it drains, since the applier is then the only process
+// left to finish or roll back.
+const ApplierMaxRestarts = 3
+
 // RetryPause is the delay between Retry attempts. Tests may shorten it.
 var RetryPause = time.Second
 
