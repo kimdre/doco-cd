@@ -94,7 +94,7 @@ func finalizeSelfUpdate(
 		pending := *record
 
 		return func() {
-			if err := finalizeAsSuccessor(ctx, log, apiClient, notifier, store, pending); err != nil {
+			if err := finalizeAsSuccessor(ctx, log, apiClient, notifier, store, pending, identity.ContainerID); err != nil {
 				log.Error("self-update: failed to finalize the handover", logger.ErrAttr(err))
 			}
 		}, nil
@@ -124,7 +124,11 @@ func finalizeSelfUpdate(
 				return nil, fmt.Errorf("applier handover changed to %s during predecessor startup; restarting to restore admission", current.State)
 			}
 
-			record = &current
+			// Drained admission cannot reopen, so the coordinator converges the
+			// handover and exits on every outcome this process survives.
+			selfupdate.RequestDrain()
+
+			return nil, nil
 		}
 
 		return nil, finalizeAsPredecessor(ctx, log, apiClient, notifier, store, *record)
@@ -174,6 +178,7 @@ func finalizeAsSuccessor(
 	notifier *notification.Notifier,
 	store *selfupdate.Store,
 	record selfupdate.Record,
+	ownID string,
 ) error {
 	switch record.State {
 	case selfupdate.StateRolledBack, selfupdate.StateFailed, selfupdate.StateAborted:
@@ -196,13 +201,19 @@ func finalizeAsSuccessor(
 		record = reloaded
 
 		if record.State.RolledBackOrFailed() {
+			// A rollback that recreated this container records it as restored
+			// only after starting it, so this boot took it for the successor.
+			if ownID != "" && record.Restored.ID == ownID {
+				return finalizeAsPredecessor(ctx, log, apiClient, notifier, store, record)
+			}
+
 			return nil
 		}
 
 		if record.State.InApplierPhase() {
 			return fmt.Errorf("self-update applier exited while record %s is still %s", record.ID, record.State)
 		}
-	case selfupdate.StateHandover, selfupdate.StateStarted, selfupdate.StateDrained:
+	case selfupdate.StateStaged, selfupdate.StateStarted, selfupdate.StateHandover, selfupdate.StateDrained:
 		current, ready, err := waitForDrain(ctx, log, store, record)
 		if err != nil {
 			return err

@@ -301,6 +301,11 @@ func (c *Runs) Drain() {
 	c.background.Wait()
 }
 
+// Drained reports whether admission is closed. It cannot be reopened.
+func (c *Runs) Drained() bool {
+	return c.background.Closed()
+}
+
 // SucceededRun creates a successful terminal result.
 func SucceededRun(message string) RunResult {
 	return RunResult{Status: deploymentRunStatusSucceeded, Message: message}

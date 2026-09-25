@@ -70,6 +70,57 @@ func TestPredecessorRecoversExitedApplierWithoutTerminalState(t *testing.T) {
 	}
 }
 
+// TestRestoredContainerFinalisesRollbackAsSuccessor checks that a container
+// recreated by a rollback, which booted before the journal named it restored,
+// still reports and clears the rolled-back handover.
+func TestRestoredContainerFinalisesRollbackAsSuccessor(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		ownID     string
+		finalised bool
+	}{
+		{name: "restored container", ownID: "restored", finalised: true},
+		{name: "other container", ownID: "other"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := selfupdate.NewStore(t.TempDir())
+
+			record := selfupdate.Record{
+				ID: "drift-rollback", State: selfupdate.StateRolledBack, Stack: "self",
+				Predecessor: selfupdate.ContainerRef{ID: "old"},
+				Applier:     selfupdate.ContainerRef{ID: "clone"},
+				Restored:    selfupdate.ContainerRef{ID: "restored"},
+				Source:      selfupdate.SourceInfo{CommitSHA: "bad", ProjectHash: "changed"},
+			}
+			if err := store.Create(&record); err != nil {
+				t.Fatal(err)
+			}
+
+			// The journal as the recreated container saw it at boot.
+			seen := record
+			seen.State = selfupdate.StateApplyDrained
+			seen.Restored = selfupdate.ContainerRef{}
+
+			err := finalizeAsSuccessor(t.Context(), logger.New(slog.LevelError), &exitedApplierClient{}, nil, store, seen, tc.ownID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err = store.Load(record.ID); errors.Is(err, selfupdate.ErrNoRecord) != tc.finalised {
+				t.Errorf("journal cleared = %t (%v), want %t", errors.Is(err, selfupdate.ErrNoRecord), err, tc.finalised)
+			}
+
+			if _, poisoned, err := store.IsPoisoned("", "self", "bad", "changed"); err != nil || poisoned != tc.finalised {
+				t.Errorf("poisoned = %t (%v), want %t", poisoned, err, tc.finalised)
+			}
+		})
+	}
+}
+
 // TestFailStoppedSelfApplierKeepsRecordedReason checks that recovering a
 // stopped applier keeps the failure reason the applier already saved.
 func TestFailStoppedSelfApplierKeepsRecordedReason(t *testing.T) {
@@ -568,6 +619,12 @@ func TestPredecessorRestartClosesAdmissionBeforeResumingAppliedDrain(t *testing.
 	if !errors.Is(err, controlplane.ErrBackgroundWorkClosed) {
 		t.Errorf("new work after restart = %v, want admission closed", err)
 	}
+
+	select {
+	case <-selfupdate.DrainRequests():
+	default:
+		t.Error("the coordinator was not asked to converge the drained handover")
+	}
 }
 
 // TestSuccessorCannotFinaliseWhileApplierWaitsForDrain requires explicit
@@ -589,7 +646,7 @@ func TestSuccessorCannotFinaliseWhileApplierWaitsForDrain(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
 	defer cancel()
 
-	err := finalizeAsSuccessor(ctx, logger.New(slog.LevelError), &finalizerDockerClient{}, nil, store, record)
+	err := finalizeAsSuccessor(ctx, logger.New(slog.LevelError), &finalizerDockerClient{}, nil, store, record, "new")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("finalise while applier waits = %v; want to wait for the applier", err)
 	}

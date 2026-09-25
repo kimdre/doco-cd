@@ -162,8 +162,13 @@ func handleDrainRequest(ctx context.Context, log *logger.Logger, deps selfUpdate
 
 // recoverOrRetry reports and cleans up an unsuccessful handover while this
 // process still serves, scheduling another attempt on failure. It returns true
-// on shutdown.
+// on shutdown. A process that drained at boot, because the applier could act
+// at any moment, exits instead.
 func recoverOrRetry(ctx context.Context, log *logger.Logger, deps selfUpdateCoordinatorDeps, record selfupdate.Record, msg string) bool {
+	if deps.runs.Drained() {
+		recoverAndExit(ctx, log, deps, record, msg)
+	}
+
 	if err := finalizeAsPredecessor(ctx, log, deps.client, deps.notifier, deps.store, record); err != nil {
 		log.Error(msg, logger.ErrAttr(err))
 
