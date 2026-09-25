@@ -52,7 +52,7 @@ func ValidateDockerConfig(cfg *configfile.ConfigFile) error {
 	configPath = filepath.Clean(configPath)
 
 	// Check if the config file exists
-	fileInfo, err := os.Stat(configPath)
+	fileInfo, err := os.Stat(configPath) // #nosec G703 -- Docker config path is explicitly selected by cfg.Filename or DOCKER_CONFIG.
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Config file doesn't exist, which is acceptable
@@ -73,7 +73,7 @@ func ValidateDockerConfig(cfg *configfile.ConfigFile) error {
 
 // validateDockerConfigContent checks if the docker config file is readable and contains valid content.
 func validateDockerConfigContent(configPath string) error {
-	file, err := os.Open(configPath)
+	file, err := os.Open(configPath) // #nosec G703 -- Read the selected Docker config path to validate its contents.
 	if err != nil {
 		return fmt.Errorf("docker config file %q is not readable: %w", configPath, err)
 	}
