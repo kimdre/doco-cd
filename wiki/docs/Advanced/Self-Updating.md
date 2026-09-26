@@ -44,6 +44,28 @@ Replace the image reference when using a different release, keeping it the same 
 the [worked example](https://github.com/kimdre/doco-cd/tree/main/examples/self-updating) 
 includes a bootstrap script and compose file pinned to the same release.
 
+## Migrating an existing instance
+
+An instance that is already running does not need the bootstrap. doco-cd recognizes its own stack
+by the `com.docker.compose.project` and `com.docker.compose.service` labels of the running container,
+so a takeover only requires the repository to describe the same compose project.
+
+1. Recreate the running instance one last time, the way it was started:
+   image at a release that supports self-update, `SELF_UPDATE_ENABLED=true`,
+   a restart policy and a healthcheck.
+2. Add the doco-cd stack to the repository. `name` in `.doco-cd.yml` must equal the
+   compose project name of the running container and the service name must match too.
+   Otherwise the deploy creates a second doco-cd next to the running one.
+3. In that compose file mount the same data volume as `external`.
+   A different volume starts the successor with an empty repository cache and journal.
+   Keep the rest identical to what runs, so the takeover is the only change.
+4. Push. The next poll deploys the stack, finds its own container in it and hands over
+   to a successor created from the repository. From then on the repository is the only
+   source of truth; delete the old copy of the compose file.
+
+With the [two-instance setup](#alternative-two-instances), remove the updater stack in the
+same commit and enable self-update on the main instance only.
+
 ## Strategies
 
 [`SELF_UPDATE_STRATEGY`](../App-Settings.md#runtime-settings) selects how the container is replaced. 
