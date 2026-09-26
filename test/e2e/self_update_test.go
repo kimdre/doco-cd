@@ -641,8 +641,6 @@ func TestSelfUpdateCrashRecovery(t *testing.T) {
 			h.ReplaceInWorktree("deploy/compose.yaml", ":v1", ":v2")
 			h.RepoPush("bump the doco-cd image")
 
-			h.WaitForLogAfter("self-update: crash hook fired", mark, 3*time.Minute)
-
 			h.WaitFor(5*time.Minute, "the stack converges to one new healthy container", func() bool {
 				all := h.SelfContainers(true)
 
@@ -651,6 +649,13 @@ func TestSelfUpdateCrashRecovery(t *testing.T) {
 			})
 
 			h.WaitForLogAfter("self-update finalised", mark, 3*time.Minute)
+
+			// Every crash point precedes the finalisation. The crashed process is
+			// often removed before its log line can be collected, so check the
+			// marker the hook leaves on the data volume instead.
+			if !h.CrashHookFired() {
+				t.Fatal("the crash hook did not fire, so the handover was not interrupted")
+			}
 
 			h.WaitFor(2*time.Minute, "the appliers are cleaned up", func() bool {
 				return len(h.SelfAppliers(true)) == 0

@@ -715,6 +715,12 @@ func (h *Harness) readJournal() string {
 	return h.inspectDataVolume("ls -la /data/self-update 2>/dev/null; cat /data/self-update/*.json 2>/dev/null")
 }
 
+// CrashHookFired reports whether a crash hook left its marker on the data
+// volume. The marker outlives the crashed container and its logs.
+func (h *Harness) CrashHookFired() bool {
+	return strings.TrimSpace(h.inspectDataVolume("ls /data/self-update/crash-* >/dev/null 2>&1 && echo fired")) == "fired"
+}
+
 // inspectDataVolume runs a shell command against the scenario data volume from
 // a throwaway container, since the volume is not reachable from the test host.
 func (h *Harness) inspectDataVolume(script string) string {
