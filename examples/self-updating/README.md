@@ -33,7 +33,7 @@ bootstrap.sh              # run once per host, then never again
 
 1. Set the repository URL in `bootstrap.sh` and
    `infra-repo/doco-cd/compose.yaml`.
-2. The example pins `0.121.0` by tag in `bootstrap.sh` and by tag and digest
+2. The example pins `0.122.0` by tag in `bootstrap.sh` and by tag and digest
    in `infra-repo/doco-cd/compose.yaml`. To use another version, run
    `docker buildx imagetools inspect ghcr.io/kimdre/doco-cd:<version>`, then
    update the tag in both files and the digest in `compose.yaml`.
