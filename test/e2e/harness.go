@@ -72,6 +72,17 @@ type Harness struct {
 	gitSrv   testcontainers.Container
 	daemon   testcontainers.Container
 
+	selfUpdate    bool
+	selfStack     string
+	selfService   string
+	selfImageRepo string
+	bootstrap     testcontainers.Container
+	selfLogCache  map[string]string
+	selfLogMarks  []map[string]int
+	selfLogMu     sync.Mutex
+	selfLogStop   chan struct{}
+	selfLogDone   chan struct{}
+
 	remoteContext    bool
 	contextConfigDir string
 	remoteDaemon     testcontainers.Container
@@ -288,6 +299,10 @@ func (h *Harness) Start() {
 		h.preCommitHook()
 	}
 
+	if h.selfUpdate {
+		h.prepareSelfUpdateFixture()
+	}
+
 	h.RepoPush("e2e: initial fixture")
 
 	h.logf("starting gitserver")
@@ -301,6 +316,14 @@ func (h *Harness) Start() {
 
 	pollPath := h.writePollConfig()
 	h.pollConfig = pollPath
+
+	if h.selfUpdate {
+		h.logf("bootstrapping the self-managed daemon")
+		h.startSelfBootstrap(pollPath)
+
+		return
+	}
+
 	h.logf("starting daemon")
 	h.startDaemon(pollPath)
 }
@@ -690,6 +713,11 @@ func (h *Harness) teardownInternal() {
 	h.teardownOnce.Do(func() {
 		if h.daemon != nil {
 			h.terminateContainer(h.daemon)
+		}
+
+		if h.selfUpdate {
+			h.stopSelfLogCollector()
+			h.cleanupSelfUpdate()
 		}
 
 		h.cleanupStacks()

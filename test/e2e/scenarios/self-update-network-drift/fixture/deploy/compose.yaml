@@ -1,0 +1,47 @@
+services:
+  doco-cd:
+    image: ${E2E_SELF_IMAGE_REPO}:v1
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      TZ: Etc/UTC
+      LOG_LEVEL: debug
+      SELF_UPDATE_ENABLED: "true"
+      E2E_GENERATION: "1"
+      POLL_CONFIG: |
+        - url: http://gitserver/${E2E_SCENARIO}.git
+          reference: refs/heads/main
+          interval: ${E2E_POLL_INTERVAL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - data:/data
+    networks: [default, backend]
+    healthcheck:
+      test: ["CMD", "/doco-cd", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+  # Shares the project network, so recreating it must restore this service too.
+  worker:
+    image: alpine:3.22
+    command: ["sleep", "infinity"]
+    init: true
+    restart: unless-stopped
+    networks: [backend]
+
+networks:
+  default:
+    name: ${E2E_NETWORK}
+    external: true
+  # Changing a label changes the network's config hash, which makes Compose
+  # recreate the network.
+  backend:
+    labels:
+      e2e.generation: "1"
+
+volumes:
+  data:
+    name: ${E2E_DATA_VOLUME}
+    external: true

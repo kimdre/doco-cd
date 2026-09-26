@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 	"github.com/kimdre/doco-cd/internal/source"
 	"github.com/kimdre/doco-cd/internal/stages"
 
@@ -376,6 +378,10 @@ func reportPollOutcome(
 	switch {
 	case lifecycle.IsCanceled(deployErr):
 		jobLog.Debug("poll job canceled during application shutdown", log.ErrAttr(deployErr), elapsed)
+	case errors.Is(deployErr, selfupdate.ErrHandover):
+		// The successor reports the result once it has proven itself healthy,
+		// so this run is neither a success nor a failure.
+		jobLog.Info("self-update handover in progress", elapsed, slog.String("next_run", nextRun))
 	case deployErr != nil:
 		pollError(jobLog, metadata, deployErr, notifier)
 		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), elapsed, slog.String("next_run", nextRun))

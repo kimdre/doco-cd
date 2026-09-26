@@ -1,0 +1,4 @@
+name: e2e-crash-handover
+working_dir: deploy
+compose_files: [compose.yaml]
+timeout: 60

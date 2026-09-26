@@ -429,6 +429,14 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return err
 		}
 
+		// A self-update that failed for this exact commit must not be retried,
+		// or the failed-deploy retry would attempt it on every poll.
+		if skip, poisonErr := selfUpdatePoisoned(s.DeployConfig, latestCommit, newHash, stageLog); poisonErr != nil {
+			stageLog.Warn("failed to read the self-update poison state", slog.Any("error", poisonErr))
+		} else if skip {
+			return ErrSkipDeployment
+		}
+
 		if s.DeployConfig.ForceRecreate {
 			stageLog.Debug("force recreate enabled, skipping pre-deploy image pull check")
 		} else if s.DeployConfig.ForceImagePull {
@@ -769,4 +777,31 @@ func pkiRoleNormMap(externalSecrets map[string]secrettypes.ExternalSecretRef, en
 	}
 
 	return norm
+}
+
+// selfUpdatePoisoned reports whether a previous self-update of this exact
+// commit and project already failed, so this deploy must be skipped until a
+// new commit arrives.
+func selfUpdatePoisoned(dc *deployConfig.Config, latestCommit, projectHash string, stageLog *slog.Logger) (bool, error) {
+	if !docker.IsSelfStack(dc) {
+		return false, nil
+	}
+
+	store := docker.SelfUpdateConfig().Store
+	if store == nil {
+		return false, nil
+	}
+
+	poison, ok, err := store.IsPoisoned(docker.NormalizeContextName(dc.Context), dc.Name, latestCommit, projectHash)
+	if err != nil || !ok {
+		return false, err
+	}
+
+	stageLog.Warn("self-update poisoned, skipping until a new commit",
+		slog.String("commit", latestCommit),
+		slog.String("reason", poison.Reason),
+		slog.Int("attempts", poison.Attempts),
+	)
+
+	return true, nil
 }

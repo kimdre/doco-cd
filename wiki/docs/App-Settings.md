@@ -9,11 +9,13 @@ The settings are grouped below by the part of the application they configure.
 
 ## Runtime Settings
 
-| Key                 | Type    | Description                                                                                                                                                                                                                 | Default |
-|---------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| `LOG_LEVEL`         | string  | Log level of the app. Possible values: `debug`, `info`, `warn`, `error`                                                                                                                                                     | `INFO`  |
-| `SCHEDULER_ENABLED` | boolean | Controls whether this doco-cd instance starts the built-in [job scheduler](Advanced/Job-Scheduling.md). Disable it on secondary/[self-updater](Advanced/Self-Updating.md) instances that should not trigger scheduled jobs. | `true`  |
-| `TZ`                | string  | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container.                                                                                                                         | `UTC`   |
+| Key                    | Type    | Description                                                                                                                                                                                                                 | Default |
+|------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| `LOG_LEVEL`            | string  | Log level of the app. Possible values: `debug`, `info`, `warn`, `error`                                                                                                                                                     | `INFO`  |
+| `SCHEDULER_ENABLED`    | boolean | Controls whether this doco-cd instance starts the built-in [job scheduler](Advanced/Job-Scheduling.md). Disable it on secondary/[self-updater](Advanced/Self-Updating.md) instances that should not trigger scheduled jobs. | `true`  |
+| `SELF_UPDATE_ENABLED`  | boolean | Allows doco-cd to deploy the stack that contains its own container (see [Self-Updating](Advanced/Self-Updating.md)). When disabled, such a deployment is refused with an error instead of being attempted.                  | `false` |
+| `SELF_UPDATE_STRATEGY` | string  | How doco-cd replaces its own container: `scale_out` starts a second container and hands over without downtime, `applier` delegates to a throwaway clone, `auto` picks `scale_out` unless the compose file rules it out.     | `auto`  |
+| `TZ`                   | string  | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container.                                                                                                                         | `UTC`   |
 
 ## API and Webhook Settings
 

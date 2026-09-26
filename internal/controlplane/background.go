@@ -56,6 +56,14 @@ func (w *backgroundWork) Close() {
 	w.mu.Unlock()
 }
 
+// Closed reports whether admission has been closed.
+func (w *backgroundWork) Closed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.closed
+}
+
 // Wait blocks until all registered work has completed.
 func (w *backgroundWork) Wait() {
 	w.wg.Wait()

@@ -284,9 +284,9 @@ func GetLabeledSecrets(ctx context.Context, cli client.APIClient, key, value str
 }
 
 // GetMountPointByDestination retrieves the mount point of a container volume/bind mount by its destination (mount point inside the container).
-func GetMountPointByDestination(cli client.APIClient, containerID, destination string) (container.MountPoint, error) {
+func GetMountPointByDestination(ctx context.Context, cli client.APIClient, containerID, destination string) (container.MountPoint, error) {
 	// Get the container info
-	result, err := cli.ContainerInspect(context.TODO(), containerID, client.ContainerInspectOptions{})
+	result, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return container.MountPoint{}, fmt.Errorf("failed to inspect container %s: %w", containerID, err)
 	}

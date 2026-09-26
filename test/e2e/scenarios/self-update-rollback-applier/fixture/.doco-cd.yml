@@ -1,0 +1,4 @@
+name: e2e-rollback-applier
+working_dir: deploy
+compose_files: [compose.yaml]
+timeout: 40
