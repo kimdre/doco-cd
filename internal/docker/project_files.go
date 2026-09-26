@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -193,10 +194,13 @@ func resolvedProjectFiles(p *types.Project) ([]projectFile, error) {
 	return files.list(), nil
 }
 
-// repoRelativePath converts an absolute path on the docker host to the repository-relative,
-// slash-separated form go-git reports in a commit log. ok is false when the path is not
-// inside the repository, which is how a host path or a remote include is dropped.
-func repoRelativePath(repoPath, absPath string) (rel string, ok bool) {
+// RepoRelativePath converts an absolute path to the repository-relative, slash-separated
+// form go-git reports in a commit log. ok is false when the path is not inside repoPath,
+// which is how a host path or a remote include is dropped.
+//
+// repoPath and absPath must be on the same side of the data mount: both on the docker host,
+// or both inside the doco-cd container.
+func RepoRelativePath(repoPath, absPath string) (rel string, ok bool) {
 	if !filesystem.InBasePath(repoPath, absPath) {
 		return "", false
 	}
@@ -223,7 +227,7 @@ func projectRepoPaths(repoPath string, p *types.Project) (files, dirs []string, 
 	}
 
 	for _, f := range projectFiles {
-		rel, ok := repoRelativePath(repoPath, f.Path)
+		rel, ok := RepoRelativePath(repoPath, f.Path)
 		if !ok {
 			continue
 		}
@@ -252,10 +256,17 @@ func projectRepoPaths(repoPath string, p *types.Project) (files, dirs []string, 
 // repoPath is the path to the repository on the docker host, like the absolute paths in
 // types.Project.
 //
+// extraRepoPaths are files that belong to the stack without being part of the compose
+// project, relative to the repository root. The deployment configuration is the motivating
+// case: it declares the stack and carries its image tags, so a commit that changes only it
+// is the reason the deploy happened, but the project never names it. They are relative and
+// not absolute because the deployment configuration is read inside the doco-cd container,
+// while the project lives on the docker host: /data/... never matches /var/lib/docker/....
+//
 // The returned filter is nil when the project covers the repository root or resolves to no
 // path inside the repository. Both match every path, so filtering would only cost tree
 // diffs, and callers read a nil filter as "do not filter".
-func ProjectPathFilter(repoPath string, p *types.Project, extraPaths ...string) (func(string) bool, error) {
+func ProjectPathFilter(repoPath string, p *types.Project, extraRepoPaths ...string) (func(string) bool, error) {
 	if p == nil {
 		return nil, nil
 	}
@@ -265,15 +276,9 @@ func ProjectPathFilter(repoPath string, p *types.Project, extraPaths ...string) 
 		return nil, err
 	}
 
-	// Files that belong to the stack without being part of the compose project. The
-	// deployment configuration is the motivating case: it is what declares the stack and
-	// carries its image tags, so a commit that changes only it is the reason this deploy
-	// happened — but it is not a compose file, so the project never names it and its
-	// commit was dropped from the changelog.
-	// Paths outside the repository are ignored, the same as project files.
-	for _, extra := range extraPaths {
-		rel, ok := repoRelativePath(repoPath, extra)
-		if !ok {
+	for _, extra := range extraRepoPaths {
+		rel := path.Clean(filepath.ToSlash(extra))
+		if extra == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || path.IsAbs(rel) {
 			continue
 		}
 
