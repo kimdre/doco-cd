@@ -1,0 +1,11 @@
+# One deploy config per box, several stacks per config. Tags live here, Renovate bumps them.
+name: e2e-changelog-box1-app
+working_dir: box1/app
+environment:
+  APP_TAG: "3.21"
+---
+name: e2e-changelog-box1-agent
+working_dir: box1/agent
+environment:
+  SHARED_REF: main
+  AGENT_TAG: "3.21"

@@ -1,0 +1,5 @@
+# The image tag lives here and CI bumps it, so a roll commit touches only this file.
+name: e2e-changelog-deploy-config
+working_dir: deploy/app
+environment:
+  APP_TAG: "3.21"

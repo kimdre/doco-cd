@@ -52,6 +52,7 @@ type Harness struct {
 	pollConfig   string
 	pollDocument string // overrides the default single-git-entry poll config
 	pollInterval time.Duration
+	pollTarget   string
 	dataVolume   string
 	volumes      []string
 	extraStacks  []string
@@ -76,6 +77,11 @@ type Harness struct {
 	contextConfigDir string
 	remoteDaemon     testcontainers.Container
 	remoteDocker     *client.Client
+
+	// lastCommitTime keeps commit times strictly increasing, git only stores seconds.
+	lastCommitTime time.Time
+	// notificationsSeen is the per-stack cursor of NextNotification.
+	notificationsSeen map[string]int
 
 	teardownOnce sync.Once
 }
@@ -263,6 +269,13 @@ func (h *Harness) pushOCI(tag string, push func(ref name.Reference) error) strin
 	}
 
 	return containerRef
+}
+
+// SetPollTarget makes the daemon read .doco-cd.<target>.yml instead of
+// .doco-cd.yml, like a poll config entry with `target:`. Call before Start.
+func (h *Harness) SetPollTarget(target string) {
+	h.t.Helper()
+	h.pollTarget = target
 }
 
 // Start creates the initial fixture commit, builds and starts the gitserver
@@ -641,6 +654,9 @@ func (h *Harness) writePollConfig() string {
 	content := h.pollDocument
 	if content == "" {
 		content = fmt.Sprintf("- url: http://gitserver/%s.git\n  reference: refs/heads/main\n  interval: %s\n", h.scenario, interval)
+		if h.pollTarget != "" {
+			content += fmt.Sprintf("  target: %s\n", h.pollTarget)
+		}
 	}
 
 	path := filepath.Join(h.workDir, "poll.yaml")

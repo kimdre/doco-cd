@@ -74,7 +74,12 @@ by reading the stack name(s) straight from the fixture's `.doco-cd.yml`
    every `.doco-cd.yml` under `scenarios/<name>/`, so stacks added that way are
    torn down too. `SetEnv` adds environment variables to the daemon before
    `Start`, e.g. `SOPS_AGE_KEY` for a scenario with encrypted fixtures.
-4. `go test -tags e2e ./test/e2e/... -run Test<Name> -v`.
+4. Scenarios asserting on notifications call `CaptureNotifications` before
+   `Start`: the gitserver also answers as the Apprise API and logs every
+   request, and `NextNotification` returns them per stack with the commit
+   changelog as a list. `SetPollTarget` reads `.doco-cd.<target>.yml`, and
+   `RepoCheckout` + `RepoMerge` build pull request merges.
+5. `go test -tags e2e ./test/e2e/... -run Test<Name> -v`.
 
 Keep scenarios independent: every scenario gets a fresh daemon, a fresh data
 volume and a fresh repo. Harness containers remain running until the e2e suite
