@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -235,6 +236,47 @@ func TestGetConfig_SchedulerEnabled(t *testing.T) {
 
 	if cfg.SchedulerEnabled {
 		t.Fatal("expected SchedulerEnabled to be false")
+	}
+}
+
+func TestGetConfig_SchedulerOwnership(t *testing.T) {
+	tests := []struct {
+		name     string
+		id       string
+		contexts string
+		wantID   string
+		want     []string
+		wantErr  bool
+	}{
+		{name: "unset"},
+		{name: "ID only", id: " host-a ", wantID: "host-a"},
+		{name: "strict default and remote", id: "host-b", contexts: " default, docker-host ", wantID: "host-b", want: []string{"", "docker-host"}},
+		{name: "missing ID", contexts: "default", wantErr: true},
+		{name: "invalid ID", id: "host a", wantErr: true},
+		{name: "blank ID", id: " ", wantErr: true},
+		{name: "duplicate context", id: "a", contexts: "default,Default", wantErr: true},
+		{name: "empty context", id: "a", contexts: "default,", wantErr: true},
+		{name: "blank contexts", id: "a", contexts: " ", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SCHEDULER_INSTANCE_ID", tc.id)
+			t.Setenv("SCHEDULER_REQUIRE_OWNER_CONTEXTS", tc.contexts)
+
+			cfg, err := GetConfig()
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("GetConfig() error = %v, wantErr = %v", err, tc.wantErr)
+			}
+
+			if tc.wantErr {
+				return
+			}
+
+			if cfg.SchedulerInstanceID != tc.wantID || !slices.Equal(cfg.SchedulerOwnerContexts, tc.want) {
+				t.Fatalf("scheduler ownership = %q %q, want %q %q", cfg.SchedulerInstanceID, cfg.SchedulerOwnerContexts, tc.wantID, tc.want)
+			}
+		})
 	}
 }
 

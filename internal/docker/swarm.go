@@ -372,7 +372,7 @@ func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.Par
 // applyCertRotationLabelsToService, so only services actually using a rotated certificate carry
 // them. project resolves those references and may be nil, in which case no cert labels are added.
 func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	sourceURL, repoDir, appVersion, timestamp, latestCommit, projectHash string,
+	sourceURL, repoDir, appVersion, timestamp, latestCommit, projectHash, schedulerInstanceID string,
 ) {
 	stableLabels := stableSwarmMetadataLabels(deployConfig, payload, repoDir)
 
@@ -410,6 +410,16 @@ func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, d
 		}
 
 		maps.Copy(s.Labels, stableLabels)
+
+		if enabled, err := strconv.ParseBool(strings.TrimSpace(s.Labels[DocoCDJobLabels.JobEnabled])); err == nil && enabled {
+			if _, explicit := s.Labels[DocoCDJobLabels.JobOwner]; !explicit {
+				if owner, definedOnService := s.Deploy.Labels[DocoCDJobLabels.JobOwner]; definedOnService {
+					s.Labels[DocoCDJobLabels.JobOwner] = owner
+				} else if schedulerInstanceID != "" {
+					s.Labels[DocoCDJobLabels.JobOwner] = schedulerInstanceID
+				}
+			}
+		}
 
 		stack.Services[i] = s
 	}

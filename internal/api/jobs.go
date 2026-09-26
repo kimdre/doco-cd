@@ -98,7 +98,7 @@ func (h *Handler) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.Requ
 			restapi.JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
 		case errors.Is(err, scheduler.ErrScheduledJobNotFound):
 			restapi.JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
-		case errors.Is(err, scheduler.ErrScheduledJobDisabled), errors.Is(err, scheduler.ErrScheduledJobAmbiguous):
+		case errors.Is(err, scheduler.ErrScheduledJobDisabled), errors.Is(err, scheduler.ErrScheduledJobAmbiguous), errors.Is(err, scheduler.ErrScheduledJobNotOwned):
 			restapi.JSONError(w, err.Error(), "", jobID, http.StatusConflict)
 		default:
 			restapi.JSONError(w, "failed to trigger scheduled job run", err.Error(), jobID, http.StatusInternalServerError)

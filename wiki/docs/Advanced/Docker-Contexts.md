@@ -14,6 +14,11 @@ This lets one doco-cd instance manage and deploy to multiple Docker hosts/cluste
 !!! info "Default Docker context"
     Default Docker context means the local Docker host (usually via the mounted socket `/var/run/docker.sock`).
 
+!!! warning "Job Scheduler ownership"
+    If another doco-cd instance also reaches a daemon through a different context name, both instances can discover its [scheduled jobs](Job-Scheduling.md).
+    Configure [scheduler ownership](Job-Scheduling.md#multiple-instances-on-one-docker-daemon) using each instance's local context name;
+    names alone do not identify distinct daemons.
+
 ## Supported transports
 
 doco-cd includes an SSH client, so both TCP and SSH Docker contexts work out of the box:

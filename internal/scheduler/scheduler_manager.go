@@ -38,6 +38,7 @@ type Manager struct {
 	// composeOptions bundles the Docker-owned settings needed to reload scheduled Compose
 	// projects (see docker.ScheduledComposeOptions), resolved explicitly at composition time.
 	composeOptions docker.ScheduledComposeOptions
+	ownership      OwnershipOptions
 
 	mu      sync.Mutex
 	workers map[string]managedWorker // key = normalized context name + runtime mode
@@ -59,9 +60,14 @@ type managedWorker struct {
 // NewManager creates a scheduler Manager bound to registry. log and wg are
 // required for Start (running background workers) but may be omitted if the
 // Manager is only used for on-demand ListJobs/TriggerNow calls.
-func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, composeOptions docker.ScheduledComposeOptions) *Manager {
+func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, composeOptions docker.ScheduledComposeOptions, ownership ...OwnershipOptions) *Manager {
 	if log == nil {
 		log = slog.Default()
+	}
+
+	var policy OwnershipOptions
+	if len(ownership) > 0 {
+		policy = ownership[0]
 	}
 
 	return &Manager{
@@ -73,6 +79,7 @@ func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.Wai
 		stopHoldTracker: stopHoldTracker,
 		runtime:         newRuntimeStore(),
 		composeOptions:  composeOptions,
+		ownership:       policy,
 		workers:         map[string]managedWorker{},
 	}
 }
@@ -148,7 +155,7 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 				continue
 			}
 
-			worker := newSchedulerForMode(result.ContextClient, mode, m.log, m.wg, m.secretProvider, m.notifier, m.stopHoldTracker, m.runtime, m.composeOptions)
+			worker := newSchedulerForMode(result.ContextClient, mode, m.log, m.wg, m.secretProvider, m.notifier, m.stopHoldTracker, m.runtime, m.composeOptions, m.ownership)
 			workerCtx, cancel := context.WithCancel(ctx)
 			m.nextID++
 			workerID := m.nextID
@@ -194,7 +201,7 @@ func (m *Manager) ListJobs(ctx context.Context, contextName, stackName string) (
 		return nil, fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
 	}
 
-	return listJobsForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, m.secretProvider, m.notifier, m.runtime, stackName, m.composeOptions)
+	return listJobsForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, m.secretProvider, m.notifier, m.runtime, stackName, m.composeOptions, m.ownership)
 }
 
 // TriggerNow executes one configured scheduled job immediately on the given
@@ -210,7 +217,7 @@ func (m *Manager) TriggerNow(ctx context.Context, contextName, jobName, stackNam
 		return "", fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
 	}
 
-	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, jobName, stackName, secretProvider, m.notifier, m.stopHoldTracker, m.runtime, m.composeOptions)
+	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, jobName, stackName, secretProvider, m.notifier, m.stopHoldTracker, m.runtime, m.composeOptions, m.ownership)
 }
 
 // stopWorkers requests cancellation for every managed worker. Each worker

@@ -132,7 +132,7 @@ With the configuration above:
 
 !!! warning "Multiple scheduler instances"
     If both doco-cd instances share the same Docker socket and both have the scheduler enabled, they can discover the same scheduled jobs.
-    Disable the scheduler on the updater instance with [`SCHEDULER_ENABLED`](../App-Settings.md). See also [Job Scheduling](Job-Scheduling.md) for more details.
+    Disable the scheduler on an updater that does not need to own jobs with [`SCHEDULER_ENABLED`](../App-Settings.md). If the updater must schedule its own jobs on a shared daemon, use [per-job ownership](Job-Scheduling.md#multiple-instances-on-one-docker-daemon) instead.
 
 !!! tip
     Keep the updater instance as small and stable as possible. It usually only needs polling and does not need public webhook exposure.

@@ -18,9 +18,10 @@ This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
 func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	sourceURL, workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
+	sourceURL, workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash, schedulerInstanceID string,
 ) {
 	for i, s := range project.Services {
+		existingCustomLabels := s.CustomLabels
 		// Extract service dependencies (depends_on)
 		dependencies := make([]string, 0, len(s.DependsOn))
 		for dep := range s.DependsOn {
@@ -59,8 +60,25 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 
 		applyCertRotationLabelsToService(s.CustomLabels, s, project, deployConfig)
 
+		if enabled, err := strconv.ParseBool(strings.TrimSpace(s.Labels[DocoCDJobLabels.JobEnabled])); err == nil && enabled {
+			switch {
+			case hasLabel(s.Labels, DocoCDJobLabels.JobOwner):
+				// The compose-defined label already takes precedence over the instance default.
+			case hasLabel(existingCustomLabels, DocoCDJobLabels.JobOwner):
+				s.CustomLabels[DocoCDJobLabels.JobOwner] = existingCustomLabels[DocoCDJobLabels.JobOwner]
+			case schedulerInstanceID != "":
+				s.CustomLabels[DocoCDJobLabels.JobOwner] = schedulerInstanceID
+			}
+		}
+
 		project.Services[i] = s
 	}
+}
+
+// hasLabel checks if a label exists in the provided map.
+func hasLabel(labels map[string]string, name string) bool {
+	_, ok := labels[name]
+	return ok
 }
 
 // addComposeServiceTrackingLabels restores the Compose labels required for lifecycle operations.

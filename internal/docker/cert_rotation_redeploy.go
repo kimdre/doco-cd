@@ -14,6 +14,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -106,6 +107,15 @@ func RotateProjectCertificates(
 		return fmt.Errorf("select certificate-consuming services for rotation of %s: %w", ref.Project, err)
 	}
 
+	containers, err := GetProjectContainers(ctx, dockerCli, ref.Project)
+	if err != nil {
+		return fmt.Errorf("inspect compose job owners for cert rotation of %s: %w", ref.Project, err)
+	}
+
+	if err := preserveComposeJobOwners(selectedProject, containers); err != nil {
+		return fmt.Errorf("preserve compose job owners for cert rotation of %s: %w", ref.Project, err)
+	}
+
 	payload := certRotationPayload(labels, resolvedSourceType(ref, opts.Scheduled))
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
@@ -113,7 +123,11 @@ func RotateProjectCertificates(
 	projectHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash])
 	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 
-	addComposeServiceLabels(selectedProject, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, ComposeVersion, latestCommit, projectHash)
+	addComposeServiceLabels(selectedProject, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, ComposeVersion, latestCommit, projectHash, "")
+
+	if err = validateComposeJobOwners(selectedProject); err != nil {
+		return fmt.Errorf("validate compose job owners for cert rotation of %s: %w", ref.Project, err)
+	}
 
 	if err = deployCompose(ctx, dockerCli, selectedProject, deployConfig, api.RecreateForce, serviceNames, nil, func(string) {}); err != nil {
 		return fmt.Errorf("redeploy project %s for cert rotation: %w", ref.Project, err)
@@ -177,7 +191,18 @@ func rotateSwarmProjectCertificates(
 		return fmt.Errorf("load swarm stack for cert rotation of %s: %w", ref.Project, err)
 	}
 
-	addSwarmServiceLabels(cfg, project, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash)
+	existingServices, err := swarm.GetStackServices(ctx, dockerCli.Client(), ref.Project)
+	if err != nil {
+		return fmt.Errorf("inspect swarm job owners for cert rotation of %s: %w", ref.Project, err)
+	}
+
+	preserveSwarmJobOwners(cfg, ref.Project, existingServices)
+
+	addSwarmServiceLabels(cfg, project, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash, "")
+	if err := validateSwarmJobOwners(cfg); err != nil {
+		return fmt.Errorf("validate swarm job owners for cert rotation of %s: %w", ref.Project, err)
+	}
+
 	addSwarmVolumeLabels(cfg, deployConfig, payload, ref.WorkingDir)
 	addSwarmConfigLabels(cfg, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit)
 	addSwarmSecretLabels(cfg, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit)

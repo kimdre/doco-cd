@@ -93,6 +93,7 @@ func TestTriggerScheduledJobSyncTracksResult(t *testing.T) {
 		{name: "not found", triggerErr: scheduler.ErrScheduledJobNotFound, wantStatus: controlplane.RunStatusFailed, wantErr: scheduler.ErrScheduledJobNotFound},
 		{name: "disabled conflict", triggerErr: scheduler.ErrScheduledJobDisabled, wantStatus: controlplane.RunStatusFailed, wantErr: scheduler.ErrScheduledJobDisabled},
 		{name: "ambiguous conflict", triggerErr: scheduler.ErrScheduledJobAmbiguous, wantStatus: controlplane.RunStatusFailed, wantErr: scheduler.ErrScheduledJobAmbiguous},
+		{name: "not owned conflict", triggerErr: scheduler.ErrScheduledJobNotOwned, wantStatus: controlplane.RunStatusFailed, wantErr: scheduler.ErrScheduledJobNotOwned},
 		{name: "internal", triggerErr: errors.New("trigger failed"), wantStatus: controlplane.RunStatusFailed},
 	}
 
@@ -332,6 +333,7 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 		{name: "not found", triggerErr: scheduler.ErrScheduledJobNotFound, wantStatus: http.StatusNotFound, wantBody: scheduler.ErrScheduledJobNotFound.Error()},
 		{name: "disabled", triggerErr: scheduler.ErrScheduledJobDisabled, wantStatus: http.StatusConflict, wantBody: scheduler.ErrScheduledJobDisabled.Error()},
 		{name: "ambiguous", triggerErr: scheduler.ErrScheduledJobAmbiguous, wantStatus: http.StatusConflict, wantBody: scheduler.ErrScheduledJobAmbiguous.Error()},
+		{name: "not owned", triggerErr: scheduler.ErrScheduledJobNotOwned, wantStatus: http.StatusConflict, wantBody: scheduler.ErrScheduledJobNotOwned.Error()},
 		{name: "internal", triggerErr: errors.New("trigger failed"), wantStatus: http.StatusInternalServerError, wantBody: "failed to trigger scheduled job run"},
 		{name: "wait success", wantStatus: http.StatusOK, wantBody: "scheduled job triggered"},
 		{name: "async accepted", query: "?wait=false", wantStatus: http.StatusAccepted, wantBody: "scheduled job trigger accepted"},

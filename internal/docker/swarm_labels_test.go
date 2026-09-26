@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -50,7 +51,7 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 		WebURL:    "https://github.com/kimdre/doco-cd_tests",
 	}
 
-	addSwarmServiceLabels(stack, nil, deployConfig, payload, "", "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
+	addSwarmServiceLabels(stack, nil, deployConfig, payload, "", "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash", "")
 
 	// Labels that may differ between deployments of the same stack must never end up
 	// in the task template. Source.URL is included because it can differ
@@ -111,6 +112,77 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 	}
 }
 
+func TestAddSwarmServiceLabels_ScheduledJobOwner(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		instanceID    string
+		enabled       string
+		explicitOwner string
+		deployOwner   string
+		wantOwner     string
+	}{
+		{name: "configured instance", instanceID: "instance-b", enabled: "true", wantOwner: "instance-b"},
+		{name: "unconfigured instance", enabled: "true"},
+		{name: "task label overrides rotation instance", instanceID: "instance-b", enabled: "true", explicitOwner: "instance-a", wantOwner: "instance-a"},
+		{name: "deploy label is honored in task template", instanceID: "instance-b", enabled: "true", deployOwner: "instance-a", wantOwner: "instance-a"},
+		{name: "disabled job", instanceID: "instance-b", enabled: "false"},
+		{name: "ordinary service", instanceID: "instance-b"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			job := composetypes.ServiceConfig{
+				Name:   "backup",
+				Labels: composetypes.Labels{"user.label": "keep-me"},
+				Deploy: composetypes.DeployConfig{Labels: composetypes.Labels{"user.deploy.label": "keep-me"}},
+			}
+			if tc.enabled != "" {
+				job.Labels[DocoCDJobLabels.JobEnabled] = tc.enabled
+				job.Labels[DocoCDJobLabels.JobSchedule] = "@hourly"
+			}
+
+			if tc.explicitOwner != "" {
+				job.Labels[DocoCDJobLabels.JobOwner] = tc.explicitOwner
+			}
+
+			if tc.deployOwner != "" {
+				job.Deploy.Labels[DocoCDJobLabels.JobOwner] = tc.deployOwner
+			}
+
+			stack := &composetypes.Config{
+				Services: []composetypes.ServiceConfig{job, {Name: "web"}},
+			}
+			addSwarmServiceLabels(stack, nil, &deploy.Config{Name: "stack"}, &webhook.ParsedPayload{},
+				"", "/repo", "dev", "2026-01-01T00:00:00Z", "", "", tc.instanceID)
+
+			stamped := stack.Services[0]
+			if got := stamped.Labels[DocoCDJobLabels.JobOwner]; got != tc.wantOwner {
+				t.Errorf("task template owner = %q, want %q", got, tc.wantOwner)
+			}
+
+			if got := stamped.Deploy.Labels[DocoCDJobLabels.JobOwner]; got != tc.deployOwner {
+				t.Errorf("service spec owner = %q, want compose-defined %q", got, tc.deployOwner)
+			}
+
+			if stamped.Labels["user.label"] != "keep-me" || stamped.Deploy.Labels["user.deploy.label"] != "keep-me" {
+				t.Error("compose-defined labels changed")
+			}
+
+			if _, ok := stack.Services[1].Labels[DocoCDJobLabels.JobOwner]; ok {
+				t.Error("ordinary service received a job owner")
+			}
+
+			jobTaskLabels := maps.Clone(stamped.Labels)
+			webTaskLabels := maps.Clone(stack.Services[1].Labels)
+			addSwarmServiceLabels(stack, nil, &deploy.Config{Name: "stack"}, &webhook.ParsedPayload{},
+				"", "/repo", "dev", "2026-01-02T00:00:00Z", "", "", tc.instanceID)
+
+			if !maps.Equal(stack.Services[0].Labels, jobTaskLabels) ||
+				!maps.Equal(stack.Services[1].Labels, webTaskLabels) {
+				t.Error("unchanged services have different task-template labels on redeploy")
+			}
+		})
+	}
+}
+
 // TestAddSwarmServiceLabels_ScopesCertLabelsPerService verifies that cert expiry/rotatable/state
 // labels are only applied to the swarm services that actually consume a rotated certificate,
 // mirroring the per-service scoping used for standalone Compose deployments.
@@ -149,7 +221,7 @@ func TestAddSwarmServiceLabels_ScopesCertLabelsPerService(t *testing.T) {
 		FullName:  "kimdre/doco-cd_tests",
 	}
 
-	addSwarmServiceLabels(stack, project, deployConfig, payload, "", "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
+	addSwarmServiceLabels(stack, project, deployConfig, payload, "", "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash", "")
 
 	byName := make(map[string]composetypes.ServiceConfig, len(stack.Services))
 	for _, s := range stack.Services {

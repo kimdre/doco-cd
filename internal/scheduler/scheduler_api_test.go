@@ -95,3 +95,45 @@ func TestFindRunnableJob(t *testing.T) {
 		})
 	}
 }
+
+func TestFindRunnableJob_Ownership(t *testing.T) {
+	t.Parallel()
+
+	ownerLabels := map[string]string{
+		docker.DocoCDJobLabels.JobEnabled:  "true",
+		docker.DocoCDJobLabels.JobSchedule: "@every 1m",
+		docker.DocoCDJobLabels.JobOwner:    "host-a",
+	}
+	unownedLabels := map[string]string{
+		docker.DocoCDJobLabels.JobEnabled:  "true",
+		docker.DocoCDJobLabels.JobSchedule: "@hourly",
+	}
+
+	tests := []struct {
+		name     string
+		job      scheduledJob
+		policy   OwnershipOptions
+		rejected bool
+	}{
+		{name: "owner on default context", job: scheduledJob{name: "backup", labels: ownerLabels}, policy: OwnershipOptions{InstanceID: "host-a", RequireOwnerContexts: []string{"default"}}},
+		{name: "different context alias and owner", job: scheduledJob{name: "backup", context: "docker-host", labels: ownerLabels}, policy: OwnershipOptions{InstanceID: "host-b", RequireOwnerContexts: []string{"docker-host"}}, rejected: true},
+		{name: "unowned strict", job: scheduledJob{name: "backup", labels: unownedLabels}, policy: OwnershipOptions{InstanceID: "host-a", RequireOwnerContexts: []string{"default"}}, rejected: true},
+		{name: "unowned local", job: scheduledJob{name: "backup", labels: unownedLabels}, policy: OwnershipOptions{InstanceID: "host-b", RequireOwnerContexts: []string{"docker-host"}}},
+		{name: "unowned legacy", job: scheduledJob{name: "backup", labels: unownedLabels}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, err := findRunnableJob([]scheduledJob{tc.job}, "backup", "", tc.policy)
+			if tc.rejected && !errors.Is(err, ErrScheduledJobNotOwned) {
+				t.Fatalf("error = %v, want ErrScheduledJobNotOwned", err)
+			}
+
+			if !tc.rejected && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}

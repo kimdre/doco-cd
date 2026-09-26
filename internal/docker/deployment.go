@@ -127,18 +127,19 @@ type DeployRequest struct {
 	// It is recorded as cd.doco.source.url so consumers can reconstruct
 	// the config source path without relying on the transient webhook/poll
 	// payload URL.
-	SourceURL       string
-	DeployConfig    *deploy.Config `validate:"required,nostructlevel"`
-	DetectedChanges []Change
-	NeedSignal      []SignalService
-	LatestCommit    string
-	AppVersion      string `validate:"required"`
-	ComposeLoad     ComposeLoadOptions
-	SwarmRetention  SwarmRetentionOptions
-	SwarmMode       bool
-	HashNormMap     map[string]string
-	Project         *types.Project
-	ProjectHash     string
+	SourceURL           string
+	DeployConfig        *deploy.Config `validate:"required,nostructlevel"`
+	DetectedChanges     []Change
+	NeedSignal          []SignalService
+	LatestCommit        string
+	AppVersion          string `validate:"required"`
+	SchedulerInstanceID string
+	ComposeLoad         ComposeLoadOptions
+	SwarmRetention      SwarmRetentionOptions
+	SwarmMode           bool
+	HashNormMap         map[string]string
+	Project             *types.Project
+	ProjectHash         string
 }
 
 type runtimeDeployRequest struct {
@@ -225,7 +226,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	}
 
 	if err = validateScheduledJobPolicies(project, req.SwarmMode); err != nil {
-		return fmt.Errorf("invalid scheduled job restart policy: %w", err)
+		return fmt.Errorf("invalid scheduled job configuration: %w", err)
 	}
 
 	if req.DeployConfig.WaitRunningJobs {

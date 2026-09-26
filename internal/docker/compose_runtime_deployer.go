@@ -25,6 +25,7 @@ func deployComposeRuntime(ctx context.Context, req runtimeDeployRequest) error {
 		ComposeVersion,
 		req.request.LatestCommit,
 		req.projectHash,
+		req.request.SchedulerInstanceID,
 	)
 	addComposeVolumeLabels(
 		req.project,
