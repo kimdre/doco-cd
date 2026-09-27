@@ -292,6 +292,20 @@ func (c *Runs) CloseAndWait() {
 	c.background.Wait()
 }
 
+// Drain rejects new work and waits for the runs already in flight to finish.
+// Unlike CloseAndWait it does not cancel them: a self-update handover must not
+// abort a deploy of another stack halfway through its recreate, which would
+// leave that stack without containers.
+func (c *Runs) Drain() {
+	c.background.Close()
+	c.background.Wait()
+}
+
+// Drained reports whether admission is closed. It cannot be reopened.
+func (c *Runs) Drained() bool {
+	return c.background.Closed()
+}
+
 // SucceededRun creates a successful terminal result.
 func SucceededRun(message string) RunResult {
 	return RunResult{Status: deploymentRunStatusSucceeded, Message: message}

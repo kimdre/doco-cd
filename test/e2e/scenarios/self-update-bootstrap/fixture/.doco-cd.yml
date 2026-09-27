@@ -1,0 +1,4 @@
+name: e2e-self-bootstrap
+working_dir: deploy
+compose_files: [compose.yaml]
+timeout: 90

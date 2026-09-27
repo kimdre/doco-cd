@@ -423,6 +423,10 @@ func TestControlPlaneRunsCloseCancelsAndDrains(t *testing.T) {
 	t.Parallel()
 
 	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{})
+	if runs.Drained() {
+		t.Fatal("new runs report drained")
+	}
+
 	jobID := runs.Accept("drain", deploymentRunTriggerScheduledJob, RunMetadata{})
 	cancelled := make(chan struct{})
 	release := make(chan struct{})
@@ -473,6 +477,10 @@ func TestControlPlaneRunsCloseCancelsAndDrains(t *testing.T) {
 	})
 	if !errors.Is(err, ErrBackgroundWorkClosed) {
 		t.Fatalf("admission error = %v, want %v", err, ErrBackgroundWorkClosed)
+	}
+
+	if !runs.Drained() {
+		t.Fatal("closing runs do not report drained")
 	}
 
 	close(release)

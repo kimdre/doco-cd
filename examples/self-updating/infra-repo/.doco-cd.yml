@@ -1,0 +1,12 @@
+# doco-cd deploys itself from this repo. The stack name and the service name
+# must match the container doco-cd already runs in, or it will not recognise
+# the stack as its own.
+name: doco-cd
+working_dir: doco-cd
+compose_files: [compose.yaml]
+timeout: 120
+
+---
+name: my-app
+working_dir: app
+compose_files: [compose.yaml]

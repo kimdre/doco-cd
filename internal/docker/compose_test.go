@@ -420,7 +420,7 @@ compose_files:
 
 		t.Log("Finished deployment with no errors")
 
-		mountPoint, err := GetMountPointByDestination(dockerClient, containerID, "/usr/share/nginx/html")
+		mountPoint, err := GetMountPointByDestination(ctx, dockerClient, containerID, "/usr/share/nginx/html")
 		if err != nil {
 			t.Fatal(err)
 		}

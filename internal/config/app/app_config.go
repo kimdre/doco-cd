@@ -111,6 +111,8 @@ type Config struct {
 	ArtifactGCRetentionRecords    int                    `env:"ARTIFACT_GC_RETENTION_RECORDS,notEmpty" envDefault:"2" validate:"min=0"`                          // ArtifactGCRetentionRecords is the number of most-recent unreferenced artifacts kept per repository/artifact, regardless of ArtifactGCRetentionTTL
 	ArtifactGCRetentionTTL        time.Duration          `env:"ARTIFACT_GC_RETENTION_TTL,notEmpty" envDefault:"1m" validate:"min=0"`                             // ArtifactGCRetentionTTL is how long an unreferenced artifact beyond ArtifactGCRetentionRecords is kept before it becomes eligible for removal
 	ArtifactGCInterval            time.Duration          `env:"ARTIFACT_GC_INTERVAL,notEmpty" envDefault:"10m" validate:"min=1"`                                 // ArtifactGCInterval is how often the artifact garbage collector sweeps for removable artifacts (it also always sweeps once at startup)
+	SelfUpdateEnabled             bool                   `env:"SELF_UPDATE_ENABLED,notEmpty" envDefault:"false"`                                                 // SelfUpdateEnabled lets doco-cd deploy the stack that contains its own container. Without it such a deployment is refused instead of killing this process mid-deploy.
+	SelfUpdateStrategy            string                 `env:"SELF_UPDATE_STRATEGY,notEmpty" envDefault:"auto" validate:"oneof=auto scale_out applier"`         // SelfUpdateStrategy is how doco-cd replaces its own container: scale_out starts a second container and hands over, applier delegates to a throwaway clone, auto picks scale_out unless the compose file rules it out
 }
 
 // GetConfig returns the app Config.

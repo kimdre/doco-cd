@@ -296,21 +296,36 @@ func (h *Harness) WaitForLog(substr string, timeout time.Duration) {
 func (h *Harness) LogMark() int {
 	h.t.Helper()
 
+	if h.selfUpdate {
+		return h.selfLogMark()
+	}
+
 	return len(h.daemonLogs())
 }
 
 func (h *Harness) WaitForLogAfter(substr string, offset int, timeout time.Duration) {
 	h.t.Helper()
 	h.WaitFor(timeout, "new daemon log contains \""+substr+"\"", func() bool {
-		return strings.Contains(logsSince(h.daemonLogs(), offset), substr)
+		return strings.Contains(h.logsSince(offset), substr)
 	})
 }
 
 func (h *Harness) WaitForLogOccurrencesAfter(substr string, offset, count int, timeout time.Duration) {
 	h.t.Helper()
 	h.WaitFor(timeout, fmt.Sprintf("new daemon logs contain %q %d times", substr, count), func() bool {
-		return strings.Count(logsSince(h.daemonLogs(), offset), substr) >= count
+		return strings.Count(h.logsSince(offset), substr) >= count
 	})
+}
+
+// logsSince returns the daemon output written after a mark. In self-update mode
+// the "daemon" is a succession of containers, so the mark is per container and
+// a new one cannot shift the offset of an older one.
+func (h *Harness) logsSince(offset int) string {
+	if h.selfUpdate {
+		return h.selfLogsSince(offset)
+	}
+
+	return logsSince(h.daemonLogs(), offset)
 }
 
 func logsSince(logs string, offset int) string {
@@ -330,6 +345,10 @@ func (h *Harness) daemonHasLog(substr string) bool {
 }
 
 func (h *Harness) daemonLogs() string {
+	if h.selfUpdate {
+		return h.selfLogs()
+	}
+
 	return h.containerLogs(h.daemon)
 }
 

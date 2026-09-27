@@ -1,0 +1,5 @@
+services:
+  app:
+    image: alpine:3.22
+    pull_policy: missing
+    command: ["sleep", "600"]
