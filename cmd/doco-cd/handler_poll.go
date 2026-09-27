@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-co-op/gocron/v2"
+
 	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -44,9 +46,10 @@ func StartPoll(ctx context.Context, h *orchestrationHandler, pollConfig poll.Con
 	isLocalGit := config.NormalizeSourceType(pollConfig.Source) == config.SourceTypeGit &&
 		git.IsLocalFile(pollConfig.SourceUrl)
 
-	// interval=0 disables polling, unless the source is a local git repo, which
-	// can be driven by a filesystem watcher instead (see pollConfig.Watch).
-	if pollConfig.Interval == 0 && !pollConfig.RunOnce && !isLocalGit {
+	// interval=0 disables polling, unless a schedule is set or the source is a
+	// local git repo, which can be driven by a filesystem watcher instead (see
+	// pollConfig.Watch).
+	if pollConfig.Interval == 0 && pollConfig.Schedule == "" && !pollConfig.RunOnce && !isLocalGit {
 		h.log.Info("polling job disabled by config", "config", &pollConfig)
 
 		return nil
@@ -86,11 +89,34 @@ func (h *orchestrationHandler) PollHandler(ctx context.Context, pollJob *poll.Jo
 	logger := h.log.With(slog.String(entity, logValue))
 	logger.Debug("Start poll handler")
 
+	// run_once ignores the schedule, like it ignores the interval.
+	var schedule gocron.Cron
+
+	if !pollJob.Config.RunOnce {
+		var scheduleErr error
+
+		schedule, scheduleErr = pollJob.Config.ParseSchedule()
+		if scheduleErr != nil {
+			logger.Error("invalid poll schedule, poll job disabled", log.ErrAttr(scheduleErr))
+
+			return
+		}
+	}
+
+	isLocalGit := sourceType == config.SourceTypeGit && git.IsLocalFile(pollJob.Config.SourceUrl)
+
+	// A schedule restricts polls to its occurrences, so the local repository
+	// watcher, which would poll on every new commit, is not started.
+	if schedule != nil && isLocalGit && pollJob.Config.Watch {
+		logger.Info("local repository watcher disabled because a poll schedule is set",
+			slog.String("schedule", pollJob.Config.Schedule))
+	}
+
 	// For local git repositories, start a filesystem watcher so new commits
 	// trigger deployment immediately without waiting for the next interval.
 	var watchCh <-chan struct{}
 
-	if sourceType == config.SourceTypeGit && git.IsLocalFile(pollJob.Config.SourceUrl) && pollJob.Config.Watch && !pollJob.Config.RunOnce {
+	if isLocalGit && pollJob.Config.Watch && !pollJob.Config.RunOnce && schedule == nil {
 		var watchErr error
 
 		watchCh, watchErr = git.WatchLocalGitRef(ctx, pollJob.Config.SourceUrl, logger)
@@ -108,11 +134,30 @@ func (h *orchestrationHandler) PollHandler(ctx context.Context, pollJob *poll.Jo
 	// fall back to a long safety-net interval instead of spinning in a tight
 	// loop on time.After(0) or never polling again.
 	pollInterval := pollJob.Config.Interval
-	if pollInterval == 0 && watchCh == nil && !pollJob.Config.RunOnce {
+	if pollInterval == 0 && schedule == nil && watchCh == nil && !pollJob.Config.RunOnce {
 		logger.Warn("no watcher and no poll interval configured, falling back to safety-net poll interval",
 			slog.Duration("interval", pollWatcherlessFallbackInterval))
 
 		pollInterval = pollWatcherlessFallbackInterval
+	}
+
+	nextDelay := func(now time.Time) time.Duration {
+		return pollNextDelay(schedule, pollInterval, now)
+	}
+
+	timerTrigger := "interval"
+	if schedule != nil {
+		timerTrigger = "schedule"
+	}
+
+	updateNextRun := func() {
+		now := time.Now()
+		if delay := nextDelay(now); delay > 0 {
+			pollJob.NextRun = now.Add(delay).Unix()
+		} else {
+			// Watcher-only mode: no periodic run is scheduled.
+			pollJob.NextRun = 0
+		}
 	}
 
 	doRun := func(trigger string) {
@@ -127,16 +172,19 @@ func (h *orchestrationHandler) PollHandler(ctx context.Context, pollJob *poll.Jo
 
 		pollJob.LastRun = time.Now().Unix()
 
-		if pollInterval > 0 {
-			pollJob.NextRun = time.Now().Add(pollInterval).Unix()
-		} else {
-			// Watcher-only mode: no periodic run is scheduled.
-			pollJob.NextRun = 0
-		}
+		updateNextRun()
 	}
 
-	// Always run immediately on startup.
-	doRun("startup")
+	// Interval polls run immediately on startup. Scheduled polls wait for the
+	// next occurrence so a restart never polls outside the schedule.
+	if schedule == nil {
+		doRun("startup")
+	} else {
+		updateNextRun()
+		logger.Info("waiting for next scheduled poll",
+			slog.String("schedule", pollJob.Config.Schedule),
+			slog.String("next_run", time.Unix(pollJob.NextRun, 0).Format(time.RFC3339)))
+	}
 
 	if pollJob.Config.RunOnce {
 		logger.Debug("run_once is set, exiting poll handler after run")
@@ -152,8 +200,8 @@ func (h *orchestrationHandler) PollHandler(ctx context.Context, pollJob *poll.Jo
 		timerC <-chan time.Time
 	)
 
-	if pollInterval > 0 {
-		timer = time.NewTimer(pollInterval)
+	if delay := nextDelay(time.Now()); delay > 0 {
+		timer = time.NewTimer(delay)
 		timerC = timer.C
 
 		defer timer.Stop()
@@ -195,8 +243,8 @@ func (h *orchestrationHandler) PollHandler(ctx context.Context, pollJob *poll.Jo
 			return
 
 		case <-timerC:
-			doRun("interval")
-			resetTimer(pollInterval)
+			doRun(timerTrigger)
+			resetTimer(nextDelay(time.Now()))
 
 		case _, ok := <-watchCh:
 			if !ok {
@@ -218,6 +266,25 @@ func (h *orchestrationHandler) PollHandler(ctx context.Context, pollJob *poll.Jo
 			resetTimer(pollInterval)
 		}
 	}
+}
+
+// pollNextDelay returns how long to wait before the next timer-driven poll:
+// until the next schedule occurrence if a schedule is set, otherwise the
+// interval. A result of 0 means no timer-driven poll (watcher-only mode or a
+// schedule without further occurrences).
+func pollNextDelay(schedule gocron.Cron, interval time.Duration, now time.Time) time.Duration {
+	if schedule == nil {
+		return interval
+	}
+
+	next := schedule.Next(now)
+	if next.IsZero() {
+		return 0
+	}
+
+	// Next is strictly after now, but guard against a zero or negative delay,
+	// which would disable the timer.
+	return max(next.Sub(now), time.Millisecond)
 }
 
 // watcherClosedFallback decides how PollHandler reacts to a closed local
@@ -355,7 +422,7 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		Payload:      webhook.ParsedPayload{},
 	})
 
-	nextRun := time.Now().Add(pollConfig.Interval).Format(time.RFC3339)
+	nextRun := formatPollNextRun(pollConfig.NextRun(time.Now()))
 	elapsedTime := time.Since(startTime)
 
 	reportPollOutcome(jobLog, metadata, deployErr, notifier, elapsedTime, nextRun)
@@ -364,6 +431,16 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	prometheus.PollDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 
 	return deployErr
+}
+
+// formatPollNextRun formats the next poll time for logs. Zero means there is
+// no timer-driven next run (run_once, API-triggered or watcher-only polls).
+func formatPollNextRun(next time.Time) string {
+	if next.IsZero() {
+		return "none"
+	}
+
+	return next.Format(time.RFC3339)
 }
 
 // reportPollOutcome logs how a poll run ended and reports genuine failures.
@@ -399,6 +476,7 @@ func pollConfigLogValue(pollConfig poll.Config) slog.Value {
 		Source       config.SourceType    `yaml:"source"`
 		Reference    string               `yaml:"reference"`
 		Interval     time.Duration        `yaml:"interval"`
+		Schedule     string               `yaml:"schedule,omitempty"`
 		CustomTarget string               `yaml:"target"`
 		RunOnce      bool                 `yaml:"run_once"`
 		Deployments  []deploymentLogValue `yaml:"deployments"`
@@ -415,6 +493,7 @@ func pollConfigLogValue(pollConfig poll.Config) slog.Value {
 		Source:       pollConfig.Source,
 		Reference:    pollConfig.Reference,
 		Interval:     pollConfig.Interval,
+		Schedule:     pollConfig.Schedule,
 		CustomTarget: pollConfig.CustomTarget,
 		RunOnce:      pollConfig.RunOnce,
 		Deployments:  deployments,

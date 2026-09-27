@@ -137,6 +137,7 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 	for i := range configs {
 		configs[i].RunOnce = true
 		configs[i].Interval = 0
+		configs[i].Schedule = ""
 
 		if err := configs[i].Validate(); err != nil {
 			return jobID, &PollConfigValidationError{Index: i, Err: err}

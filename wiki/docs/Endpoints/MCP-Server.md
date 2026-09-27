@@ -178,7 +178,7 @@ Each item in `configs` accepts these fields:
 | `target`      | No       | Custom deployment configuration target.                                  |
 | `deployments` | No       | Inline deployment configurations, overriding the repository's config.    |
 
-The `interval` and `run_once` fields are not accepted; MCP-triggered polls always run once immediately.
+The `interval`, `schedule` and `run_once` fields are not accepted; MCP-triggered polls always run once immediately.
 All configs in one request run with bounded concurrency controlled by `MAX_CONCURRENT_DEPLOYMENTS` (default: 4).
 
 ## Operational Notes

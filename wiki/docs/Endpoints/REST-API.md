@@ -107,7 +107,7 @@ curl --request GET \
 
 The request body must be a JSON array of [poll configurations](../Poll-Settings.md), each containing at least a `url` field containing the Git clone URL to the repository.
 
-The fields `run_once` and `interval` will be ignored for poll runs triggered via the API, as they are only relevant for the scheduled poll runs.
+The fields `run_once`, `interval` and `schedule` will be ignored for poll runs triggered via the API, as they are only relevant for the scheduled poll runs.
 
 #### Example Request
 
