@@ -446,7 +446,10 @@ func recreateManagedProject(
 	recreateConfig := *deployConfig
 	recreateConfig.Timeout = int(timeout.Seconds())
 
-	if err := deployCompose(ctx, dockerCli, project, &recreateConfig, api.RecreateForce, services, nil, func(string) {}, SelfDeployInputFromLabels(labels)); err != nil {
+	deployOpts := composeDeployOptions{ArtifactRoot: artifactRootFromWorkingDir(ref.WorkingDir, deployConfig.WorkingDirectory)}
+
+	if err := deployCompose(ctx, dockerCli, project, &recreateConfig, api.RecreateForce, services, nil, func(string) {},
+		SelfDeployInputFromLabels(labels), deployOpts); err != nil {
 		return fmt.Errorf("recreate managed compose project %s: %w", ref.Project, err)
 	}
 
