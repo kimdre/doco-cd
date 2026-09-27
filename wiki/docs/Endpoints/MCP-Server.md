@@ -112,6 +112,7 @@ x-api-key: your-api-key
 | `list_deployment_runs`  | `limit` (default 50, max 200), `status` (accepted/running/succeeded/failed/skipped), `trigger` | List recent deployment runs, optionally filtered by status and trigger.                                              |
 | `get_deployment_run`    | `job_id`                                                                                       | Get a deployment run by job ID.                                                                                      |
 | `list_scheduled_jobs`   | `stack` (filter), `context`                                                                    | List scheduler-managed jobs, optionally filtered by stack or Compose project.                                        |
+| `list_sync_windows`     | `repository`, `deployment`, `context`, `manual`                                                | List [sync windows](../Advanced/Sync-Windows.md) and, if a target is given, whether it may be deployed right now.   |
 | `list_projects`         | `all` (include stopped), `context`                                                             | List Docker Compose projects.                                                                                        |
 | `get_project`           | `project_name`, `context`                                                                      | Get the containers of one Docker Compose project.                                                                    |
 | `control_project`       | `project_name`, `action` (start/stop/restart), `context`, `timeout`                            | Start, stop, or restart a Docker Compose project.                                                                    |
@@ -146,7 +147,7 @@ To poll progress with `#!yaml wait: false`:
 | `running`   | No       | Job is actively executing.                           |
 | `succeeded` | Yes      | Job completed without error.                         |
 | `failed`    | Yes      | Job encountered an error.                            |
-| `skipped`   | Yes      | Job was not executed (e.g. no changes detected).     |
+| `skipped`   | Yes      | Job was not executed (e.g. no changes detected or deferred by a [sync window](../Advanced/Sync-Windows.md)). |
 
 !!! note
     For `trigger_scheduled_job`, `succeeded` means the trigger completed without error. Compose restarts and Swarm reruns can return after Docker accepts the start or update, so this does not guarantee the workload finished successfully or exited with code 0.
@@ -179,6 +180,7 @@ Each item in `configs` accepts these fields:
 | `deployments` | No       | Inline deployment configurations, overriding the repository's config.    |
 
 The `interval`, `schedule` and `run_once` fields are not accepted; MCP-triggered polls always run once immediately.
+MCP-triggered polls count as manual deployments for [sync windows](../Advanced/Sync-Windows.md#manual-deployments).
 All configs in one request run with bounded concurrency controlled by `MAX_CONCURRENT_DEPLOYMENTS` (default: 4).
 
 ## Operational Notes

@@ -45,7 +45,83 @@ var (
 	// ErrSkipDeployment so existing errors.Is checks still match, but callers can
 	// distinguish it to return an appropriate "skipped" response instead of "success".
 	ErrWebhookFilterMismatch = fmt.Errorf("webhook filter did not match: %w", ErrSkipDeployment)
+
+	// ErrSyncWindowBlocked is returned when a sync window deferred the
+	// deployment. It wraps ErrSkipDeployment, because a deferred deployment is
+	// an intentional no-op and not a failure.
+	ErrSyncWindowBlocked = fmt.Errorf("deferred by sync window: %w", ErrSkipDeployment)
 )
+
+// SyncWindowBlockedError describes stacks whose deployment was deferred by
+// sync windows. It unwraps to ErrSyncWindowBlocked.
+type SyncWindowBlockedError struct {
+	Stacks  []string // Stacks are the names of the deferred stacks.
+	Windows []string // Windows are the names of the windows that deferred them.
+	// NextOpen is the earliest time at which one of the deferred stacks may be
+	// deployed again. It is zero when unknown.
+	NextOpen time.Time
+}
+
+func (e *SyncWindowBlockedError) Error() string {
+	msg := fmt.Sprintf("deployment of %s deferred by sync window %s",
+		strings.Join(e.Stacks, ", "), strings.Join(e.Windows, ", "))
+	if !e.NextOpen.IsZero() {
+		msg += " until " + e.NextOpen.Format(time.RFC3339)
+	}
+
+	return msg
+}
+
+func (e *SyncWindowBlockedError) Unwrap() error {
+	return ErrSyncWindowBlocked
+}
+
+// SyncWindowCommitStatusDescription returns the pending commit status
+// description of a deployment deferred until nextOpen.
+func SyncWindowCommitStatusDescription(nextOpen time.Time) string {
+	if nextOpen.IsZero() {
+		return "Deferred by sync window"
+	}
+
+	return "Deferred by sync window until " + nextOpen.Format(time.RFC3339)
+}
+
+// MergeSyncWindowBlocked combines per-stack sync window errors into one,
+// keeping the earliest known NextOpen. It returns nil for no errors.
+func MergeSyncWindowBlocked(blocked []*SyncWindowBlockedError) *SyncWindowBlockedError {
+	if len(blocked) == 0 {
+		return nil
+	}
+
+	merged := &SyncWindowBlockedError{}
+
+	for _, b := range blocked {
+		if b == nil {
+			continue
+		}
+
+		for _, stack := range b.Stacks {
+			if !slices.Contains(merged.Stacks, stack) {
+				merged.Stacks = append(merged.Stacks, stack)
+			}
+		}
+
+		for _, window := range b.Windows {
+			if !slices.Contains(merged.Windows, window) {
+				merged.Windows = append(merged.Windows, window)
+			}
+		}
+
+		if !b.NextOpen.IsZero() && (merged.NextOpen.IsZero() || b.NextOpen.Before(merged.NextOpen)) {
+			merged.NextOpen = b.NextOpen
+		}
+	}
+
+	slices.Sort(merged.Stacks)
+	slices.Sort(merged.Windows)
+
+	return merged
+}
 
 type StageName string
 
@@ -221,6 +297,17 @@ type StageManager struct {
 	// the short-circuit (every run is checked from scratch).
 	LeftoverTracker *migration.LeftoverTracker
 	releaseGCLock   func()
+	// resolvedOwnReference is set by the init stage if it resolved the deploy
+	// config's own reference instead of reusing the revision of the request.
+	resolvedOwnReference bool
+}
+
+// ResolvedOwnReference reports whether the init stage resolved the deploy
+// config's reference itself (because of its own reference, repository_url or
+// git_depth) instead of reusing the revision of the request. Repository.Revision
+// then holds the revision resolved for this stack.
+func (s *StageManager) ResolvedOwnReference() bool {
+	return s.resolvedOwnReference
 }
 
 // Dependencies holds the stable services shared by every StageManager run in a process:

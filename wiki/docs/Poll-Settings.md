@@ -56,6 +56,9 @@ It accepts the same [schedule formats](Advanced/Job-Scheduling.md#schedule-forma
 - For [local filesystem repositories](Advanced/Local-Filesystem-Polling.md), the repository watcher is disabled when `schedule` is set, so polls only happen at the scheduled times.
 - `run_once` ignores `schedule` and polls once at startup. Poll runs triggered via the [REST API](Endpoints/REST-API.md#polling) or [MCP](Endpoints/MCP-Server.md) also ignore it and run immediately.
 
+!!! tip
+    A poll `schedule` works well together with [sync windows](Advanced/Sync-Windows.md): schedule a poll for when an allow window opens so that deferred changes are deployed right away.
+
 ## Example
 
 ### With `POLL_CONFIG`

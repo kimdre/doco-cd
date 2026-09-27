@@ -202,8 +202,8 @@ func TestMCPServerListsTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(result.Tools) != 14 {
-		t.Fatalf("expected exactly fourteen MCP tools, got %#v", result.Tools)
+	if len(result.Tools) != 15 {
+		t.Fatalf("expected exactly fifteen MCP tools, got %#v", result.Tools)
 	}
 
 	wantTools := map[string]bool{
@@ -211,6 +211,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"list_deployment_runs":  false,
 		"get_deployment_run":    false,
 		"list_scheduled_jobs":   false,
+		"list_sync_windows":     false,
 		"list_projects":         false,
 		"get_project":           false,
 		"list_stacks":           false,
@@ -226,6 +227,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"list_deployment_runs":  {"limit", "status", "trigger"},
 		"get_deployment_run":    {"job_id"},
 		"list_scheduled_jobs":   {"stack", "context"},
+		"list_sync_windows":     {"repository", "deployment", "context", "manual"},
 		"list_projects":         {"all", "context"},
 		"get_project":           {"project_name", "context"},
 		"list_stacks":           {"context"},
@@ -364,7 +366,7 @@ func TestMCPServerListsTools(t *testing.T) {
 				}
 			}
 
-			for _, property := range []string{"interval", "run_once"} {
+			for _, property := range []string{"interval", "schedule", "run_once"} {
 				if toolSchemaHasProperty(items, property) {
 					t.Fatalf("trigger_poll config schema exposes ignored property %q: %#v", property, items)
 				}

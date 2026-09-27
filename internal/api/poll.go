@@ -14,6 +14,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/stages"
 )
 
 // TriggerPollHandler validates and runs poll configurations from the request body.
@@ -66,6 +67,13 @@ func (h *Handler) TriggerPollHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobID, err := h.controlPlaneRuns.TriggerPoll(r.Context(), pollConfigs, wait, jobLog)
 	if err != nil {
+		if blocked, ok := errors.AsType[*stages.SyncWindowBlockedError](err); ok {
+			jobLog.Info("poll jobs deferred by sync window", slog.String("reason", blocked.Error()))
+			restapi.JSONResponse(w, blocked.Error(), jobID, http.StatusAccepted)
+
+			return
+		}
+
 		if controlplane.IsLifecycleCancellation(err) {
 			restapi.JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
 

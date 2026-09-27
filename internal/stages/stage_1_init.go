@@ -282,6 +282,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		// against and label with what was published here, instead of re-resolving
 		// the reference against a mirror another run may have advanced in the meantime.
 		s.Repository.Revision = string(revision)
+		s.resolvedOwnReference = true
 
 		s.Repository.MirrorDir = gitStore.MirrorDir()
 

@@ -180,6 +180,10 @@ func TestRunInitStageFastPathReusesResolvedArtifact(t *testing.T) {
 	if err := verifyMirrorReadable(sm.Repository.MirrorDir); err != nil {
 		t.Fatalf("verifyMirrorReadable() = %v, want nil", err)
 	}
+
+	if sm.ResolvedOwnReference() {
+		t.Fatal("ResolvedOwnReference() = true, want false for the fast path")
+	}
 }
 
 func TestResolvedReferenceMatches(t *testing.T) {
@@ -268,6 +272,10 @@ func TestRunInitStageFastPathSkippedOnReferenceMismatch(t *testing.T) {
 	if sm.Repository.PathInternal == "" {
 		t.Fatal("PathInternal = \"\", want a resolved artifact path")
 	}
+
+	if !sm.ResolvedOwnReference() {
+		t.Fatal("ResolvedOwnReference() = false, want true for a re-resolved reference")
+	}
 }
 
 // TestRunInitStageFastPathSkippedForRepositoryUrlOverride verifies that a stack whose deploy
@@ -320,6 +328,10 @@ func TestRunInitStageFastPathSkippedForRepositoryUrlOverride(t *testing.T) {
 	// leave behind a mirror that is actually readable rather than a retained handle.
 	if err := verifyMirrorReadable(sm.Repository.MirrorDir); err != nil {
 		t.Fatalf("verifyMirrorReadable() = %v, want nil", err)
+	}
+
+	if !sm.ResolvedOwnReference() {
+		t.Fatal("ResolvedOwnReference() = false, want true for a repository_url override")
 	}
 }
 

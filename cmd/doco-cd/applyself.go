@@ -19,6 +19,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 	"github.com/kimdre/doco-cd/internal/source"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 // ErrApplySelfUsage is returned for a malformed apply-self invocation.
@@ -209,6 +210,10 @@ func runSelfBootstrap(ctx context.Context, log *logger.Logger, c *app.Config, do
 	if err != nil {
 		return fmt.Errorf("create the deployment operation: %w", err)
 	}
+
+	// The operator starts the bootstrap by hand, so sync windows with
+	// manual_sync let it through.
+	ctx = controlplane.WithDeploymentOrigin(ctx, syncwindow.OriginManual)
 
 	return selfupdate.WithBootstrapLock(ctx, c.DataMountPath, func() error {
 		for _, pollConfig := range c.PollConfig {

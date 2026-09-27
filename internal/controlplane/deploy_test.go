@@ -18,6 +18,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/source"
 	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 type fakeSourcePreparer struct {
@@ -486,6 +487,45 @@ func TestDeploy_KeepsPollSkipAsSuccess(t *testing.T) {
 
 	if err := d.Deploy(t.Context(), req); err != nil {
 		t.Fatalf("expected poll skip to remain successful, got %v", err)
+	}
+}
+
+func TestDeploy_ReportsPollSyncWindowDeferral(t *testing.T) {
+	t.Parallel()
+
+	for _, trigger := range []stages.JobTrigger{stages.JobTriggerPoll, stages.JobTriggerWebhook} {
+		preparer := &fakeSourcePreparer{result: source.Result{DeployConfigs: []*deploy.Config{{Name: "stack"}}}}
+		blocked := &stages.SyncWindowBlockedError{Stacks: []string{"stack"}, Windows: []string{"freeze"}}
+		reconciler := &fakeReconciler{err: blocked}
+		d := newTestDeployment(t, preparer, reconciler)
+		req := validDeploymentRequest()
+		req.JobTrigger = trigger
+
+		err := d.Deploy(t.Context(), req)
+		if got, ok := errors.AsType[*stages.SyncWindowBlockedError](err); !ok || got != blocked {
+			t.Fatalf("%s: Deploy() error = %v, want the sync window error", trigger, err)
+		}
+	}
+}
+
+func TestDeploy_PassesDeploymentOrigin(t *testing.T) {
+	t.Parallel()
+
+	for ctx, want := range map[context.Context]syncwindow.Origin{
+		t.Context(): syncwindow.OriginAutomatic,
+		controlplane.WithDeploymentOrigin(t.Context(), syncwindow.OriginManual): syncwindow.OriginManual,
+	} {
+		preparer := &fakeSourcePreparer{result: source.Result{DeployConfigs: []*deploy.Config{{Name: "stack"}}}}
+		reconciler := &fakeReconciler{}
+		d := newTestDeployment(t, preparer, reconciler)
+
+		if err := d.Deploy(ctx, validDeploymentRequest()); err != nil {
+			t.Fatalf("Deploy() error = %v", err)
+		}
+
+		if reconciler.lastReq.Origin != want {
+			t.Fatalf("reconciliation origin = %q, want %q", reconciler.lastReq.Origin, want)
+		}
 	}
 }
 

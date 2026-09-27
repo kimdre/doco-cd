@@ -66,6 +66,7 @@ func TestCleanupObsoleteAutoDiscoveredContainers_SkipsDifferentTargetBeforeRepos
 		[]*deployConfig.Config{deployCfg},
 		notification.Metadata{},
 		nil,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("cleanupObsoleteAutoDiscoveredContainers() error = %v", err)

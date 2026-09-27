@@ -517,6 +517,20 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		Deployments:  matchingInlineWebhookDeployments(appConfig, payload, sourceRef, customTarget),
 		Payload:      payload,
 	})
+	// Deferred stacks already posted their own pending commit status, which a
+	// generic "Skipped" success status would contradict.
+	if blocked, ok := errors.AsType[*stages.SyncWindowBlockedError](deployErr); ok {
+		msg := syncWindowDeferredMessage(blocked)
+		elapsedTime := time.Since(startTime)
+		jobLog.Info(msg,
+			slog.Any("stacks", blocked.Stacks),
+			slog.Any("sync_windows", blocked.Windows),
+			slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
+		restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
+
+		return controlplane.SkippedRun(blocked.Error()), nil
+	}
+
 	if errors.Is(deployErr, stages.ErrSkipDeployment) {
 		postSkippedWebhookCommitStatus(ctx, appConfig, jobLog, payload)
 	}
@@ -566,6 +580,17 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 
 	return controlplane.SucceededRun(msg), nil
+}
+
+// syncWindowDeferredMessage returns the webhook response message of a
+// deployment deferred by sync windows.
+func syncWindowDeferredMessage(blocked *stages.SyncWindowBlockedError) string {
+	msg := "deployment deferred by sync window"
+	if !blocked.NextOpen.IsZero() {
+		msg += " until " + blocked.NextOpen.Format(time.RFC3339)
+	}
+
+	return msg
 }
 
 // WebhookHandler handles incoming webhook requests.

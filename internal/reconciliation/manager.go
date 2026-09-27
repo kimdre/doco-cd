@@ -24,6 +24,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -100,6 +101,8 @@ type Manager struct {
 	// migration.LeftoverTracker.
 	leftoverTracker *migration.LeftoverTracker
 	projectSkips    *stages.ProjectSkipCache
+	// syncWindowNotices deduplicates reports of deployments deferred by sync windows.
+	syncWindowNotices syncWindowNotices
 }
 
 // NewManager validates dependencies and creates an isolated reconciliation manager.
@@ -156,6 +159,9 @@ type DeployRequest struct {
 	DeployConfigs []*deployConfig.Config `validate:"dive,required"`
 	Payload       *webhook.ParsedPayload
 	TestName      string
+	// Origin decides how sync windows apply to the request. Empty means
+	// syncwindow.OriginAutomatic.
+	Origin syncwindow.Origin `validate:"omitempty,oneof=automatic manual reconciliation"`
 }
 
 type job struct {
@@ -173,6 +179,25 @@ type job struct {
 	// contextCLIs maps context name (empty string = default) to its Docker CLI and metadata.
 	// Populated at the start of run() and closed when the job exits.
 	contextCLIs map[string]contextCLIEntry
+	// carried maps deploy configs taken over from a previous job to the
+	// request they were deployed with. A sync window deferred the newer
+	// revision of these stacks, so reconciliation must keep restoring the
+	// revision that is actually deployed. Configs missing here belong to info.
+	carried map[*deployConfig.Config]*DeployRequest
+	// pinned are deferred deploy configs the previous job did not know. They
+	// are not reconciled, but the obsolete-stack cleanup treats their stacks
+	// as present, so it doesn't remove a stack only because a sync window
+	// deferred its deployment.
+	pinned []*deployConfig.Config
+}
+
+// requestFor returns the request dc was deployed with.
+func (j *job) requestFor(dc *deployConfig.Config) DeployRequest {
+	if source, ok := j.carried[dc]; ok {
+		return *source
+	}
+
+	return j.info
 }
 
 func newJob(manager *Manager, info DeployRequest, deployConfigGroupByEvent map[string][]*deployConfig.Config) *job {
@@ -511,26 +536,34 @@ func (r *deploymentTracker) isInProgress(repository, context, stack string) bool
 	return r.stacks[key] > 0
 }
 
-func (m *Manager) addJob(ctx context.Context, req DeployRequest) {
-	cfg := getDeployConfigGroupByEvent(req.DeployConfigs)
-	if len(cfg) == 0 {
-		return
-	}
-
-	newJob := newJob(m, req, cfg)
-	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	newJob.cancel = cancel
-
+// addJob replaces the reconciliation job of the request's repository with one
+// watching the stacks of req. Stacks in deferred were not deployed because a
+// sync window blocked them; see reconciliationJobInfo.
+func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*deployConfig.Config]struct{}) {
 	m.jobs.mu.Lock()
 	if m.jobs.closed {
 		m.jobs.mu.Unlock()
-		newJob.close()
 
 		return
 	}
 
-	m.jobWG.Add(1)
 	old := m.jobs.jobs[req.Repository.Name]
+	info, carried, pinned := reconciliationJobInfo(req, deferred, old)
+
+	cfg := getDeployConfigGroupByEvent(info.DeployConfigs)
+	if len(cfg) == 0 {
+		m.jobs.mu.Unlock()
+
+		return
+	}
+
+	newJob := newJob(m, info, cfg)
+	newJob.carried = carried
+	newJob.pinned = pinned
+	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	newJob.cancel = cancel
+
+	m.jobWG.Add(1)
 	m.jobs.jobs[req.Repository.Name] = newJob
 	m.jobs.mu.Unlock()
 
@@ -549,6 +582,89 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest) {
 
 		newJob.run(jobCtx)
 	}()
+}
+
+// reconciliationJobInfo returns the request a new reconciliation job for req
+// watches, the deploy configs it carries over from the previous job, and the
+// deferred deploy configs it pins.
+//
+// Stacks in deferred were blocked by a sync window, so their revision in req
+// is not deployed. Reconciling them with req would deploy it anyway, bypassing
+// the window. They keep the deploy config and request of the previous job
+// instead, which reflect the revision that is actually deployed. Deferred
+// stacks the previous job does not know (e.g. after a restart, or a stack
+// added by the deferred revision) are pinned: they are not reconciled until a
+// deployment of them succeeds, but they are not removed as obsolete either.
+func reconciliationJobInfo(req DeployRequest, deferred map[*deployConfig.Config]struct{}, previous *job) (DeployRequest, map[*deployConfig.Config]*DeployRequest, []*deployConfig.Config) {
+	if len(deferred) == 0 {
+		return req, nil, nil
+	}
+
+	info := req
+	info.DeployConfigs = make([]*deployConfig.Config, 0, len(req.DeployConfigs))
+
+	var (
+		carried      map[*deployConfig.Config]*DeployRequest
+		pinned       []*deployConfig.Config
+		previousInfo *DeployRequest
+	)
+
+	for _, dc := range req.DeployConfigs {
+		if _, isDeferred := deferred[dc]; !isDeferred {
+			info.DeployConfigs = append(info.DeployConfigs, dc)
+
+			continue
+		}
+
+		known := false
+
+		var previousDCs []*deployConfig.Config
+		if previous != nil {
+			previousDCs = previous.info.DeployConfigs
+		}
+
+		for _, previousDC := range previousDCs {
+			if !sameStack(previousDC, dc) {
+				continue
+			}
+
+			known = true
+
+			if _, already := carried[previousDC]; already {
+				continue
+			}
+
+			source, ok := previous.carried[previousDC]
+			if !ok {
+				if previousInfo == nil {
+					snapshot := previous.info
+					snapshot.DeployConfigs = nil
+					previousInfo = &snapshot
+				}
+
+				source = previousInfo
+			}
+
+			if carried == nil {
+				carried = make(map[*deployConfig.Config]*DeployRequest)
+			}
+
+			carried[previousDC] = source
+			info.DeployConfigs = append(info.DeployConfigs, previousDC)
+		}
+
+		if !known {
+			pinned = append(pinned, dc)
+		}
+	}
+
+	return info, carried, pinned
+}
+
+// sameStack reports whether two deploy configs target the same stack.
+func sameStack(a, b *deployConfig.Config) bool {
+	return a != nil && b != nil && a.Name == b.Name &&
+		docker.NormalizeContextName(a.Context) == docker.NormalizeContextName(b.Context)
 }
 
 func getDeployConfigGroupByEvent(dcs []*deployConfig.Config) map[string][]*deployConfig.Config {

@@ -241,9 +241,12 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		DeployConfigs: result.DeployConfigs,
 		Payload:       &result.Payload,
 		TestName:      req.TestName,
+		Origin:        DeploymentOrigin(ctx),
 	}); err != nil {
 		if errors.Is(err, stages.ErrSkipDeployment) {
-			if req.JobTrigger == stages.JobTriggerPoll {
+			// A poll finding nothing to deploy is a normal outcome, but a
+			// deployment deferred by a sync window is reported to the caller.
+			if req.JobTrigger == stages.JobTriggerPoll && !errors.Is(err, stages.ErrSyncWindowBlocked) {
 				return nil
 			}
 

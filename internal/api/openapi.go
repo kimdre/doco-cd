@@ -20,6 +20,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/scheduler"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -582,6 +583,11 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 		return nil, err
 	}
 
+	syncWindowsResponse, err := jsonResponseFor[successEnvelope[syncwindow.Report]](builder, "SyncWindowsResponse", "Sync windows and, if a target is given, the decision for it.")
+	if err != nil {
+		return nil, err
+	}
+
 	pollRequest, err := jsonRequestFor[[]poll.Config](builder, "PollConfigs", "Poll configurations to run.")
 	if err != nil {
 		return nil, err
@@ -677,6 +683,11 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 	}
 
 	getStackResponses, err := standardResponses(builder, map[int]*openapi3.ResponseRef{http.StatusOK: servicesResponse}, http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError, http.StatusMethodNotAllowed)
+	if err != nil {
+		return nil, err
+	}
+
+	syncWindowsResponses, err := standardResponses(builder, map[int]*openapi3.ResponseRef{http.StatusOK: syncWindowsResponse}, http.StatusBadRequest, http.StatusUnauthorized, http.StatusMethodNotAllowed)
 	if err != nil {
 		return nil, err
 	}
@@ -862,6 +873,20 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			},
 		},
 		{
+			Pattern: APIPath + "/sync-windows",
+			Handler: http.HandlerFunc(h.GetSyncWindowsHandler),
+			Enabled: restEnabled,
+			Root:    APIPath,
+			Operations: []Operation{
+				operation(http.MethodGet, "listSyncWindows", "List sync windows", []string{"Sync windows"}, openapi3.Parameters{
+					queryStringParameter("repository", "Repository or artifact name to evaluate, e.g. github.com/acme/app."),
+					queryStringParameter("deployment", "Deployment (stack or project) name to evaluate."),
+					queryStringParameter("context", "Docker context name to evaluate. Defaults to the default Docker context."),
+					queryStringParameter("origin", "Origin of the evaluated deployment.", string(syncwindow.OriginAutomatic), string(syncwindow.OriginManual)),
+				}, nil, responses(syncWindowsResponses), apiAuth),
+			},
+		},
+		{
 			Pattern:    "POST " + MCPPath,
 			Handler:    mounts.MCP,
 			Enabled:    mcpEnabled,
@@ -911,6 +936,10 @@ func customizePollSchema(schema *openapi3.SchemaRef) error {
 			Default: "180s",
 		},
 	}
+	scheduleSchema := openapi3.NewStringSchema()
+	scheduleSchema.Description = "Cron expression (5-field or descriptor such as @hourly) evaluated in the doco-cd timezone; mutually exclusive with interval and ignored for API-triggered runs."
+	schema.Value.Properties["schedule"] = &openapi3.SchemaRef{Value: scheduleSchema}
+
 	for name, defaultValue := range map[string]bool{"run_once": false, "watch": true} {
 		property := schema.Value.Properties[name]
 		if property == nil || property.Value == nil {

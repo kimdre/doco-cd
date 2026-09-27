@@ -12,6 +12,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 func TestGetConfig(t *testing.T) {
@@ -926,6 +927,101 @@ func TestGetConfig_SourceURLRewritesRejectsEnvAndFileTogether(t *testing.T) {
 
 	if _, err := GetConfig(); err == nil {
 		t.Fatal("expected config error when both SOURCE_URL_REWRITES and _FILE are set")
+	}
+}
+
+func TestGetConfig_SyncWindowsDefaultEmpty(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SYNC_WINDOWS", "")
+	t.Setenv("SYNC_WINDOWS_FILE", "")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.SyncWindows == nil || !cfg.SyncWindows.Empty() {
+		t.Fatalf("expected an empty, non-nil sync window policy, got %+v", cfg.SyncWindows)
+	}
+}
+
+func TestGetConfig_SyncWindows(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SYNC_WINDOWS_FILE", "")
+	t.Setenv("SYNC_WINDOWS", `
+- name: business-hours
+  kind: allow
+  schedule: "0 8 * * 1-5"
+  duration: 10h
+  timezone: Europe/Berlin
+`)
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	windows := cfg.SyncWindows.Windows()
+	if len(windows) != 1 || windows[0].Name != "business-hours" || windows[0].Duration != 10*time.Hour {
+		t.Fatalf("unexpected sync windows: %+v", windows)
+	}
+}
+
+func TestGetConfig_SyncWindowsFromFile(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SYNC_WINDOWS", "")
+
+	windowsFile := path.Join(t.TempDir(), "sync-windows.yaml")
+	if err := os.WriteFile(windowsFile, []byte("- kind: deny\n  schedule: \"@daily\"\n  duration: 1h\n"), filesystem.PermOwner); err != nil {
+		t.Fatalf("failed to write sync windows file: %v", err)
+	}
+
+	t.Setenv("SYNC_WINDOWS_FILE", windowsFile)
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	windows := cfg.SyncWindows.Windows()
+	if len(windows) != 1 || windows[0].Name != "deny-1" {
+		t.Fatalf("unexpected sync windows: %+v", windows)
+	}
+}
+
+func TestGetConfig_SyncWindowsRejectsInvalid(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SYNC_WINDOWS_FILE", "")
+	t.Setenv("SYNC_WINDOWS", `[{kind: allow, schedule: "@every 1h", duration: 1h}]`)
+
+	if _, err := GetConfig(); !errors.Is(err, syncwindow.ErrInvalidConfig) {
+		t.Fatalf("expected ErrInvalidConfig, got %v", err)
+	}
+}
+
+func TestGetConfig_SyncWindowsRejectsEnvAndFileTogether(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SYNC_WINDOWS", `[{kind: deny, schedule: "@daily", duration: 1h}]`)
+
+	windowsFile := path.Join(t.TempDir(), "sync-windows.yaml")
+	if err := os.WriteFile(windowsFile, []byte("[]\n"), filesystem.PermOwner); err != nil {
+		t.Fatalf("failed to write sync windows file: %v", err)
+	}
+
+	t.Setenv("SYNC_WINDOWS_FILE", windowsFile)
+
+	if _, err := GetConfig(); !errors.Is(err, syncwindow.ErrBothConfigSet) {
+		t.Fatalf("expected ErrBothConfigSet, got %v", err)
 	}
 }
 

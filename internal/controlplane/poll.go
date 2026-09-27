@@ -20,6 +20,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/source/oci"
+	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 var (
@@ -122,6 +124,8 @@ func newControlPlanePoll(
 }
 
 // TriggerPoll validates and executes a bounded batch of one-shot poll configurations.
+// If sync windows deferred every configuration of a synchronous batch, it
+// returns a *stages.SyncWindowBlockedError and the run is marked skipped.
 func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool, jobLog *slog.Logger) (string, error) {
 	jobID := id.New()
 	if len(configs) == 0 {
@@ -167,6 +171,10 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 		PanicContext: "poll run",
 		PanicError:   ErrPollRunPanicked,
 	}, func(runCtx context.Context) (RunResult, error) {
+		// Polls triggered through the API or MCP are manual deployments,
+		// which sync windows with manual_sync let through.
+		runCtx = WithDeploymentOrigin(runCtx, syncwindow.OriginManual)
+
 		workerCount := defaultConcurrentPollExecutions
 		if c.poll.appConfig.MaxConcurrentDeployments > 0 {
 			workerCount = int(min(c.poll.appConfig.MaxConcurrentDeployments, uint(len(configs))))
@@ -218,15 +226,26 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 
 		failedRuns := 0
 
-		var lifecycleErr error
+		var (
+			lifecycleErr error
+			deferred     []*stages.SyncWindowBlockedError
+		)
 
 		for runErr := range errs {
-			if runErr != nil {
-				failedRuns++
+			if runErr == nil {
+				continue
+			}
 
-				if lifecycleErr == nil && IsLifecycleCancellation(runErr) {
-					lifecycleErr = runErr
-				}
+			if blocked, ok := errors.AsType[*stages.SyncWindowBlockedError](runErr); ok {
+				deferred = append(deferred, blocked)
+
+				continue
+			}
+
+			failedRuns++
+
+			if lifecycleErr == nil && IsLifecycleCancellation(runErr) {
+				lifecycleErr = runErr
 			}
 		}
 
@@ -234,6 +253,14 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 			err := &PollRunsFailedError{Failed: failedRuns, Total: len(configs), Cause: lifecycleErr}
 
 			return FailedRun(err.Error()), err
+		}
+
+		// The error tells synchronous callers that nothing was deployed; the
+		// run itself is skipped, not failed.
+		if len(deferred) == len(configs) {
+			blocked := stages.MergeSyncWindowBlocked(deferred)
+
+			return SkippedRun(blocked.Error()), blocked
 		}
 
 		return SucceededRun("poll jobs complete"), nil
@@ -279,6 +306,10 @@ func (c *Runs) RunConfiguredPoll(
 			c.poll.secretProvider,
 			triggerReason,
 		)
+		if errors.Is(err, stages.ErrSyncWindowBlocked) {
+			return SkippedRun(err.Error()), nil
+		}
+
 		if err != nil {
 			return FailedRun(err.Error()), err
 		}
