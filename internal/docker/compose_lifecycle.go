@@ -64,10 +64,20 @@ func DestroyStack(
 		downOpts.Images = "all"
 	}
 
+	// The live directory is only known from the mounts of the stack's containers.
+	containers, err := composeServiceContainers(*ctx, (*dockerCli).Client(), deployConfig.Name)
+	if err != nil {
+		stackLog.Warn("failed to list containers of stack, keeping its live files", slog.Any("error", err))
+	}
+
 	err = service.Down(*ctx, deployConfig.Name, downOpts)
 	if err != nil {
 		errMsg := "failed to destroy stack"
 		return fmt.Errorf("%s: %w", errMsg, err)
+	}
+
+	if err = removeComposeLiveDirs(containers, deployConfig.Name); err != nil {
+		stackLog.Warn("failed to remove live files of stack", slog.Any("error", err))
 	}
 
 	return nil

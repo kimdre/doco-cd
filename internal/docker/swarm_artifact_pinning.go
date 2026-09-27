@@ -131,7 +131,7 @@ func pinSwarmServiceMounts(volumes []composetypes.ServiceVolumeConfig, currentMo
 			return nil, nil, false, nil
 		}
 
-		equal, err := filesystem.ContentEqual(volume.Source, source)
+		equal, err := artifactContentEqual(newRoot, volume.Source, oldRoot, source)
 		if err != nil || !equal {
 			return nil, nil, false, err
 		}

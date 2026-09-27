@@ -22,9 +22,14 @@ import (
 // composeDeployOptions carries the optional inputs of deployCompose.
 type composeDeployOptions struct {
 	// ArtifactRoot is the host path of the immutable artifact directory the project was loaded
-	// from ("<store>/artifacts/<revision>"). When empty, services are not pinned to the artifact
-	// they are currently running from.
+	// from ("<store>/artifacts/<revision>"). When empty, services are neither pinned to the
+	// artifact they are currently running from nor use live copies of their ignored files.
 	ArtifactRoot string
+	// SyncLive updates the live copies of the files that are excluded from recreation with the
+	// recreate.ignore label from the artifact (see composeLiveResources) and removes live copies
+	// that are no longer used. Otherwise, only missing live copies are created, which is used when
+	// services are recreated from the already deployed revision.
+	SyncLive bool
 	// Log receives debug information about the deployment. Optional.
 	Log *slog.Logger
 }
@@ -313,7 +318,7 @@ func pinComposeService(service types.ServiceConfig, containers []container.Summa
 	}
 
 	for _, pair := range pairs {
-		equal, err := filesystem.ContentEqual(pair.current, pair.pinned)
+		equal, err := artifactContentEqual(newRoot, pair.current, oldRoot, pair.pinned)
 		if err != nil {
 			return service, false, err
 		}
@@ -329,6 +334,25 @@ func pinComposeService(service types.ServiceConfig, containers []container.Summa
 	service.Develop = develop
 
 	return service, true, nil
+}
+
+// artifactContentEqual reports whether the path a into the artifact rootA and the path b into the
+// artifact rootB have identical content. A symlink at a or b itself is followed within its
+// artifact like Docker does for the source of a bind mount, so the content a container sees is
+// compared. Symlinks inside directories are compared by their targets, since containers resolve
+// them in their own file system.
+func artifactContentEqual(rootA, a, rootB, b string) (bool, error) {
+	a, err := filesystem.ResolveSymlinkWithin(rootA, a)
+	if err != nil {
+		return false, err
+	}
+
+	b, err = filesystem.ResolveSymlinkWithin(rootB, b)
+	if err != nil {
+		return false, err
+	}
+
+	return filesystem.ContentEqual(a, b)
 }
 
 // containerHasBindMount reports whether c bind-mounts source at target.
