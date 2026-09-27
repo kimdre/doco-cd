@@ -65,13 +65,15 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 		DocoCDLabels.Deployment.AutoDiscovery,
 		DocoCDLabels.Deployment.AutoDiscoveryConfig,
 		DocoCDLabels.Source.URL,
+		// Every revision is deployed from its own artifact directory, see
+		// https://github.com/kimdre/doco-cd/issues/1909.
+		DocoCDLabels.Deployment.WorkingDir,
 	}
 
 	// Stable labels keep the containers identifiable on worker nodes.
 	stableLabels := []string{
 		DocoCDLabels.Metadata.Manager,
 		DocoCDLabels.Deployment.Name,
-		DocoCDLabels.Deployment.WorkingDir,
 		DocoCDLabels.Deployment.ConfigTarget,
 		DocoCDLabels.Deployment.TargetRef,
 		DocoCDLabels.Source.Type,
@@ -187,7 +189,7 @@ func TestAddSwarmVolumeLabels_OmitsUnstableLabels(t *testing.T) {
 	deployConfig := &deploy.Config{Name: "test-stack"}
 	payload := &webhook.ParsedPayload{CommitSHA: plumbing.NewHash(strings.Repeat("a", 40)), FullName: "kimdre/doco-cd_tests"}
 
-	addSwarmVolumeLabels(stack, deployConfig, payload, "/repo")
+	addSwarmVolumeLabels(stack, deployConfig, payload)
 
 	labels := stack.Volumes["data"].Labels
 	if len(labels) == 0 {
@@ -200,6 +202,7 @@ func TestAddSwarmVolumeLabels_OmitsUnstableLabels(t *testing.T) {
 		DocoCDLabels.Deployment.Trigger,
 		DocoCDLabels.Metadata.Version,
 		DocoCDLabels.Source.URL,
+		DocoCDLabels.Deployment.WorkingDir,
 	} {
 		if _, ok := labels[label]; ok {
 			t.Errorf("label %q must not be set on volumes, it changes between deployments", label)

@@ -178,7 +178,7 @@ func rotateSwarmProjectCertificates(
 	}
 
 	addSwarmServiceLabels(cfg, project, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash)
-	addSwarmVolumeLabels(cfg, deployConfig, payload, ref.WorkingDir)
+	addSwarmVolumeLabels(cfg, deployConfig, payload)
 	addSwarmConfigLabels(cfg, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit)
 	addSwarmSecretLabels(cfg, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit)
 
