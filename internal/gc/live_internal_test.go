@@ -180,6 +180,46 @@ func TestAddLiveRevisions_UsesArtifactWorkingDirectoryForStoreIdentity(t *testin
 	}
 }
 
+func TestAddLiveRevisions_IncludesPinnedRevisions(t *testing.T) {
+	t.Parallel()
+
+	const revision = "new123"
+
+	dataMountSource := "/srv/doco-cd"
+	workingDir := filepath.Join(dataMountSource, "git.example.com", "owner", "repo",
+		store.ArtifactsSubdir, store.ArtifactDirName(revision))
+
+	fakeClient := &liveTestClient{
+		containers: []container.Summary{{
+			Names: []string{"/stack-web-1"},
+			Labels: map[string]string{
+				docker.DocoCDLabels.Source.Name:                "owner/repo",
+				docker.DocoCDLabels.Deployment.CommitSHA:       revision,
+				docker.DocoCDLabels.Deployment.WorkingDir:      workingDir,
+				docker.DocoCDLabels.Deployment.PinnedRevisions: "old123, older456,",
+			},
+		}},
+	}
+
+	result := docker.ContextClientResult{Name: "", Cli: liveTestCli{apiClient: fakeClient}}
+	live := make(map[string]set.Set[store.Revision])
+
+	if err := addLiveRevisions(context.Background(), result, false, live, testLogger(), dataMountSource, "/data"); err != nil {
+		t.Fatalf("addLiveRevisions() error = %v", err)
+	}
+
+	key := "git.example.com/owner/repo"
+	for _, want := range []store.Revision{revision, "old123", "older456"} {
+		if !live[key].Contains(want) {
+			t.Errorf("addLiveRevisions() live = %+v, want %q/%q", live, key, want)
+		}
+	}
+
+	if got := len(live[key]); got != 3 {
+		t.Errorf("addLiveRevisions() live[%q] has %d revisions, want 3: %+v", key, got, live[key])
+	}
+}
+
 func TestAddLiveRevisions_PreservesLegacyMixedConfigStore(t *testing.T) {
 	t.Parallel()
 

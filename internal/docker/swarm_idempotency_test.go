@@ -52,6 +52,9 @@ func runningStackTaskIDs(ctx context.Context, t *testing.T, cli dockerClient.API
 // is stored in the service spec, swarm leaves the running tasks alone. Storing it in
 // the task template instead would replace every task of every service in the stack on
 // each deployment, see https://github.com/kimdre/doco-cd/issues/1153.
+//
+// Every revision is deployed from its own artifact directory, so the working directory
+// differs between the two deployments as well, see https://github.com/kimdre/doco-cd/issues/1909.
 func TestDeploySwarmStackIsIdempotent(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
@@ -110,17 +113,17 @@ func TestDeploySwarmStackIsIdempotent(t *testing.T) {
 
 	const commit = "e8e2d31f0fa0c924400b3bac751b6c2c6930adb1"
 
-	deployStack := func() error {
+	deployStack := func(workingDirLabel string) error {
 		cfg, opts, loadErr := LoadSwarmStack(dockerCli, project, deployConfigs[0], tmpDir)
 		if loadErr != nil {
 			return loadErr
 		}
 
 		timestamp := time.Now().UTC().Format(time.RFC3339)
-		addSwarmServiceLabels(cfg, project, deployConfigs[0], &p, "", tmpDir, "dev", timestamp, commit, projectHash)
-		addSwarmVolumeLabels(cfg, deployConfigs[0], &p, tmpDir)
-		addSwarmConfigLabels(cfg, deployConfigs[0], &p, "", tmpDir, "dev", timestamp, commit)
-		addSwarmSecretLabels(cfg, deployConfigs[0], &p, "", tmpDir, "dev", timestamp, commit)
+		addSwarmServiceLabels(cfg, project, deployConfigs[0], &p, "", workingDirLabel, "dev", timestamp, commit, projectHash)
+		addSwarmVolumeLabels(cfg, deployConfigs[0], &p)
+		addSwarmConfigLabels(cfg, deployConfigs[0], &p, "", workingDirLabel, "dev", timestamp, commit)
+		addSwarmSecretLabels(cfg, deployConfigs[0], &p, "", workingDirLabel, "dev", timestamp, commit)
 
 		return retry.New(
 			retry.Attempts(5),
@@ -137,7 +140,7 @@ func TestDeploySwarmStackIsIdempotent(t *testing.T) {
 		}
 	})
 
-	if err = deployStack(); err != nil {
+	if err = deployStack(filepath.Join(tmpDir, "artifacts", "rev1")); err != nil {
 		t.Fatalf("Failed to deploy swarm stack: %v", err)
 	}
 
@@ -152,7 +155,7 @@ func TestDeploySwarmStackIsIdempotent(t *testing.T) {
 	// second deployment gets a different one.
 	time.Sleep(2 * time.Second)
 
-	if err = deployStack(); err != nil {
+	if err = deployStack(filepath.Join(tmpDir, "artifacts", "rev2")); err != nil {
 		t.Fatalf("Failed to redeploy swarm stack: %v", err)
 	}
 

@@ -1,0 +1,16 @@
+services:
+  static:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    env_file:
+      - app.env
+      - ../shared/shared.env
+    volumes:
+      - ./static:/static:ro
+      - ./conf/app.conf:/etc/app.conf:ro
+      - ../shared/config:/shared:ro
+  changed:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    environment:
+      VERSION: "1"

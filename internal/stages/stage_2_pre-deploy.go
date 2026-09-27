@@ -26,19 +26,27 @@ import (
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
+// shouldSkipDeployment reports whether a deployment can be skipped because nothing changed.
+//
+// Changes that are excluded from recreation with recreate.ignore still require a deployment in
+// Docker (Standalone) mode, since services use live copies of these files that are only updated
+// by a deployment. In Swarm mode, they only require a deployment if a signal must be sent.
 func shouldSkipDeployment(retryAfterFailure bool,
 	composeChanged bool,
 	autoDiscoveryLabelChanged bool,
 	changedServices []docker.Change,
 	ignoredInfo docker.IgnoredInfo,
+	swarmMode bool,
 	imagesChanged bool,
 	mismatchServices []docker.ServiceMismatch,
 ) bool {
+	ignoredChangesNeedDeploy := ignoredInfo.IsNeedSignal() || (!swarmMode && !ignoredInfo.IsEmpty())
+
 	return !retryAfterFailure &&
 		!composeChanged &&
 		!autoDiscoveryLabelChanged &&
 		len(changedServices) == 0 &&
-		!ignoredInfo.IsNeedSignal() &&
+		!ignoredChangesNeedDeploy &&
 		!imagesChanged &&
 		len(mismatchServices) == 0
 }
@@ -576,7 +584,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
 		} else if !s.DeployState.modeMigrationNeeded &&
-			shouldSkipDeployment(retryAfterFailure, composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
+			shouldSkipDeployment(retryAfterFailure, composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, s.Docker.SwarmMode, imagesChanged, mismatchServices) {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)

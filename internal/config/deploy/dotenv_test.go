@@ -90,6 +90,30 @@ func TestLoadLocalDotEnv_SingleFile(t *testing.T) {
 	}
 }
 
+// TestLoadLocalDotEnv_AbsolutePath covers #1908: absolute path, e.g. a file mounted
+// into the doco-cd container, must be used as-is and not joined with basePath.
+func TestLoadLocalDotEnv_AbsolutePath(t *testing.T) {
+	t.Parallel()
+
+	envFile := filepath.Join(t.TempDir(), "mounted.env")
+
+	if err := createTestFile(t, envFile, "FOO=bar\n"); err != nil {
+		t.Fatalf("failed to create mounted.env: %v", err)
+	}
+
+	cfg := &Config{
+		EnvFiles: []string{envFile},
+	}
+
+	if err := LoadLocalDotEnv(cfg, filepath.Join(t.TempDir(), "network", "traefik")); err != nil {
+		t.Fatalf("LoadLocalDotEnv() returned an error: %v", err)
+	}
+
+	if got := cfg.Internal.Environment["FOO"]; got != "bar" {
+		t.Errorf("FOO = %q, want %q", got, "bar")
+	}
+}
+
 // TestLoadLocalDotEnv_EncryptedFile verifies SOPS-encrypted env files are
 // decrypted and parsed correctly (regression check for the parser swap from
 // joho/godotenv to compose-go/v2/dotenv).

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,6 +27,7 @@ import (
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *deploy.Config, recreateMode string, services []string,
 	needSignal []SignalService, setPhase func(string), self *SelfDeployInput,
+	opts composeDeployOptions,
 ) error {
 	var (
 		err          error
@@ -69,6 +72,27 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 
 		selfService = target.Service
+	}
+
+	live, err := prepareComposeLiveResources(project, opts.ArtifactRoot, deployConfig.Context)
+	if err != nil {
+		return fmt.Errorf("failed to prepare live files: %w", err)
+	}
+
+	if live != nil {
+		setDeploymentPhase(setPhase, "updating live files")
+
+		changedLive, err := live.sync(opts.SyncLive)
+		if err != nil {
+			return fmt.Errorf("failed to update live files: %w", err)
+		}
+
+		liveSignals, err := live.signalsFor(ctx, dockerCli.Client(), project.Name, changedLive, needSignal, recreateMode, services)
+		if err != nil {
+			return fmt.Errorf("failed to determine services to signal: %w", err)
+		}
+
+		needSignal = append(slices.Clone(needSignal), liveSignals...)
 	}
 
 	if len(needSignal) > 0 {
@@ -150,6 +174,11 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return selfPlan.Step()
 	}
 
+	// Pinning is an optimization: if it fails, services are simply recreated from the new artifact.
+	if err = pinUnchangedComposeServices(ctx, dockerCli.Client(), project, opts.ArtifactRoot, recreateMode, services, opts.logger()); err != nil {
+		opts.logger().Warn("failed to keep unchanged services on their current artifact", slog.Any("error", err))
+	}
+
 	createOpts := api.CreateOptions{
 		Services:             services,
 		RemoveOrphans:        deployConfig.RemoveOrphans,
@@ -212,6 +241,13 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	err = service.Create(ctx, project, createOpts)
 	if err != nil {
 		return err
+	}
+
+	// The self service is only recreated by the self-update, so it may still use pruned files.
+	if live != nil && opts.SyncLive && selfPlan.Step == nil {
+		if err = live.prune(ctx, dockerCli.Client(), project.Name); err != nil {
+			opts.logger().Warn("failed to remove unused live files", slog.Any("error", err))
+		}
 	}
 
 	if len(startServices) > 0 {

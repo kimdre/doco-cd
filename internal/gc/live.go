@@ -47,7 +47,9 @@ const allRevisions store.Revision = "*"
 // keyed by normalized repository/artifact name (docker.NormalizeRepositoryLabel).
 //
 // A repository/revision pair is included if the label pair is present on any
-// container or swarm service - running or stopped. A stopped-but-still
+// container or swarm service - running or stopped. Revisions listed in the pinned
+// revisions label are included as well: they are still mounted by services whose
+// repository files did not change since. A stopped-but-still
 // -deployed stack must keep its artifact just as much as a running one: it
 // can be started again at any time without doco-cd re-preparing its source.
 //
@@ -148,6 +150,12 @@ func addLiveRevisions(
 		}
 
 		live[normalized].Add(store.Revision(revision))
+
+		// Services whose repository files were unchanged by later deployments keep mounting the
+		// artifact of the revision they were created from, see docker.DocoCDLabels.Deployment.PinnedRevisions.
+		for _, pinned := range docker.ParsePinnedRevisions(labels[docker.DocoCDLabels.Deployment.PinnedRevisions]) {
+			live[normalized].Add(store.Revision(pinned))
+		}
 
 		configRevision, ok := get(docker.DocoCDLabels.Source.ConfigRevision)
 		if !ok || configRevision == "" {

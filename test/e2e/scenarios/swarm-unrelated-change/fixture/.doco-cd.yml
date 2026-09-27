@@ -1,0 +1,4 @@
+name: e2e-swarm-unrelated-change
+working_dir: deploy
+swarm:
+  enabled: true

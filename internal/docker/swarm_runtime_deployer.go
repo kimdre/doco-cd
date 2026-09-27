@@ -22,11 +22,16 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) error {
 
 	addSwarmServiceLabels(cfg, req.project, deployConfig, req.request.Payload, req.request.SourceURL, req.externalWorkingDir,
 		req.request.AppVersion, req.timestamp, req.request.LatestCommit, req.projectHash)
-	addSwarmVolumeLabels(cfg, deployConfig, req.request.Payload, req.externalWorkingDir)
+	addSwarmVolumeLabels(cfg, deployConfig, req.request.Payload)
 	addSwarmConfigLabels(cfg, deployConfig, req.request.Payload, req.request.SourceURL, req.externalWorkingDir,
 		req.request.AppVersion, req.timestamp, req.request.LatestCommit)
 	addSwarmSecretLabels(cfg, deployConfig, req.request.Payload, req.request.SourceURL, req.externalWorkingDir,
 		req.request.AppVersion, req.timestamp, req.request.LatestCommit)
+
+	// Pinning is an optimization: if it fails, services are simply updated to the new artifact.
+	if err = pinUnchangedSwarmServices(ctx, req.request.DockerCLI.Client(), cfg, deployConfig.Name, req.request.ExternalRepoPath, req.stackLog); err != nil {
+		req.stackLog.Warn("failed to keep unchanged services on their current artifact", slog.Any("error", err))
+	}
 
 	if err = removeMismatchedRecreatableVolumes(ctx, req.request.DockerCLI.Client(), deployConfig.Name, req.project); err != nil {
 		req.recordError()
