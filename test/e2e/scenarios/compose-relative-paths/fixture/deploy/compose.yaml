@@ -1,0 +1,17 @@
+services:
+  bumped:
+    image: alpine:3.21
+    command: ["sleep", "600"]
+  plain:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+  bind-mount:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    volumes:
+      - ../shared/config:/config:ro
+  env-file:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    env_file:
+      - ../shared/app.env.template

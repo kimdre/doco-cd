@@ -1,0 +1,4 @@
+name: e2e-compose-relative-paths
+working_dir: deploy
+swarm:
+  enabled: false
