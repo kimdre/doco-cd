@@ -25,8 +25,12 @@ keeps running unchanged with `./config` of the previous revision. If service `b`
 changed image or environment variable) while `./config` is still unchanged, the new container still uses `./config`
 of the previous revision. Once `./config` changes, service `b` is recreated with the files of the new revision.
 
-The revisions of the artifacts a service still uses are recorded in its `cd.doco.deployment.pinned_revisions` label,
-while all other deployment labels (e.g. `cd.doco.deployment.target.sha`) reference the deployed revision.
+The same applies to the bind mounts of Swarm services, whose tasks keep running as long as the content of their
+bind-mounted files and directories is unchanged.
+
+The revisions of the artifacts a service still uses are recorded in its `cd.doco.deployment.pinned_revisions` label
+(a service label for Swarm services), while all other deployment labels (e.g. `cd.doco.deployment.target.sha`)
+reference the deployed revision.
 
 ## Layout
 
