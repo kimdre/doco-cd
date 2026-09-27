@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -241,9 +242,7 @@ func TestPinComposeService(t *testing.T) {
 			t.Parallel()
 
 			newFiles := make(map[string]string, len(baseFiles))
-			for file, content := range baseFiles {
-				newFiles[file] = content
-			}
+			maps.Copy(newFiles, baseFiles)
 
 			newFiles[changedFile] += "changed"
 
@@ -324,9 +323,7 @@ func TestPinUnchangedComposeServices(t *testing.T) {
 			DocoCDLabels.Deployment.WorkingDir: oldRoot,
 		}
 
-		for key, value := range labels {
-			allLabels[key] = value
-		}
+		maps.Copy(allLabels, labels)
 
 		return container.Summary{
 			Labels: allLabels,
