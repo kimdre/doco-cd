@@ -56,6 +56,7 @@ func acquireDataMountLock(ctx context.Context, dataMountPath string, mode int) (
 	}
 
 	lockPath := filepath.Join(dataMountPath, bootstrapLockFileName)
+
 	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open self-update lock file: %w", err)
@@ -100,8 +101,10 @@ func acquireDataMountLock(ctx context.Context, dataMountPath string, mode int) (
 }
 
 func releaseDataMountLock(file *os.File) func() error {
-	var once sync.Once
-	var releaseErr error
+	var (
+		once       sync.Once
+		releaseErr error
+	)
 
 	return func() error {
 		once.Do(func() {

@@ -14,12 +14,15 @@ func holdBootstrapLock(t *testing.T, dataMountPath string) func() {
 	bootstrapStarted := make(chan struct{})
 	bootstrapDone := make(chan struct{})
 	releaseBootstrap := make(chan struct{})
+
 	var releaseOnce sync.Once
+
 	release := func() {
 		releaseOnce.Do(func() {
 			close(releaseBootstrap)
 		})
 	}
+
 	var bootstrapErr error
 
 	go func() {
@@ -29,11 +32,13 @@ func holdBootstrapLock(t *testing.T, dataMountPath string) func() {
 
 			return nil
 		})
+
 		close(bootstrapDone)
 	}()
 
 	t.Cleanup(func() {
 		release()
+
 		select {
 		case <-bootstrapDone:
 			if bootstrapErr != nil {
@@ -61,6 +66,7 @@ func TestBootstrapLockBlocksPollUntilReleased(t *testing.T) {
 
 	pollStarted := make(chan struct{})
 	pollDone := make(chan struct{})
+
 	var pollErr error
 	go func() {
 		pollErr = WithPollLock(context.Background(), dataMountPath, func() error {
@@ -68,6 +74,7 @@ func TestBootstrapLockBlocksPollUntilReleased(t *testing.T) {
 
 			return nil
 		})
+
 		close(pollDone)
 	}()
 
@@ -103,7 +110,9 @@ func TestPollLocksCanOverlap(t *testing.T) {
 	pollStarted := make(chan struct{}, 2)
 	pollDone := make(chan error, 2)
 	releasePolls := make(chan struct{})
+
 	var releaseOnce sync.Once
+
 	release := func() {
 		releaseOnce.Do(func() {
 			close(releasePolls)
@@ -113,6 +122,7 @@ func TestPollLocksCanOverlap(t *testing.T) {
 
 	run := func() error {
 		pollStarted <- struct{}{}
+
 		<-releasePolls
 
 		return nil
@@ -156,6 +166,7 @@ func TestPollLockHonorsContextCancellation(t *testing.T) {
 	defer cancel()
 
 	pollRan := make(chan struct{})
+
 	pollDone := make(chan error, 1)
 	go func() {
 		pollDone <- WithPollLock(ctx, dataMountPath, func() error {
@@ -164,6 +175,7 @@ func TestPollLockHonorsContextCancellation(t *testing.T) {
 			return nil
 		})
 	}()
+
 	select {
 	case err := <-pollDone:
 		if !errors.Is(err, context.DeadlineExceeded) {
@@ -185,6 +197,7 @@ func TestBootstrapLockReleasesWhenRunFails(t *testing.T) {
 
 	dataMountPath := t.TempDir()
 	wantErr := errors.New("bootstrap failed")
+
 	err := WithBootstrapLock(context.Background(), dataMountPath, func() error {
 		return wantErr
 	})
