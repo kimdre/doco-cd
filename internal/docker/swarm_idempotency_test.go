@@ -118,7 +118,7 @@ func TestDeploySwarmStackIsIdempotent(t *testing.T) {
 
 		timestamp := time.Now().UTC().Format(time.RFC3339)
 		addSwarmServiceLabels(cfg, project, deployConfigs[0], &p, "", tmpDir, "dev", timestamp, commit, projectHash)
-		addSwarmVolumeLabels(cfg, deployConfigs[0], &p, tmpDir)
+		addSwarmVolumeLabels(cfg, deployConfigs[0], &p)
 		addSwarmConfigLabels(cfg, deployConfigs[0], &p, "", tmpDir, "dev", timestamp, commit)
 		addSwarmSecretLabels(cfg, deployConfigs[0], &p, "", tmpDir, "dev", timestamp, commit)
 

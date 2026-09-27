@@ -1,0 +1,4 @@
+name: e2e-swarm-unchanged-service
+working_dir: deploy
+swarm:
+  enabled: true

@@ -54,10 +54,12 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 
 	// Labels that may differ between deployments of the same stack must never end up
 	// in the task template. Source.URL is included because it can differ
-	// between webhook and poll triggers for the same repository.
+	// between webhook and poll triggers for the same repository, WorkingDir
+	// because it points into the per-commit artifact dir.
 	unstableLabels := []string{
 		DocoCDLabels.Metadata.Version,
 		DocoCDLabels.Deployment.Timestamp,
+		DocoCDLabels.Deployment.WorkingDir,
 		DocoCDLabels.Deployment.ComposeHash,
 		DocoCDLabels.Deployment.Trigger,
 		DocoCDLabels.Deployment.CommitSHA,
@@ -71,7 +73,6 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 	stableLabels := []string{
 		DocoCDLabels.Metadata.Manager,
 		DocoCDLabels.Deployment.Name,
-		DocoCDLabels.Deployment.WorkingDir,
 		DocoCDLabels.Deployment.ConfigTarget,
 		DocoCDLabels.Deployment.TargetRef,
 		DocoCDLabels.Source.Type,
@@ -187,7 +188,7 @@ func TestAddSwarmVolumeLabels_OmitsUnstableLabels(t *testing.T) {
 	deployConfig := &deploy.Config{Name: "test-stack"}
 	payload := &webhook.ParsedPayload{CommitSHA: plumbing.NewHash(strings.Repeat("a", 40)), FullName: "kimdre/doco-cd_tests"}
 
-	addSwarmVolumeLabels(stack, deployConfig, payload, "/repo")
+	addSwarmVolumeLabels(stack, deployConfig, payload)
 
 	labels := stack.Volumes["data"].Labels
 	if len(labels) == 0 {
@@ -198,6 +199,7 @@ func TestAddSwarmVolumeLabels_OmitsUnstableLabels(t *testing.T) {
 		DocoCDLabels.Deployment.Timestamp,
 		DocoCDLabels.Deployment.CommitSHA,
 		DocoCDLabels.Deployment.Trigger,
+		DocoCDLabels.Deployment.WorkingDir,
 		DocoCDLabels.Metadata.Version,
 		DocoCDLabels.Source.URL,
 	} {

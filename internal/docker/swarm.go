@@ -340,15 +340,15 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 // labels). Labels may only be added here if they change together with a change that
 // legitimately recreates the tasks anyway (e.g. a renamed deployment or a re-pointed
 // reference). Labels that differ between deployments of the same stack, such as the
-// timestamp, the commit SHA or the source URL (which differs between webhook and poll
-// triggers for the same repository), must never be added: swarm would recreate all
-// tasks of every service on each deployment, see
-// https://github.com/kimdre/doco-cd/issues/1153.
-func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.ParsedPayload, repoDir string) map[string]string {
+// timestamp, the commit SHA, the working dir (it points into the per-commit artifact dir)
+// or the source URL (which differs between webhook and poll triggers for the same
+// repository), must never be added: swarm would recreate all tasks of every service on
+// each deployment, see https://github.com/kimdre/doco-cd/issues/1153 and
+// https://github.com/kimdre/doco-cd/issues/1909.
+func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.ParsedPayload) map[string]string {
 	return map[string]string{
 		DocoCDLabels.Metadata.Manager:        app.Name,
 		DocoCDLabels.Deployment.Name:         deployConfig.Name,
-		DocoCDLabels.Deployment.WorkingDir:   repoDir,
 		DocoCDLabels.Deployment.ConfigTarget: deployConfig.Internal.ConfigTarget,
 		DocoCDLabels.Deployment.TargetRef:    ExtractOciArtifactTag(deployConfig.Reference),
 		DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
@@ -374,11 +374,12 @@ func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.Par
 func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
 	sourceURL, repoDir, appVersion, timestamp, latestCommit, projectHash string,
 ) {
-	stableLabels := stableSwarmMetadataLabels(deployConfig, payload, repoDir)
+	stableLabels := stableSwarmMetadataLabels(deployConfig, payload)
 
 	sharedServiceSpecLabels := map[string]string{
 		DocoCDLabels.Metadata.Version:               appVersion,
 		DocoCDLabels.Deployment.Timestamp:           timestamp,
+		DocoCDLabels.Deployment.WorkingDir:          repoDir,
 		DocoCDLabels.Deployment.ComposeHash:         projectHash,
 		DocoCDLabels.Deployment.Trigger:             payload.TriggerString(),
 		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
@@ -421,10 +422,8 @@ func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, d
 // subset of the deployment metadata may be set here. Volumes are looked up by their
 // stack namespace label and doco-cd labels are ignored when comparing volume configs,
 // so deployment metadata such as the timestamp is intentionally left out.
-func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	repoDir string,
-) {
-	customLabels := stableSwarmMetadataLabels(deployConfig, payload, repoDir)
+func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload) {
+	customLabels := stableSwarmMetadataLabels(deployConfig, payload)
 
 	for i, v := range stack.Volumes {
 		if v.Labels == nil {

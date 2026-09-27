@@ -1,0 +1,16 @@
+services:
+  bumped:
+    image: alpine:3.21
+    command: ["sleep", "600"]
+  plain:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+  volume:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    volumes:
+      - data:/data
+
+volumes:
+  data:
+    name: e2e-swarm-unchanged-service-data
