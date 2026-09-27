@@ -81,6 +81,7 @@ func deployComposeRuntime(ctx context.Context, req runtimeDeployRequest) error {
 		req.selfDeployInput(),
 		composeDeployOptions{
 			ArtifactRoot: req.request.ExternalRepoPath,
+			SyncLive:     true,
 			Log:          req.stackLog,
 		},
 	)

@@ -187,6 +187,7 @@ func TestShouldSkipDeployment(t *testing.T) {
 		autoDiscoveryLabelChanged bool
 		changedServices           []docker.Change
 		ignoredInfo               docker.IgnoredInfo
+		swarmMode                 bool
 		imagesChanged             bool
 		mismatchServices          []docker.ServiceMismatch
 		want                      bool
@@ -241,6 +242,17 @@ func TestShouldSkipDeployment(t *testing.T) {
 			autoDiscoveryLabelChanged: false,
 			changedServices:           nil,
 			ignoredInfo:               docker.IgnoredInfo{Ignored: []string{"web"}},
+			imagesChanged:             false,
+			mismatchServices:          nil,
+			want:                      false,
+		},
+		{
+			name:                      "ignored changes in swarm mode",
+			composeChanged:            false,
+			autoDiscoveryLabelChanged: false,
+			changedServices:           nil,
+			ignoredInfo:               docker.IgnoredInfo{Ignored: []string{"web"}},
+			swarmMode:                 true,
 			imagesChanged:             false,
 			mismatchServices:          nil,
 			want:                      true,
@@ -299,7 +311,7 @@ func TestShouldSkipDeployment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shouldSkipDeployment(tt.retryAfterFailure, tt.composeChanged, tt.autoDiscoveryLabelChanged, tt.changedServices, tt.ignoredInfo, tt.imagesChanged, tt.mismatchServices)
+			got := shouldSkipDeployment(tt.retryAfterFailure, tt.composeChanged, tt.autoDiscoveryLabelChanged, tt.changedServices, tt.ignoredInfo, tt.swarmMode, tt.imagesChanged, tt.mismatchServices)
 			if got != tt.want {
 				t.Errorf("shouldSkipDeployment() = %v, want %v", got, tt.want)
 			}
@@ -812,7 +824,7 @@ func TestDropSchedulerHeldMismatches_SkipsDeploymentDuringJobStopWindow(t *testi
 		t.Fatalf("expected the stopped service to report a mismatch, got %v", mismatches)
 	}
 
-	if shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, mismatches) {
+	if shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, false, mismatches) {
 		t.Fatal("expected an unfiltered replicas mismatch to force a deployment")
 	}
 
@@ -829,7 +841,7 @@ func TestDropSchedulerHeldMismatches_SkipsDeploymentDuringJobStopWindow(t *testi
 		t.Fatalf("expected mismatch of scheduler-held service to be dropped, got %v", filtered)
 	}
 
-	if !shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, filtered) {
+	if !shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, false, filtered) {
 		t.Fatal("expected deployment to be skipped while the job scheduler holds the service stopped")
 	}
 }

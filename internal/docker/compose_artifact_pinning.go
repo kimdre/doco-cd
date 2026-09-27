@@ -22,9 +22,14 @@ import (
 // composeDeployOptions carries the optional inputs of deployCompose.
 type composeDeployOptions struct {
 	// ArtifactRoot is the host path of the immutable artifact directory the project was loaded
-	// from ("<store>/artifacts/<revision>"). When empty, services are not pinned to the artifact
-	// they are currently running from.
+	// from ("<store>/artifacts/<revision>"). When empty, services are neither pinned to the
+	// artifact they are currently running from nor use live copies of their ignored files.
 	ArtifactRoot string
+	// SyncLive updates the live copies of the files that are excluded from recreation with the
+	// recreate.ignore label from the artifact (see composeLiveResources) and removes live copies
+	// that are no longer used. Otherwise, only missing live copies are created, which is used when
+	// services are recreated from the already deployed revision.
+	SyncLive bool
 	// Log receives debug information about the deployment. Optional.
 	Log *slog.Logger
 }

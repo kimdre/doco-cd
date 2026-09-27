@@ -418,12 +418,13 @@ func isStoreRoot(path string) (bool, error) {
 
 // storeLayoutEntries are the entries of a repository directory that belong
 // to the new store layout rather than to a legacy checkout's working tree:
-// the bare mirror, published artifacts, submodule cache, and mirror lock.
+// the bare mirror, published artifacts, submodule cache, live files, and mirror lock.
 func storeLayoutEntries() []string {
 	return []string{
 		store.MirrorSubdir,
 		store.ArtifactsSubdir,
 		store.SubmodulesSubdir,
+		store.LiveSubdir,
 		store.MirrorSubdir + ".lock",
 	}
 }
@@ -548,7 +549,7 @@ func migrateLegacyRepo(
 
 // blockingStoreEntryExists reports whether repoDir already has an entry
 // under one of the reserved store layout names ("mirror", "artifacts",
-// "submodules") before it has been migrated. Any such entry can only be
+// "submodules", "live") before it has been migrated. Any such entry can only be
 // legacy working-tree content, since the store itself hasn't created those
 // paths yet - so it must be moved out of the way (see
 // quarantineBlockingStoreEntries) rather than left in place, where it would

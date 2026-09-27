@@ -32,6 +32,23 @@ The revisions of the artifacts a service still uses are recorded in its `cd.doco
 (a service label for Swarm services), while all other deployment labels (e.g. `cd.doco.deployment.target.sha`)
 reference the deployed revision.
 
+## Live files
+
+Services that should pick up changed files without being recreated (see [Prevent recreation on config, secret or bind mount changes](../Deploy-Settings.md#prevent-recreation-on-config-secret-or-bind-mount-changes))
+cannot use the immutable artifacts, since a service that is not recreated would keep using the files of an old revision.
+Instead, the files and directories excluded from recreation with the `cd.doco.deployment.recreate.ignore` label are copied to
+a mutable live directory of the stack (`live/<context>/<stack>/root/`) and mounted from there. On each deployment,
+doco-cd updates these copies in place before sending the optional signal, so running containers see the new content
+(files are overwritten instead of replaced, which keeps single-file bind mounts working).
+
+- Files that were removed from the source are removed from the live copies as well; files created by the services
+  themselves are kept.
+- Live copies that are no longer used by any container of the stack are removed after a deployment, and the whole
+  live directory of a stack is removed when the stack is destroyed.
+- The paths a service mounts from its live directory are recorded in its `cd.doco.deployment.live_resources` label.
+
+This only applies to Docker (Standalone) deployments.
+
 ## Layout
 
 The source directory is organized by source type and source name, and contains the following subdirectories:
@@ -62,6 +79,11 @@ The source directory is organized by source type and source name, and contains t
               <submodule-revision>/  # Submodule data for a specific revision
               <submodule-revision>.lock  # Lock file for submodule access
               ...
+            live/  # Mutable live files of stacks
+              <context>/
+                <stack>/
+                  root/  # Live copies of the files excluded from recreation
+                  manifest.json  # Files copied from the source
             example.gc-use.lock  # Lock file for the garbage collector while the source is in use
             example.lock  # Lock file for source-level operations
     ```
@@ -73,6 +95,7 @@ The source directory is organized by source type and source name, and contains t
         source data to prevent race conditions when multiple deployments are running in parallel.
       - `submodules/<submodule-revision>` contains cached submodule data when Git submodules are used
         in the source repository.
+    - `live/<context>/<stack>` contains the [live files](#live-files) of a stack.
 
 === "OCI Source"
 
@@ -89,6 +112,11 @@ The source directory is organized by source type and source name, and contains t
               sha256-<digest>/  # Extracted artifact for a specific digest
               sha256-<digest>.lock  # Lock file for artifact access
               ...
+            live/  # Mutable live files of stacks
+              <context>/
+                <stack>/
+                  root/  # Live copies of the files excluded from recreation
+                  manifest.json  # Files copied from the source
             example.gc-use.lock  # Lock file for the garbage collector while the source is in use
             example.lock  # Lock file for source-level operations
     ```
@@ -98,6 +126,7 @@ The source directory is organized by source type and source name, and contains t
       is not safe in Docker bind-mount source paths.
     - `<digest>.lock` coordinates access while an artifact is being published
       or used by a deployment.
+    - `live/<context>/<stack>` contains the [live files](#live-files) of a stack.
 
 ### Upgrading from v0.119.x or earlier
 

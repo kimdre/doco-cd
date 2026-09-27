@@ -24,6 +24,11 @@ const MirrorSubdir = "mirror"
 // SubmodulesSubdir is the fixed directory name for cached Git submodule mirrors.
 const SubmodulesSubdir = "submodules"
 
+// LiveSubdir is the fixed directory name, relative to a store's base directory, that holds the
+// mutable copies of deployed files that are updated in place instead of per revision
+// (e.g. bind mounts that are excluded from recreation with recreate.ignore).
+const LiveSubdir = "live"
+
 // artifactPath returns the final directory a revision is published to, e.g. "<baseDir>/artifacts/<revision>".
 func artifactPath(baseDir string, revision Revision) string {
 	return filepath.Join(baseDir, ArtifactsSubdir, artifactDirName(revision))
