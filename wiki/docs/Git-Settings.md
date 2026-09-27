@@ -203,6 +203,8 @@ Once a webhook's deployment configuration is resolved, Doco-CD reports each depl
 - **success**: set when all deployment stages complete successfully.
 - **failure**: set when any stage fails after initialization.
 
+When doco-cd [updates itself](Advanced/Self-Updating.md), the instance that finishes the handover posts the final **success** or **failure** status.
+
 Deployments excluded by a webhook reference filter or requiring no changes do not receive deployment-specific statuses. When the entire webhook run is skipped, Doco-CD posts one **success / Skipped** status under the generic `doco-cd/deploy` context. This context is also used for failures that happen before deployment configuration can be resolved.
 
 | Key                 | Type    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                           | Default |

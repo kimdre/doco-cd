@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -47,6 +48,57 @@ type simpleError string
 
 func (e simpleError) Error() string {
 	return string(e)
+}
+
+func TestSuccessDescription(t *testing.T) {
+	start := time.Date(2026, time.July, 18, 9, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name       string
+		startedAt  time.Time
+		finishedAt time.Time
+		want       string
+	}{
+		{
+			name:       "missing timestamps",
+			startedAt:  time.Time{},
+			finishedAt: time.Time{},
+			want:       "Successful",
+		},
+		{
+			name:       "finished before started",
+			startedAt:  start,
+			finishedAt: start.Add(-time.Second),
+			want:       "Successful",
+		},
+		{
+			name:       "sub second duration",
+			startedAt:  start,
+			finishedAt: start.Add(500 * time.Millisecond),
+			want:       "Successful in <1s",
+		},
+		{
+			name:       "whole seconds",
+			startedAt:  start,
+			finishedAt: start.Add(47 * time.Second),
+			want:       "Successful in 47s",
+		},
+		{
+			name:       "multi unit duration",
+			startedAt:  start,
+			finishedAt: start.Add(time.Minute + 2*time.Second),
+			want:       "Successful in 1m2s",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := commitstatus.SuccessDescription(tt.startedAt, tt.finishedAt)
+			if got != tt.want {
+				t.Fatalf("SuccessDescription() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 func newTestLogger() *slog.Logger {

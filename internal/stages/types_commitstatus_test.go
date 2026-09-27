@@ -6,11 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
+	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 // newTestStageManagerForCommitStatus builds a minimal StageManager sufficient for exercising
@@ -113,5 +116,60 @@ func TestResolveCommitStatusRequest_SkipsForOCISource(t *testing.T) {
 	_, ok := sm.resolveCommitStatusRequest()
 	if ok {
 		t.Fatal("expected resolveCommitStatusRequest to skip for OCI sources")
+	}
+}
+
+// TestSelfUpdateCommitStatusRecordsPendingTarget checks that a self-update
+// hands over the same target that its pending status was posted to.
+func TestSelfUpdateCommitStatusRecordsPendingTarget(t *testing.T) {
+	startedAt := time.Date(2026, time.September, 27, 21, 0, 0, 0, time.UTC)
+
+	sm := newTestStageManagerForCommitStatus(&app.Config{GitCommitStatus: true}, "https://git.example.com/org/deploy.git")
+	sm.DeployConfig.Internal.ConfigTarget = "nas"
+	sm.Stages = &Stages{Init: &InitStageData{StartedAt: startedAt}}
+	sm.Payload = &webhook.ParsedPayload{WebURL: "https://git.example.com/org/config", FullName: "org/config"}
+
+	got := sm.selfUpdateCommitStatus()
+	if got == nil {
+		t.Fatal("expected a commit status target")
+	}
+
+	want := selfupdate.CommitStatusInfo{
+		SourceURL: "https://git.example.com/org/deploy.git",
+		RepoURL:   "https://git.example.com/org/config",
+		FullName:  "org/config",
+		CommitSHA: "deadbeef",
+		Context:   sm.resolveCommitStatusContext(),
+		StartedAt: startedAt,
+	}
+	if *got != want {
+		t.Fatalf("selfUpdateCommitStatus() = %+v, want %+v", *got, want)
+	}
+
+	if want.Context != "doco-cd/nas/stack" {
+		t.Fatalf("context = %q, want the pending status context", want.Context)
+	}
+}
+
+func TestSelfUpdateCommitStatusSkipsWithoutPendingStatus(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*StageManager)
+	}{
+		{name: "disabled", setup: func(sm *StageManager) { sm.AppConfig.GitCommitStatus = false }},
+		{name: "oci source", setup: func(sm *StageManager) { sm.Repository.Source = config.SourceTypeOCI }},
+		{name: "destroy", setup: func(sm *StageManager) { sm.DeployConfig.Destroy.Enabled = true }},
+		{name: "no commit sha", setup: func(sm *StageManager) { sm.Repository.Revision = "" }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sm := newTestStageManagerForCommitStatus(&app.Config{GitCommitStatus: true}, "https://git.example.com/org/repo.git")
+			tt.setup(sm)
+
+			if got := sm.selfUpdateCommitStatus(); got != nil {
+				t.Fatalf("selfUpdateCommitStatus() = %+v, want nil", *got)
+			}
+		})
 	}
 }

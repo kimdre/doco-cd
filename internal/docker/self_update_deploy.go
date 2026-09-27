@@ -569,5 +569,6 @@ func selfSourceInfo(self *SelfDeployInput) selfupdate.SourceInfo {
 		ProjectHash:  self.ProjectHash,
 		JobID:        self.JobID,
 		Trigger:      self.Trigger,
+		CommitStatus: self.CommitStatus,
 	}
 }

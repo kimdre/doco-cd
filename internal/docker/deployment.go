@@ -18,6 +18,7 @@ import (
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -139,6 +140,10 @@ type DeployRequest struct {
 	HashNormMap     map[string]string
 	Project         *types.Project
 	ProjectHash     string
+	// CommitStatus is the commit status left pending for this deployment. A
+	// self-update records it so the process that resolves the handover can
+	// post the final state.
+	CommitStatus *selfupdate.CommitStatusInfo
 }
 
 type runtimeDeployRequest struct {
