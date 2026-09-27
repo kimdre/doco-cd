@@ -458,7 +458,9 @@ func run() error {
 					_ command.Cli, _ *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata,
 					_ secretprovider.SecretProvider, triggerReason string,
 				) error {
-					return RunPoll(ctx, pollConfig, appConfig, logger, metadata, triggerReason, deployment, notifier)
+					return selfupdate.WithPollLock(ctx, c.DataMountPath, func() error {
+						return RunPoll(ctx, pollConfig, appConfig, logger, metadata, triggerReason, deployment, notifier)
+					})
 				},
 			},
 		},
