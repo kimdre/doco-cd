@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -169,12 +170,14 @@ func newCommitInfo(c *object.Commit) CommitInfo {
 	}
 }
 
-// walkEntry is a commit queued by rangeWalk.
+// walkEntry is a commit seen by rangeWalk.
 type walkEntry struct {
 	commit *object.Commit
 	// excluded marks a commit reachable from an excluded commit.
 	excluded bool
 	queued   bool
+	// visited marks a popped commit, its parents are in rangeWalk.entries.
+	visited bool
 	// seq keeps the order of commits with the same committer time stable.
 	seq int
 }
@@ -205,22 +208,40 @@ func (q *walkQueue) Pop() any {
 	return e
 }
 
-// rangeWalk yields the commits reachable from a tip but not from the excluded commits,
+// walkSlop is how many excluded commits the walk still visits once only excluded commits
+// are queued, the same heuristic as git's SLOP in revision.c. Committer times can be out
+// of order, a commit older than its parent, so an excluded path may still reach a commit
+// that was already visited as part of the range.
+const walkSlop = 5
+
+// rangeWalk collects the commits reachable from a tip but not from the excluded commits,
 // newest first by committer time, like `git rev-list <tip> ^<excluded>`.
 //
 // The exclusion travels down the history together with the walk. Stopping at the first
 // excluded commit instead would lose a merged side branch that is older than the last
 // deploy, which is the normal shape of a Renovate or any other pull request merge.
+//
+// A commit is only known to be in the range once the walk is done: with committer times
+// out of order, an excluded path can reach a commit after it was visited. The exclusion is
+// then carried on to its visited ancestors, and the range is read off at the end.
 type rangeWalk struct {
 	repo    *git.Repository
 	queue   walkQueue
 	entries map[plumbing.Hash]*walkEntry
+	// visited are the popped entries in walk order.
+	visited []*walkEntry
 	seq     int
 	// included counts the queued entries that are not excluded. The range is done when
 	// only excluded entries are left.
 	included  int
 	scanned   int
 	truncated bool
+	// oldest is the committer time of the oldest visited commit in the range, valid while
+	// hasOldest is set. An exclusion of a visited commit resets it.
+	oldest    time.Time
+	hasOldest bool
+	// oldestStale marks oldest for recomputation after a visited commit was excluded.
+	oldestStale bool
 }
 
 func newRangeWalk(repo *git.Repository) *rangeWalk {
@@ -229,12 +250,8 @@ func newRangeWalk(repo *git.Repository) *rangeWalk {
 
 func (w *rangeWalk) push(c *object.Commit, excluded bool) {
 	if e, ok := w.entries[c.Hash]; ok {
-		if excluded && !e.excluded {
-			e.excluded = true
-
-			if e.queued {
-				w.included--
-			}
+		if excluded {
+			w.exclude(e)
 		}
 
 		return
@@ -250,22 +267,97 @@ func (w *rangeWalk) push(c *object.Commit, excluded bool) {
 	}
 }
 
-// next returns the next commit of the range, nil when the range is done or the scan limit
-// was hit.
-func (w *rangeWalk) next() (*object.Commit, error) {
-	for w.included > 0 {
-		if w.scanned >= maxScannedCommits {
-			w.truncated = true
+// exclude marks e and every visited ancestor of it as excluded, like git's
+// mark_parents_uninteresting. Ancestors that are still queued pass it on once visited.
+func (w *rangeWalk) exclude(e *walkEntry) {
+	stack := []*walkEntry{e}
 
-			return nil, nil
+	for len(stack) > 0 {
+		e = stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		if e.excluded {
+			continue
+		}
+
+		e.excluded = true
+
+		if e.queued {
+			w.included--
+		}
+
+		if !e.visited {
+			continue
+		}
+
+		w.oldestStale = true
+
+		for _, h := range e.commit.ParentHashes {
+			if p, ok := w.entries[h]; ok && !p.excluded {
+				stack = append(stack, p)
+			}
+		}
+	}
+}
+
+// oldestIncluded returns the committer time of the oldest visited commit that is still in
+// the range, and false when there is none.
+func (w *rangeWalk) oldestIncluded() (time.Time, bool) {
+	if w.oldestStale {
+		w.oldestStale = false
+		w.hasOldest = false
+
+		for _, e := range w.visited {
+			if !e.excluded {
+				w.noteIncluded(e)
+			}
+		}
+	}
+
+	return w.oldest, w.hasOldest
+}
+
+// noteIncluded updates the oldest visited commit in the range with e, if it is older.
+func (w *rangeWalk) noteIncluded(e *walkEntry) {
+	if !w.hasOldest || e.commit.Committer.When.Before(w.oldest) {
+		w.oldest = e.commit.Committer.When
+		w.hasOldest = true
+	}
+}
+
+// run walks the range and returns its commits, newest first. It stops early at
+// maxScannedCommits, which marks the walk as truncated when the range was not done yet.
+func (w *rangeWalk) run() ([]*object.Commit, error) {
+	slop := walkSlop
+
+	for w.queue.Len() > 0 {
+		if w.included == 0 {
+			// Only excluded commits are left. Keep going while one of them is not older
+			// than a commit of the range, it may still reach it, and a few commits more.
+			if oldest, ok := w.oldestIncluded(); !ok {
+				break
+			} else if !w.queue[0].commit.Committer.When.Before(oldest) {
+				slop = walkSlop
+			} else if slop--; slop < 0 {
+				break
+			}
+		}
+
+		if w.scanned >= maxScannedCommits {
+			w.truncated = w.included > 0
+
+			break
 		}
 
 		e := heap.Pop(&w.queue).(*walkEntry)
 		e.queued = false
+		e.visited = true
 		w.scanned++
+		w.visited = append(w.visited, e)
 
 		if !e.excluded {
 			w.included--
+			w.noteIncluded(e)
 		}
 
 		parents, err := loadParents(w.repo, e.commit)
@@ -276,13 +368,17 @@ func (w *rangeWalk) next() (*object.Commit, error) {
 		for _, p := range parents {
 			w.push(p, e.excluded)
 		}
+	}
 
+	commits := make([]*object.Commit, 0, len(w.visited))
+
+	for _, e := range w.visited {
 		if !e.excluded {
-			return e.commit, nil
+			commits = append(commits, e.commit)
 		}
 	}
 
-	return nil, nil
+	return commits, nil
 }
 
 // loadParents returns the parents of c that exist in the repository. A shallow clone ends
@@ -389,15 +485,15 @@ func GetCommitsBetween(log *slog.Logger, repo *git.Repository, oldHash, newHash 
 
 	walk.push(newCommit, false)
 
+	rangeCommits, err := walk.run()
+	if err != nil {
+		return nil, fmt.Errorf("failed to walk commit log: %w", err)
+	}
+
 	commits := make([]CommitInfo, 0, maxCommits)
 
-	for len(commits) < maxCommits {
-		c, err := walk.next()
-		if err != nil {
-			return nil, fmt.Errorf("failed to walk commit log: %w", err)
-		}
-
-		if c == nil {
+	for _, c := range rangeCommits {
+		if len(commits) >= maxCommits {
 			break
 		}
 
