@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *deploy.Config, recreateMode string, services []string,
 	needSignal []SignalService, setPhase func(string), self *SelfDeployInput,
+	opts composeDeployOptions,
 ) error {
 	var (
 		err          error
@@ -148,6 +150,11 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	// project network and the predecessor can safely be stopped.
 	if selfPlan.DeferToApplier {
 		return selfPlan.Step()
+	}
+
+	// Pinning is an optimization: if it fails, services are simply recreated from the new artifact.
+	if err = pinUnchangedComposeServices(ctx, dockerCli.Client(), project, opts.ArtifactRoot, recreateMode, services, opts.logger()); err != nil {
+		opts.logger().Warn("failed to keep unchanged services on their current artifact", slog.Any("error", err))
 	}
 
 	createOpts := api.CreateOptions{

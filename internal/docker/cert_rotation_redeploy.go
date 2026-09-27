@@ -115,7 +115,10 @@ func RotateProjectCertificates(
 
 	addComposeServiceLabels(selectedProject, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, ComposeVersion, latestCommit, projectHash)
 
-	if err = deployCompose(ctx, dockerCli, selectedProject, deployConfig, api.RecreateForce, serviceNames, nil, func(string) {}, SelfDeployInputFromLabels(labels)); err != nil {
+	deployOpts := composeDeployOptions{ArtifactRoot: artifactRootFromWorkingDir(ref.WorkingDir, deployConfig.WorkingDirectory)}
+
+	if err = deployCompose(ctx, dockerCli, selectedProject, deployConfig, api.RecreateForce, serviceNames, nil, func(string) {},
+		SelfDeployInputFromLabels(labels), deployOpts); err != nil {
 		return fmt.Errorf("redeploy project %s for cert rotation: %w", ref.Project, err)
 	}
 
@@ -181,6 +184,12 @@ func rotateSwarmProjectCertificates(
 	addSwarmVolumeLabels(cfg, deployConfig, payload)
 	addSwarmConfigLabels(cfg, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit)
 	addSwarmSecretLabels(cfg, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit)
+
+	artifactRoot := artifactRootFromWorkingDir(ref.WorkingDir, deployConfig.WorkingDirectory)
+	if err = pinUnchangedSwarmServices(ctx, dockerCli.Client(), cfg, ref.Project, artifactRoot, slog.Default()); err != nil {
+		slog.Warn("failed to keep unchanged services on their current artifact",
+			slog.String("project", ref.Project), logger.ErrAttr(err))
+	}
 
 	if err = removeMismatchedRecreatableVolumes(ctx, dockerCli.Client(), ref.Project, project); err != nil {
 		return fmt.Errorf("remove mismatched recreatable volumes for cert rotation of %s: %w", ref.Project, err)

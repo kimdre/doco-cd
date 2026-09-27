@@ -13,6 +13,25 @@ Artifacts are immutable, read-only copies of a source at a specific revision (a 
     Do not store persistent application data inside the artifact storage (e.g. using bind mounts with relative  paths). The artifact storage is intended for source data and artifacts only, and is not a general-purpose persistent volume.
     Any data written to the artifact storage by a container will be lost when the service is re-/deployed from a new artifact revision.
 
+## Unchanged services
+
+Since every revision is deployed from its own artifact directory, the absolute host paths of all files a service uses
+from the source (e.g. bind mounts with relative paths or `env_file`) change with every revision.
+To avoid recreating services whose files did not change, doco-cd keeps such a service on the artifact its containers
+were created from, as long as the content of all files and directories it uses from the source is identical in both revisions.
+
+For example, when a commit only changes the image tag of service `a`, service `b` with a bind mount of `./config`
+keeps running unchanged with `./config` of the previous revision. If service `b` is recreated later on (e.g. due to a
+changed image or environment variable) while `./config` is still unchanged, the new container still uses `./config`
+of the previous revision. Once `./config` changes, service `b` is recreated with the files of the new revision.
+
+The same applies to the bind mounts of Swarm services, whose tasks keep running as long as the content of their
+bind-mounted files and directories is unchanged.
+
+The revisions of the artifacts a service still uses are recorded in its `cd.doco.deployment.pinned_revisions` label
+(a service label for Swarm services), while all other deployment labels (e.g. `cd.doco.deployment.target.sha`)
+reference the deployed revision.
+
 ## Layout
 
 The source directory is organized by source type and source name, and contains the following subdirectories:
@@ -100,6 +119,8 @@ A copy is kept if any of the following is true:
 - It matches the revision of a container or Swarm service that is currently deployed (as recorded in
   the deployment's `cd.doco.source.name` / `cd.doco.deployment.target.sha` labels), regardless of
   whether that deployment is running or merely stopped.
+- It is still used by an [unchanged service](#unchanged-services) of a deployment (as recorded in the
+  `cd.doco.deployment.pinned_revisions` label).
 - It is one of the [`ARTIFACT_GC_RETENTION_RECORDS`](../App-Settings.md#artifact-garbage-collection-settings) most-recently-created copies for its
   repository/artifact, even if unreferenced - keeping a small buffer of recent copies around avoids
   needing to fetch/re-publish it again immediately after a redeploy or rollback.

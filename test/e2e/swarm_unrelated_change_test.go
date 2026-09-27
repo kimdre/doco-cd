@@ -9,8 +9,9 @@ import (
 )
 
 // TestSwarmUnrelatedChange updates one service of a Swarm stack and checks
-// that the tasks of the other services, including one with a named volume, are
-// not replaced (#1909).
+// that the tasks of the other services are not replaced (#1909), including a
+// service with a named volume and one with a repository bind mount until its
+// own files change.
 func TestSwarmUnrelatedChange(t *testing.T) {
 	t.Parallel()
 
@@ -32,6 +33,8 @@ func TestSwarmUnrelatedChange(t *testing.T) {
 	}
 
 	appTask := task("app")()
+	staticTask := task("static")()
+	staticID := h.SwarmContainerID(stack, "static")
 	changedID := h.SwarmContainerID(stack, "changed")
 
 	mark := h.LogMark()
@@ -40,5 +43,19 @@ func TestSwarmUnrelatedChange(t *testing.T) {
 
 	h.WaitForLogAfter(deployCompletedLog, mark, 2*time.Minute)
 	h.WaitForContainerRecreate(stack, "changed", changedID, 2*time.Minute)
+	h.AssertStays(15*time.Second, "unchanged services keep their tasks", appTask+" "+staticTask, func() string {
+		return task("app")() + " " + task("static")()
+	})
+
+	mark = h.LogMark()
+	h.ReplaceInWorktree("deploy/static/index.html", "index-v1", "index-v2")
+	h.RepoPush("update static files")
+
+	h.WaitForLogAfter(deployCompletedLog, mark, 2*time.Minute)
+	h.WaitForContainerRecreate(stack, "static", staticID, 2*time.Minute)
 	h.AssertStays(15*time.Second, "unchanged service keeps its task", appTask, task("app"))
+
+	if got := h.ExecOutput(h.SwarmContainerID(stack, "static"), "cat", "/static/index.html"); got != "index-v2" {
+		t.Fatalf("bind-mounted file = %q, want %q", got, "index-v2")
+	}
 }
