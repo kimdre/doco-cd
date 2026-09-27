@@ -1,0 +1,5 @@
+# Self-include stub: the compose itself comes from shared/ of this same repository.
+# project_directory keeps ./config resolving against this box's directory.
+include:
+  - path: http://gitserver/changelog-pull-request.git#${SHARED_REF}:shared/agent
+    project_directory: .

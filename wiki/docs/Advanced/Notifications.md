@@ -165,12 +165,15 @@ Printing an entry directly (`{{ . }}`) gives `shortHash subject`.
         {{ end }}
     ```
 
-Only commits that changed a file of the stack are listed, like `git log -- <paths>`. The paths are the ones the compose project resolves to: the compose files, `configs:`, `secrets:`, `env_file:`, bind mount sources and build contexts. A repository that holds several stacks therefore gets a changelog per stack instead of everything that happened in the repository. Where the stack resolves to no path inside the repository, or covers the repository root, all commits of the range are listed.
+Only commits that changed a file of the stack are listed, like `git log -- <paths>`. The paths are the ones the compose project resolves to: the compose files, `configs:`, `secrets:`, `env_file:`, bind mount sources and build contexts, plus the deploy config file (`.doco-cd.yml` or `.doco-cd.<target>.yml`) that declares the stack. A repository that holds several stacks therefore gets a changelog per stack instead of everything that happened in the repository. Where the stack resolves to no path inside the repository, or covers the repository root, all commits of the range are listed.
+
+The deploy config counts as a whole file, so a commit that changes one document of it is listed by every stack of that file that deploys afterwards.
+
+Merged branches are handled like `git log` does: the commits of a merged pull request are listed, the merge commit itself only when it changed the stack's files compared to every parent, e.g. a resolved conflict.
 
 A few changes cannot be attributed to a stack and are therefore not listed:
 
 - Files pulled in with `include:` or `extends: file:`, because Compose resolves them away and the loaded project no longer names them.
-- The deploy config (`.doco-cd.yml`) itself, it is not part of the compose project.
 - Services of a profile that is not active, their files do not belong to the deployed stack.
 - Stacks that live in a Git submodule, a submodule bump only changes the submodule path in the parent repository.
 

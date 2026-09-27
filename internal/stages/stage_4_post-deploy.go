@@ -76,10 +76,16 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		// The deployment configuration is passed alongside the project because it is not
 		// part of it: it declares the stack and holds its image tags, so a commit that
 		// touches only it is precisely the commit that caused this deploy.
+		// It is read inside the container, so it is relative to the internal repo path.
+		var extraRepoPaths []string
+		if rel, ok := docker.RepoRelativePath(s.Repository.PathInternal, s.DeployConfig.Internal.File); ok {
+			extraRepoPaths = append(extraRepoPaths, rel)
+		}
+
 		pathFilter, filterErr := docker.ProjectPathFilter(
 			s.Repository.PathExternal,
 			s.Docker.Project,
-			s.DeployConfig.Internal.File,
+			extraRepoPaths...,
 		)
 		if filterErr != nil {
 			stageLog.Warn("failed to build changelog path filter, listing all commits", logger.ErrAttr(filterErr))

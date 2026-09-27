@@ -1,0 +1,5 @@
+# Another box. Its daemon polls with target box2, the one under test never reads this file.
+name: e2e-changelog-box2-app
+working_dir: box2/app
+environment:
+  APP_TAG: "3.21"
