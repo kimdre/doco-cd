@@ -7,6 +7,6 @@
 *[artifact]: A read-only copy of a Git repository or OCI artifact at a specific revision, such as a Git commit or OCI digest. doco-cd stores artifacts under the data directory and uses them to serve deployments.
 *[OCI]: Open Container Initiative: A set of open standards for container formats and runtimes, ensuring interoperability between different container technologies.
 *[OCI artifact]: A content package, such as a container image or deployment configurations, stored and distributed according to OCI specifications. Doco-CD can fetch OCI artifacts from an OCI-compliant registry and use them in deployments.
-*[deployment]: A configured doco-cd resource that serves an artifact to a target environment.
+*[deployment]: A Compose project or Swarm stack managed by doco-cd and defined by a deploy config in a Git repository or OCI artifact.
 *[revision]: The immutable version of an artifact used by doco-cd, represented by a Git commit or an OCI digest.
 *[digest]: A content-addressable identifier, such as an OCI image digest, that uniquely identifies the exact contents of an artifact.

@@ -115,7 +115,7 @@ func RotateProjectCertificates(
 
 	addComposeServiceLabels(selectedProject, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, ComposeVersion, latestCommit, projectHash)
 
-	if err = deployCompose(ctx, dockerCli, selectedProject, deployConfig, api.RecreateForce, serviceNames, nil, func(string) {}); err != nil {
+	if err = deployCompose(ctx, dockerCli, selectedProject, deployConfig, api.RecreateForce, serviceNames, nil, func(string) {}, SelfDeployInputFromLabels(labels)); err != nil {
 		return fmt.Errorf("redeploy project %s for cert rotation: %w", ref.Project, err)
 	}
 

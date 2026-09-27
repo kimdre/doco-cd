@@ -36,6 +36,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -109,6 +110,8 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	selfupdate.RetryPause = time.Millisecond
+
 	var err error
 
 	WorkingDir, err = os.Getwd()

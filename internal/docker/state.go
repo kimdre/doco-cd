@@ -35,6 +35,16 @@ func getDeployStatusFromCache(cacheMap *sync.Map, repoName string, deployName st
 	return deployStatus{}, false
 }
 
+// RecordDeployStatus lets a successor record the deploy status of a handover it
+// finished on behalf of the process that started it.
+func RecordDeployStatus(repoName, stack, commitSHA, composeHash string) {
+	if repoName == "" || stack == "" {
+		return
+	}
+
+	setDeployStatusToCache(repoName, stack, deployStatus{CommitSHA: commitSHA, ComposeHash: composeHash})
+}
+
 func setDeployStatusToCache(repoName string, deployName string, status deployStatus) {
 	deployStatusCache.Store(getDeployStatusCacheKey(repoName, deployName), status)
 }

@@ -19,9 +19,12 @@ import (
 )
 
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
+// When the project contains this doco-cd instance it hands over to a self-update
+// strategy instead, because compose would otherwise stop this process halfway
+// through its own recreate.
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *deploy.Config, recreateMode string, services []string,
-	needSignal []SignalService, setPhase func(string),
+	needSignal []SignalService, setPhase func(string), self *SelfDeployInput,
 ) error {
 	var (
 		err          error
@@ -32,6 +35,40 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	service, err := compose.NewComposeService(dockerCli)
 	if err != nil {
 		return err
+	}
+
+	if recreateMode == "" {
+		recreateMode = api.RecreateDiverged
+	}
+
+	if deployConfig.ForceImagePull {
+		for i, s := range project.Services {
+			s.PullPolicy = types.PullPolicyAlways
+			project.Services[i] = s
+		}
+	}
+
+	// Validate the self-update strategy before signaling services or changing
+	// images/resources. Only after Pull and Build do we disable the self service
+	// in the project used for the pre-handover Create.
+	var (
+		selfPlan    selfUpdatePlan
+		selfService string
+	)
+
+	if target := selfUpdateFor(project, deployConfig.Context); target != nil {
+		if self != nil {
+			self.RecreateMode = recreateMode
+			self.Services = services
+			self.RemoveOrphans = deployConfig.RemoveOrphans
+		}
+
+		selfPlan, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, target, services, self)
+		if err != nil {
+			return err
+		}
+
+		selfService = target.Service
 	}
 
 	if len(needSignal) > 0 {
@@ -49,13 +86,6 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 			if !strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error()) {
 				return fmt.Errorf("failed to get existing images: %w", err)
 			}
-		}
-	}
-
-	if deployConfig.ForceImagePull {
-		for i, s := range project.Services {
-			s.PullPolicy = types.PullPolicyAlways
-			project.Services[i] = s
 		}
 	}
 
@@ -83,10 +113,6 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return fmt.Errorf("failed to pull images: %w", err)
 	}
 
-	if recreateMode == "" {
-		recreateMode = api.RecreateDiverged
-	}
-
 	// Convert deployConfig.BuildOpts.Args to types.MappingWithEquals
 	buildArgs := make(types.MappingWithEquals)
 	for k, v := range deployConfig.BuildOpts.Args {
@@ -106,6 +132,22 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	err = service.Build(ctx, project, buildOpts)
 	if err != nil {
 		return err
+	}
+
+	// Pull and Build need the full project. Reduce it afterwards so it also
+	// contains any image changes made during Build. Disabled services are known
+	// to Compose, so RemoveOrphans cannot reap the self container.
+	if selfPlan.Step != nil {
+		project = project.WithServicesDisabled(selfService)
+		services = selfPlan.Services
+	}
+
+	// Recreating a network shared with this process is unsafe even with the
+	// self service disabled: Compose still plans that network's removal. The
+	// applier performs the *whole* create/start after it has detached from the
+	// project network and the predecessor can safely be stopped.
+	if selfPlan.DeferToApplier {
+		return selfPlan.Step()
 	}
 
 	createOpts := api.CreateOptions{
@@ -154,6 +196,12 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	// Remove mismatched recreatable volumes (tmpfs, NFS, CIFS mounts) before create.
 	// Docker Compose then recreates them with the desired configuration during service.Create.
 	setDeploymentPhase(setPhase, "preparing deployment resources")
+
+	if selfPlan.Step != nil {
+		if err = validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
+			return err
+		}
+	}
 
 	if err = removeMismatchedRecreatableVolumes(ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
 		return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
@@ -225,6 +273,10 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		if err != nil {
 			return fmt.Errorf("failed to prune images: %w", err)
 		}
+	}
+
+	if selfPlan.Step != nil {
+		return selfPlan.Step()
 	}
 
 	return nil

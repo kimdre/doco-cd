@@ -1,0 +1,9 @@
+name: e2e-regression
+working_dir: deploy
+compose_files: [compose.yaml]
+timeout: 90
+
+---
+name: e2e-regression-app
+working_dir: app
+compose_files: [compose.yaml]

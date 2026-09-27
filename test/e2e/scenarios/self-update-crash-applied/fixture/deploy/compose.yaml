@@ -1,0 +1,35 @@
+services:
+  doco-cd:
+    container_name: e2e-self-crash-doco-cd
+    image: ${E2E_SELF_IMAGE_REPO}:v1
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      TZ: Etc/UTC
+      LOG_LEVEL: debug
+      SELF_UPDATE_ENABLED: "true"
+      SELF_UPDATE_CRASH_AT: "applied"
+      E2E_GENERATION: "1"
+      POLL_CONFIG: |
+        - url: http://gitserver/${E2E_SCENARIO}.git
+          reference: refs/heads/main
+          interval: ${E2E_POLL_INTERVAL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - data:/data
+    healthcheck:
+      test: ["CMD", "/doco-cd", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+networks:
+  default:
+    name: ${E2E_NETWORK}
+    external: true
+
+volumes:
+  data:
+    name: ${E2E_DATA_VOLUME}
+    external: true

@@ -9,6 +9,9 @@
 
 services:
   app:
+    # container_name and published ports both rule out the zero-downtime
+    # self-update strategy: two containers cannot share either. Drop them and
+    # use a reverse proxy if you enable SELF_UPDATE_ENABLED.
     container_name: doco-cd
     # You can also pin to a specific tag (version)
     # Available tags can be found here: https://github.com/kimdre/doco-cd/pkgs/container/doco-cd
