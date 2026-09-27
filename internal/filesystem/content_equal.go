@@ -159,26 +159,26 @@ func isDirOnlyTree(path string, info fs.FileInfo) (bool, error) {
 }
 
 func regularFilesEqual(a, b string) (bool, error) {
-	aFile, err := os.Open(a)
+	fileA, err := os.Open(a)
 	if err != nil {
 		return false, fmt.Errorf("open %s: %w", a, err)
 	}
 
-	defer func() { _ = aFile.Close() }()
+	defer func() { _ = fileA.Close() }()
 
-	bFile, err := os.Open(b)
+	fileB, err := os.Open(b)
 	if err != nil {
 		return false, fmt.Errorf("open %s: %w", b, err)
 	}
 
-	defer func() { _ = bFile.Close() }()
+	defer func() { _ = fileB.Close() }()
 
 	aBuf := make([]byte, contentCompareBufferSize)
 	bBuf := make([]byte, contentCompareBufferSize)
 
 	for {
-		aRead, aErr := io.ReadFull(aFile, aBuf)
-		bRead, bErr := io.ReadFull(bFile, bBuf)
+		aRead, aErr := io.ReadFull(fileA, aBuf)
+		bRead, bErr := io.ReadFull(fileB, bBuf)
 
 		if !bytes.Equal(aBuf[:aRead], bBuf[:bRead]) {
 			return false, nil
