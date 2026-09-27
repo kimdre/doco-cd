@@ -330,8 +330,17 @@ func RecreateProject(
 }
 
 // recreateProjectLabels selects metadata from the managed container when available.
+//
+// Compose only updates the labels of containers it recreates, so containers of services that
+// were unchanged by later deployments still reference the revision they were created from. The
+// managed container with the latest deployment timestamp is used, otherwise recreating the whole
+// project could reload an older revision and roll back services that were updated since.
 func recreateProjectLabels(containers []api.ContainerSummary) map[string]string {
-	var fallback map[string]string
+	var (
+		fallback        map[string]string
+		managed         map[string]string
+		latestTimestamp time.Time
+	)
 
 	for _, container := range containers {
 		labels := container.Labels
@@ -339,11 +348,23 @@ func recreateProjectLabels(containers []api.ContainerSummary) map[string]string 
 			fallback = labels
 		}
 
-		if strings.TrimSpace(labels[DocoCDLabels.Deployment.Name]) != "" &&
-			(strings.TrimSpace(labels[DocoCDLabels.Source.URL]) != "" ||
-				strings.TrimSpace(labels[DocoCDLabels.Source.Name]) != "") {
-			return labels
+		if strings.TrimSpace(labels[DocoCDLabels.Deployment.Name]) == "" ||
+			(strings.TrimSpace(labels[DocoCDLabels.Source.URL]) == "" &&
+				strings.TrimSpace(labels[DocoCDLabels.Source.Name]) == "") {
+			continue
 		}
+
+		// A missing or invalid timestamp parses as the zero time and never wins over a valid one.
+		timestamp, _ := time.Parse(time.RFC3339, strings.TrimSpace(labels[DocoCDLabels.Deployment.Timestamp]))
+
+		if managed == nil || timestamp.After(latestTimestamp) {
+			managed = labels
+			latestTimestamp = timestamp
+		}
+	}
+
+	if managed != nil {
+		return managed
 	}
 
 	return fallback
