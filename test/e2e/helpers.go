@@ -30,6 +30,11 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
+// deployCompletedLog is logged once a deployment of a stack completed. Unlike
+// "job completed successfully", it is not logged for poll runs that found
+// nothing to deploy.
+const deployCompletedLog = `"msg":"completed stage: post-deploy"`
+
 // initRepo creates the repo the gitserver container mounts read-only, plus a
 // separate worktree used to build the fixture and later commits. The repo's
 // storage lives directly at repoPath (the standard bare-repo layout: HEAD,
@@ -629,6 +634,56 @@ func (h *Harness) WaitForContainerRecreate(project, service, oldID string, timeo
 		id := h.ContainerID(project, service)
 		return id != "" && id != oldID
 	})
+}
+
+// AssertStays fails if current returns anything but want during window, e.g.
+// to prove that a deployment left a container untouched. Unlike WaitFor, it
+// keeps checking for the whole window, since a replacement can still happen a
+// moment after the deployment completed.
+func (h *Harness) AssertStays(window time.Duration, desc, want string, current func() string) {
+	h.t.Helper()
+
+	deadline := time.Now().Add(window)
+
+	for {
+		if got := current(); got != want {
+			h.t.Fatalf("%s: got %q, want %q", desc, got, want)
+		}
+
+		if time.Now().After(deadline) {
+			h.logf("ok: %s", desc)
+			return
+		}
+
+		time.Sleep(time.Second)
+	}
+}
+
+// SwarmServiceTaskCount returns the number of tasks in any state of a Swarm
+// stack service. It grows each time Swarm replaces a task of the service.
+func (h *Harness) SwarmServiceTaskCount(stack, service string) int {
+	h.t.Helper()
+
+	tasks, err := h.docker.TaskList(h.ctx, client.TaskListOptions{
+		Filters: client.Filters{}.Add("service", stack+"_"+service),
+	})
+	if err != nil {
+		h.t.Fatalf("list tasks for %s/%s: %v", stack, service, err)
+	}
+
+	return len(tasks.Items)
+}
+
+// ExecOutput runs cmd in containerID and returns its trimmed output.
+func (h *Harness) ExecOutput(containerID string, cmd ...string) string {
+	h.t.Helper()
+
+	output, err := docker.ExecContext(h.ctx, h.docker, containerID, cmd...)
+	if err != nil {
+		h.t.Fatalf("exec %v in container %s: %v", cmd, shortContainerID(containerID), err)
+	}
+
+	return strings.TrimSpace(output)
 }
 
 func (h *Harness) WaitForContainerRemoval(project, service string, timeout time.Duration) {
