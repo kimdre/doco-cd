@@ -262,7 +262,13 @@ func (l *composeLiveResources) sync(full bool) ([]string, error) {
 			return nil, fmt.Errorf("create live directory: %w", err)
 		}
 
-		entries, resourceChanged, err := filesystem.SyncInPlace(filepath.Join(l.artifactRoot, filepath.FromSlash(resource)), dst)
+		// Docker follows a symlinked bind mount source, so the live copy holds the content it points to.
+		src, err := filesystem.ResolveSymlinkWithin(l.artifactRoot, filepath.Join(l.artifactRoot, filepath.FromSlash(resource)))
+		if err != nil {
+			return nil, fmt.Errorf("update live copy of %s: %w", resource, err)
+		}
+
+		entries, resourceChanged, err := filesystem.SyncInPlace(src, dst)
 		if err != nil {
 			return nil, fmt.Errorf("update live copy of %s: %w", resource, err)
 		}

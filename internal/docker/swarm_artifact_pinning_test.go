@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -171,6 +172,38 @@ func TestPinSwarmServiceMounts(t *testing.T) {
 				current, base, root("new"))
 			if err != nil || ok {
 				t.Fatalf("pinSwarmServiceMounts() = %v, %v, want not pinned", ok, err)
+			}
+		})
+	}
+
+	for name, tc := range map[string]struct {
+		newContent string
+		want       bool
+	}{
+		"symlinked source with unchanged target is pinned":   {newContent: "prod", want: true},
+		"symlinked source with changed target is not pinned": {newContent: "changed", want: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			base := setup(t, map[string]map[string]string{
+				"old": {"config/prod.conf": "prod"},
+				"new": {"config/prod.conf": tc.newContent},
+			})
+			root := func(revision string) string { return filepath.Join(base, store.ArtifactsSubdir, revision) }
+
+			for _, revision := range []string{"old", "new"} {
+				if err := os.Symlink("config/prod.conf", filepath.Join(root(revision), "app.conf")); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			_, _, ok, err := pinSwarmServiceMounts(
+				[]composetypes.ServiceVolumeConfig{bind(filepath.Join(root("new"), "app.conf"), "/etc/app.conf")},
+				[]mount.Mount{mountBind(filepath.Join(root("old"), "app.conf"), "/etc/app.conf")},
+				base, root("new"))
+			if err != nil || ok != tc.want {
+				t.Fatalf("pinSwarmServiceMounts() = %v, %v, want %v", ok, err, tc.want)
 			}
 		})
 	}

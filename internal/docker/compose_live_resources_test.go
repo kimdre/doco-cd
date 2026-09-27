@@ -249,6 +249,53 @@ func TestComposeLiveResourcesSync(t *testing.T) {
 	}
 }
 
+func TestComposeLiveResourcesSync_SymlinkedResource(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+
+	var live *composeLiveResources
+
+	for i, content := range []string{"v1", "v2"} {
+		root := liveTestArtifact(t, base, fmt.Sprintf("rev%d", i+1), map[string]string{"config/prod.conf": content})
+
+		if err := os.Symlink("config/prod.conf", filepath.Join(root, "app.conf")); err != nil {
+			t.Fatal(err)
+		}
+
+		var err error
+
+		live, err = prepareComposeLiveResources(liveTestProject(root), root, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		changed, err := live.sync(true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !slices.Contains(changed, "app.conf") {
+			t.Errorf("revision %d: changed = %v, want it to contain app.conf", i+1, changed)
+		}
+
+		liveFile := filepath.Join(live.root, "app.conf")
+
+		info, err := os.Lstat(liveFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !info.Mode().IsRegular() {
+			t.Fatalf("revision %d: live copy of a symlinked resource has mode %v, want a regular file", i+1, info.Mode())
+		}
+
+		if got := readLiveTestFile(t, liveFile); got != content {
+			t.Errorf("revision %d: live copy content = %q, want %q", i+1, got, content)
+		}
+	}
+}
+
 func TestComposeLiveResourcesSync_NotFull(t *testing.T) {
 	t.Parallel()
 

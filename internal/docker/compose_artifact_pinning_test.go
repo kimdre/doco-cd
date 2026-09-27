@@ -267,6 +267,40 @@ func TestPinComposeService(t *testing.T) {
 		}
 	})
 
+	for name, tc := range map[string]struct {
+		newContent string
+		want       bool
+	}{
+		"symlinked bind mount source with unchanged target is pinned":   {newContent: "prod", want: true},
+		"symlinked bind mount source with changed target is not pinned": {newContent: "changed", want: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			oldRoot, newRoot := setup(t, baseFiles)
+
+			for root, content := range map[string]string{oldRoot: "prod", newRoot: tc.newContent} {
+				writePinningTestFiles(t, root, map[string]string{"config/prod.conf": content})
+
+				if err := os.Symlink("config/prod.conf", filepath.Join(root, "app.conf")); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			service := types.ServiceConfig{Name: "web", Volumes: []types.ServiceVolumeConfig{
+				{Type: types.VolumeTypeBind, Source: filepath.Join(newRoot, "app.conf"), Target: "/etc/app.conf"},
+			}}
+			mounted := container.Summary{Mounts: []container.MountPoint{
+				{Type: mount.TypeBind, Source: filepath.Join(oldRoot, "app.conf"), Destination: "/etc/app.conf"},
+			}}
+
+			_, ok, err := pinComposeService(service, []container.Summary{mounted}, newRoot, oldRoot)
+			if err != nil || ok != tc.want {
+				t.Fatalf("pinComposeService() = %v, %v, want %v", ok, err, tc.want)
+			}
+		})
+	}
+
 	t.Run("service without repository paths is not pinned", func(t *testing.T) {
 		t.Parallel()
 

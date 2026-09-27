@@ -318,7 +318,7 @@ func pinComposeService(service types.ServiceConfig, containers []container.Summa
 	}
 
 	for _, pair := range pairs {
-		equal, err := filesystem.ContentEqual(pair.current, pair.pinned)
+		equal, err := artifactContentEqual(newRoot, pair.current, oldRoot, pair.pinned)
 		if err != nil {
 			return service, false, err
 		}
@@ -334,6 +334,25 @@ func pinComposeService(service types.ServiceConfig, containers []container.Summa
 	service.Develop = develop
 
 	return service, true, nil
+}
+
+// artifactContentEqual reports whether the path a into the artifact rootA and the path b into the
+// artifact rootB have identical content. A symlink at a or b itself is followed within its
+// artifact like Docker does for the source of a bind mount, so the content a container sees is
+// compared. Symlinks inside directories are compared by their targets, since containers resolve
+// them in their own file system.
+func artifactContentEqual(rootA, a, rootB, b string) (bool, error) {
+	a, err := filesystem.ResolveSymlinkWithin(rootA, a)
+	if err != nil {
+		return false, err
+	}
+
+	b, err = filesystem.ResolveSymlinkWithin(rootB, b)
+	if err != nil {
+		return false, err
+	}
+
+	return filesystem.ContentEqual(a, b)
 }
 
 // containerHasBindMount reports whether c bind-mounts source at target.
