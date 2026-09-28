@@ -141,7 +141,7 @@ func TestDeployServicesIdentity(t *testing.T) {
 			var stdout, stderr, logs bytes.Buffer
 
 			cli := testServiceIdentityCLI(apiClient, &stdout, &stderr)
-			log := slog.New(slog.NewJSONHandler(&logs, nil))
+			log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 			services := map[string]swarmTypes.ServiceSpec{
 				"api": {TaskTemplate: swarmTypes.TaskSpec{ContainerSpec: &swarmTypes.ContainerSpec{Image: "example:latest"}}},
 			}

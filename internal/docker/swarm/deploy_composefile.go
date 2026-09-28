@@ -280,7 +280,7 @@ func ServiceLogAttrs(name, id string) []any {
 
 func logService(log *slog.Logger, message string, service deployedService) {
 	if log != nil {
-		log.Info(message, ServiceLogAttrs(service.name, service.id)...)
+		log.Debug(message, ServiceLogAttrs(service.name, service.id)...)
 	}
 }
 
