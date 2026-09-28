@@ -41,7 +41,7 @@ func DestroyStack(
 	stackLog.Info("destroying stack")
 
 	if swarmMode {
-		err := RemoveSwarmStack(*ctx, *dockerCli, deployConfig.Name)
+		err := RemoveSwarmStackWithLogger(*ctx, *dockerCli, deployConfig.Name, stackLog)
 		if err != nil {
 			errMsg := "failed to destroy swarm stack"
 			return fmt.Errorf("%s: %w", errMsg, err)

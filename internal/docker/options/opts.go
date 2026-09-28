@@ -1,6 +1,7 @@
 package options
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/docker/cli/opts"
@@ -17,6 +18,7 @@ type Deploy struct {
 	Quiet            bool
 	Environment      map[string]string
 	Timeout          time.Duration
+	Logger           *slog.Logger
 }
 
 // Config holds docker stack config options.
@@ -45,6 +47,7 @@ type PS struct {
 type Remove struct {
 	Namespaces []string
 	Detach     bool
+	Logger     *slog.Logger
 }
 
 // Services holds docker stack services options.

@@ -134,7 +134,7 @@ func RunStackActionOnServices(
 
 		switch action {
 		case "scale":
-			log.Info("scaling service", slog.String("service", svcName), slog.Int("replicas", replicas))
+			log.Info("scaling service", slog.String("service", svcName), slog.String("service_id", svc.ID), slog.Int("replicas", replicas))
 
 			err = swarm.ScaleService(ctx, dockerCLI, svcName, uint64(replicas), wait, false) // #nosec G115 -- replicas is validated as non-negative above.
 			if errors.Is(err, swarm.ErrNotReplicatedService) {
@@ -147,7 +147,7 @@ func RunStackActionOnServices(
 				result.Reason = docker.ErrJobServiceRestartNotSupported.Error()
 				err = docker.ErrJobServiceRestartNotSupported
 			} else {
-				log.Info("restarting service", slog.String("service", svcName))
+				log.Info("restarting service", slog.String("service", svcName), slog.String("service_id", svc.ID))
 
 				err = docker.RestartService(ctx, dockerCLI.Client(), svcName)
 				if errors.Is(err, docker.ErrJobServiceRestartNotSupported) {
@@ -156,7 +156,7 @@ func RunStackActionOnServices(
 				}
 			}
 		case "run":
-			log.Info("retriggering job service", slog.String("service", svcName))
+			log.Info("retriggering job service", slog.String("service", svcName), slog.String("service_id", svc.ID))
 
 			err = docker.RerunJobService(ctx, dockerCLI.Client(), svcName)
 			if errors.Is(err, docker.ErrNotAJobService) {
@@ -170,7 +170,8 @@ func RunStackActionOnServices(
 		}
 
 		if result.Status == "skipped" {
-			log.Debug("skipping service for stack action", slog.String("service", svcName), slog.String("action", action), slog.String("reason", result.Reason))
+			log.Debug("skipping service for stack action", slog.String("service", svcName), slog.String("service_id", svc.ID),
+				slog.String("action", action), slog.String("reason", result.Reason))
 		}
 
 		results = append(results, result)
@@ -198,5 +199,5 @@ func RemoveStack(ctx context.Context, dockerCLI command.Cli, stack string, log *
 
 	log.Info("removing stack", slog.String("stack", stack))
 
-	return docker.RemoveSwarmStack(ctx, dockerCLI, stack)
+	return docker.RemoveSwarmStackWithLogger(ctx, dockerCLI, stack, log)
 }

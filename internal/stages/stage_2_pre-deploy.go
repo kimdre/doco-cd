@@ -20,6 +20,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/prometheus"
@@ -301,6 +302,19 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
 
+	if s.Docker.SwarmMode {
+		for _, status := range deployedState.DeployedStatus {
+			name, serviceID := swarmServiceLogIdentity(status, "")
+
+			stageLog.Debug("checked deployed swarm service status",
+				slog.String("service", name),
+				slog.String("service_id", serviceID),
+				slog.String("mode", string(status.SwarmMode)),
+				slog.Uint64("replicas", status.Replicas),
+			)
+		}
+	}
+
 	// A recorded failure means the last attempt of this stack did not finish.
 	// The commit/hash labels then lie (compose stamps them before hooks and
 	// later stages run), so the skip checks below must not trust them (#1702).
@@ -579,6 +593,19 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		mismatchServices := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus, s.Docker.Project.Services)
 		mismatchServices = s.dropSchedulerHeldMismatches(mismatchServices, stageLog)
 
+		if s.Docker.SwarmMode {
+			for _, mismatch := range mismatchServices {
+				status := deployedState.DeployedStatus[docker.Service(mismatch.ServiceName)]
+				name, serviceID := swarmServiceLogIdentity(status, s.DeployConfig.Name+"_"+mismatch.ServiceName)
+
+				stageLog.Debug("swarm service status mismatch",
+					slog.String("service", name),
+					slog.String("service_id", serviceID),
+					slog.Any("reasons", mismatch.Reasons),
+				)
+			}
+		}
+
 		if s.DeployConfig.ForceRecreate {
 			stageLog.Debug("force recreate enabled, proceeding with deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
@@ -631,6 +658,15 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	}
 
 	return nil
+}
+
+func swarmServiceLogIdentity(status docker.ServiceStatus, fallbackName string) (string, string) {
+	name := status.Name
+	if name == "" {
+		name = fallbackName
+	}
+
+	return swarm.OrUnavailable(name), swarm.OrUnavailable(status.ID)
 }
 
 // dropSchedulerHeldMismatches removes service mismatches that doco-cd caused
