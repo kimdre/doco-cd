@@ -5,28 +5,25 @@ import (
 	"errors"
 	"maps"
 	"net"
+	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/avast/retry-go/v5"
+	openbao "github.com/openbao/openbao/api/v2"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
-// retryableKeywords are substrings of provider error messages that mark a
-// transient failure: rate limiting, server-side 5xx or a network timeout.
-// Providers return plain string errors, so message matching is all we have.
+// retryableKeywords are phrases in provider error messages that mark a transient
+// failure. Providers like Bitwarden return plain string errors, so message matching is all we have.
 var retryableKeywords = []string{
-	"429",
 	"too many requests",
 	"rate limit",
 	"rate-limit",
-	"500",
-	"502",
-	"503",
-	"504",
 	"internal server error",
 	"bad gateway",
 	"service unavailable",
@@ -35,11 +32,24 @@ var retryableKeywords = []string{
 	"connection reset",
 }
 
+// retryableStatusText matches 429/5xx written as a status, e.g. "[520 Unknown Error]" or
+// "StatusCode: 503", but not digits that are part of a secret id like "secret500".
+var retryableStatusText = regexp.MustCompile(`(?i)(?:\[|(?:status|code|http)\W{0,3})(429|5\d\d)\b`)
+
+// isRetryableStatus reports whether an HTTP status is transient: 429 or 5xx.
+func isRetryableStatus(code int) bool {
+	return code == http.StatusTooManyRequests || code >= http.StatusInternalServerError
+}
+
 // isRetryable reports whether an upstream secret provider error is transient
 // (rate limit, 5xx, network timeout) and worth another attempt.
 func isRetryable(err error) bool {
-	if err == nil {
+	if err == nil || errors.Is(err, secrettypes.ErrNotRetryable) {
 		return false
+	}
+
+	if respErr, ok := errors.AsType[*openbao.ResponseError](err); ok {
+		return isRetryableStatus(respErr.StatusCode)
 	}
 
 	if _, ok := errors.AsType[*url.Error](err); ok {
@@ -52,7 +62,7 @@ func isRetryable(err error) bool {
 
 	msg := strings.ToLower(err.Error())
 
-	return slices.ContainsFunc(retryableKeywords, func(keyword string) bool {
+	return retryableStatusText.MatchString(msg) || slices.ContainsFunc(retryableKeywords, func(keyword string) bool {
 		return strings.Contains(msg, keyword)
 	})
 }

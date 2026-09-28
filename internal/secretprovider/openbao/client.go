@@ -311,7 +311,7 @@ func (p *Provider) issuePKIRoleCerts(ctx context.Context, refs map[string]string
 			cert, err := IssueCert(ctx, c, engineName, roleName, commonName)
 			if err != nil {
 				select {
-				case errCh <- fmt.Errorf("failed to issue certificate for common name %s: %w", commonName, err):
+				case errCh <- fmt.Errorf("%w: failed to issue certificate for common name %s: %w", secrettypes.ErrNotRetryable, commonName, err):
 					cancel()
 				default:
 				}

@@ -43,6 +43,11 @@ var retrier = retry.New(
 // isTransientError reports whether a remote git failure is worth retrying:
 // network errors, timeouts and HTTP 5xx/429 from the server.
 func isTransientError(err error) bool {
+	// go-git wraps transport failures without Unwrap, so dig into the inner error by hand.
+	if unexpected, ok := errors.AsType[*plumbing.UnexpectedError](err); ok {
+		err = unexpected.Err
+	}
+
 	if _, ok := errors.AsType[*url.Error](err); ok {
 		return true
 	}
@@ -51,13 +56,7 @@ func isTransientError(err error) bool {
 		return true
 	}
 
-	// go-git wraps non-2xx responses without Unwrap, so dig into the inner error by hand.
-	unexpected, ok := errors.AsType[*plumbing.UnexpectedError](err)
-	if !ok {
-		return false
-	}
-
-	httpErr, ok := errors.AsType[*githttp.Err](unexpected.Err)
+	httpErr, ok := errors.AsType[*githttp.Err](err)
 	if !ok || httpErr.Response == nil {
 		return false
 	}

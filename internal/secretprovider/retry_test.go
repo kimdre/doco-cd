@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"sync/atomic"
 	"testing"
+
+	openbao "github.com/openbao/openbao/api/v2"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -228,6 +231,28 @@ func TestRetryingSecretProvider_ResolveSecretReferences_RetriesOnRateLimit(t *te
 	}
 }
 
+func TestRetryingSecretProvider_ResolveSecretReferences_NoRetryOnNotRetryable(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockSecretProvider{
+		name: "test",
+		resolveSecretRefsFunc: func(_ context.Context, _ map[string]string) (secrettypes.ResolvedSecrets, error) {
+			return nil, fmt.Errorf("%w: failed to issue certificate: %w", secrettypes.ErrNotRetryable, errRateLimit)
+		},
+	}
+
+	subject := NewRetryingSecretProvider(mock)
+
+	_, err := subject.ResolveSecretReferences(t.Context(), map[string]string{"CERT": "pki-role:pki:role:cn"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	if calls := mock.resolveSecretRefsCalls.Load(); calls != 1 {
+		t.Errorf("expected 1 call (no replay of non-idempotent issuance), got %d", calls)
+	}
+}
+
 func TestRetryingSecretProvider_ResolveSecretReferences_PreservesInputOnRetry(t *testing.T) {
 	t.Parallel()
 
@@ -360,6 +385,30 @@ func TestIsRetryable(t *testing.T) {
 		},
 		"not found": {
 			err:  errors.New("secret not found: 404"),
+			want: false,
+		},
+		"520 from bitwarden": {
+			err:  errors.New("API error: Received error message from server: [520 Unknown Error]"),
+			want: true,
+		},
+		"digits inside secret id": {
+			err:  errors.New("secret not found: secret500"),
+			want: false,
+		},
+		"openbao 404 mentioning secret500": {
+			err:  fmt.Errorf("failed to retrieve secret with ID secret500: %w", &openbao.ResponseError{StatusCode: http.StatusNotFound, URL: "/v1/kv/data/secret500"}),
+			want: false,
+		},
+		"openbao 503": {
+			err:  fmt.Errorf("resolve: %w", &openbao.ResponseError{StatusCode: http.StatusServiceUnavailable}),
+			want: true,
+		},
+		"openbao 429": {
+			err:  &openbao.ResponseError{StatusCode: http.StatusTooManyRequests},
+			want: true,
+		},
+		"not retryable marker": {
+			err:  fmt.Errorf("%w: failed to issue certificate: %w", secrettypes.ErrNotRetryable, errRateLimit),
 			want: false,
 		},
 		"generic error": {

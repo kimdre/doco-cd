@@ -35,6 +35,8 @@ func TestIsTransientError(t *testing.T) {
 		{"url error", &url.Error{Op: "Get", URL: "https://example.com", Err: errors.New("TLS handshake timeout")}, true},
 		{"net timeout", timeoutError{}, true},
 		{"net timeout wrapped", fmt.Errorf("fetch: %w", &net.OpError{Op: "dial", Err: timeoutError{}}), true},
+		{"post timeout inside unexpected", plumbing.NewUnexpectedError(&url.Error{Op: "Post", URL: "https://example.com", Err: timeoutError{}}), true},
+		{"net timeout inside unexpected", plumbing.NewUnexpectedError(&net.OpError{Op: "read", Err: timeoutError{}}), true},
 		{"http 503", httpStatusErr(http.StatusServiceUnavailable), true},
 		{"http 500", httpStatusErr(http.StatusInternalServerError), true},
 		{"http 502 wrapped", fmt.Errorf("%w: %w", ErrFetchFailed, httpStatusErr(http.StatusBadGateway)), true},
