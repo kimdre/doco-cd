@@ -283,6 +283,7 @@ func (g *gitResourceLoader) checkout(ctx context.Context, path, remote, ref stri
 		SkipTLSVerify:           g.skipTLSVerify,
 		ProxyOptions:            g.proxyOptions,
 		CloneSubmodules:         g.cloneSubmodules,
+		SkipAbsoluteSymlinks:    true,
 		Depth:                   g.cloneDepth,
 	})
 	if err != nil {

@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 )
 
@@ -219,12 +221,22 @@ func TestExportTree_SkipsAbsoluteSymlinkTarget(t *testing.T) {
 		t.Fatalf("Head() error = %v", err)
 	}
 
+	strictDir := t.TempDir()
+	if err := git.ExportTree(strictDir, repo, head.Hash(), git.ExportOptions{}); !errors.Is(err, filesystem.ErrPathTraversal) {
+		t.Fatalf("ExportTree() error = %v, want path traversal error by default", err)
+	}
+
+	if _, statErr := os.Lstat(filepath.Join(strictDir, "escape.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected escape.txt not to be created on strict export, stat err = %v", statErr)
+	}
+
 	dir := t.TempDir()
 
 	var logBuf bytes.Buffer
 
 	err = git.ExportTree(dir, repo, head.Hash(), git.ExportOptions{
-		Log: slog.New(slog.NewTextHandler(&logBuf, nil)),
+		Log:                  slog.New(slog.NewTextHandler(&logBuf, nil)),
+		SkipAbsoluteSymlinks: true,
 	})
 	if err != nil {
 		t.Fatalf("ExportTree() error = %v, want nil: an absolute symlink target is skipped, not fatal", err)

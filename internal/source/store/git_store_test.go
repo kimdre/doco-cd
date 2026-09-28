@@ -14,6 +14,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
@@ -524,8 +525,8 @@ func TestGitStore_ResolveHonorsCanceledContext(t *testing.T) {
 
 // An application repo routinely carries a symlink with an absolute target (a Laravel
 // public/storage link into /var/www/html) far away from the directory an include needs.
-// Publish must skip that link and still export the rest of the tree.
-func TestGitStore_PublishSkipsAbsoluteSymlink(t *testing.T) {
+// Git includes opt into skipping that link; regular Git stores reject it.
+func TestGitStore_PublishAbsoluteSymlinkOptIn(t *testing.T) {
 	t.Parallel()
 
 	srcPath := filepath.Join(t.TempDir(), "src")
@@ -553,9 +554,26 @@ func TestGitStore_PublishSkipsAbsoluteSymlink(t *testing.T) {
 		t.Fatalf("failed to commit symlink: %v", err)
 	}
 
-	s := newGitStore(t, "file://"+srcPath)
+	strictStore := newGitStore(t, "file://"+srcPath)
+	revision, err := strictStore.Resolve(t.Context(), pinned.String())
+	if err != nil {
+		t.Fatalf("Resolve(%s) with strict export error = %v", pinned, err)
+	}
 
-	revision, err := s.Resolve(t.Context(), pinned.String())
+	if _, err := strictStore.Publish(t.Context(), revision); !errors.Is(err, filesystem.ErrPathTraversal) {
+		t.Fatalf("Publish() error = %v, want path traversal error by default", err)
+	}
+
+	s, err := store.NewGitStore(store.GitStoreOptions{
+		CloneURL:             "file://" + srcPath,
+		BaseDir:              t.TempDir(),
+		SkipAbsoluteSymlinks: true,
+	})
+	if err != nil {
+		t.Fatalf("NewGitStore() error = %v", err)
+	}
+
+	revision, err = s.Resolve(t.Context(), pinned.String())
 	if err != nil {
 		t.Fatalf("Resolve(%s) error = %v", pinned, err)
 	}

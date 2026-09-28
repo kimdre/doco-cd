@@ -41,6 +41,11 @@ type ExportOptions struct {
 	// the same way `git archive` treats them.
 	SubmoduleCacheDir string
 
+	// SkipAbsoluteSymlinks omits links with absolute targets instead of failing
+	// the export. Git includes use this to tolerate unrelated application links.
+	// Other links that escape the export directory remain errors.
+	SkipAbsoluteSymlinks bool
+
 	// Credentials and network options, applied both to the top-level
 	// repository (already fetched by the caller) and to any submodule
 	// mirrors this export fetches.
@@ -58,7 +63,8 @@ type ExportOptions struct {
 
 // ExportTree materializes commit's tree into dir: directories, regular files
 // (preserving the executable bit) and symlinks (rejecting any link whose
-// target would resolve outside dir). If opts.SubmoduleCacheDir is set,
+// target would resolve outside dir, unless an absolute link is explicitly
+// skipped). If opts.SubmoduleCacheDir is set,
 // submodules are additionally fetched and recursively exported at their
 // configured path, down to DefaultSubmoduleRecursionDepth levels deep.
 //
@@ -204,14 +210,12 @@ func resolveLongestExistingPrefix(path string) string {
 	}
 }
 
+// ErrAbsoluteSymlinkTarget identifies absolute links so includes can skip them.
+var ErrAbsoluteSymlinkTarget = errors.New("absolute symlink target")
+
 // exportCtx carries the state that stays constant across one ExportTree
 // call's recursion, so the recursive helpers below don't need long,
 // repetitive parameter lists.
-// ErrAbsoluteSymlinkTarget marks a symlink whose target is an absolute path. Such a
-// link can never resolve inside the artifact, so ExportTree skips it with a warning
-// instead of failing the export.
-var ErrAbsoluteSymlinkTarget = errors.New("absolute symlink target")
-
 type exportCtx struct {
 	absRoot         string
 	repo            *git.Repository
@@ -269,11 +273,7 @@ func exportTree(ctx exportCtx, tree *object.Tree, relPath string) error {
 			}
 		case filemode.Symlink:
 			if err := exportSymlink(ctx.absRoot, target, ctx.repo, entry); err != nil {
-				if errors.Is(err, ErrAbsoluteSymlinkTarget) {
-					// Skipped, not failed: nothing in the artifact resolves outside
-					// it, which keeps the lexical path checks downstream sound. A
-					// bind mount through the skipped path finds no file on the
-					// host, which is the safe outcome.
+				if ctx.opts.SkipAbsoluteSymlinks && errors.Is(err, ErrAbsoluteSymlinkTarget) {
 					ctx.opts.Log.Warn("skipping symlink with absolute target",
 						slog.String("path", entryRelPath),
 						slog.String("error", err.Error()))
@@ -369,12 +369,10 @@ func exportSymlink(root, target string, repo *git.Repository, entry object.TreeE
 	// making the check below pass for an absolute target while the
 	// os.Symlink call still writes the real, unmangled absolute target.
 	// An absolute target is never inside the artifact, so it is not written.
-	// It is reported with ErrAbsoluteSymlinkTarget so the caller can skip the
-	// entry instead of failing the whole export: application repos routinely
-	// carry such links (a Laravel public/storage link into /var/www/html),
-	// far away from the directory an include actually needs.
+	// Keep the path-traversal classification for strict exports while allowing
+	// includes to distinguish and skip these links.
 	if filepath.IsAbs(cleanLinkTarget) {
-		return fmt.Errorf("%w: absolute symlink target %q", ErrAbsoluteSymlinkTarget, linkTargetStr)
+		return fmt.Errorf("%w: %w %q", filesystem.ErrPathTraversal, ErrAbsoluteSymlinkTarget, linkTargetStr)
 	}
 
 	resolved := filepath.Join(filepath.Dir(target), cleanLinkTarget)
