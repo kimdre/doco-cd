@@ -3,7 +3,6 @@ package stages
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -21,19 +20,6 @@ type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
 // MutationAdmission is invoked after pre-deploy confirms that a deployment
 // requires mutation. The returned function releases the mutation admission.
 type MutationAdmission func(context.Context) (func(), error)
-
-func successfulCommitStatusDescription(startedAt, finishedAt time.Time) string {
-	if startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) {
-		return "Successful"
-	}
-
-	duration := finishedAt.Sub(startedAt)
-	if duration < time.Second {
-		return "Successful in <1s"
-	}
-
-	return fmt.Sprintf("Successful in %s", duration.Round(time.Second))
-}
 
 func shouldPostPendingCommitStatus(stageName StageName, destroyEnabled, pendingPosted bool) bool {
 	return !destroyEnabled && !pendingPosted && stageName == StagePreDeploy
@@ -211,7 +197,7 @@ func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmi
 	}
 
 	if !s.DeployConfig.Destroy.Enabled {
-		s.PostCommitStatus(ctx, commitstatus.StateSuccess, successfulCommitStatusDescription(s.Stages.Init.StartedAt, finishedAt))
+		s.PostCommitStatus(ctx, commitstatus.StateSuccess, commitstatus.SuccessDescription(s.Stages.Init.StartedAt, finishedAt))
 	}
 
 	// Success (deploy or destroy) closes any recorded failure, retries stop.

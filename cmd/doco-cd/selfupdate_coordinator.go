@@ -37,6 +37,10 @@ type selfUpdateCoordinatorDeps struct {
 	stopWork  context.CancelFunc
 }
 
+func (d selfUpdateCoordinatorDeps) reporter() *selfUpdateReporter {
+	return newSelfUpdateReporter(d.appConfig, d.notifier)
+}
+
 // runSelfUpdateCoordinator handles recovery requests without draining and
 // waits for applier preflight before closing admission for a handover.
 func runSelfUpdateCoordinator(ctx context.Context, log *logger.Logger, deps selfUpdateCoordinatorDeps) {
@@ -169,7 +173,7 @@ func recoverOrRetry(ctx context.Context, log *logger.Logger, deps selfUpdateCoor
 		recoverAndExit(ctx, log, deps, record, msg)
 	}
 
-	if err := finalizeAsPredecessor(ctx, log, deps.client, deps.notifier, deps.store, record); err != nil {
+	if err := finalizeAsPredecessor(ctx, log, deps.client, deps.reporter(), deps.store, record); err != nil {
 		log.Error(msg, logger.ErrAttr(err))
 
 		return !retrySelfUpdateRecovery(ctx)
@@ -182,7 +186,7 @@ func recoverOrRetry(ctx context.Context, log *logger.Logger, deps selfUpdateCoor
 // a drained process cannot reopen admission, so the restart policy brings a
 // clean one back.
 func recoverAndExit(ctx context.Context, log *logger.Logger, deps selfUpdateCoordinatorDeps, record selfupdate.Record, msg string) {
-	if err := finalizeAsPredecessor(ctx, log, deps.client, deps.notifier, deps.store, record); err != nil {
+	if err := finalizeAsPredecessor(ctx, log, deps.client, deps.reporter(), deps.store, record); err != nil {
 		log.Error(msg, logger.ErrAttr(err))
 	}
 

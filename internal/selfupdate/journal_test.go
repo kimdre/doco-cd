@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -297,5 +298,77 @@ func TestDriftSnapshotSurvivesApplierRestart(t *testing.T) {
 		loaded.Drift.Networks["doco-cd_backend"].Labels["generation"] != "old" ||
 		loaded.Drift.Containers["abc123"].Image != "sha256:old" {
 		t.Errorf("network rollback snapshot lost on reload: %+v", loaded.Drift)
+	}
+}
+
+// TestStoreKeepsCommitStatusTarget checks that the pending commit status
+// survives the journal, so the process that resolves the handover can post the
+// final state, and that records without one keep their previous layout.
+func TestStoreKeepsCommitStatusTarget(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+
+	startedAt := time.Date(2026, time.September, 27, 21, 0, 0, 0, time.UTC)
+	want := CommitStatusInfo{
+		SourceURL: "https://git.example.com/org/infra.git",
+		RepoURL:   "https://git.example.com/org/infra",
+		FullName:  "org/infra",
+		CommitSHA: "0123456789abcdef",
+		Context:   "doco-cd/nas/doco-cd",
+		StartedAt: startedAt,
+	}
+
+	withStatus := newTestRecord("with-status")
+	withStatus.Source.CommitStatus = &want
+
+	if err := store.Create(withStatus); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	loaded, err := store.Load(withStatus.ID)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	if loaded.Source.CommitStatus == nil {
+		t.Fatal("commit status target was not persisted")
+	}
+
+	got := *loaded.Source.CommitStatus
+	if !got.StartedAt.Equal(want.StartedAt) {
+		t.Errorf("StartedAt = %v, want %v", got.StartedAt, want.StartedAt)
+	}
+
+	got.StartedAt = want.StartedAt
+	if got != want {
+		t.Errorf("commit status target = %+v, want %+v", got, want)
+	}
+
+	if err = store.Remove(withStatus.ID); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	without := newTestRecord("without-status")
+	if err = store.Create(without); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	raw, err := os.ReadFile(store.path(without.ID))
+	if err != nil {
+		t.Fatalf("read record: %v", err)
+	}
+
+	if strings.Contains(string(raw), "commit_status") {
+		t.Errorf("record without a commit status wrote the field: %s", raw)
+	}
+
+	loaded, err = store.Load(without.ID)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	if loaded.Source.CommitStatus != nil {
+		t.Errorf("commit status = %+v, want nil", *loaded.Source.CommitStatus)
 	}
 }

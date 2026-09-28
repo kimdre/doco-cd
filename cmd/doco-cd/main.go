@@ -505,7 +505,7 @@ func run() error {
 	defer stopLifecycleWork()
 
 	if selfIdentity.OK {
-		finalizeHandover, err := finalizeSelfUpdate(ctx, log, dockerClient, notifier, selfUpdateStore, selfIdentity, controlPlaneRuns)
+		finalizeHandover, err := finalizeSelfUpdate(ctx, log, dockerClient, newSelfUpdateReporter(c, notifier), selfUpdateStore, selfIdentity, controlPlaneRuns)
 		if err != nil {
 			log.Critical("failed to finalize a pending self-update", logger.ErrAttr(err))
 
