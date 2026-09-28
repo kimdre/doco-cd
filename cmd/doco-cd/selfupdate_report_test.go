@@ -245,7 +245,9 @@ func TestSuccessorFinalisationPostsSuccessCommitStatus(t *testing.T) {
 	t.Cleanup(func() { docker.ConfigureSelfUpdate(previous) })
 
 	store := selfupdate.NewStore(t.TempDir())
+
 	var record selfupdate.Record
+
 	recorder := newCommitStatusRecorder(t, func() {
 		if _, err := store.Load(record.ID); err != nil {
 			t.Errorf("journal missing before posting final status: %v", err)
@@ -259,6 +261,7 @@ func TestSuccessorFinalisationPostsSuccessCommitStatus(t *testing.T) {
 
 	cfg := recorder.appConfig()
 	cfg.GitCommitStatus = false
+
 	err := finalizeAsSuccessor(t.Context(), logger.New(slog.LevelError), &finalizerDockerClient{},
 		newSelfUpdateReporter(cfg, nil), store, record, "new")
 	if err != nil {
@@ -293,6 +296,7 @@ func TestRolledBackPredecessorPostsFailureCommitStatus(t *testing.T) {
 
 	cfg := recorder.appConfig()
 	cfg.GitCommitStatus = false
+
 	err := finalizeAsPredecessor(t.Context(), logger.New(slog.LevelError), &finalizerDockerClient{},
 		newSelfUpdateReporter(cfg, nil), store, record)
 	if err != nil {
