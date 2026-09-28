@@ -423,6 +423,21 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	contextCLI := j.cliForContext(contextName)
+	eventServiceName := ""
+
+	if swarmMode {
+		var nameErr error
+
+		eventServiceName, nameErr = swarmEventServiceName(ctx, contextCLI, event)
+
+		jobLog = withSwarmServiceIdentity(jobLog, eventServiceName, event.Actor.ID)
+		if nameErr != nil {
+			jobLog.Debug("could not resolve swarm service name for reconciliation event",
+				logger.ErrAttr(nameErr))
+		}
+	}
+
 	// Skip reconciliation if all matching configs have destroy enabled
 	// to prevent attempting to redeploy stacks that are being destroyed
 	allDestroyEnabled := true
@@ -507,12 +522,19 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	defer stackLock.Unlock()
 
 	actorGroupName := "container"
+	actorName := event.Actor.Attributes["name"]
+
 	if swarmMode {
 		actorGroupName = "service"
+		actorName = eventServiceName
 	}
 
 	traceID := id.New()
+
 	event = withReconciliationTraceID(event, traceID)
+	if swarmMode {
+		event.Actor.Attributes["name"] = eventServiceName
+	}
 
 	eventLog := logger.
 		WithoutAttr(jobLog, "job_id").
@@ -521,7 +543,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 				slog.String("event", action),
 				slog.Group(actorGroupName,
 					slog.String("id", shortID(event.Actor.ID)),
-					slog.String("name", event.Actor.Attributes["name"]),
+					slog.String("name", actorName),
 				),
 				slog.String("trace_id", traceID),
 			),
@@ -532,7 +554,6 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		eventLog = eventLog.With(slog.String("context", contextName))
 	}
 
-	contextCLI := j.cliForContext(contextName)
 	// For restart-oriented events the container is still present, so restart it
 	// directly instead of going through a full redeploy pipeline.
 	if isRestartReconciliationAction(action) {

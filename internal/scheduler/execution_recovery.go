@@ -77,7 +77,7 @@ func (s *scheduler) cleanupExecutionArtifact(ctx context.Context, record *execut
 			return nil
 		}
 
-		return docker.RemoveSwarmOneOffService(ctx, s.dockerCli, resourceID)
+		return docker.RemoveSwarmOneOffService(ctx, s.dockerCli, resourceID, s.log)
 	default:
 		return fmt.Errorf("unsupported scheduled execution mode %q", record.Mode)
 	}
@@ -263,7 +263,7 @@ func (s *scheduler) waitForRecoveredArtifact(ctx context.Context, record *execut
 			return fmt.Errorf("recover scheduled one-off run %s: service was not found", record.RunID)
 		}
 
-		return docker.WaitOnSwarmOneOffService(ctx, s.dockerCli, resourceID)
+		return docker.WaitOnSwarmOneOffService(ctx, s.dockerCli, resourceID, s.log)
 	default:
 		return fmt.Errorf("unsupported scheduled execution mode %q", record.Mode)
 	}

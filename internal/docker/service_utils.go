@@ -21,6 +21,10 @@ import (
 )
 
 type ServiceStatus struct {
+	// Swarm service identity, unavailable for Compose containers.
+	ID   string
+	Name string
+
 	// In non-Swarm mode:
 	// Labels may differ between containers within a service, but most of them should be identical for the same service,
 	// except for com.docker.compose.container-number, com.docker.compose.replace, and potentially others.
@@ -194,7 +198,7 @@ func getDeployStatus(ctx context.Context, client client.APIClient, swarmMode boo
 		ns := convert.NewNamespace(deployName)
 
 		for _, service := range services {
-			status := ServiceStatus{Labels: SwarmServiceLabels(service)}
+			status := ServiceStatus{ID: service.ID, Name: service.Spec.Name, Labels: SwarmServiceLabels(service)}
 
 			mode := service.Spec.Mode
 			switch {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -325,9 +326,15 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, cfg *composety
 
 // RemoveSwarmStack removes a Docker Swarm stack using the provided deploy configuration.
 func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace string) error {
+	return RemoveSwarmStackWithLogger(ctx, dockerCli, namespace, nil)
+}
+
+// RemoveSwarmStackWithLogger records per-service removal details with the caller's logger.
+func RemoveSwarmStackWithLogger(ctx context.Context, dockerCli command.Cli, namespace string, log *slog.Logger) error {
 	opts := options.Remove{
 		Namespaces: []string{namespace},
 		Detach:     false,
+		Logger:     log,
 	}
 
 	return swarmInternal.RunRemove(ctx, dockerCli, opts)
@@ -770,7 +777,7 @@ func RestartService(ctx context.Context, cli dockerClient.APIClient, serviceName
 		Spec:    spec,
 	})
 	if err != nil {
-		return fmt.Errorf("update service %s: %w", serviceName, err)
+		return fmt.Errorf("update service %s: %w", swarmInternal.ServiceIdentity(svc.Spec.Name, svc.ID), err)
 	}
 
 	return nil
@@ -862,7 +869,7 @@ func RerunJobService(ctx context.Context, cli dockerClient.APIClient, serviceNam
 		Spec:    spec,
 	})
 	if err != nil {
-		return fmt.Errorf("update (rerun) job service %s: %w", serviceName, err)
+		return fmt.Errorf("update (rerun) job service %s: %w", swarmInternal.ServiceIdentity(svc.Spec.Name, svc.ID), err)
 	}
 
 	return nil
@@ -929,7 +936,7 @@ func StopSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName st
 
 	// Scale to 0.
 	if err := swarmInternal.ScaleService(ctx, dockerCLI, serviceName, 0, false, false); err != nil {
-		return 0, fmt.Errorf("scale service %s to 0: %w", serviceName, err)
+		return 0, fmt.Errorf("scale to 0: %w", err)
 	}
 
 	waitTimeout := resolveSwarmStopWaitTimeout(timeoutOverride, svc.Spec.TaskTemplate.ContainerSpec)
@@ -979,10 +986,10 @@ func waitForSwarmServiceTasksStopped(ctx context.Context, dockerCLI command.Cli,
 		})
 		if err != nil {
 			if waitCtx.Err() != nil && ctx.Err() == nil {
-				return fmt.Errorf("timed out after %s waiting for task(s) of service %s to stop", timeout, serviceName)
+				return fmt.Errorf("timed out after %s waiting for task(s) of service %s to stop", timeout, swarmInternal.ServiceIdentity(serviceName, serviceID))
 			}
 
-			return fmt.Errorf("list tasks of service %s: %w", serviceName, err)
+			return fmt.Errorf("list tasks of service %s: %w", swarmInternal.ServiceIdentity(serviceName, serviceID), err)
 		}
 
 		live := 0
@@ -1006,7 +1013,7 @@ func waitForSwarmServiceTasksStopped(ctx context.Context, dockerCLI command.Cli,
 
 		select {
 		case <-waitCtx.Done():
-			return fmt.Errorf("timed out after %s waiting for %d task(s) of service %s to stop", timeout, live, serviceName)
+			return fmt.Errorf("timed out after %s waiting for %d task(s) of service %s to stop", timeout, live, swarmInternal.ServiceIdentity(serviceName, serviceID))
 		case <-ticker.C:
 		}
 	}
@@ -1027,7 +1034,7 @@ func StartSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName s
 	}
 
 	if err := swarmInternal.ScaleService(ctx, dockerCLI, serviceName, replicas, false, false); err != nil {
-		return fmt.Errorf("scale service %s back to %d: %w", serviceName, replicas, err)
+		return fmt.Errorf("scale back to %d: %w", replicas, err)
 	}
 
 	return nil
