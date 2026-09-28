@@ -27,6 +27,31 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
+func TestSwarmServiceLogIdentity(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name         string
+		status       docker.ServiceStatus
+		fallbackName string
+		wantName     string
+		wantID       string
+	}{
+		{name: "deployed", status: docker.ServiceStatus{Name: "stack_api", ID: "full-service-id"}, fallbackName: "stack_api", wantName: "stack_api", wantID: "full-service-id"},
+		{name: "not yet deployed", fallbackName: "stack_api", wantName: "stack_api", wantID: "unavailable"},
+		{name: "unavailable name", status: docker.ServiceStatus{ID: "full-service-id"}, fallbackName: "unavailable", wantName: "unavailable", wantID: "full-service-id"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			name, id := swarmServiceLogIdentity(tc.status, tc.fallbackName)
+			if name != tc.wantName || id != tc.wantID {
+				t.Fatalf("swarmServiceLogIdentity() = %q/%q, want %q/%q", name, id, tc.wantName, tc.wantID)
+			}
+		})
+	}
+}
+
 func TestAutoDiscoveryConfigLabelDriftServices(t *testing.T) {
 	expected := "{enabled: true, depth: 0, delete: false, remove_volumes: true, remove_images: true}"
 

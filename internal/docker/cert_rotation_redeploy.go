@@ -180,6 +180,8 @@ func rotateSwarmProjectCertificates(
 		return fmt.Errorf("load swarm stack for cert rotation of %s: %w", ref.Project, err)
 	}
 
+	opts.Logger = slog.Default().With(slog.String("stack", ref.Project))
+
 	addSwarmServiceLabels(cfg, project, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash)
 	addSwarmVolumeLabels(cfg, deployConfig, payload)
 	addSwarmConfigLabels(cfg, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit)

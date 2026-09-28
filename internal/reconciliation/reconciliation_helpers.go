@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
+	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
@@ -26,6 +27,32 @@ func dockerEventTypeForMode(swarmMode bool) string {
 	}
 
 	return "container"
+}
+
+func swarmEventServiceName(ctx context.Context, cli command.Cli, event events.Message) (string, error) {
+	for _, key := range []string{"name", "com.docker.swarm.service.name", "service"} {
+		if name := strings.TrimSpace(event.Actor.Attributes[key]); name != "" {
+			return name, nil
+		}
+	}
+
+	if event.Actor.ID == "" || cli == nil {
+		return swarm.UnavailableIdentity, nil
+	}
+
+	lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	result, err := cli.Client().ServiceInspect(lookupCtx, event.Actor.ID, client.ServiceInspectOptions{})
+	if err != nil {
+		return swarm.UnavailableIdentity, err
+	}
+
+	return swarm.OrUnavailable(result.Service.Spec.Name), nil
+}
+
+func withSwarmServiceIdentity(log *slog.Logger, name, id string) *slog.Logger {
+	return log.With(swarm.ServiceLogAttrs(name, id)...)
 }
 
 func dockerEventFiltersForActions(actions []string, swarmMode bool) []string {

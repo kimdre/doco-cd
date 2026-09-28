@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -42,7 +43,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 			services.Add(service.Name)
 		}
 
-		pruneServices(ctx, dockerCli, namespace, services)
+		pruneServices(ctx, dockerCli, namespace, services, opts.Logger)
 	}
 
 	serviceNetworks := getServicesDeclaredNetworks(config.Services)
@@ -89,7 +90,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 	// count) so only the scheduler runs them on their schedule.
 	applyScheduledJobDeployReplicas(services)
 
-	serviceIDs, err := deployServices(ctx, dockerCli, services, namespace, opts.SendRegistryAuth, opts.ResolveImage)
+	deployedServices, err := deployServices(ctx, dockerCli, services, namespace, opts.SendRegistryAuth, opts.ResolveImage, opts.Logger)
 	if err != nil {
 		return err
 	}
@@ -101,15 +102,25 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 	// Exclude job-mode and scheduler-managed services from the wait.
 	// Job-mode services converge only after completions, and scheduler-managed
 	// services are intentionally allowed to be non-running at deploy time.
-	waitIDs := make([]string, 0, len(serviceIDs))
+	waitServices := make([]deployedService, 0, len(deployedServices))
 
-	for _, entry := range serviceIDs {
+	for _, entry := range deployedServices {
 		if shouldWaitForService(entry) {
-			waitIDs = append(waitIDs, entry.id)
+			waitServices = append(waitServices, entry)
 		}
 	}
 
-	return WaitOnServicesWithTimeout(ctx, dockerCli, waitIDs, opts.Timeout)
+	return waitOnServicesWith(ctx, waitServices, opts.Timeout, func(ctx context.Context, service deployedService) error {
+		logService(opts.Logger, "waiting for service to converge", service)
+		_, _ = fmt.Fprintf(dockerCli.Out(), "Waiting for service %s to converge\n", ServiceIdentity(service.name, service.id))
+
+		err := waitOnService(ctx, dockerCli, service.id)
+		if err != nil {
+			logServiceError(opts.Logger, "service convergence failed", service, err)
+		}
+
+		return err
+	})
 }
 
 func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) set.Set[string] {
@@ -240,8 +251,43 @@ func createNetworks(ctx context.Context, dockerCLI command.Cli, namespace conver
 
 type deployedService struct {
 	id          string
+	name        string
 	isJobMode   bool
 	isScheduled bool
+}
+
+// UnavailableIdentity marks a service name or ID that could not be determined.
+const UnavailableIdentity = "unavailable"
+
+// OrUnavailable returns value, or UnavailableIdentity when value is blank.
+func OrUnavailable(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return UnavailableIdentity
+	}
+
+	return value
+}
+
+// ServiceIdentity preserves the full Docker identifier alongside its name.
+func ServiceIdentity(name, id string) string {
+	return fmt.Sprintf("%s (id=%s)", OrUnavailable(name), OrUnavailable(id))
+}
+
+// ServiceLogAttrs returns the structured service name and ID fields.
+func ServiceLogAttrs(name, id string) []any {
+	return []any{slog.String("service", OrUnavailable(name)), slog.String("service_id", OrUnavailable(id))}
+}
+
+func logService(log *slog.Logger, message string, service deployedService) {
+	if log != nil {
+		log.Info(message, ServiceLogAttrs(service.name, service.id)...)
+	}
+}
+
+func logServiceError(log *slog.Logger, message string, service deployedService, err error) {
+	if log != nil {
+		log.Error(message, append(ServiceLogAttrs(service.name, service.id), slog.Any("error", err))...)
+	}
 }
 
 const scheduledJobEnabledLabel = "cd.doco.job.enabled"
@@ -291,7 +337,7 @@ func applyScheduledJobDeployReplicas(services map[string]swarmTypes.ServiceSpec)
 	}
 }
 
-func deployServices(ctx context.Context, dockerCLI command.Cli, services map[string]swarmTypes.ServiceSpec, namespace convert.Namespace, sendAuth bool, resolveImage string) ([]deployedService, error) {
+func deployServices(ctx context.Context, dockerCLI command.Cli, services map[string]swarmTypes.ServiceSpec, namespace convert.Namespace, sendAuth bool, resolveImage string, log *slog.Logger) ([]deployedService, error) {
 	apiClient := dockerCLI.Client()
 	out := dockerCLI.Out()
 
@@ -326,7 +372,10 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 		}
 
 		if service, exists := existingServiceMap[name]; exists {
-			_, _ = fmt.Fprintf(out, "Updating service %s (id: %s)\n", name, service.ID)
+			identity := deployedService{id: service.ID, name: name, isJobMode: isJob, isScheduled: isScheduled}
+			_, _ = fmt.Fprintf(out, "Updating service %s\n", ServiceIdentity(name, service.ID))
+
+			logService(log, "updating service", identity)
 
 			updateOpts := client.ServiceUpdateOptions{
 				Version:             service.Version,
@@ -367,17 +416,17 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 
 			response, err := apiClient.ServiceUpdate(ctx, service.ID, updateOpts)
 			if err != nil {
-				return nil, fmt.Errorf("failed to update service %s: %w", name, err)
+				logServiceError(log, "failed to update service", identity, err)
+				return nil, fmt.Errorf("failed to update service %s: %w", ServiceIdentity(name, service.ID), err)
 			}
 
 			for _, warning := range response.Warnings {
 				_, _ = fmt.Fprintln(dockerCLI.Err(), warning)
 			}
 
-			deployed = append(deployed, deployedService{id: service.ID, isJobMode: isJob, isScheduled: isScheduled})
+			deployed = append(deployed, identity)
 		} else {
-			_, _ = fmt.Fprintln(out, "Creating service", name)
-
+			_, _ = fmt.Fprintln(out, "Creating service", ServiceIdentity(name, ""))
 			createOpts := client.ServiceCreateOptions{
 				Spec:                serviceSpec,
 				EncodedRegistryAuth: encodedAuth,
@@ -390,10 +439,15 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 
 			response, err := apiClient.ServiceCreate(ctx, createOpts)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create service %s: %w", name, err)
+				logServiceError(log, "failed to create service", deployedService{name: name}, err)
+				return nil, fmt.Errorf("failed to create service %s: %w", ServiceIdentity(name, ""), err)
 			}
 
-			deployed = append(deployed, deployedService{id: response.ID, isJobMode: isJob, isScheduled: isScheduled})
+			identity := deployedService{id: response.ID, name: name, isJobMode: isJob, isScheduled: isScheduled}
+			_, _ = fmt.Fprintln(out, "Created service", ServiceIdentity(name, response.ID))
+
+			logService(log, "created service", identity)
+			deployed = append(deployed, identity)
 		}
 	}
 
@@ -424,8 +478,8 @@ func isScheduledServiceSpec(spec swarmTypes.ServiceSpec) bool {
 
 // WaitOnServices waits for the specified Swarm services to converge.
 func WaitOnServices(ctx context.Context, dockerCli command.Cli, serviceIDs []string) error {
-	return waitOnServices(ctx, serviceIDs, func(ctx context.Context, serviceID string) error {
-		return waitOnService(ctx, dockerCli, serviceID)
+	return waitOnServices(ctx, servicesFromIDs(serviceIDs), func(ctx context.Context, service deployedService) error {
+		return waitOnService(ctx, dockerCli, service.id)
 	})
 }
 
@@ -436,22 +490,31 @@ func WaitOnServicesWithTimeout(
 	serviceIDs []string,
 	timeout time.Duration,
 ) error {
-	return waitOnServicesWith(ctx, serviceIDs, timeout, func(ctx context.Context, serviceID string) error {
-		return waitOnService(ctx, dockerCli, serviceID)
+	return waitOnServicesWith(ctx, servicesFromIDs(serviceIDs), timeout, func(ctx context.Context, service deployedService) error {
+		return waitOnService(ctx, dockerCli, service.id)
 	})
+}
+
+func servicesFromIDs(ids []string) []deployedService {
+	services := make([]deployedService, 0, len(ids))
+	for _, id := range ids {
+		services = append(services, deployedService{id: id})
+	}
+
+	return services
 }
 
 // waitOnServices waits for every service and joins their errors.
 func waitOnServices(
 	ctx context.Context,
-	serviceIDs []string,
-	wait func(context.Context, string) error,
+	services []deployedService,
+	wait func(context.Context, deployedService) error,
 ) error {
 	var errs []error
 
-	for _, serviceID := range serviceIDs {
-		if err := wait(ctx, serviceID); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", serviceID, err))
+	for _, service := range services {
+		if err := wait(ctx, service); err != nil {
+			errs = append(errs, fmt.Errorf("service %s: %w", ServiceIdentity(service.name, service.id), err))
 		}
 	}
 
@@ -461,9 +524,9 @@ func waitOnServices(
 // waitOnServicesWith applies one timeout across all service waits.
 func waitOnServicesWith(
 	ctx context.Context,
-	serviceIDs []string,
+	services []deployedService,
 	timeout time.Duration,
-	wait func(context.Context, string) error,
+	wait func(context.Context, deployedService) error,
 ) error {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -472,7 +535,7 @@ func waitOnServicesWith(
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	err := waitOnServices(waitCtx, serviceIDs, wait)
+	err := waitOnServices(waitCtx, services, wait)
 	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 		return fmt.Errorf("timed out after %s waiting for swarm services to converge: %w", timeout, err)
 	}

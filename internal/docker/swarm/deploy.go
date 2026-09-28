@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -82,7 +83,7 @@ func checkDaemonIsSwarmManager(ctx context.Context, dockerClient client.APIClien
 }
 
 // pruneServices removes services that are no longer referenced in the source.
-func pruneServices(ctx context.Context, dockerCCLI command.Cli, namespace convert.Namespace, services set.Set[string]) {
+func pruneServices(ctx context.Context, dockerCCLI command.Cli, namespace convert.Namespace, services set.Set[string], log *slog.Logger) {
 	apiClient := dockerCCLI.Client()
 
 	oldServices, err := GetStackServices(ctx, apiClient, namespace.Name())
@@ -98,11 +99,15 @@ func pruneServices(ctx context.Context, dockerCCLI command.Cli, namespace conver
 		}
 	}
 
-	removeServices(ctx, dockerCCLI, pruneSvcSlice)
+	removeServices(ctx, dockerCCLI, pruneSvcSlice, log)
 }
 
 func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string, replicas uint64, wait, force bool) error {
 	apiClient := dockerCLI.Client()
+
+	var serviceID string
+
+	fullName := serviceName
 
 	err := retry.New(
 		retry.Attempts(5),
@@ -118,6 +123,11 @@ func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string
 		}
 
 		service := result.Service
+
+		serviceID = service.ID
+		if service.Spec.Name != "" {
+			fullName = service.Spec.Name
+		}
 
 		if force {
 			service.Spec.TaskTemplate.ForceUpdate++
@@ -156,12 +166,12 @@ func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string
 		return err
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("update service %s: %w", ServiceIdentity(fullName, serviceID), err)
 	}
 
 	if wait {
-		if err := waitOnService(ctx, dockerCLI, serviceName); err != nil {
-			return err
+		if err := waitOnService(ctx, dockerCLI, serviceID); err != nil {
+			return fmt.Errorf("service %s: %w", ServiceIdentity(fullName, serviceID), err)
 		}
 	}
 

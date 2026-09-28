@@ -390,10 +390,15 @@ func getDeployedServiceImageDigests(ctx context.Context, dockerCli command.Cli, 
 
 			digest := digestFromReference(svc.Spec.TaskTemplate.ContainerSpec.Image)
 			if digest == "" {
-				logger.Warn("deployed swarm service image has no digest", slog.String("service", svcName), slog.String("image", svc.Spec.TaskTemplate.ContainerSpec.Image))
+				logger.Warn("deployed swarm service image has no digest",
+					slog.String("service", svc.Spec.Name), slog.String("service_id", svc.ID),
+					slog.String("image", svc.Spec.TaskTemplate.ContainerSpec.Image))
+
 				continue
 			}
 
+			logger.Debug("checked deployed swarm service image digest",
+				slog.String("service", svc.Spec.Name), slog.String("service_id", svc.ID), slog.String("digest", digest))
 			deployed[svcName] = digest
 		}
 
@@ -702,6 +707,9 @@ func getDeployedServiceImageRefs(ctx context.Context, dockerCli command.Cli, swa
 		ns := convert.NewNamespace(projectName)
 		for _, svc := range services {
 			deployed[ns.Descope(svc.Spec.Name)] = svc.Spec.TaskTemplate.ContainerSpec.Image
+			logger.Debug("checked deployed swarm service image reference",
+				slog.String("service", svc.Spec.Name), slog.String("service_id", svc.ID),
+				slog.String("ref", svc.Spec.TaskTemplate.ContainerSpec.Image))
 		}
 
 		logger.Debug("resolved deployed service image references", slog.String("project", projectName), slog.Int("services", len(deployed)))
