@@ -1,10 +1,9 @@
-# THE shop family compose is the single source of truth for every env. Lives in
-# the app repo (github.com/example/shop-be). Consumed by the deployments
-# repo's per-env stubs via compose `include:` pinned at a sha of this repo.
+# One compose, every env. Lives here in the app repo; each env includes it at a
+# pinned sha.
 #
-# Env differences arrive ONLY through interpolation vars from the env's
-# .doco-cd.<host>.yml and the per-env env/secret files (relative paths resolve
-# against the stub's project_directory).
+# Everything env-specific arrives as an interpolation var from .doco-cd.<host>.yml.
+# Relative paths resolve against the including stub's directory, so ./env/app.env
+# is that env's own file.
 services:
   shop-be:
     image: ${REGISTRY}/shop-be:${SHOP_BE_TAG}
@@ -14,21 +13,13 @@ services:
     environment:
       DOMAIN: ${DOMAIN}
     env_file:
-      - ../env/shop-${ENV_NAME}.env
-      - ../secrets/shop-${ENV_NAME}.sops.env # decrypted by the daemon
-    # Runs INSIDE the container on every recreate for migrations etc.
+      - ./env/app.env
+      - ./secrets/app.sops.env   # decrypted by the daemon
     post_start:
-      - command: ["/post-update.sh"]
-    depends_on:
-      - redis
+      - command: ["/post-update.sh"]   # migrations etc., inside the container
     healthcheck:
       test: ["CMD", "/shop-be", "healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  redis:
-    image: redis:${REDIS_TAG}
-    restart: unless-stopped
-    command: redis-server --save ""
