@@ -555,6 +555,7 @@ func TestGitStore_PublishAbsoluteSymlinkOptIn(t *testing.T) {
 	}
 
 	strictStore := newGitStore(t, "file://"+srcPath)
+
 	revision, err := strictStore.Resolve(t.Context(), pinned.String())
 	if err != nil {
 		t.Fatalf("Resolve(%s) with strict export error = %v", pinned, err)

@@ -78,6 +78,7 @@ func TestFetchPinnedCommitErrorClassification(t *testing.T) {
 			called := false
 			err := fetchPinnedCommit(repo, sha, func(refSpec config.RefSpec) error {
 				called = true
+
 				if want := config.RefSpec("+" + sha + ":refs/doco-cd/pinned/" + sha); refSpec != want {
 					t.Errorf("refSpec = %q, want %q", refSpec, want)
 				}

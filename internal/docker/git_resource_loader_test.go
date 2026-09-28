@@ -87,6 +87,7 @@ func TestGitResourceLoaderLoadsComposeFromLocalGoGitRepository(t *testing.T) {
 
 func TestGitResourceLoaderSkipsUnrelatedAbsoluteSymlinkAtPinnedCommit(t *testing.T) {
 	repo := createGitIncludeRepository(t)
+
 	wt, err := repo.Worktree()
 	if err != nil {
 		t.Fatalf("get worktree: %v", err)
