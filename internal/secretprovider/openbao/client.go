@@ -93,7 +93,7 @@ func (p *Provider) GetSecret(ctx context.Context, ref string) (string, error) {
 	case "pki-role":
 		issued, err := IssueCert(ctx, c, engineName, key, id)
 		if err != nil {
-			return "", fmt.Errorf("failed to issue certificate for common name %s using role %s: %w", id, key, err)
+			return "", fmt.Errorf("%w: failed to issue certificate for common name %s using role %s: %w", secrettypes.ErrNotRetryable, id, key, err)
 		}
 
 		strValue = issued.Certificate
@@ -113,6 +113,7 @@ func (p *Provider) GetSecret(ctx context.Context, ref string) (string, error) {
 // GetSecrets retrieves multiple secrets from Secrets Manager using the provided list of secret references.
 func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]string, error) {
 	resolvedSecrets := make(map[string]string)
+	containsPKIRole := false
 
 	var (
 		mu sync.Mutex
@@ -125,6 +126,10 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 	errCh := make(chan error, 1)
 
 	for _, ref := range refs {
+		if pkiRoleRefRegexp.MatchString(ref) {
+			containsPKIRole = true
+		}
+
 		wg.Add(1)
 
 		go func(secretName string) {
@@ -153,6 +158,10 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 	close(errCh)
 
 	if err, ok := <-errCh; ok {
+		if containsPKIRole && !errors.Is(err, secrettypes.ErrNotRetryable) {
+			return nil, fmt.Errorf("%w: pki-role batch may have partially issued certificates: %w", secrettypes.ErrNotRetryable, err)
+		}
+
 		return nil, err
 	}
 

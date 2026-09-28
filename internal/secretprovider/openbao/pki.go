@@ -122,7 +122,15 @@ func normalizeCertSerial(serial string) string {
 func IssueCert(ctx context.Context, client *api.Client, engineName, roleName, commonName string) (IssuedCertificate, error) {
 	pathToIssue := fmt.Sprintf("%s/issue/%s", engineName, roleName)
 
-	response, err := client.Logical().WriteWithContext(ctx, pathToIssue, map[string]any{
+	issueClient, err := client.CloneWithHeaders()
+	if err != nil {
+		return IssuedCertificate{}, fmt.Errorf("unable to create OpenBao client for certificate issuance: %w", err)
+	}
+
+	issueClient.SetToken(client.Token())
+	issueClient.SetMaxRetries(0)
+
+	response, err := issueClient.Logical().WriteWithContext(ctx, pathToIssue, map[string]any{
 		"common_name": commonName,
 	})
 	if err != nil {
