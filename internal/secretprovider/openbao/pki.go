@@ -118,19 +118,12 @@ func normalizeCertSerial(serial string) string {
 // IssueCert issues a new certificate (with a matching private key) from the PKI engine in OpenBao
 // using the provided engine name, role name, and common name. Unlike GetCert, which reads a
 // previously-issued certificate by serial, IssueCert always generates a brand-new certificate/key
-// pair, making it suitable for automatic certificate rotation.
+// pair, making it suitable for automatic certificate rotation. Because issuance is not idempotent,
+// client should have retries disabled so a lost response cannot issue a duplicate certificate.
 func IssueCert(ctx context.Context, client *api.Client, engineName, roleName, commonName string) (IssuedCertificate, error) {
 	pathToIssue := fmt.Sprintf("%s/issue/%s", engineName, roleName)
 
-	issueClient, err := client.CloneWithHeaders()
-	if err != nil {
-		return IssuedCertificate{}, fmt.Errorf("unable to create OpenBao client for certificate issuance: %w", err)
-	}
-
-	issueClient.SetToken(client.Token())
-	issueClient.SetMaxRetries(0)
-
-	response, err := issueClient.Logical().WriteWithContext(ctx, pathToIssue, map[string]any{
+	response, err := client.Logical().WriteWithContext(ctx, pathToIssue, map[string]any{
 		"common_name": commonName,
 	})
 	if err != nil {
