@@ -36,7 +36,7 @@ type commitStatusRecorder struct {
 	posted []postedCommitStatus
 }
 
-func newCommitStatusRecorder(t *testing.T) *commitStatusRecorder {
+func newCommitStatusRecorder(t *testing.T, beforePost ...func()) *commitStatusRecorder {
 	t.Helper()
 
 	recorder := &commitStatusRecorder{}
@@ -47,6 +47,10 @@ func newCommitStatusRecorder(t *testing.T) *commitStatusRecorder {
 		}
 
 		status.Path = r.URL.Path
+
+		if len(beforePost) > 0 {
+			beforePost[0]()
+		}
 
 		recorder.mu.Lock()
 		recorder.posted = append(recorder.posted, status)
@@ -127,33 +131,53 @@ func TestSelfUpdateReporterPostsFinalCommitStatus(t *testing.T) {
 
 	log := logger.New(slog.LevelError)
 
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
+	for _, tt := range []struct {
+		name          string
+		statusEnabled bool
+	}{
+		{name: "success", statusEnabled: true},
+		{name: "success after statuses disabled"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		recorder := newCommitStatusRecorder(t)
-		newSelfUpdateReporter(recorder.appConfig(), nil).
-			reportSuccess(t.Context(), log, handedOverRecord(recorder.URL, selfupdate.StateFinalising))
+			recorder := newCommitStatusRecorder(t)
+			cfg := recorder.appConfig()
+			cfg.GitCommitStatus = tt.statusEnabled
+			newSelfUpdateReporter(cfg, nil).
+				reportSuccess(t.Context(), log, handedOverRecord(recorder.URL, selfupdate.StateFinalising))
 
-		got := recorder.requireSingle(t, commitstatus.StateSuccess)
-		if !strings.HasPrefix(got.Description, "Successful in 1m") {
-			t.Errorf("description = %q, want the duration since the deployment started", got.Description)
-		}
-	})
+			got := recorder.requireSingle(t, commitstatus.StateSuccess)
+			if !strings.HasPrefix(got.Description, "Successful in 1m") {
+				t.Errorf("description = %q, want the duration since the deployment started", got.Description)
+			}
+		})
+	}
 
-	t.Run("failure with reason", func(t *testing.T) {
-		t.Parallel()
+	for _, tt := range []struct {
+		name          string
+		statusEnabled bool
+	}{
+		{name: "failure with reason", statusEnabled: true},
+		{name: "failure with reason after statuses disabled"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		recorder := newCommitStatusRecorder(t)
-		record := handedOverRecord(recorder.URL, selfupdate.StateRolledBack)
-		record.Error = "successor did not become healthy:\n timeout"
+			recorder := newCommitStatusRecorder(t)
+			record := handedOverRecord(recorder.URL, selfupdate.StateRolledBack)
+			record.Error = "successor did not become healthy:\n timeout"
 
-		newSelfUpdateReporter(recorder.appConfig(), nil).reportFailure(t.Context(), log, record)
+			cfg := recorder.appConfig()
+			cfg.GitCommitStatus = tt.statusEnabled
+			newSelfUpdateReporter(cfg, nil).reportFailure(t.Context(), log, record)
 
-		got := recorder.requireSingle(t, commitstatus.StateFailure)
-		if got.Description != "successor did not become healthy: timeout" {
-			t.Errorf("description = %q, want the normalized failure reason", got.Description)
-		}
-	})
+			got := recorder.requireSingle(t, commitstatus.StateFailure)
+			if got.Description != "successor did not become healthy: timeout" {
+				t.Errorf("description = %q, want the normalized failure reason", got.Description)
+			}
+		})
+	}
 
 	t.Run("failure without reason", func(t *testing.T) {
 		t.Parallel()
@@ -178,15 +202,6 @@ func TestSelfUpdateReporterPostsFinalCommitStatus(t *testing.T) {
 			record: func(r selfupdate.Record) selfupdate.Record {
 				r.Source.CommitStatus = nil
 				return r
-			},
-		},
-		{
-			name: "commit statuses disabled",
-			reporter: func(rec *commitStatusRecorder) *selfUpdateReporter {
-				cfg := rec.appConfig()
-				cfg.GitCommitStatus = false
-
-				return newSelfUpdateReporter(cfg, nil)
 			},
 		},
 		{
@@ -229,16 +244,23 @@ func TestSuccessorFinalisationPostsSuccessCommitStatus(t *testing.T) {
 	docker.ConfigureSelfUpdate(docker.SelfUpdateOptions{Identity: selfupdate.Identity{ContainerID: "new"}})
 	t.Cleanup(func() { docker.ConfigureSelfUpdate(previous) })
 
-	recorder := newCommitStatusRecorder(t)
 	store := selfupdate.NewStore(t.TempDir())
+	var record selfupdate.Record
+	recorder := newCommitStatusRecorder(t, func() {
+		if _, err := store.Load(record.ID); err != nil {
+			t.Errorf("journal missing before posting final status: %v", err)
+		}
+	})
 
-	record := handedOverRecord(recorder.URL, selfupdate.StateDrained)
+	record = handedOverRecord(recorder.URL, selfupdate.StateDrained)
 	if err := store.Create(&record); err != nil {
 		t.Fatal(err)
 	}
 
+	cfg := recorder.appConfig()
+	cfg.GitCommitStatus = false
 	err := finalizeAsSuccessor(t.Context(), logger.New(slog.LevelError), &finalizerDockerClient{},
-		newSelfUpdateReporter(recorder.appConfig(), nil), store, record, "new")
+		newSelfUpdateReporter(cfg, nil), store, record, "new")
 	if err != nil {
 		t.Fatalf("finalizeAsSuccessor() = %v", err)
 	}
@@ -269,8 +291,10 @@ func TestRolledBackPredecessorPostsFailureCommitStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	cfg := recorder.appConfig()
+	cfg.GitCommitStatus = false
 	err := finalizeAsPredecessor(t.Context(), logger.New(slog.LevelError), &finalizerDockerClient{},
-		newSelfUpdateReporter(recorder.appConfig(), nil), store, record)
+		newSelfUpdateReporter(cfg, nil), store, record)
 	if err != nil {
 		t.Fatalf("finalizeAsPredecessor() = %v", err)
 	}

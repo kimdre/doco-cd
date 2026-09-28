@@ -99,7 +99,8 @@ func (r *selfUpdateReporter) postCommitStatus(
 	}
 
 	req, ok := commitstatus.ResolveRequest(log.Logger, commitstatus.RequestParams{
-		Enabled: r.appConfig.GitCommitStatus,
+		// The journaled target was started by the predecessor, even if the successor disabled new statuses.
+		Enabled: true,
 		// Only Git deployments record a commit status target.
 		SourceIsGit:      true,
 		SourceURL:        info.SourceURL,
