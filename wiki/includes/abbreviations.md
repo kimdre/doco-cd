@@ -10,3 +10,4 @@
 *[deployment]: A Compose project or Swarm stack managed by doco-cd and defined by a deploy config in a Git repository or OCI artifact.
 *[revision]: The immutable version of an artifact used by doco-cd, represented by a Git commit or an OCI digest.
 *[digest]: A content-addressable identifier, such as an OCI image digest, that uniquely identifies the exact contents of an artifact.
+*[forge]: A Git hosting service that provides a web interface and additional features for managing Git repositories, collaboration and CI/CD, such as GitHub, GitLab, Gitea, Forgejo, and Gogs.
