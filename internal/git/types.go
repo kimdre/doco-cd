@@ -15,6 +15,7 @@ const (
 	refSpecSingleBranch   = "+refs/heads/%s:refs/remotes/origin/%s"
 	refSpecAllTags        = "+refs/tags/*:refs/tags/*"
 	refSpecSingleTag      = "+refs/tags/%s:refs/tags/%s"
+	refSpecPinnedCommit   = "+%s:refs/doco-cd/pinned/%s"
 )
 
 type RefSet struct {

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -175,6 +176,13 @@ func cloneBareMirrorLocked(path, url, ref string, skipTLSVerify bool, proxyOpts 
 
 	if err != nil {
 		return nil, fmt.Errorf("clone failed: %w", err)
+	}
+
+	// A clone brings only branches and tags; a pinned commit may be reachable from neither.
+	if plumbing.IsHash(ref) {
+		if err := fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, depth); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
+		}
 	}
 
 	exists, existsErr := fetchedReferenceExistsAfterFetch(repo, ref)

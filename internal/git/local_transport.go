@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"path"
@@ -9,6 +10,8 @@ import (
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/plumbing/cache"
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
@@ -160,5 +163,43 @@ func readSmallFile(fs billy.Filesystem, name string) (string, error) {
 // requiring a git binary on PATH.
 func init() {
 	loader := &localRepoLoader{base: osfs.New("/")}
-	gitclient.InstallProtocol("file", server.NewClient(loader))
+	gitclient.InstallProtocol("file", localTransport{server.NewClient(loader)})
+}
+
+// localTransport is the in-process "file" transport. Its upload-pack sessions also
+// advertise allow-reachable-sha1-in-want, like git servers such as GitHub do, so a
+// commit can be fetched by SHA (see fetchPinnedCommit). go-git's server already
+// serves any object it has; it only does not advertise it.
+type localTransport struct {
+	transport.Transport
+}
+
+func (t localTransport) NewUploadPackSession(ep *transport.Endpoint, auth transport.AuthMethod) (transport.UploadPackSession, error) {
+	session, err := t.Transport.NewUploadPackSession(ep, auth)
+	if err != nil {
+		return nil, err
+	}
+
+	return localUploadPackSession{session}, nil
+}
+
+type localUploadPackSession struct {
+	transport.UploadPackSession
+}
+
+func (s localUploadPackSession) AdvertisedReferences() (*packp.AdvRefs, error) {
+	return s.AdvertisedReferencesContext(context.Background())
+}
+
+func (s localUploadPackSession) AdvertisedReferencesContext(ctx context.Context) (*packp.AdvRefs, error) {
+	ar, err := s.UploadPackSession.AdvertisedReferencesContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ar.Capabilities.Set(capability.AllowReachableSHA1InWant); err != nil {
+		return nil, err
+	}
+
+	return ar, nil
 }

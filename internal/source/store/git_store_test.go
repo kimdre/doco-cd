@@ -153,6 +153,85 @@ func TestGitStore_PublishUnknownRevision_ReturnsErrRevisionNotFound(t *testing.T
 	}
 }
 
+// TestGitStore_ResolvePinnedUnreachableCommit covers a compose include pinned
+// to a full SHA whose branch was rebased afterwards: the commit still exists
+// on the remote, but no branch or tag reaches it any more.
+func TestGitStore_ResolvePinnedUnreachableCommit(t *testing.T) {
+	t.Parallel()
+
+	for _, warmMirror := range []bool{false, true} {
+		name := "fresh mirror"
+		if warmMirror {
+			name = "existing mirror"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			srcPath := filepath.Join(t.TempDir(), "src")
+			repo := initLocalTestRepo(t, srcPath)
+
+			head, err := repo.Head()
+			if err != nil {
+				t.Fatalf("Head() error = %v", err)
+			}
+
+			pinned := commitTestFile(t, repo, srcPath, "README.md", "pinned\n", "pinned commit")
+
+			// Move main back, so the pinned commit is unreachable from any ref.
+			if err := repo.Storer.SetReference(plumbing.NewHashReference(plumbing.NewBranchReferenceName("main"), head.Hash())); err != nil {
+				t.Fatalf("failed to reset main: %v", err)
+			}
+
+			s := newGitStore(t, "file://"+srcPath)
+
+			if warmMirror {
+				if _, err := s.Resolve(t.Context(), git.MainBranch); err != nil {
+					t.Fatalf("Resolve(main) error = %v", err)
+				}
+			}
+
+			revision, err := s.Resolve(t.Context(), pinned.String())
+			if err != nil {
+				t.Fatalf("Resolve(%s) error = %v", pinned, err)
+			}
+
+			if revision != store.Revision(pinned.String()) {
+				t.Fatalf("Resolve() revision = %q, want %q", revision, pinned)
+			}
+
+			artifact, err := s.Publish(t.Context(), revision)
+			if err != nil {
+				t.Fatalf("Publish() error = %v", err)
+			}
+
+			readme, err := os.ReadFile(filepath.Join(artifact.Path, "README.md"))
+			if err != nil {
+				t.Fatalf("read exported README.md: %v", err)
+			}
+
+			if string(readme) != "pinned\n" {
+				t.Fatalf("README.md content = %q, want %q", readme, "pinned\n")
+			}
+		})
+	}
+}
+
+// TestGitStore_ResolveMissingCommit_Fails makes sure a SHA the remote does not
+// have fails in Resolve, instead of passing through to Publish.
+func TestGitStore_ResolveMissingCommit_Fails(t *testing.T) {
+	t.Parallel()
+
+	srcPath := filepath.Join(t.TempDir(), "src")
+	initLocalTestRepo(t, srcPath)
+
+	s := newGitStore(t, "file://"+srcPath)
+
+	if _, err := s.Resolve(t.Context(), "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"); err == nil {
+		t.Fatal("Resolve() error = nil, want an error for a commit the remote does not have")
+	}
+}
+
 func TestGitStore_PublishIsIdempotent(t *testing.T) {
 	t.Parallel()
 
