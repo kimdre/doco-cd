@@ -521,3 +521,60 @@ func TestGitStore_ResolveHonorsCanceledContext(t *testing.T) {
 		t.Fatalf("Resolve() error = %v, want context.Canceled", err)
 	}
 }
+
+// An application repo routinely carries a symlink with an absolute target (a Laravel
+// public/storage link into /var/www/html) far away from the directory an include needs.
+// Publish must skip that link and still export the rest of the tree.
+func TestGitStore_PublishSkipsAbsoluteSymlink(t *testing.T) {
+	t.Parallel()
+
+	srcPath := filepath.Join(t.TempDir(), "src")
+	repo := initLocalTestRepo(t, srcPath)
+
+	commitTestFile(t, repo, srcPath, "deploy/compose.yaml", "services: {}\n", "add compose")
+
+	if err := os.Symlink("/var/www/html/storage/app/public/src", filepath.Join(srcPath, "public-src")); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("failed to get worktree: %v", err)
+	}
+
+	if _, err := wt.Add("public-src"); err != nil {
+		t.Fatalf("failed to add symlink: %v", err)
+	}
+
+	pinned, err := wt.Commit("add absolute symlink", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "store-test", Email: "store-test@example.com", When: time.Now()},
+	})
+	if err != nil {
+		t.Fatalf("failed to commit symlink: %v", err)
+	}
+
+	s := newGitStore(t, "file://"+srcPath)
+
+	revision, err := s.Resolve(t.Context(), pinned.String())
+	if err != nil {
+		t.Fatalf("Resolve(%s) error = %v", pinned, err)
+	}
+
+	artifact, err := s.Publish(t.Context(), revision)
+	if err != nil {
+		t.Fatalf("Publish() error = %v, want nil: an absolute symlink must be skipped, not fatal", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(artifact.Path, "deploy", "compose.yaml"))
+	if err != nil {
+		t.Fatalf("read deploy/compose.yaml from artifact: %v", err)
+	}
+
+	if string(got) != "services: {}\n" {
+		t.Fatalf("deploy/compose.yaml = %q, want %q", got, "services: {}\n")
+	}
+
+	if _, statErr := os.Lstat(filepath.Join(artifact.Path, "public-src")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected public-src to be absent from the artifact, stat err = %v", statErr)
+	}
+}

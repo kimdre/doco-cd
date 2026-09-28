@@ -3,6 +3,7 @@ package git
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -206,6 +207,11 @@ func resolveLongestExistingPrefix(path string) string {
 // exportCtx carries the state that stays constant across one ExportTree
 // call's recursion, so the recursive helpers below don't need long,
 // repetitive parameter lists.
+// ErrAbsoluteSymlinkTarget marks a symlink whose target is an absolute path. Such a
+// link can never resolve inside the artifact, so ExportTree skips it with a warning
+// instead of failing the export.
+var ErrAbsoluteSymlinkTarget = errors.New("absolute symlink target")
+
 type exportCtx struct {
 	absRoot         string
 	repo            *git.Repository
@@ -263,6 +269,18 @@ func exportTree(ctx exportCtx, tree *object.Tree, relPath string) error {
 			}
 		case filemode.Symlink:
 			if err := exportSymlink(ctx.absRoot, target, ctx.repo, entry); err != nil {
+				if errors.Is(err, ErrAbsoluteSymlinkTarget) {
+					// Skipped, not failed: nothing in the artifact resolves outside
+					// it, which keeps the lexical path checks downstream sound. A
+					// bind mount through the skipped path finds no file on the
+					// host, which is the safe outcome.
+					ctx.opts.Log.Warn("skipping symlink with absolute target",
+						slog.String("path", entryRelPath),
+						slog.String("error", err.Error()))
+
+					continue
+				}
+
 				return fmt.Errorf("export symlink %s: %w", entryRelPath, err)
 			}
 		default: // Regular, Executable, Deprecated
@@ -350,9 +368,13 @@ func exportSymlink(root, target string, repo *git.Repository, entry object.TreeE
 	// would always join and clean it relative to the link's directory,
 	// making the check below pass for an absolute target while the
 	// os.Symlink call still writes the real, unmangled absolute target.
-	// Reject absolute targets outright instead.
+	// An absolute target is never inside the artifact, so it is not written.
+	// It is reported with ErrAbsoluteSymlinkTarget so the caller can skip the
+	// entry instead of failing the whole export: application repos routinely
+	// carry such links (a Laravel public/storage link into /var/www/html),
+	// far away from the directory an include actually needs.
 	if filepath.IsAbs(cleanLinkTarget) {
-		return fmt.Errorf("%w: absolute symlink target %q", filesystem.ErrPathTraversal, linkTargetStr)
+		return fmt.Errorf("%w: absolute symlink target %q", ErrAbsoluteSymlinkTarget, linkTargetStr)
 	}
 
 	resolved := filepath.Join(filepath.Dir(target), cleanLinkTarget)
