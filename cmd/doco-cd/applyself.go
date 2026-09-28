@@ -210,19 +210,21 @@ func runSelfBootstrap(ctx context.Context, log *logger.Logger, c *app.Config, do
 		return fmt.Errorf("create the deployment operation: %w", err)
 	}
 
-	for _, pollConfig := range c.PollConfig {
-		metadata := notification.Metadata{}
+	return selfupdate.WithBootstrapLock(ctx, c.DataMountPath, func() error {
+		for _, pollConfig := range c.PollConfig {
+			metadata := notification.Metadata{}
 
-		if err = RunPoll(ctx, pollConfig, c, log.Logger, metadata, "bootstrap", deployment, notifier); err != nil {
-			log.Error("self-update: bootstrap deployment failed", logger.ErrAttr(err))
+			if pollErr := RunPoll(ctx, pollConfig, c, log.Logger, metadata, "bootstrap", deployment, notifier); pollErr != nil {
+				log.Error("self-update: bootstrap deployment failed", logger.ErrAttr(pollErr))
 
-			return err
+				return pollErr
+			}
 		}
-	}
 
-	log.Info("self-update: bootstrap completed")
+		log.Info("self-update: bootstrap completed")
 
-	return nil
+		return nil
+	})
 }
 
 // bootstrapDataMountPoint resolves the data volume the way the main process
