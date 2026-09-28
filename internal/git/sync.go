@@ -261,9 +261,11 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 	}
 
 	if plumbing.IsHash(ref) {
-		fetchPinnedCommit(repo, ref, func(refSpec config.RefSpec) error {
+		if err := fetchPinnedCommit(repo, ref, func(refSpec config.RefSpec) error {
 			return fetch(newFetchOptions([]config.RefSpec{refSpec}, git.NoTags))
-		})
+		}); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -272,18 +274,30 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 // fetchPinnedCommit fetches a commit by its SHA when the all-refs fetch did not bring it.
 // A pinned commit may be reachable from no branch or tag any more, e.g. after a rebase,
 // while the remote still serves it by SHA.
-// Failure is only logged: the caller's reference check reports a missing commit, and
-// returning here an error go-git words as "object not found" would be taken for corruption.
-func fetchPinnedCommit(repo *git.Repository, sha string, fetch func(config.RefSpec) error) {
-	if repo.Storer.HasEncodedObject(plumbing.NewHash(sha)) == nil {
-		return
+// If the remote does not serve the SHA, the caller's reference check reports
+// it as missing rather than treating go-git's "object not found" as corruption.
+func fetchPinnedCommit(repo *git.Repository, sha string, fetch func(config.RefSpec) error) error {
+	if err := repo.Storer.HasEncodedObject(plumbing.NewHash(sha)); err == nil {
+		return nil
+	} else if !errors.Is(err, plumbing.ErrObjectNotFound) {
+		return fmt.Errorf("check pinned commit %s: %w", sha, err)
 	}
 
 	if err := fetch(config.RefSpec(fmt.Sprintf(refSpecPinnedCommit, sha, sha))); err != nil {
-		slog.Warn("failed to fetch pinned commit by SHA",
-			slog.String("commit", sha),
-			slog.String("error", FormatGitErrorMessage(err)))
+		if errors.Is(err, git.ErrExactSHA1NotSupported) ||
+			errors.Is(err, git.NoMatchingRefSpecError{}) ||
+			errors.Is(err, plumbing.ErrObjectNotFound) {
+			slog.Warn("failed to fetch pinned commit by SHA",
+				slog.String("commit", sha),
+				slog.String("error", FormatGitErrorMessage(err)))
+
+			return nil
+		}
+
+		return fmt.Errorf("fetch pinned commit %s: %w", sha, err)
 	}
+
+	return nil
 }
 
 // focusedFetchDestination returns the destination reference a focused refspec writes to.

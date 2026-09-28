@@ -2,6 +2,7 @@ package git
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -46,6 +47,54 @@ func TestFocusedFetchRefSpecs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := focusedFetchRefSpecs(tt.ref); !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("focusedFetchRefSpecs(%q) = %v, want %v", tt.ref, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFetchPinnedCommitErrorClassification(t *testing.T) {
+	t.Parallel()
+
+	repo, err := git.PlainInit(t.TempDir(), true)
+	if err != nil {
+		t.Fatalf("initialize bare repository: %v", err)
+	}
+
+	const sha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+	tests := []struct {
+		name     string
+		fetchErr error
+		wantErr  bool
+	}{
+		{name: "SHA fetch unsupported", fetchErr: git.ErrExactSHA1NotSupported},
+		{name: "remote object missing", fetchErr: fmt.Errorf("remote: %w", plumbing.ErrObjectNotFound)},
+		{name: "authentication failure", fetchErr: transport.ErrAuthenticationRequired, wantErr: true},
+		{name: "transport failure", fetchErr: errors.New("connection closed during fetch"), wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			err := fetchPinnedCommit(repo, sha, func(refSpec config.RefSpec) error {
+				called = true
+				if want := config.RefSpec("+" + sha + ":refs/doco-cd/pinned/" + sha); refSpec != want {
+					t.Errorf("refSpec = %q, want %q", refSpec, want)
+				}
+
+				return tt.fetchErr
+			})
+
+			if !called {
+				t.Fatal("fetchPinnedCommit did not attempt to fetch the missing SHA")
+			}
+
+			if tt.wantErr && !errors.Is(err, tt.fetchErr) {
+				t.Fatalf("fetchPinnedCommit() error = %v, want %v", err, tt.fetchErr)
+			}
+
+			if !tt.wantErr && err != nil {
+				t.Fatalf("fetchPinnedCommit() error = %v, want nil for missing SHA", err)
 			}
 		})
 	}
