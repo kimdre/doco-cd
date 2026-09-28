@@ -93,6 +93,21 @@ type SourceInfo struct {
 	ProjectHash  string `json:"project_hash"`
 	JobID        string `json:"job_id"`
 	Trigger      string `json:"trigger"`
+	// CommitStatus is the status the predecessor left pending, nil when it
+	// posted none. It never holds a token: the finishing process resolves one.
+	CommitStatus *CommitStatusInfo `json:"commit_status,omitempty"`
+}
+
+// CommitStatusInfo identifies the commit status of a handed over deployment, so
+// the process that resolves the handover can post its final state.
+type CommitStatusInfo struct {
+	// SourceURL is the deployment repository, used to resolve credentials.
+	SourceURL string    `json:"source_url"`
+	RepoURL   string    `json:"repo_url,omitempty"`
+	FullName  string    `json:"full_name,omitempty"`
+	CommitSHA string    `json:"commit_sha"`
+	Context   string    `json:"context"`
+	StartedAt time.Time `json:"started_at,omitzero"`
 }
 
 // DeployInfo carries the deploy parameters the applier must reproduce.

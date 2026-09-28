@@ -1,0 +1,5 @@
+# Pulls in the app repo's compose at a pinned sha. CI moves SHOP_COMPOSE_SHA when
+# this env should follow.
+include:
+  - path: https://github.com/example/shop-be.git#${SHOP_COMPOSE_SHA}:deploy
+    project_directory: .

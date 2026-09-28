@@ -1,18 +1,18 @@
-# Deploy config for the shop-prod host (target: shop-prod). Same rules as dev:
-# everything pinned, nothing floats. Pins here move only when a release
-# promotes them, usually by the app repo's CI and sometimes by hand.
-name: shop
-working_dir: shop/shop-prod
+# The shop-prod host polls this repo with `target: shop-prod` and reads only this file.
+# It lists the stacks the host runs and pins every version they use.
+name: app
+working_dir: shop-prod/app
 environment:
-  ENV_NAME: "prod"
-  DOMAIN: "shop.example.com"
+  SHOP_COMPOSE_SHA: "7c1e2ef51be77b3e21007ad8c2ac1223537d7d5f" # app repo's deploy/
+  SHOP_BE_TAG: "592189b16dd5c00230acc348c4b0524730a848ff"
   REGISTRY: "ghcr.io/example"
-  # --- compose pin (app repo's deploy/compose.yaml at this sha)
-  SHOP_COMPOSE_SHA: "a7f89ee10def020ff18f46fa7ab167d7939402d7"
-  # --- our images
-  SHOP_BE_TAG: "20b524730a848ff592189b16dd5c00230acc348c"
-  # --- third-party
-  REDIS_TAG: "7.2-alpine"
+  DOMAIN: "shop.example.com"
 remove_orphans: true
 reconciliation:
-  events: [unhealthy]
+  events: [unhealthy] # not `die` — one-shot/post_start exits would loop it
+---
+name: db
+working_dir: shop-prod/db
+environment:
+  DB_COMPOSE_SHA: "9cfc981a28aa46d4510a520768960140039c4ef0" # this repo's shared/db
+  POSTGRES_TAG: "17.2-alpine"

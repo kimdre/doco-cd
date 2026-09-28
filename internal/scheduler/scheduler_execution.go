@@ -132,6 +132,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 			swarmOpts := docker.SwarmOneOffFromServiceOptions{
 				Replicas:         cfg.SwarmReplicas,
 				SendRegistryAuth: true,
+				Logger:           s.log,
 			}
 			if record != nil {
 				swarmOpts.RunID = record.RunID

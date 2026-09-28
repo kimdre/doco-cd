@@ -26,6 +26,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/migration"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
@@ -492,7 +493,7 @@ func (s *StageManager) resolveCommitStatusContext() string {
 	return commitstatus.ContextForStack(s.DeployConfig.Internal.ConfigTarget, s.DeployConfig.Name)
 }
 
-func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool) {
+func (s *StageManager) commitStatusParams() commitstatus.RequestParams {
 	repoURL := ""
 	repoFullName := ""
 
@@ -501,7 +502,7 @@ func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool)
 		repoFullName = s.Payload.FullName
 	}
 
-	return commitstatus.ResolveRequest(s.Log, commitstatus.RequestParams{
+	return commitstatus.RequestParams{
 		Enabled:          s.AppConfig.GitCommitStatus,
 		SourceIsGit:      s.Repository.Source != types2.SourceTypeOCI,
 		SourceURL:        s.Repository.SourceUrl,
@@ -512,7 +513,41 @@ func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool)
 		APIBaseURL:       string(s.AppConfig.GitScmApiUrl),
 		AccessToken:      s.AppConfig.GitAccessToken,
 		ContextName:      s.resolveCommitStatusContext(),
-	})
+	}
+}
+
+func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool) {
+	return commitstatus.ResolveRequest(s.Log, s.commitStatusParams())
+}
+
+// selfUpdateCommitStatus returns the target of the commit status this
+// deployment leaves pending, so a self-update can hand it to the process that
+// resolves the handover. It is nil when the deployment posts no commit status.
+func (s *StageManager) selfUpdateCommitStatus() *selfupdate.CommitStatusInfo {
+	if s.DeployConfig.Destroy.Enabled {
+		return nil
+	}
+
+	params := s.commitStatusParams()
+
+	commitSHA := strings.TrimSpace(params.CommitSHA)
+	if !params.Enabled || !params.SourceIsGit || commitSHA == "" {
+		return nil
+	}
+
+	var startedAt time.Time
+	if s.Stages != nil && s.Stages.Init != nil {
+		startedAt = s.Stages.Init.StartedAt
+	}
+
+	return &selfupdate.CommitStatusInfo{
+		SourceURL: params.SourceURL,
+		RepoURL:   strings.TrimSpace(params.PayloadWebURL),
+		FullName:  strings.TrimSpace(params.PayloadFullName),
+		CommitSHA: commitSHA,
+		Context:   params.ContextName,
+		StartedAt: startedAt,
+	}
 }
 
 func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus.Status, bool) {

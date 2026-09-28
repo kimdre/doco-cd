@@ -20,6 +20,8 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) error {
 		return fmt.Errorf("failed to load swarm stack: %w", err)
 	}
 
+	opts.Logger = req.stackLog
+
 	addSwarmServiceLabels(cfg, req.project, deployConfig, req.request.Payload, req.request.SourceURL, req.externalWorkingDir,
 		req.request.AppVersion, req.timestamp, req.request.LatestCommit, req.projectHash)
 	addSwarmVolumeLabels(cfg, deployConfig, req.request.Payload)
@@ -73,7 +75,7 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) error {
 		req.phase.Set("pruning images on swarm nodes")
 		req.stackLog.Info("prune images on swarm nodes")
 
-		if err = RunImagePruneJob(ctx, req.request.DockerCLI); err != nil {
+		if err = RunImagePruneJob(ctx, req.request.DockerCLI, req.stackLog); err != nil {
 			req.recordError()
 
 			return fmt.Errorf("failed to run image prune job: %w", err)

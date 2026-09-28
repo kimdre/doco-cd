@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +46,7 @@ func swarmJobLockPath(name string) string {
 
 // RunSwarmJob runs a Docker Swarm job container with the specified mode and command.
 // https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job
-func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMode, command []string, title string) error {
+func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMode, command []string, title string, logs ...*slog.Logger) error {
 	apiClient := dockerCLI.Client()
 
 	var (
@@ -74,6 +75,11 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	// Error response from daemon: rpc error: code = Unknown desc = update out of sequence
 
 	name := fmt.Sprintf("%s_%s", app.Name, title)
+
+	var jobLog *slog.Logger
+	if len(logs) > 0 {
+		jobLog = logs[0]
+	}
 
 	unlock := sourcecache.AcquireExclusivePathLock(swarmJobLockPath(name))
 	defer unlock()
@@ -111,6 +117,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	})
 	if err == nil {
 		serviceID = response.ID
+		logSwarmJob(jobLog, "created swarm job service", name, serviceID)
 	} else {
 		// Update existing service to trigger a new job run
 		if strings.Contains(err.Error(), "already exists") {
@@ -119,11 +126,11 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 
 			listResult, listErr := apiClient.ServiceList(ctx, client.ServiceListOptions{Filters: filter})
 			if listErr != nil {
-				return fmt.Errorf("error listing services: %w", listErr)
+				return fmt.Errorf("error listing job service %s: %w", swarm.ServiceIdentity(name, ""), listErr)
 			}
 
 			if len(listResult.Items) == 0 {
-				return errors.New("service already exists but could not find it")
+				return fmt.Errorf("service %s already exists but could not find it", swarm.ServiceIdentity(name, ""))
 			}
 
 			for _, service := range listResult.Items {
@@ -134,8 +141,10 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 			}
 
 			if serviceID == "" {
-				return errors.New("service already exists but could not find its ID")
+				return fmt.Errorf("service %s already exists but could not find its ID", swarm.ServiceIdentity(name, ""))
 			}
+
+			logSwarmJob(jobLog, "updating swarm job service", name, serviceID)
 
 			updateErr := retry.New(
 				retry.Attempts(5),
@@ -148,7 +157,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 				func() error {
 					inspectResult, getErr := apiClient.ServiceInspect(ctx, serviceID, client.ServiceInspectOptions{})
 					if getErr != nil {
-						return fmt.Errorf("error inspecting existing service: %w", getErr)
+						return fmt.Errorf("error inspecting existing service %s: %w", swarm.ServiceIdentity(name, serviceID), getErr)
 					}
 
 					existingService := inspectResult.Service
@@ -172,31 +181,36 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 					return updateErr
 				})
 			if updateErr != nil {
-				return fmt.Errorf("error updating existing service: %w", updateErr)
+				logSwarmJobError(jobLog, "failed to update swarm job service", name, serviceID, updateErr)
+				return fmt.Errorf("error updating existing service %s: %w", swarm.ServiceIdentity(name, serviceID), updateErr)
 			}
 		} else {
-			return fmt.Errorf("error creating one-off job service: %w", err)
+			logSwarmJobError(jobLog, "failed to create swarm job service", name, "", err)
+			return fmt.Errorf("error creating one-off job service %s: %w", swarm.ServiceIdentity(name, ""), err)
 		}
 	}
 
 	// Wait for the job's current iteration to complete or fail.
+	logSwarmJob(jobLog, "waiting for swarm job service", name, serviceID)
+
 	err = swarm.WaitOnJobService(ctx, dockerCLI, serviceID, previousJobIteration)
 	if err != nil {
-		return fmt.Errorf("error waiting for job service: %w", err)
+		logSwarmJobError(jobLog, "swarm job service failed", name, serviceID, err)
+		return fmt.Errorf("error waiting for job service %s: %w", swarm.ServiceIdentity(name, serviceID), err)
 	}
 
 	return nil
 }
 
 // RunImagePruneJob runs a Docker Swarm global job to prune unused images on all nodes.
-func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli) error {
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, []string{"docker", "image", "prune", "--force"}, "image-prune")
+func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli, logs ...*slog.Logger) error {
+	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, []string{"docker", "image", "prune", "--force"}, "image-prune", logs...)
 }
 
 // RunImageRemoveJob runs a Docker Swarm global job to remove specified images.
-func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []string) error {
+func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []string, logs ...*slog.Logger) error {
 	args := append([]string{"docker", "image", "rm", "--force"}, images...)
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, args, "image-remove")
+	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, args, "image-remove", logs...)
 }
 
 type SwarmOneOffFromServiceOptions struct {
@@ -206,6 +220,7 @@ type SwarmOneOffFromServiceOptions struct {
 	Replicas         uint64
 	SendRegistryAuth bool
 	KeepService      bool
+	Logger           *slog.Logger
 }
 
 // RunSwarmOneOffFromService creates a temporary job service from an existing service spec and waits for completion.
@@ -297,8 +312,13 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 
 	createResult, err := apiClient.ServiceCreate(ctx, createOpts)
 	if err != nil {
-		return fmt.Errorf("create one-off service from %s: %w", serviceName, err)
+		logSwarmJobError(opts.Logger, "failed to create one-off swarm service", oneOffSpec.Name, "", err)
+
+		return fmt.Errorf("create one-off service %s from %s: %w",
+			swarm.ServiceIdentity(oneOffSpec.Name, ""), swarm.ServiceIdentity(sourceService.Spec.Name, sourceService.ID), err)
 	}
+
+	logSwarmJob(opts.Logger, "created one-off swarm service", oneOffSpec.Name, createResult.ID)
 
 	if !opts.KeepService {
 		defer func() {
@@ -310,7 +330,9 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 				return
 			}
 
-			cleanupErr = fmt.Errorf("remove one-off service %s: %w", createResult.ID, cleanupErr)
+			logSwarmJobError(opts.Logger, "failed to remove one-off swarm service", oneOffSpec.Name, createResult.ID, cleanupErr)
+
+			cleanupErr = fmt.Errorf("remove one-off service %s: %w", swarm.ServiceIdentity(oneOffSpec.Name, createResult.ID), cleanupErr)
 			if err == nil {
 				err = cleanupErr
 			} else {
@@ -319,8 +341,11 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 		}()
 	}
 
+	logSwarmJob(opts.Logger, "waiting for one-off swarm service", oneOffSpec.Name, createResult.ID)
+
 	if err = swarm.WaitOnJobService(ctx, dockerCLI, createResult.ID, nil); err != nil {
-		return fmt.Errorf("wait one-off service %s: %w", createResult.ID, err)
+		logSwarmJobError(opts.Logger, "one-off swarm service failed", oneOffSpec.Name, createResult.ID, err)
+		return fmt.Errorf("wait one-off service %s: %w", swarm.ServiceIdentity(oneOffSpec.Name, createResult.ID), err)
 	}
 
 	return nil
@@ -338,13 +363,22 @@ func swarmOneOffServiceName(sourceServiceName string, now time.Time) string {
 }
 
 // RemoveSwarmOneOffService removes a retained temporary job service.
-func RemoveSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string) error {
+func RemoveSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string, logs ...*slog.Logger) error {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), swarmOneOffCleanupTimeout)
 	defer cancel()
 
+	var jobLog *slog.Logger
+	if len(logs) > 0 {
+		jobLog = logs[0]
+	}
+
+	name := swarmJobServiceName(cleanupCtx, dockerCLI, serviceID, jobLog)
+	logSwarmJob(jobLog, "removing one-off swarm service", name, serviceID)
+
 	_, err := dockerCLI.Client().ServiceRemove(cleanupCtx, serviceID, client.ServiceRemoveOptions{})
 	if err != nil && !errdefs.IsNotFound(err) {
-		return fmt.Errorf("remove one-off service %s: %w", serviceID, err)
+		logSwarmJobError(jobLog, "failed to remove one-off swarm service", name, serviceID, err)
+		return fmt.Errorf("remove one-off service %s: %w", swarm.ServiceIdentity(name, serviceID), err)
 	}
 
 	return nil
@@ -372,10 +406,49 @@ func FindSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, runID st
 }
 
 // WaitOnSwarmOneOffService adopts a retained temporary job service.
-func WaitOnSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string) error {
+func WaitOnSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string, logs ...*slog.Logger) error {
+	var jobLog *slog.Logger
+	if len(logs) > 0 {
+		jobLog = logs[0]
+	}
+
+	name := swarmJobServiceName(ctx, dockerCLI, serviceID, jobLog)
+	logSwarmJob(jobLog, "waiting for one-off swarm service", name, serviceID)
+
 	if err := swarm.WaitOnJobService(ctx, dockerCLI, serviceID, nil); err != nil {
-		return fmt.Errorf("wait one-off service %s: %w", serviceID, err)
+		logSwarmJobError(jobLog, "one-off swarm service failed", name, serviceID, err)
+		return fmt.Errorf("wait one-off service %s: %w", swarm.ServiceIdentity(name, serviceID), err)
 	}
 
 	return nil
+}
+
+func swarmJobServiceName(ctx context.Context, dockerCLI command.Cli, serviceID string, log *slog.Logger) string {
+	lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	result, err := dockerCLI.Client().ServiceInspect(lookupCtx, serviceID, client.ServiceInspectOptions{})
+	if err != nil {
+		if log != nil {
+			log.Debug("could not resolve swarm service name",
+				append(swarm.ServiceLogAttrs("", serviceID), slog.Any("error", err))...)
+		}
+
+		return swarm.UnavailableIdentity
+	}
+
+	return swarm.OrUnavailable(result.Service.Spec.Name)
+}
+
+// logSwarmJob records helper-job progress at debug level; failures are logged by logSwarmJobError.
+func logSwarmJob(log *slog.Logger, message, name, id string) {
+	if log != nil {
+		log.Debug(message, swarm.ServiceLogAttrs(name, id)...)
+	}
+}
+
+func logSwarmJobError(log *slog.Logger, message, name, id string, err error) {
+	if log != nil {
+		log.Error(message, append(swarm.ServiceLogAttrs(name, id), slog.Any("error", err))...)
+	}
 }

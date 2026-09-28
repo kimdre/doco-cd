@@ -71,7 +71,7 @@ func pinUnchangedSwarmServices(
 			continue
 		}
 
-		serviceLog := log.With(slog.String("service", service.Name))
+		serviceLog := log.With(slog.String("service", current.Spec.Name), slog.String("service_id", current.ID))
 
 		volumes, revisions, ok, err := pinSwarmServiceMounts(service.Volumes, current.Spec.TaskTemplate.ContainerSpec.Mounts, storeBase, artifactRoot)
 		if err != nil {

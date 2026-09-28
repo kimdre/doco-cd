@@ -1,13 +1,20 @@
 package reconciliation
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"reflect"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/events"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
@@ -16,6 +23,83 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
+
+type swarmEventNameClient struct {
+	client.APIClient
+	name string
+	err  error
+}
+
+func (c swarmEventNameClient) ServiceInspect(context.Context, string, client.ServiceInspectOptions) (client.ServiceInspectResult, error) {
+	return client.ServiceInspectResult{Service: swarmTypes.Service{Spec: swarmTypes.ServiceSpec{Name: c.name}}}, c.err
+}
+
+type swarmEventNameCLI struct {
+	command.Cli
+	client client.APIClient
+}
+
+func (c swarmEventNameCLI) Client() client.APIClient { return c.client }
+
+func TestSwarmEventServiceName(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		attributes map[string]string
+		inspect    swarmEventNameClient
+		want       string
+		wantErr    bool
+	}{
+		{name: "name attribute", attributes: map[string]string{"name": "stack_api"}, want: "stack_api"},
+		{name: "swarm service attribute", attributes: map[string]string{"com.docker.swarm.service.name": "stack_api"}, want: "stack_api"},
+		{name: "service attribute", attributes: map[string]string{"service": "stack_api"}, want: "stack_api"},
+		{name: "inspect fallback", inspect: swarmEventNameClient{name: "stack_api"}, want: "stack_api"},
+		{name: "deleted service", inspect: swarmEventNameClient{err: errors.New("not found")}, want: "unavailable", wantErr: true},
+		{name: "empty inspected name", want: "unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			event := events.Message{Actor: events.Actor{ID: "full-service-id", Attributes: tc.attributes}}
+
+			name, err := swarmEventServiceName(t.Context(), swarmEventNameCLI{client: tc.inspect}, event)
+			if name != tc.want || (err != nil) != tc.wantErr {
+				t.Fatalf("swarmEventServiceName() = %q, %v; want %q, error=%v", name, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestSwarmEventServiceLogIdentity(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		{name: "stack_api", want: "stack_api"},
+		{name: "", want: "unavailable"},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			t.Parallel()
+
+			var output bytes.Buffer
+
+			log := slog.New(slog.NewJSONHandler(&output, nil))
+			withSwarmServiceIdentity(log, tc.name, "full-service-id").Info("reconciliation started")
+
+			var record map[string]any
+			if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+				t.Fatalf("decode log: %v", err)
+			}
+
+			if record["service"] != tc.want || record["service_id"] != "full-service-id" {
+				t.Fatalf("reconciliation service identity = %v/%v", record["service"], record["service_id"])
+			}
+		})
+	}
+}
 
 func TestGetDeployConfigGroupByEvent(t *testing.T) {
 	t.Parallel()
