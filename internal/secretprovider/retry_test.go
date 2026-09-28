@@ -3,6 +3,9 @@ package secretprovider
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
+	"net/url"
 	"sync/atomic"
 	"testing"
 
@@ -290,6 +293,12 @@ func TestRetryingSecretProvider_Close(t *testing.T) {
 	}
 }
 
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "i/o timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
+
 func TestIsRetryable(t *testing.T) {
 	t.Parallel()
 
@@ -317,8 +326,40 @@ func TestIsRetryable(t *testing.T) {
 			err:  errors.New(`API error: Received error message from server: [429 Too Many Requests] {"message":"Slow down! Too many requests. Try again in 1s."}`),
 			want: true,
 		},
+		"503 from bitwarden": {
+			err:  errors.New("API error: Received error message from server: [503 Service Unavailable]"),
+			want: true,
+		},
+		"500 from aws": {
+			err:  errors.New("operation error Secrets Manager: GetSecretValue, https response error StatusCode: 500, InternalServiceError"),
+			want: true,
+		},
+		"bad gateway": {
+			err:  errors.New("502 Bad Gateway"),
+			want: true,
+		},
+		"tls handshake timeout string": {
+			err:  errors.New("Post \"https://api.bitwarden.com/identity/connect/token\": net/http: TLS handshake timeout"),
+			want: true,
+		},
+		"url error": {
+			err:  &url.Error{Op: "Get", URL: "https://vault.example.com", Err: errors.New("connection refused")},
+			want: true,
+		},
+		"net timeout": {
+			err:  fmt.Errorf("resolve: %w", &net.OpError{Op: "dial", Err: timeoutError{}}),
+			want: true,
+		},
+		"connection reset": {
+			err:  errors.New("read tcp 10.0.0.1:443: connection reset by peer"),
+			want: true,
+		},
 		"permission error": {
 			err:  errPermission,
+			want: false,
+		},
+		"not found": {
+			err:  errors.New("secret not found: 404"),
 			want: false,
 		},
 		"generic error": {

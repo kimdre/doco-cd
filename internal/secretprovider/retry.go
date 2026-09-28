@@ -2,7 +2,10 @@ package secretprovider
 
 import (
 	"context"
+	"errors"
 	"maps"
+	"net"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -12,19 +15,39 @@ import (
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
-// retryableKeywords contains substrings that indicate a retryable (rate-limited) error.
+// retryableKeywords are substrings of provider error messages that mark a
+// transient failure: rate limiting, server-side 5xx or a network timeout.
+// Providers return plain string errors, so message matching is all we have.
 var retryableKeywords = []string{
 	"429",
 	"too many requests",
 	"rate limit",
 	"rate-limit",
+	"500",
+	"502",
+	"503",
+	"504",
+	"internal server error",
+	"bad gateway",
+	"service unavailable",
+	"gateway timeout",
+	"timeout",
+	"connection reset",
 }
 
-// isRetryable returns true if the error message indicates a rate-limit or
-// throttling response from the upstream secret provider API.
+// isRetryable reports whether an upstream secret provider error is transient
+// (rate limit, 5xx, network timeout) and worth another attempt.
 func isRetryable(err error) bool {
 	if err == nil {
 		return false
+	}
+
+	if _, ok := errors.AsType[*url.Error](err); ok {
+		return true
+	}
+
+	if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
+		return true
 	}
 
 	msg := strings.ToLower(err.Error())
@@ -35,7 +58,7 @@ func isRetryable(err error) bool {
 }
 
 // retryOpts are the shared retry options for secret provider operations that
-// may fail due to rate limiting (HTTP 429) from the upstream API.
+// may fail due to transient upstream errors (rate limit, 5xx, network timeout).
 var retryOpts = []retry.Option{
 	retry.Attempts(5),
 	retry.Delay(1 * time.Second),
@@ -52,13 +75,13 @@ func newOptsWithContext(ctx context.Context) []retry.Option {
 }
 
 // RetryingSecretProvider wraps a SecretProvider and retries operations that fail
-// due to rate-limiting errors using exponential backoff with jitter.
+// due to transient errors using exponential backoff with jitter.
 type RetryingSecretProvider struct {
 	inner SecretProvider
 }
 
 // NewRetryingSecretProvider wraps the given SecretProvider with retry logic for
-// rate-limited API calls.
+// transient upstream errors.
 func NewRetryingSecretProvider(inner SecretProvider) *RetryingSecretProvider {
 	return &RetryingSecretProvider{inner: inner}
 }
@@ -73,7 +96,7 @@ func (r *RetryingSecretProvider) Close() {
 	r.inner.Close()
 }
 
-// GetSecret retrieves a single secret, retrying on rate-limit errors.
+// GetSecret retrieves a single secret, retrying on transient errors.
 func (r *RetryingSecretProvider) GetSecret(ctx context.Context, id string) (string, error) {
 	return retry.NewWithData[string](newOptsWithContext(ctx)...).Do(
 		func() (string, error) {
@@ -82,7 +105,7 @@ func (r *RetryingSecretProvider) GetSecret(ctx context.Context, id string) (stri
 	)
 }
 
-// GetSecrets retrieves multiple secrets, retrying on rate-limit errors.
+// GetSecrets retrieves multiple secrets, retrying on transient errors.
 func (r *RetryingSecretProvider) GetSecrets(ctx context.Context, ids []string) (map[string]string, error) {
 	return retry.NewWithData[map[string]string](newOptsWithContext(ctx)...).Do(
 		func() (map[string]string, error) {
@@ -91,7 +114,7 @@ func (r *RetryingSecretProvider) GetSecrets(ctx context.Context, ids []string) (
 	)
 }
 
-// ResolveSecretReferences resolves secret references, retrying on rate-limit errors.
+// ResolveSecretReferences resolves secret references, retrying on transient errors.
 func (r *RetryingSecretProvider) ResolveSecretReferences(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
 	// Create a copy of the input map so that retries don't operate on
 	// a partially-mutated map from a previous failed attempt.

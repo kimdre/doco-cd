@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 
 	"github.com/kimdre/doco-cd/internal/git/ssh"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
@@ -35,13 +37,35 @@ var retrier = retry.New(
 	retry.Attempts(3),
 	retry.Delay(250*time.Millisecond),
 	retry.DelayType(retry.BackOffDelay),
-	retry.RetryIf(func(err error) bool {
-		_, isURLErr := errors.AsType[*url.Error](err)
-		netErr, isNetErr := errors.AsType[net.Error](err)
-
-		return isURLErr || (isNetErr && netErr.Timeout())
-	}),
+	retry.RetryIf(isTransientError),
 )
+
+// isTransientError reports whether a remote git failure is worth retrying:
+// network errors, timeouts and HTTP 5xx/429 from the server.
+func isTransientError(err error) bool {
+	if _, ok := errors.AsType[*url.Error](err); ok {
+		return true
+	}
+
+	if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
+		return true
+	}
+
+	// go-git wraps non-2xx responses without Unwrap, so dig into the inner error by hand.
+	unexpected, ok := errors.AsType[*plumbing.UnexpectedError](err)
+	if !ok {
+		return false
+	}
+
+	httpErr, ok := errors.AsType[*githttp.Err](unexpected.Err)
+	if !ok || httpErr.Response == nil {
+		return false
+	}
+
+	code := httpErr.Response.StatusCode
+
+	return code >= http.StatusInternalServerError || code == http.StatusTooManyRequests
+}
 
 // updateRemoteURL updates the remote URL of the repository.
 func updateRemoteURL(repo *git.Repository, url string) error {
