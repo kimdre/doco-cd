@@ -76,18 +76,18 @@ If a single trigger deploys several stacks and only some of them are blocked, th
 | Deployments triggered by [webhooks](../Endpoints/Webhook-Listener.md)                                                                | Yes                                                                          |
 | Deployments triggered by [poll jobs](../Poll-Settings.md) (with `interval`, `schedule` or the local repository watcher)              | Yes                                                                          |
 | [Poll runs](../Endpoints/REST-API.md#polling) triggered via the REST API or the MCP `trigger_poll` tool                              | Yes, unless every blocking window has [`manual_sync`](#manual-deployments)   |
-| The one-shot [self-update bootstrap](Self-Updating.md#bootstrap)                                                                     | Yes, unless every blocking window has [`manual_sync`](#manual-deployments)   |
-| `destroy: true` deploy configs and the removal of auto-discovered stacks that were deleted from the repository                       | Yes                                                                          |
+| The one-shot [self-update bootstrap](Self-Updating.md#bootstrap)[^1]                                                                 | Yes, unless every blocking window has [`manual_sync`](#manual-deployments)   |
+| `#!yaml destroy: true` deploy configs and the removal of auto-discovered stacks that were deleted from the repository                | Yes                                                                          |
 | [Reconciliation](../Deploy-Settings.md#reconciliation-settings) restoring the already deployed revision, e.g. after a container died | No, unless it would deploy another revision, see [limitations](#limitations) |
 | [Scheduled jobs](Job-Scheduling.md)                                                                                                  | No                                                                           |
 | Project and stack actions via the REST API or MCP (start, stop, restart, scale, remove, …)                                           | No                                                                           |
 
-A self-update bootstrap that a window blocks deploys nothing and exits with a non-zero exit code, see [Bootstrap](Self-Updating.md#bootstrap).
+[^1]: If a window blocks the self-update bootstrap, nothing is deployed and the command exits with an error. Run it again once a window allows it, see [Bootstrap](Self-Updating.md#bootstrap).
 
 ### Manual deployments
 
 Poll runs you trigger via the [REST API](../Endpoints/REST-API.md#polling) or the [MCP server](../Endpoints/MCP-Server.md) count as manual deployments.
-A manual deployment may bypass a block only if **every** window that blocks it has `manual_sync: true`. This lets you do emergency deployments during a freeze while webhooks and polls stay blocked.
+A manual deployment may bypass a block only if **every** window that blocks it has `#!yaml manual_sync: true`. This lets you do emergency deployments during a freeze while webhooks and polls stay blocked.
 doco-cd logs `sync window bypassed by manual deployment` whenever this happens.
 
 ## Deferred deployments
@@ -113,7 +113,7 @@ Instead, the next trigger that arrives while the window is open deploys the then
       schedule: "0 8-17 * * 1-5" # every hour during business hours, starting when the window opens
     ```
 
-    Poll schedules use the timezone of doco-cd ([`TZ`](../App-Settings.md#runtime-settings)). If the window has a different `timezone`, prefix the poll schedule with it, e.g. `CRON_TZ=Europe/Berlin 0 8-17 * * 1-5`.
+    Poll schedules use the timezone of doco-cd ([`TZ`](../App-Settings.md#runtime-settings)). If the window has a different `timezone`, prefix the poll schedule with it, e.g. `#!ini CRON_TZ=Europe/Berlin 0 8-17 * * 1-5`.
 
 ### Reporting
 

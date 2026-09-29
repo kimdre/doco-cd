@@ -62,8 +62,9 @@ What remains is a doco-cd container created by the normal deploy path,
 with the correct `com.docker.compose.*` and `cd.doco.*` labels.
 Replace the image reference when using a different release in the repository and the bootstrap script.
 
-If a [sync window](Sync-Windows.md) blocks the bootstrap deployment, nothing is deployed, doco-cd logs a warning with the blocking windows and the time they open,
-and the bootstrap exits with a non-zero exit code. Run it again once the window allows it, or set [`manual_sync`](Sync-Windows.md#manual-deployments) on the blocking windows.
+If a [sync window](Sync-Windows.md) blocks the bootstrap deployment, nothing is deployed. 
+Doco-CD logs a warning with the blocking windows and the time they open and the bootstrap exits with a non-zero exit code. 
+Run it again once the window allows it, or set [`manual_sync`](Sync-Windows.md#manual-deployments) on the blocking windows.
 
 ## Migrating an existing instance
 
