@@ -4,33 +4,6 @@
         <loc>https://doco.cd/next/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/next/Getting-Started/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/Setup-Access-Token/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/Setup-SSH-Key/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/Setup-Webhook/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/App-Settings/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/Deploy-Settings/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/Docker-Settings/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/Git-Settings/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/Poll-Settings/</loc>
-      </url>
-      <url>
         <loc>https://doco.cd/next/Advanced/Container-Registry-Authentication/</loc>
       </url>
       <url>
@@ -41,36 +14,6 @@
       </url>
       <url>
         <loc>https://doco.cd/next/Advanced/Encryption/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/AWS-Secrets-Manager/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/Azure-Key-Vault/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/Bitwarden-Secrets-Manager/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/Bitwarden-Vault-Vaultwarden/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/1Password/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/1Password-Connect/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/Infisical/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/Openbao/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/External-Secrets/Webhook/</loc>
       </url>
       <url>
         <loc>https://doco.cd/next/Advanced/Job-Scheduling/</loc>
@@ -112,10 +55,19 @@
         <loc>https://doco.cd/next/Advanced/Tips-and-Tricks/</loc>
       </url>
       <url>
+        <loc>https://doco.cd/next/App-Settings/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Contributing/</loc>
+      </url>
+      <url>
         <loc>https://doco.cd/next/Core-Concepts/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/next/Reference/Artifact-Storage/</loc>
+        <loc>https://doco.cd/next/Deploy-Settings/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Docker-Settings/</loc>
       </url>
       <url>
         <loc>https://doco.cd/next/Endpoints/Healthcheck/</loc>
@@ -136,15 +88,66 @@
         <loc>https://doco.cd/next/Endpoints/Webhook-Listener/</loc>
       </url>
       <url>
+        <loc>https://doco.cd/next/External-Secrets/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/External-Secrets/1Password-Connect/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/External-Secrets/1Password/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/External-Secrets/AWS-Secrets-Manager/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/External-Secrets/Azure-Key-Vault/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/External-Secrets/Bitwarden-Secrets-Manager/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/External-Secrets/Bitwarden-Vault-Vaultwarden/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/External-Secrets/Infisical/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/External-Secrets/Openbao/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/External-Secrets/Webhook/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Getting-Started/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Git-Settings/</loc>
+      </url>
+      <url>
         <loc>https://doco.cd/next/Known-Limitations/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/next/Contributing/</loc>
+        <loc>https://doco.cd/next/License/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Poll-Settings/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Reference/Artifact-Storage/</loc>
       </url>
       <url>
         <loc>https://doco.cd/next/Security/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/next/License/</loc>
+        <loc>https://doco.cd/next/Setup-Access-Token/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Setup-SSH-Key/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Setup-Webhook/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/wiki/</loc>
       </url>
 </urlset>
