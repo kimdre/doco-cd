@@ -50,7 +50,7 @@ It accepts the same [schedule formats](Advanced/Job-Scheduling.md#schedule-forma
   schedule: "*/15 8-17 * * 1-5" # every 15 minutes during business hours on weekdays
 ```
 
-- The schedule is evaluated in the timezone of doco-cd, set by the `TZ` environment variable (default: UTC). Prefix it with `CRON_TZ=<timezone>` to use another timezone, e.g. `"CRON_TZ=America/New_York 0 2 * * *"`.
+- The schedule is evaluated in the timezone of doco-cd, set by the `TZ` environment variable (default: UTC). Prefix it with `#!ini CRON_TZ=<timezone>` to use another timezone, e.g. `#!ini "CRON_TZ=America/New_York 0 2 * * *"`.
 - A scheduled poll job does **not** poll at startup. The first poll happens at the next scheduled time. Until then, doco-cd does not [reconcile](Deploy-Settings.md#reconciliation-settings) the stacks of that repository, e.g. it does not restore a container that died after the restart.
 - `schedule` and `interval` are mutually exclusive. When `schedule` is set, `interval` defaults to `0`.
 - For [local filesystem repositories](Advanced/Local-Filesystem-Polling.md), the repository watcher is disabled when `schedule` is set, so polls only happen at the scheduled times.
