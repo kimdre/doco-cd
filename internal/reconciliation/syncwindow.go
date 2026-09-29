@@ -263,7 +263,9 @@ func (g *syncWindowGate) record(dc *deployConfig.Config, err error) {
 	g.mu.Unlock()
 
 	// The stack now matches its revision, so a later deferral is new again.
-	if err == nil || isUnchangedOutcome(err) {
+	// A reconciliation only restores the deployed revision, the deferred
+	// revision is still pending.
+	if !g.restoreOnly && (err == nil || isUnchangedOutcome(err)) {
 		g.manager.syncWindowNotices.clear(stackDeploymentKey(g.repository.Name, dc.Context, dc.Name))
 	}
 }

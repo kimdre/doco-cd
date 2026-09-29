@@ -227,6 +227,31 @@ func TestSyncWindowGate_RecordResetsNotices(t *testing.T) {
 	}
 }
 
+func TestSyncWindowGate_ReconciliationKeepsNotices(t *testing.T) {
+	t.Parallel()
+
+	manager := newSyncWindowTestManager(t, syncWindowTestPolicy)
+	web := &deployConfig.Config{Name: "web"}
+	log, _ := syncWindowTestLogger()
+
+	posted := 0
+	postStatus := func(string) { posted++ }
+
+	gate := manager.newSyncWindowGate(syncWindowTestRequest("rev-2", syncwindow.OriginAutomatic, web), syncWindowTestNow)
+	_ = gate.admit(log, web, postStatus)
+
+	// Reconciliation restores the deployed revision, rev-2 is still deferred.
+	reconciliation := manager.newSyncWindowGate(syncWindowTestRequest("rev-1", syncwindow.OriginReconciliation, web), syncWindowTestNow)
+	reconciliation.record(web, nil)
+
+	gate = manager.newSyncWindowGate(syncWindowTestRequest("rev-2", syncwindow.OriginAutomatic, web), syncWindowTestNow.Add(24*time.Hour))
+	_ = gate.admit(log, web, postStatus)
+
+	if posted != 1 {
+		t.Fatalf("posted %d statuses, want 1", posted)
+	}
+}
+
 func TestSyncWindowGate_Origins(t *testing.T) {
 	t.Parallel()
 
