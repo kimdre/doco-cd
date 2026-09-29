@@ -87,21 +87,21 @@ SOPS reads the key metadata from each encrypted file and picks the matching key 
 What matters is how the credentials for that key service reach the doco-cd container: only environment variables, mounted files and the instance metadata service of the cloud VM are available.
 There is no interactive login (`aws sso login`, `gcloud auth`, `az login`) inside the container.
 
-| Key service          | Credentials for doco-cd                                                                                                                                           | Notes                                                                                                          |
-|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
-| age                  | `SOPS_AGE_KEY` or `SOPS_AGE_KEY_FILE`                                                                                                                             | See [above](#usage-with-sops-and-age)                                                                          |
-| AWS KMS              | EC2 instance profile via IMDS, or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`, or a mounted credentials file via `AWS_SHARED_CREDENTIALS_FILE`                 | `AWS_REGION` is required, see [example below](#example-with-aws-kms). Verified.                                |
-| GCP KMS              | Service account attached to the VM via the metadata server, or a service account key via `GOOGLE_CREDENTIALS` (JSON content or path) / `GOOGLE_APPLICATION_CREDENTIALS` (path) | Not verified with doco-cd, follows from the SOPS credential chain                                   |
-| Azure Key Vault      | Managed identity of the VM via IMDS, or a service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET`                                    | Not verified with doco-cd, follows from the SOPS credential chain                                              |
-| HashiCorp Vault      | `VAULT_TOKEN` (the Vault address is stored in the encrypted file)                                                                                                 | Token must be long-lived or renewed outside doco-cd. Not verified with doco-cd.                                |
-| PGP                  | Legacy `secring.gpg` with an unprotected key, mounted under `GNUPGHOME`                                                                                           | Not recommended: the image has no `gpg` binary, so only the pure Go OpenPGP path works                         |
-
-Several recipients on one file are fine, e.g. KMS for humans and CI plus an age key for doco-cd.
-
 !!! warning "At least one `SOPS_*` environment variable must be set"
     doco-cd only decrypts when a non-empty environment variable starting with `SOPS_` is set.
     Cloud key services don't need one for decryption itself, so set one as a marker, e.g. `SOPS_KMS_ARN`.
     Without it every deployment that uses an encrypted file fails with `SOPS secret key is not set`.
+
+| Key service                                                                          | Credentials for doco-cd                                                                                                                                                        | Notes                                                                                  |
+|--------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------|
+| [age](https://getsops.io/docs/usage/identities/age/)                                 | `SOPS_AGE_KEY` or `SOPS_AGE_KEY_FILE`                                                                                                                                          | See [above](#usage-with-sops-and-age)                                                  |
+| [AWS KMS](https://getsops.io/docs/usage/identities/amazon-aws-kms/)                  | EC2 instance profile via IMDS, or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`, or a mounted credentials file via `AWS_SHARED_CREDENTIALS_FILE`                               | `AWS_REGION` is required, see [example below](#example-with-aws-kms). Verified.        |
+| [GCP KMS](https://getsops.io/docs/usage/identities/google-cloud-kms/)                | Service account attached to the VM via the metadata server, or a service account key via `GOOGLE_CREDENTIALS` (JSON content or path) / `GOOGLE_APPLICATION_CREDENTIALS` (path) | Not verified with doco-cd, follows from the SOPS credential chain                      |
+| [Azure Key Vault](https://getsops.io/docs/usage/identities/azure-kms/)               | Managed identity of the VM via IMDS, or a service principal via `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET`                                                  | Not verified with doco-cd, follows from the SOPS credential chain                      |
+| [HashiCorp Vault](https://getsops.io/docs/usage/identities/hashicorp-vault-openbao/) | `VAULT_TOKEN` (the Vault address is stored in the encrypted file)                                                                                                              | Token must be long-lived or renewed outside doco-cd. Not verified with doco-cd.        |
+| [PGP](https://getsops.io/docs/usage/identities/pgp/)                                 | Legacy `secring.gpg` with an unprotected key, mounted under `GNUPGHOME`                                                                                                        | Not recommended: the image has no `gpg` binary, so only the pure Go OpenPGP path works |
+
+Several recipients on one file are fine, e.g. KMS for humans and CI plus an age key for doco-cd.
 
 ### Example with AWS KMS
 
