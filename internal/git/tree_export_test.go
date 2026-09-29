@@ -1,6 +1,9 @@
 package git_test
 
 import (
+	"bytes"
+	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +13,7 @@ import (
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 )
 
@@ -203,28 +207,61 @@ func TestExportTree_RejectsSymlinkEscapingRootViaTraversal(t *testing.T) {
 	}
 }
 
-func TestExportTree_RejectsAbsoluteSymlinkTarget(t *testing.T) {
+func TestExportTree_SkipsAbsoluteSymlinkTarget(t *testing.T) {
 	t.Parallel()
 
 	srcPath := filepath.Join(t.TempDir(), "src")
 	repo := initLocalTestRepo(t, srcPath)
 
 	commitLocalTestSymlink(t, repo, srcPath, "escape.txt", "/etc/passwd", "add absolute symlink")
+	commitLocalTestFile(t, repo, srcPath, "compose.yaml", "services: {}\n", "add compose")
 
 	head, err := repo.Head()
 	if err != nil {
 		t.Fatalf("Head() error = %v", err)
 	}
 
-	dir := t.TempDir()
-
-	err = git.ExportTree(dir, repo, head.Hash(), git.ExportOptions{})
-	if err == nil {
-		t.Fatal("ExportTree() error = nil, want a path traversal error for an absolute symlink target")
+	strictDir := t.TempDir()
+	if err := git.ExportTree(strictDir, repo, head.Hash(), git.ExportOptions{}); !errors.Is(err, filesystem.ErrPathTraversal) {
+		t.Fatalf("ExportTree() error = %v, want path traversal error by default", err)
 	}
 
+	if _, statErr := os.Lstat(filepath.Join(strictDir, "escape.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected escape.txt not to be created on strict export, stat err = %v", statErr)
+	}
+
+	dir := t.TempDir()
+
+	var logBuf bytes.Buffer
+
+	err = git.ExportTree(dir, repo, head.Hash(), git.ExportOptions{
+		Log:                  slog.New(slog.NewTextHandler(&logBuf, nil)),
+		SkipAbsoluteSymlinks: true,
+	})
+	if err != nil {
+		t.Fatalf("ExportTree() error = %v, want nil: an absolute symlink target is skipped, not fatal", err)
+	}
+
+	// The link must never be written: nothing in the artifact may resolve outside it.
 	if _, statErr := os.Lstat(filepath.Join(dir, "escape.txt")); !os.IsNotExist(statErr) {
 		t.Fatalf("expected escape.txt to not be created, stat err = %v", statErr)
+	}
+
+	// Everything else is exported byte-exact.
+	for name, want := range map[string]string{"README.md": "initial\n", "compose.yaml": "services: {}\n"} {
+		got, readErr := os.ReadFile(filepath.Join(dir, name))
+		if readErr != nil {
+			t.Fatalf("read %s: %v", name, readErr)
+		}
+
+		if string(got) != want {
+			t.Fatalf("%s = %q, want %q", name, got, want)
+		}
+	}
+
+	// The skip is visible to the operator.
+	if !strings.Contains(logBuf.String(), "skipping symlink with absolute target") || !strings.Contains(logBuf.String(), "escape.txt") {
+		t.Fatalf("expected a warning naming escape.txt, got log:\n%s", logBuf.String())
 	}
 }
 

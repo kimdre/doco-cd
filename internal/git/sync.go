@@ -283,6 +283,43 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 		return broadErr
 	}
 
+	if plumbing.IsHash(ref) {
+		if err := fetchPinnedCommit(repo, ref, func(refSpec config.RefSpec) error {
+			return fetch(newFetchOptions([]config.RefSpec{refSpec}, git.NoTags))
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// fetchPinnedCommit fetches a commit by its SHA when the all-refs fetch did not bring it.
+// A pinned commit may be reachable from no branch or tag any more, e.g. after a rebase,
+// while the remote still serves it by SHA.
+// If the remote does not serve the SHA, the caller's reference check reports
+// it as missing rather than treating go-git's "object not found" as corruption.
+func fetchPinnedCommit(repo *git.Repository, sha string, fetch func(config.RefSpec) error) error {
+	if err := repo.Storer.HasEncodedObject(plumbing.NewHash(sha)); err == nil {
+		return nil
+	} else if !errors.Is(err, plumbing.ErrObjectNotFound) {
+		return fmt.Errorf("check pinned commit %s: %w", sha, err)
+	}
+
+	if err := fetch(config.RefSpec(fmt.Sprintf(refSpecPinnedCommit, sha, sha))); err != nil {
+		if errors.Is(err, git.ErrExactSHA1NotSupported) ||
+			errors.Is(err, git.NoMatchingRefSpecError{}) ||
+			errors.Is(err, plumbing.ErrObjectNotFound) {
+			slog.Warn("failed to fetch pinned commit by SHA",
+				slog.String("commit", sha),
+				slog.String("error", FormatGitErrorMessage(err)))
+
+			return nil
+		}
+
+		return fmt.Errorf("fetch pinned commit %s: %w", sha, err)
+	}
+
 	return nil
 }
 

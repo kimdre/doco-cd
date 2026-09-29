@@ -104,7 +104,12 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 
 func fetchedReferenceExistsAfterFetch(repo *git.Repository, ref string) (bool, error) {
 	if plumbing.IsHash(ref) {
-		return true, nil
+		err := repo.Storer.HasEncodedObject(plumbing.NewHash(ref))
+		if errors.Is(err, plumbing.ErrObjectNotFound) {
+			return false, nil
+		}
+
+		return err == nil, err
 	}
 
 	refName := plumbing.ReferenceName(ref)

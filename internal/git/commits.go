@@ -56,8 +56,12 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 		return plumbing.ZeroHash.String(), err
 	}
 
-	// If RemoteRef is empty, it's a commit SHA - return it directly
+	// If RemoteRef is empty, it's a commit SHA - return it once it is present
 	if refSet.RemoteRef == "" {
+		if err := repo.Storer.HasEncodedObject(plumbing.NewHash(string(refSet.LocalRef))); err != nil {
+			return plumbing.ZeroHash.String(), fmt.Errorf("%w: commit %s: %w", ErrInvalidReference, refSet.LocalRef, err)
+		}
+
 		return string(refSet.LocalRef), nil
 	}
 
