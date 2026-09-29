@@ -82,6 +82,8 @@ If a single trigger deploys several stacks and only some of them are blocked, th
 | [Scheduled jobs](Job-Scheduling.md)                                                                                                  | No                                                                           |
 | Project and stack actions via the REST API or MCP (start, stop, restart, scale, remove, …)                                           | No                                                                           |
 
+A self-update bootstrap that a window blocks deploys nothing and exits with a non-zero exit code, see [Bootstrap](Self-Updating.md#bootstrap).
+
 ### Manual deployments
 
 Poll runs you trigger via the [REST API](../Endpoints/REST-API.md#polling) or the [MCP server](../Endpoints/MCP-Server.md) count as manual deployments.
@@ -219,6 +221,7 @@ With a repository, deployment or context, they also tell you whether that deploy
 
 - **No queue**: deferred deployments are not replayed when a window opens, see [deferred deployments](#deferred-deployments).
 - **Reconciliation while a revision is deferred**: reconciliation keeps restoring the revision that was deployed before, and the stack is not removed as an obsolete auto-discovered stack. If doco-cd restarts while a revision is deferred, it doesn't know the previous revision of that stack anymore, so the stack is not reconciled until a deployment inside a window succeeds.
+- **Reconciliation after a restart with scheduled poll jobs**: reconciliation of a repository starts with its first deployment run after doco-cd started. A [poll job with a `schedule`](../Poll-Settings.md#cron-schedules) does not poll at startup, so its stacks are not reconciled until the first scheduled poll.
 - **Reconciliation of stacks with their own reference**: reconciliation resolves the reference of deploy configs with their own `reference`, `repository_url` or `git_depth` again. While a window blocks such a stack, it is only restored if the resolved revision matches the revision its containers are labeled with. If the reference moved on, or none of its containers are left to compare with, reconciliation is deferred like an automatic deployment.
 - **Superseded commits stay pending**: if a deferred commit is superseded by a newer one before a window opens, its `pending` commit status is never updated.
 - **Admitted deployments finish**: a deployment that was allowed when its trigger arrived is not cancelled when a window closes.

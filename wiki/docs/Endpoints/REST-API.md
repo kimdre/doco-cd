@@ -108,6 +108,7 @@ curl --request GET \
 The request body must be a JSON array of [poll configurations](../Poll-Settings.md), each containing at least a `url` field containing the Git clone URL to the repository.
 
 The fields `run_once`, `interval` and `schedule` will be ignored for poll runs triggered via the API, as they are only relevant for the scheduled poll runs.
+They are still validated when the request is parsed: a configuration that sets both a `schedule` and a non-zero `interval` is rejected with `400 Bad Request`, because the two are mutually exclusive.
 
 Poll runs triggered via the API count as manual deployments for [sync windows](../Advanced/Sync-Windows.md#manual-deployments). If a sync window defers every deployment of the run, the run status is `skipped` and, with `wait=true`, the endpoint responds with `202 Accepted` and a message like `deployment of my-app deferred by sync window business-hours until 2026-01-05T08:00:00+01:00`.
 
