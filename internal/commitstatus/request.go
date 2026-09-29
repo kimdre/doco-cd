@@ -2,8 +2,10 @@ package commitstatus
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/git"
 )
@@ -12,6 +14,21 @@ import (
 // description may contain. Longer descriptions are truncated with a trailing
 // ellipsis so they fit the limits enforced by SCM provider APIs.
 const maxDescriptionLength = 140
+
+// SuccessDescription describes a successful deployment with its duration. It
+// omits the duration when either timestamp is missing or they are out of order.
+func SuccessDescription(startedAt, finishedAt time.Time) string {
+	if startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) {
+		return "Successful"
+	}
+
+	duration := finishedAt.Sub(startedAt)
+	if duration < time.Second {
+		return "Successful in <1s"
+	}
+
+	return fmt.Sprintf("Successful in %s", duration.Round(time.Second))
+}
 
 // FailureDescription normalizes err into a single-line, Unicode-safe
 // description suitable for a commit status. Internal whitespace (including

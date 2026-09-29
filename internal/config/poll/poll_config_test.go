@@ -468,3 +468,156 @@ func TestOCIConfig_ReferenceAutoderived(t *testing.T) {
 		})
 	}
 }
+
+func TestConfig_UnmarshalYAML_Schedule(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		extra        string
+		wantInterval time.Duration
+		wantSchedule string
+		wantErr      error
+	}{
+		{name: "schedule replaces default interval", extra: "schedule: \"*/5 8-22 * * 1-5\"\n", wantSchedule: "*/5 8-22 * * 1-5"},
+		{name: "schedule with explicit zero interval", extra: "schedule: \"@hourly\"\ninterval: 0\n", wantSchedule: "@hourly"},
+		{name: "schedule with explicit null interval", extra: "schedule: \"@hourly\"\ninterval: null\n", wantSchedule: "@hourly"},
+		{name: "schedule is trimmed", extra: "schedule: \"  @daily \"\n", wantSchedule: "@daily"},
+		{name: "empty schedule keeps default interval", extra: "schedule: \"\"\n", wantInterval: 3 * time.Minute},
+		{name: "schedule and interval", extra: "schedule: \"@hourly\"\ninterval: 5m\n", wantErr: ErrScheduleWithInterval},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var cfg Config
+
+			raw := "source: oci\nurl: ghcr.io/example/app:test\n" + tt.extra
+
+			err := yaml.Unmarshal([]byte(raw), &cfg)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("failed to unmarshal yaml: %v", err)
+			}
+
+			if cfg.Interval != tt.wantInterval {
+				t.Fatalf("interval = %s, want %s", cfg.Interval, tt.wantInterval)
+			}
+
+			if cfg.Schedule != tt.wantSchedule {
+				t.Fatalf("schedule = %q, want %q", cfg.Schedule, tt.wantSchedule)
+			}
+		})
+	}
+}
+
+func TestConfig_UnmarshalJSON_Schedule(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	if err := json.Unmarshal([]byte(`{"source":"oci","url":"ghcr.io/example/app:test","schedule":"0 8 * * 1-5"}`), &cfg); err != nil {
+		t.Fatalf("failed to unmarshal json: %v", err)
+	}
+
+	if cfg.Interval != 0 || cfg.Schedule != "0 8 * * 1-5" {
+		t.Fatalf("got interval=%s schedule=%q, want interval=0 schedule=%q", cfg.Interval, cfg.Schedule, "0 8 * * 1-5")
+	}
+
+	err := json.Unmarshal([]byte(`{"source":"oci","url":"ghcr.io/example/app:test","schedule":"@hourly","interval":60}`), &cfg)
+	if !errors.Is(err, ErrScheduleWithInterval) {
+		t.Fatalf("expected ErrScheduleWithInterval, got %v", err)
+	}
+}
+
+func TestConfig_Validate_Schedule(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		schedule string
+		interval time.Duration
+		wantErr  error
+	}{
+		{name: "valid cron", schedule: "*/5 * * * *"},
+		{name: "valid descriptor", schedule: "@daily"},
+		{name: "valid every", schedule: "@every 30s"},
+		{name: "every below minimum", schedule: "@every 5s", wantErr: ErrIntervalTooLow},
+		{name: "invalid expression", schedule: "every minute", wantErr: ErrInvalidSchedule},
+		{name: "seconds field", schedule: "*/5 * * * * *", wantErr: ErrInvalidSchedule},
+		{name: "combined with interval", schedule: "@hourly", interval: time.Minute, wantErr: ErrScheduleWithInterval},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := Config{
+				Source:    config.SourceTypeGit,
+				SourceUrl: "https://example.com/repo.git",
+				Reference: "main",
+				Interval:  tt.interval,
+				Schedule:  tt.schedule,
+			}
+
+			err := cfg.Validate()
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+
+				return
+			}
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("expected error %v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestConfig_NextRun(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 1, 5, 10, 7, 0, 0, time.Local)
+
+	tests := []struct {
+		name   string
+		config Config
+		want   time.Time
+	}{
+		{name: "interval", config: Config{Interval: time.Minute}, want: now.Add(time.Minute)},
+		{name: "schedule", config: Config{Schedule: "*/15 * * * *"}, want: time.Date(2026, 1, 5, 10, 15, 0, 0, time.Local)},
+		{name: "run once", config: Config{Interval: time.Minute, RunOnce: true}},
+		{name: "disabled", config: Config{}},
+		{name: "invalid schedule", config: Config{Schedule: "nope"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.config.NextRun(now); !got.Equal(tt.want) {
+				t.Fatalf("NextRun() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConfig_String_Schedule(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{Source: config.SourceTypeGit, SourceUrl: "https://example.com/repo.git", Reference: "main", Schedule: "@hourly"}
+
+	want := "Config{Source: git, SourceUrl: https://example.com/repo.git, Reference: main, Schedule: @hourly}"
+	if got := cfg.String(); got != want {
+		t.Fatalf("String() = %s, want %s", got, want)
+	}
+}

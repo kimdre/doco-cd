@@ -1,0 +1,4 @@
+name: e2e-compose-unrelated-change
+working_dir: deploy
+swarm:
+  enabled: false

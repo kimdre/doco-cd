@@ -17,6 +17,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/kimdre/doco-cd/internal/common/cronexpr"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -775,5 +776,163 @@ func TestPollHandlerWatcherOnlyModeHasNoPeriodicFallback(t *testing.T) {
 
 	if got := runCount.Load(); got != 1 {
 		t.Fatalf("expected exactly 1 run (startup only, no periodic fallback) with a working watcher and no interval, got %d", got)
+	}
+}
+
+func TestPollNextDelay(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 1, 5, 10, 7, 30, 0, time.UTC)
+
+	quarterHourly, err := cronexpr.Parse("*/15 * * * *", time.UTC)
+	if err != nil {
+		t.Fatalf("Parse() failed: %v", err)
+	}
+
+	if got, want := pollNextDelay(quarterHourly, 0, now), 7*time.Minute+30*time.Second; got != want {
+		t.Fatalf("pollNextDelay(schedule) = %s, want %s", got, want)
+	}
+
+	if got, want := pollNextDelay(nil, 3*time.Minute, now), 3*time.Minute; got != want {
+		t.Fatalf("pollNextDelay(interval) = %s, want %s", got, want)
+	}
+
+	if got := pollNextDelay(nil, 0, now); got != 0 {
+		t.Fatalf("pollNextDelay(watcher-only) = %s, want 0", got)
+	}
+}
+
+func TestPollHandlerScheduleSkipsStartupRunAndWatcher(t *testing.T) {
+	var output bytes.Buffer
+
+	log := &logger.Logger{
+		Logger: slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Level:  slog.LevelDebug,
+	}
+	srcPath := createLocalPollTestRepository(t)
+
+	var runCount atomic.Int32
+
+	h := orchestrationHandler{
+		log: log,
+
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider,
+				_ string,
+			) error {
+				runCount.Add(1)
+
+				return nil
+			},
+		}),
+	}
+
+	pollJob := &poll.Job{Config: poll.Config{
+		Source:    config.SourceTypeGit,
+		SourceUrl: "file://" + srcPath,
+		Reference: "main",
+		Schedule:  "@every 1h",
+		Watch:     true,
+	}}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer cancel()
+
+	h.PollHandler(ctx, pollJob)
+
+	if got := runCount.Load(); got != 0 {
+		t.Fatalf("scheduled poll ran %d times before its first occurrence, want 0", got)
+	}
+
+	if pollJob.NextRun == 0 {
+		t.Fatal("scheduled poll did not record its next run")
+	}
+
+	logged := output.String()
+	if strings.Contains(logged, "watching local repository for changes") {
+		t.Fatal("scheduled poll started a local repository watcher")
+	}
+
+	if !strings.Contains(logged, "local repository watcher disabled because a poll schedule is set") {
+		t.Fatal("scheduled poll did not log that the watcher is disabled")
+	}
+}
+
+func TestPollHandlerRunOnceIgnoresSchedule(t *testing.T) {
+	log := logger.New(logger.LevelCritical)
+
+	var runCount atomic.Int32
+
+	h := orchestrationHandler{
+		log: log,
+
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider,
+				_ string,
+			) error {
+				runCount.Add(1)
+
+				return nil
+			},
+		}),
+	}
+
+	h.PollHandler(t.Context(), &poll.Job{Config: poll.Config{
+		SourceUrl: "https://github.com/kimdre/doco-cd_tests.git",
+		Reference: "main",
+		Schedule:  "@yearly",
+		RunOnce:   true,
+	}})
+
+	if got := runCount.Load(); got != 1 {
+		t.Fatalf("run_once poll with schedule ran %d times, want 1", got)
+	}
+}
+
+func TestStartPollKeepsScheduledJobWithoutInterval(t *testing.T) {
+	log := logger.New(logger.LevelCritical)
+
+	h := &orchestrationHandler{
+		log: log,
+
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{log: log}),
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+
+	var wg sync.WaitGroup
+
+	err := StartPoll(ctx, h, poll.Config{
+		SourceUrl: "https://github.com/kimdre/doco-cd_tests.git",
+		Reference: "main",
+		Schedule:  "@yearly",
+	}, &wg)
+	if err != nil {
+		t.Fatalf("StartPoll() failed: %v", err)
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("scheduled poll job exited immediately, want it to wait for its schedule")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("scheduled poll job did not stop after cancellation")
 	}
 }

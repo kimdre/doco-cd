@@ -35,6 +35,17 @@ A doco-cd stack must be defined in the deploy repository with the following rule
 - Give the service a `healthcheck`. Without one doco-cd falls back to running
   `#!sh doco-cd healthcheck` inside the new container, which is slower.
 
+!!! warning "Keep Docker socket proxies outside the self-updating project"
+    If doco-cd accesses Docker through a socket proxy, run the proxy in a separate
+    Compose project. Self-update deploys the other services in doco-cd's project
+    before replacing doco-cd; Compose may recreate the proxy even when its
+    configuration has not changed. That cuts off Docker API access and fails the
+    deployment. **`depends_on` and restart policies do not prevent this.**
+
+    For a Unix-socket proxy, share a named socket volume between the projects
+    and declare it `#!yaml external: true` in both Compose files. Start the proxy before
+    doco-cd and update it separately. The same lifecycle risk applies to TCP proxies.
+
 ## Bootstrap
 
 !!! tip "If you already have an existing doco-cd instance, skip to [Migrating an existing instance](#migrating-an-existing-instance)."
@@ -50,6 +61,10 @@ It clones the repository, deploys every configured target once, and exits.
 What remains is a doco-cd container created by the normal deploy path, 
 with the correct `com.docker.compose.*` and `cd.doco.*` labels.
 Replace the image reference when using a different release in the repository and the bootstrap script.
+
+If a [sync window](Sync-Windows.md) blocks the bootstrap deployment, nothing is deployed. 
+Doco-CD logs a warning with the blocking windows and the time they open and the bootstrap exits with a non-zero exit code. 
+Run it again once the window allows it, or set [`manual_sync`](Sync-Windows.md#manual-deployments) on the blocking windows.
 
 ## Migrating an existing instance
 
@@ -86,7 +101,8 @@ The default `auto` uses `scale_out` unless the compose file rules it out.
 3. The running instance waits for the new container to report healthy, bounded by the deploy config's `timeout`.
 4. On success it finishes its in-flight work, records the handover on the data volume and waits to be stopped. 
    The new instance removes it, then sends the deployment notification and the commit status.
-5. On failure the new container is removed. Nothing else changed, and the running instance reports the failure.
+5. On failure the new container is removed. Nothing else changed, and the running instance reports the failure
+   and sets the commit status to failed.
 
 `scale_out` is impossible when the service sets `container_name`, publishes host ports, 
 uses `#!yaml network_mode: host`, or when a project network must be recreated. 
@@ -99,7 +115,8 @@ interrupts other services attached to it and a failed update restores their prev
 doco-cd clones its own container into a throwaway container running `doco-cd apply-self`. 
 The clone recreates the doco-cd service from outside, waits for health, and exits. 
 If the new version never becomes healthy, the clone restores the previous container 
-from a snapshot taken before the attempt.
+from a snapshot taken before the attempt. Whichever instance runs afterwards, the replacement or the restored one,
+sends the deployment notification and the final commit status.
 
 Expect a brief interruption while the replacement starts and becomes healthy. 
 Webhook requests during the interruption may receive an 503 error. 

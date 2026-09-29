@@ -30,6 +30,11 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
+// deployCompletedLog is logged once a deployment of a stack completed. Unlike
+// "job completed successfully", it is not logged for poll runs that found
+// nothing to deploy.
+const deployCompletedLog = `"msg":"completed stage: post-deploy"`
+
 // initRepo creates the repo the gitserver container mounts read-only, plus a
 // separate worktree used to build the fixture and later commits. The repo's
 // storage lives directly at repoPath (the standard bare-repo layout: HEAD,
@@ -222,7 +227,7 @@ func (h *Harness) CopyScenarioDir(name string) {
 // mounts, the commit is immediately visible to the daemon's next poll - no
 // push is needed. Named RepoPush to keep scenario code reading the same way
 // it did against the shell harness.
-func (h *Harness) RepoPush(message string) {
+func (h *Harness) RepoPush(message string) plumbing.Hash {
 	h.t.Helper()
 
 	if _, err := h.wt.Add("."); err != nil {
@@ -231,12 +236,130 @@ func (h *Harness) RepoPush(message string) {
 
 	h.applyGitlinks()
 
-	_, err := h.wt.Commit(message, &git.CommitOptions{
-		Author: &object.Signature{Name: "e2e", Email: "e2e@localhost", When: time.Now()},
+	return h.commit(message)
+}
+
+// commit commits the index on top of HEAD, or with the given parents.
+func (h *Harness) commit(message string, parents ...plumbing.Hash) plumbing.Hash {
+	h.t.Helper()
+
+	// Commits made in the same second would tie in committer time order, which is the
+	// order commit walks visit history in.
+	when := time.Now().Truncate(time.Second)
+	if !when.After(h.lastCommitTime) {
+		when = h.lastCommitTime.Add(time.Second)
+	}
+
+	h.lastCommitTime = when
+
+	sig := &object.Signature{Name: "e2e", Email: "e2e@localhost", When: when}
+
+	hash, err := h.wt.Commit(message, &git.CommitOptions{
+		Author:    sig,
+		Committer: sig,
+		Parents:   parents,
 	})
 	if err != nil {
 		h.t.Fatalf("commit: %v", err)
 	}
+
+	return hash
+}
+
+// RepoCheckout switches the worktree to branch, creating it from HEAD when create is set.
+// Only main is polled, so commits on another branch reach the daemon through RepoMerge.
+func (h *Harness) RepoCheckout(branch string, create bool) {
+	h.t.Helper()
+
+	err := h.wt.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName(branch),
+		Create: create,
+	})
+	if err != nil {
+		h.t.Fatalf("checkout %s: %v", branch, err)
+	}
+}
+
+// RepoMerge merges branch into the checked out branch with a merge commit, the way a pull
+// request lands. go-git cannot merge, so the changes of branch since the merge base are
+// copied into the worktree: fine for the non-conflicting changes a scenario makes.
+func (h *Harness) RepoMerge(branch, message string) plumbing.Hash {
+	h.t.Helper()
+
+	head, err := h.repo.Head()
+	if err != nil {
+		h.t.Fatalf("read HEAD: %v", err)
+	}
+
+	branchRef, err := h.repo.Reference(plumbing.NewBranchReferenceName(branch), true)
+	if err != nil {
+		h.t.Fatalf("read branch %s: %v", branch, err)
+	}
+
+	headCommit, err := h.repo.CommitObject(head.Hash())
+	if err != nil {
+		h.t.Fatalf("read HEAD commit: %v", err)
+	}
+
+	branchCommit, err := h.repo.CommitObject(branchRef.Hash())
+	if err != nil {
+		h.t.Fatalf("read branch commit: %v", err)
+	}
+
+	bases, err := headCommit.MergeBase(branchCommit)
+	if err != nil || len(bases) != 1 {
+		h.t.Fatalf("merge base of HEAD and %s: %v (%d bases)", branch, err, len(bases))
+	}
+
+	baseTree, err := bases[0].Tree()
+	if err != nil {
+		h.t.Fatalf("read merge base tree: %v", err)
+	}
+
+	branchTree, err := branchCommit.Tree()
+	if err != nil {
+		h.t.Fatalf("read branch tree: %v", err)
+	}
+
+	changes, err := object.DiffTree(baseTree, branchTree)
+	if err != nil {
+		h.t.Fatalf("diff branch %s: %v", branch, err)
+	}
+
+	for _, change := range changes {
+		if change.To.Name == "" {
+			if _, err := h.wt.Remove(change.From.Name); err != nil {
+				h.t.Fatalf("remove %s: %v", change.From.Name, err)
+			}
+
+			continue
+		}
+
+		file, err := branchTree.File(change.To.Name)
+		if err != nil {
+			h.t.Fatalf("read %s on %s: %v", change.To.Name, branch, err)
+		}
+
+		content, err := file.Contents()
+		if err != nil {
+			h.t.Fatalf("read %s on %s: %v", change.To.Name, branch, err)
+		}
+
+		path := filepath.Join(h.worktree, filepath.FromSlash(change.To.Name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			h.t.Fatalf("create dir for %s: %v", change.To.Name, err)
+		}
+
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil { //nolint:gosec // path is under the test-controlled worktree
+			h.t.Fatalf("write %s: %v", change.To.Name, err)
+		}
+
+		if _, err := h.wt.Add(change.To.Name); err != nil {
+			h.t.Fatalf("stage %s: %v", change.To.Name, err)
+		}
+	}
+
+	return h.commit(message, head.Hash(), branchRef.Hash())
 }
 
 // ReplaceInWorktree does an in-place string substitution in a file under the
@@ -631,6 +754,56 @@ func (h *Harness) WaitForContainerRecreate(project, service, oldID string, timeo
 	})
 }
 
+// AssertStays fails if current returns anything but want during window, e.g.
+// to prove that a deployment left a container untouched. Unlike WaitFor, it
+// keeps checking for the whole window, since a replacement can still happen a
+// moment after the deployment completed.
+func (h *Harness) AssertStays(window time.Duration, desc, want string, current func() string) {
+	h.t.Helper()
+
+	deadline := time.Now().Add(window)
+
+	for {
+		if got := current(); got != want {
+			h.t.Fatalf("%s: got %q, want %q", desc, got, want)
+		}
+
+		if time.Now().After(deadline) {
+			h.logf("ok: %s", desc)
+			return
+		}
+
+		time.Sleep(time.Second)
+	}
+}
+
+// SwarmServiceTaskCount returns the number of tasks in any state of a Swarm
+// stack service. It grows each time Swarm replaces a task of the service.
+func (h *Harness) SwarmServiceTaskCount(stack, service string) int {
+	h.t.Helper()
+
+	tasks, err := h.docker.TaskList(h.ctx, client.TaskListOptions{
+		Filters: client.Filters{}.Add("service", stack+"_"+service),
+	})
+	if err != nil {
+		h.t.Fatalf("list tasks for %s/%s: %v", stack, service, err)
+	}
+
+	return len(tasks.Items)
+}
+
+// ExecOutput runs cmd in containerID and returns its trimmed output.
+func (h *Harness) ExecOutput(containerID string, cmd ...string) string {
+	h.t.Helper()
+
+	output, err := docker.ExecContext(h.ctx, h.docker, containerID, cmd...)
+	if err != nil {
+		h.t.Fatalf("exec %v in container %s: %v", cmd, shortContainerID(containerID), err)
+	}
+
+	return strings.TrimSpace(output)
+}
+
 func (h *Harness) WaitForContainerRemoval(project, service string, timeout time.Duration) {
 	h.t.Helper()
 	h.WaitFor(timeout, project+"/"+service+" removed", func() bool {
@@ -728,9 +901,9 @@ func (h *Harness) isSwarmMode() bool {
 }
 
 // scenarioStackNames walks the scenario's whole directory and collects the
-// "name" of every document of every .doco-cd.yml found. Walking past
-// "fixture" matters because a scenario's later commits can add stacks, and
-// those stacks still need cleaning up.
+// "name" of every document of every deploy config found, per-target ones
+// included. Walking past "fixture" matters because a scenario's later commits
+// can add stacks, and those stacks still need cleaning up.
 func (h *Harness) scenarioStackNames() set.Set[string] {
 	names := set.New[string]()
 	names.Add(h.extraStacks...)
@@ -740,7 +913,7 @@ func (h *Harness) scenarioStackNames() set.Set[string] {
 			return err
 		}
 
-		if d.IsDir() || d.Name() != ".doco-cd.yml" || !d.Type().IsRegular() {
+		if d.IsDir() || !isDeployConfigName(d.Name()) || !d.Type().IsRegular() {
 			return nil
 		}
 
@@ -755,6 +928,11 @@ func (h *Harness) scenarioStackNames() set.Set[string] {
 	})
 
 	return names
+}
+
+// isDeployConfigName matches .doco-cd.yml and the per-target .doco-cd.<target>.yml.
+func isDeployConfigName(name string) bool {
+	return name == ".doco-cd.yml" || (strings.HasPrefix(name, ".doco-cd.") && strings.HasSuffix(name, ".yml"))
 }
 
 // stackNamesFromConfig returns the "name" of every document in a deploy

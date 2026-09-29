@@ -15,6 +15,8 @@ The settings are grouped below by the part of the application they configure.
 | `SCHEDULER_ENABLED`    | boolean | Controls whether this doco-cd instance starts the built-in [job scheduler](Advanced/Job-Scheduling.md). Disable it on secondary/[self-updater](Advanced/Self-Updating.md) instances that should not trigger scheduled jobs. | `true`  |
 | `SELF_UPDATE_ENABLED`  | boolean | Allows doco-cd to deploy the stack that contains its own container (see [Self-Updating](Advanced/Self-Updating.md)). When disabled, such a deployment is refused with an error instead of being attempted.                  | `false` |
 | `SELF_UPDATE_STRATEGY` | string  | How doco-cd replaces its own container: `scale_out` starts a second container and hands over without downtime, `applier` delegates to a throwaway clone, `auto` picks `scale_out` unless the compose file rules it out.     | `auto`  |
+| `SYNC_WINDOWS`         | list    | A YAML list of [sync windows](Advanced/Sync-Windows.md) that restrict when deployments may change stacks.                                                                                                                   |         |
+| `SYNC_WINDOWS_FILE`    | string  | Path to a file inside the container containing the [sync windows](Advanced/Sync-Windows.md) in YAML format (mutually exclusive with `SYNC_WINDOWS`).                                                                        |         |
 | `TZ`                   | string  | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container.                                                                                                                         | `UTC`   |
 
 ## API and Webhook Settings
@@ -110,7 +112,7 @@ WEBHOOK_SECRET=xxx
 
 #### Multiline YAML options
 
-For multiline YAML options like `POLL_CONFIG` and `SOURCE_URL_REWRITES`, the `.env` file format does not support multiline values. Instead, use the corresponding `*_FILE` environment variables to point to separate YAML files:
+For multiline YAML options like `POLL_CONFIG`, `SOURCE_URL_REWRITES` and `SYNC_WINDOWS`, the `.env` file format does not support multiline values. Instead, use the corresponding `*_FILE` environment variables to point to separate YAML files:
 
 ```ini title=".env"
 POLL_CONFIG_FILE=/mnt/poll-config.yaml
@@ -159,7 +161,7 @@ services:
 
 #### Multiline YAML options
 
-For multiline YAML options like `POLL_CONFIG` and `SOURCE_URL_REWRITES`, use YAML's literal block scalar (`|`):
+For multiline YAML options like `POLL_CONFIG`, `SOURCE_URL_REWRITES` and `SYNC_WINDOWS`, use YAML's literal block scalar (`|`):
 
 ```yaml title="docker-compose.yml"
 services:

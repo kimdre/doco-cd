@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
+
+	"github.com/kimdre/doco-cd/internal/common/cronexpr"
 )
 
 type JobExecutionMode string
@@ -66,14 +68,12 @@ func (c JobScheduleConfig) ShouldNotifyFailure() bool {
 	return c.NotifyOn == JobNotifyAll || c.NotifyOn == JobNotifyFailure
 }
 
-func NewJobScheduleParser() gocron.Cron {
-	// 5-field cron format with descriptors and @every durations. Seconds are intentionally unsupported.
-	return gocron.NewDefaultCron(false)
-}
-
+// ParseJobScheduleExpression parses a job schedule in the local timezone (TZ).
+// It uses the 5-field cron format with descriptors and @every durations;
+// seconds are intentionally unsupported.
 func ParseJobScheduleExpression(spec string) (gocron.Cron, error) {
-	schedule := NewJobScheduleParser()
-	if err := schedule.IsValid(strings.TrimSpace(spec), time.Local, time.Now()); err != nil {
+	schedule, err := cronexpr.Parse(spec, time.Local)
+	if err != nil {
 		return nil, fmt.Errorf("invalid job schedule %q: %w", spec, err)
 	}
 

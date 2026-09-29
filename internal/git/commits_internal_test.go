@@ -490,3 +490,61 @@ func TestGetCommitsBetween_ScanLimit(t *testing.T) {
 		t.Fatalf("expected %d commits, got %d", maxScannedCommits, len(got))
 	}
 }
+
+// Committer times are not always in order, a commit can be older than its parent. The walk
+// then visits a commit of the old tip's history before the excluded path reaches it, and
+// must still leave it and its ancestors out of the range.
+func TestGetCommitsBetween_ClockSkew(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	commit := func(msg string, minutes int, parents ...plumbing.Hash) plumbing.Hash {
+		t.Helper()
+
+		sig := &object.Signature{Name: "Jane Doe", Email: "jane@example.com", When: base.Add(time.Duration(minutes) * time.Minute)}
+
+		h, err := wt.Commit(msg, &gogit.CommitOptions{
+			AllowEmptyCommits: true,
+			Author:            sig,
+			Committer:         sig,
+			Parents:           parents,
+		})
+		if err != nil {
+			t.Fatalf("commit %s: %v", msg, err)
+		}
+
+		return h
+	}
+
+	root := commit("root", 0)
+	shared := commit("shared", 10, root)
+	// The deployed commit has a clock behind its parent.
+	deployed := commit("deployed", 5, shared)
+	side := commit("side", 20, shared)
+	tip := commit("tip", 30, deployed, side)
+
+	got, err := GetCommitsBetween(testLogger(), repo, deployed, tip, 50, nil)
+	if err != nil {
+		t.Fatalf("GetCommitsBetween: %v", err)
+	}
+
+	want := []string{tip.String(), side.String()}
+
+	gotHashes := make([]string, 0, len(got))
+	for _, c := range got {
+		gotHashes = append(gotHashes, c.Hash)
+	}
+
+	if strings.Join(gotHashes, ",") != strings.Join(want, ",") {
+		t.Fatalf("expected [tip side], got %+v", got)
+	}
+}

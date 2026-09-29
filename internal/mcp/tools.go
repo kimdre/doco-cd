@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/logger"
 	prometheusmetrics "github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/stages"
 )
 
 // mustToolInputSchema derives a tool schema and panics on programmer configuration errors.
@@ -43,6 +45,13 @@ func destructiveAnnotations(idempotent bool) *sdkmcp.ToolAnnotations {
 
 // triggerRunToolResult maps run completion into MCP content and a lifecycle status.
 func triggerRunToolResult(wait bool, err error) (*sdkmcp.CallToolResult, string) {
+	// Nothing was deployed, but a deferral by a sync window is not a failure.
+	if errors.Is(err, stages.ErrSyncWindowBlocked) {
+		return &sdkmcp.CallToolResult{
+			Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: err.Error()}},
+		}, string(controlplane.RunStatusSkipped)
+	}
+
 	if err != nil {
 		return &sdkmcp.CallToolResult{
 			IsError: true,

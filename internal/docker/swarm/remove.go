@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/docker/cli/cli/command"
@@ -53,7 +54,7 @@ func RunRemove(ctx context.Context, dockerCli command.Cli, opts options.Remove) 
 			continue
 		}
 
-		hasError := removeServices(ctx, dockerCli, services)
+		hasError := removeServices(ctx, dockerCli, services, opts.Logger)
 		hasError = removeSecrets(ctx, dockerCli, secrets) || hasError
 		hasError = removeConfigs(ctx, dockerCli, configs) || hasError
 		hasError = removeNetworks(ctx, dockerCli, networks) || hasError
@@ -80,16 +81,21 @@ func sortServiceByName(services []swarm.Service) func(i, j int) bool {
 	}
 }
 
-func removeServices(ctx context.Context, dockerCLI command.Cli, services []swarm.Service) bool {
+func removeServices(ctx context.Context, dockerCLI command.Cli, services []swarm.Service, log *slog.Logger) bool {
 	var hasError bool
 
 	sort.Slice(services, sortServiceByName(services))
 
 	for _, service := range services {
-		_, _ = fmt.Fprintln(dockerCLI.Out(), "Removing service", service.Spec.Name)
+		identity := deployedService{name: service.Spec.Name, id: service.ID}
+		_, _ = fmt.Fprintln(dockerCLI.Out(), "Removing service", ServiceIdentity(identity.name, identity.id))
+		logService(log, "removing service", identity)
+
 		if _, err := dockerCLI.Client().ServiceRemove(ctx, service.ID, client.ServiceRemoveOptions{}); err != nil {
 			hasError = true
-			_, _ = fmt.Fprintf(dockerCLI.Err(), "Failed to remove service %s: %s", service.ID, err)
+
+			logServiceError(log, "failed to remove service", identity, err)
+			_, _ = fmt.Fprintf(dockerCLI.Err(), "Failed to remove service %s: %s\n", ServiceIdentity(identity.name, identity.id), err)
 		}
 	}
 

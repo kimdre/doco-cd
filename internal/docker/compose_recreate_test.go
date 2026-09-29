@@ -166,6 +166,35 @@ func TestRecreateProjectLabels(t *testing.T) {
 			want: managed,
 		},
 		{
+			name: "prefers the latest managed deployment",
+			containers: []api.ContainerSummary{
+				{Labels: map[string]string{
+					DocoCDLabels.Deployment.Name:       "managed",
+					DocoCDLabels.Source.Name:           "owner/repo",
+					DocoCDLabels.Deployment.Timestamp:  "2026-01-01T00:00:00Z",
+					DocoCDLabels.Deployment.WorkingDir: "/data/repo/artifacts/old",
+				}},
+				{Labels: map[string]string{
+					DocoCDLabels.Deployment.Name:       "managed",
+					DocoCDLabels.Source.Name:           "owner/repo",
+					DocoCDLabels.Deployment.Timestamp:  "2026-01-02T00:00:00Z",
+					DocoCDLabels.Deployment.WorkingDir: "/data/repo/artifacts/new",
+				}},
+				{Labels: map[string]string{
+					DocoCDLabels.Deployment.Name:       "managed",
+					DocoCDLabels.Source.Name:           "owner/repo",
+					DocoCDLabels.Deployment.Timestamp:  "invalid",
+					DocoCDLabels.Deployment.WorkingDir: "/data/repo/artifacts/invalid",
+				}},
+			},
+			want: map[string]string{
+				DocoCDLabels.Deployment.Name:       "managed",
+				DocoCDLabels.Source.Name:           "owner/repo",
+				DocoCDLabels.Deployment.Timestamp:  "2026-01-02T00:00:00Z",
+				DocoCDLabels.Deployment.WorkingDir: "/data/repo/artifacts/new",
+			},
+		},
+		{
 			name:       "falls back to Compose metadata",
 			containers: []api.ContainerSummary{{Labels: fallback}},
 			want:       fallback,

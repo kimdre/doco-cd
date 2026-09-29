@@ -29,6 +29,7 @@ You can find the documentation at [doco.cd](https://doco.cd/latest/).
 - Supports [OCI artifacts](https://doco.cd/latest/Advanced/OCI/Artifact-Usage/) and Git repositories for deployments.
 - Supports various [external secret providers](https://doco.cd/latest/External-Secrets/) and encryption with [SOPS](https://doco.cd/latest/Advanced/Encryption/).
 - Deploy to multiple Docker hosts with [Docker Contexts](https://doco.cd/latest/Advanced/Docker-Contexts/).
+- Control when deployments may happen with timezone-aware [sync windows](https://doco.cd/latest/Advanced/Sync-Windows/) and cron-scheduled [polling](https://doco.cd/latest/Poll-Settings/#cron-schedules).
 - Provides [notifications](https://doco.cd/latest/Advanced/Notifications/) and [Prometheus metrics](https://doco.cd/latest/Endpoints/Metrics/) for monitoring.
 - [Job Scheduling](https://doco.cd/latest/Advanced/Job-Scheduling/), [Pre/Post-deployment scripts](https://doco.cd/latest/Advanced/Pre-Post-Deployment-Scripts/), [REST API](https://doco.cd/latest/Endpoints/REST-API/) and [MCP Server](https://doco.cd/latest/Endpoints/MCP-Server/) for advanced automation and integrations.
 

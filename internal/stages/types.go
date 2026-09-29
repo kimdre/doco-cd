@@ -26,6 +26,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/migration"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
@@ -44,7 +45,83 @@ var (
 	// ErrSkipDeployment so existing errors.Is checks still match, but callers can
 	// distinguish it to return an appropriate "skipped" response instead of "success".
 	ErrWebhookFilterMismatch = fmt.Errorf("webhook filter did not match: %w", ErrSkipDeployment)
+
+	// ErrSyncWindowBlocked is returned when a sync window deferred the
+	// deployment. It wraps ErrSkipDeployment, because a deferred deployment is
+	// an intentional no-op and not a failure.
+	ErrSyncWindowBlocked = fmt.Errorf("deferred by sync window: %w", ErrSkipDeployment)
 )
+
+// SyncWindowBlockedError describes stacks whose deployment was deferred by
+// sync windows. It unwraps to ErrSyncWindowBlocked.
+type SyncWindowBlockedError struct {
+	Stacks  []string // Stacks are the names of the deferred stacks.
+	Windows []string // Windows are the names of the windows that deferred them.
+	// NextOpen is the earliest time at which one of the deferred stacks may be
+	// deployed again. It is zero when unknown.
+	NextOpen time.Time
+}
+
+func (e *SyncWindowBlockedError) Error() string {
+	msg := fmt.Sprintf("deployment of %s deferred by sync window %s",
+		strings.Join(e.Stacks, ", "), strings.Join(e.Windows, ", "))
+	if !e.NextOpen.IsZero() {
+		msg += " until " + e.NextOpen.Format(time.RFC3339)
+	}
+
+	return msg
+}
+
+func (e *SyncWindowBlockedError) Unwrap() error {
+	return ErrSyncWindowBlocked
+}
+
+// SyncWindowCommitStatusDescription returns the pending commit status
+// description of a deployment deferred until nextOpen.
+func SyncWindowCommitStatusDescription(nextOpen time.Time) string {
+	if nextOpen.IsZero() {
+		return "Deferred by sync window"
+	}
+
+	return "Deferred by sync window until " + nextOpen.Format(time.RFC3339)
+}
+
+// MergeSyncWindowBlocked combines per-stack sync window errors into one,
+// keeping the earliest known NextOpen. It returns nil for no errors.
+func MergeSyncWindowBlocked(blocked []*SyncWindowBlockedError) *SyncWindowBlockedError {
+	if len(blocked) == 0 {
+		return nil
+	}
+
+	merged := &SyncWindowBlockedError{}
+
+	for _, b := range blocked {
+		if b == nil {
+			continue
+		}
+
+		for _, stack := range b.Stacks {
+			if !slices.Contains(merged.Stacks, stack) {
+				merged.Stacks = append(merged.Stacks, stack)
+			}
+		}
+
+		for _, window := range b.Windows {
+			if !slices.Contains(merged.Windows, window) {
+				merged.Windows = append(merged.Windows, window)
+			}
+		}
+
+		if !b.NextOpen.IsZero() && (merged.NextOpen.IsZero() || b.NextOpen.Before(merged.NextOpen)) {
+			merged.NextOpen = b.NextOpen
+		}
+	}
+
+	slices.Sort(merged.Stacks)
+	slices.Sort(merged.Windows)
+
+	return merged
+}
 
 type StageName string
 
@@ -220,6 +297,17 @@ type StageManager struct {
 	// the short-circuit (every run is checked from scratch).
 	LeftoverTracker *migration.LeftoverTracker
 	releaseGCLock   func()
+	// resolvedOwnReference is set by the init stage if it resolved the deploy
+	// config's own reference instead of reusing the revision of the request.
+	resolvedOwnReference bool
+}
+
+// ResolvedOwnReference reports whether the init stage resolved the deploy
+// config's reference itself (because of its own reference, repository_url or
+// git_depth) instead of reusing the revision of the request. Repository.Revision
+// then holds the revision resolved for this stack.
+func (s *StageManager) ResolvedOwnReference() bool {
+	return s.resolvedOwnReference
 }
 
 // Dependencies holds the stable services shared by every StageManager run in a process:
@@ -492,7 +580,7 @@ func (s *StageManager) resolveCommitStatusContext() string {
 	return commitstatus.ContextForStack(s.DeployConfig.Internal.ConfigTarget, s.DeployConfig.Name)
 }
 
-func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool) {
+func (s *StageManager) commitStatusParams() commitstatus.RequestParams {
 	repoURL := ""
 	repoFullName := ""
 
@@ -501,7 +589,7 @@ func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool)
 		repoFullName = s.Payload.FullName
 	}
 
-	return commitstatus.ResolveRequest(s.Log, commitstatus.RequestParams{
+	return commitstatus.RequestParams{
 		Enabled:          s.AppConfig.GitCommitStatus,
 		SourceIsGit:      s.Repository.Source != types2.SourceTypeOCI,
 		SourceURL:        s.Repository.SourceUrl,
@@ -512,7 +600,41 @@ func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool)
 		APIBaseURL:       string(s.AppConfig.GitScmApiUrl),
 		AccessToken:      s.AppConfig.GitAccessToken,
 		ContextName:      s.resolveCommitStatusContext(),
-	})
+	}
+}
+
+func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool) {
+	return commitstatus.ResolveRequest(s.Log, s.commitStatusParams())
+}
+
+// selfUpdateCommitStatus returns the target of the commit status this
+// deployment leaves pending, so a self-update can hand it to the process that
+// resolves the handover. It is nil when the deployment posts no commit status.
+func (s *StageManager) selfUpdateCommitStatus() *selfupdate.CommitStatusInfo {
+	if s.DeployConfig.Destroy.Enabled {
+		return nil
+	}
+
+	params := s.commitStatusParams()
+
+	commitSHA := strings.TrimSpace(params.CommitSHA)
+	if !params.Enabled || !params.SourceIsGit || commitSHA == "" {
+		return nil
+	}
+
+	var startedAt time.Time
+	if s.Stages != nil && s.Stages.Init != nil {
+		startedAt = s.Stages.Init.StartedAt
+	}
+
+	return &selfupdate.CommitStatusInfo{
+		SourceURL: params.SourceURL,
+		RepoURL:   strings.TrimSpace(params.PayloadWebURL),
+		FullName:  strings.TrimSpace(params.PayloadFullName),
+		CommitSHA: commitSHA,
+		Context:   params.ContextName,
+		StartedAt: startedAt,
+	}
 }
 
 func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus.Status, bool) {

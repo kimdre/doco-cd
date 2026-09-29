@@ -46,6 +46,10 @@ var ErrInvalidSecretReference = errors.New("invalid secret reference")
 
 type Provider struct {
 	Client *openbao.Client
+
+	// issuer is used for non-idempotent certificate issuance and has client-side retries disabled,
+	// so a lost response can never cause a duplicate certificate to be issued.
+	issuer *openbao.Client
 }
 
 // pkiCertValues holds the resolved values of a read-only pki reference: the leaf certificate and
@@ -67,8 +71,23 @@ func (p *Provider) Name() string {
 
 // NewProvider creates a new Provider instance for OpenBao and performs login using the provided address and access token.
 func NewProvider(_ context.Context, address, token string) (*Provider, error) {
-	config := openbao.DefaultConfig()
+	client, err := newClient(address, token)
+	if err != nil {
+		return nil, err
+	}
 
+	issuer, err := newClient(address, token)
+	if err != nil {
+		return nil, err
+	}
+
+	issuer.SetMaxRetries(0)
+
+	return &Provider{Client: client, issuer: issuer}, nil
+}
+
+func newClient(address, token string) (*openbao.Client, error) {
+	config := openbao.DefaultConfig()
 	config.Address = address
 
 	client, err := openbao.NewClient(config)
@@ -78,9 +97,7 @@ func NewProvider(_ context.Context, address, token string) (*Provider, error) {
 
 	client.SetToken(token)
 
-	provider := &Provider{Client: client}
-
-	return provider, nil
+	return client, nil
 }
 
 // GetSecret retrieves a secret value from the Secrets Manager using the provided secret reference.
@@ -107,9 +124,9 @@ func (p *Provider) GetSecret(ctx context.Context, ref string) (string, error) {
 		}
 
 	case "pki-role":
-		issued, err := IssueCert(ctx, c, engineName, key, id)
+		issued, err := IssueCert(ctx, p.issuer.WithNamespace(namespace), engineName, key, id)
 		if err != nil {
-			return "", fmt.Errorf("failed to issue certificate for common name %s using role %s: %w", id, key, err)
+			return "", fmt.Errorf("%w: failed to issue certificate for common name %s using role %s: %w", secrettypes.ErrNotRetryable, id, key, err)
 		}
 
 		strValue = issued.Certificate
@@ -129,6 +146,7 @@ func (p *Provider) GetSecret(ctx context.Context, ref string) (string, error) {
 // GetSecrets retrieves multiple secrets from Secrets Manager using the provided list of secret references.
 func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]string, error) {
 	resolvedSecrets := make(map[string]string)
+	containsPKIRole := false
 
 	var (
 		mu sync.Mutex
@@ -141,6 +159,10 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 	errCh := make(chan error, 1)
 
 	for _, ref := range refs {
+		if pkiRoleRefRegexp.MatchString(ref) {
+			containsPKIRole = true
+		}
+
 		wg.Add(1)
 
 		go func(secretName string) {
@@ -169,6 +191,10 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 	close(errCh)
 
 	if err, ok := <-errCh; ok {
+		if containsPKIRole && !errors.Is(err, secrettypes.ErrNotRetryable) {
+			return nil, fmt.Errorf("%w: pki-role batch may have partially issued certificates: %w", secrettypes.ErrNotRetryable, err)
+		}
+
 		return nil, err
 	}
 
@@ -418,12 +444,10 @@ func (p *Provider) issuePKIRoleCerts(ctx context.Context, refs map[string]string
 				return
 			}
 
-			c := p.Client.WithNamespace(namespace)
-
-			cert, err := IssueCert(ctx, c, engineName, roleName, commonName)
+			cert, err := IssueCert(ctx, p.issuer.WithNamespace(namespace), engineName, roleName, commonName)
 			if err != nil {
 				select {
-				case errCh <- fmt.Errorf("failed to issue certificate for common name %s: %w", commonName, err):
+				case errCh <- fmt.Errorf("%w: failed to issue certificate for common name %s: %w", secrettypes.ErrNotRetryable, commonName, err):
 					cancel()
 				default:
 				}

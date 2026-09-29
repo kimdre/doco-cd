@@ -19,6 +19,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 	"github.com/kimdre/doco-cd/internal/source"
+	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 // ErrApplySelfUsage is returned for a malformed apply-self invocation.
@@ -210,19 +212,47 @@ func runSelfBootstrap(ctx context.Context, log *logger.Logger, c *app.Config, do
 		return fmt.Errorf("create the deployment operation: %w", err)
 	}
 
-	for _, pollConfig := range c.PollConfig {
-		metadata := notification.Metadata{}
+	// The operator starts the bootstrap by hand, so sync windows with
+	// manual_sync let it through.
+	ctx = controlplane.WithDeploymentOrigin(ctx, syncwindow.OriginManual)
 
-		if err = RunPoll(ctx, pollConfig, c, log.Logger, metadata, "bootstrap", deployment, notifier); err != nil {
-			log.Error("self-update: bootstrap deployment failed", logger.ErrAttr(err))
+	return selfupdate.WithBootstrapLock(ctx, c.DataMountPath, func() error {
+		for _, pollConfig := range c.PollConfig {
+			metadata := notification.Metadata{}
 
-			return err
+			if pollErr := RunPoll(ctx, pollConfig, c, log.Logger, metadata, "bootstrap", deployment, notifier); pollErr != nil {
+				logBootstrapFailure(log.Logger, pollErr)
+
+				return pollErr
+			}
 		}
+
+		log.Info("self-update: bootstrap completed")
+
+		return nil
+	})
+}
+
+// logBootstrapFailure logs why a bootstrap deployment did not complete. A
+// deployment deferred by a sync window is not a failure of doco-cd: nothing
+// was deployed and the bootstrap has to be run again once a window allows it.
+func logBootstrapFailure(log *slog.Logger, err error) {
+	if blocked, ok := errors.AsType[*stages.SyncWindowBlockedError](err); ok {
+		attrs := []any{
+			slog.Any("stacks", blocked.Stacks),
+			slog.Any("sync_windows", blocked.Windows),
+			slog.String("hint", "run the bootstrap again when the sync window allows it, or set manual_sync: true on the blocking windows"),
+		}
+		if !blocked.NextOpen.IsZero() {
+			attrs = append(attrs, slog.Time("next_open", blocked.NextOpen))
+		}
+
+		log.Warn("self-update: bootstrap deployment deferred by sync window", attrs...)
+
+		return
 	}
 
-	log.Info("self-update: bootstrap completed")
-
-	return nil
+	log.Error("self-update: bootstrap deployment failed", logger.ErrAttr(err))
 }
 
 // bootstrapDataMountPoint resolves the data volume the way the main process

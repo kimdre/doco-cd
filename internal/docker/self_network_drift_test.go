@@ -115,7 +115,7 @@ func TestDeployComposePreflightBeforeSignalAndPull(t *testing.T) {
 		&deploy.Config{Name: "self-stack"},
 		"", nil,
 		[]SignalService{{ServiceName: "other", Signal: "KILL"}},
-		nil, nil,
+		nil, nil, composeDeployOptions{},
 	)
 	if !errors.Is(err, selfupdate.ErrUnsupported) {
 		t.Fatalf("deployCompose() error = %v; want unsupported self-update before signaling or pulling", err)

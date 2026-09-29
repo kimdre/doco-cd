@@ -16,6 +16,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 const Name = "doco-cd" // Name of the application
@@ -83,6 +84,9 @@ type Config struct {
 	PollConfigYAML                string                 `env:"POLL_CONFIG"`                                                                                     // PollConfigYAML is the unparsed string containing the PollConfig in YAML format
 	PollConfigFile                string                 `env:"POLL_CONFIG_FILE,file"`                                                                           // PollConfigFile is the file containing the PollConfig in YAML format
 	PollConfig                    []poll.Config          `yaml:"-"`                                                                                              // PollConfig is the YAML configuration for polling Git repositories for changes
+	SyncWindowsYAML               string                 `env:"SYNC_WINDOWS"`                                                                                    // SyncWindowsYAML is the unparsed YAML list of sync windows that restrict when deployments may change stacks
+	SyncWindowsFile               string                 `env:"SYNC_WINDOWS_FILE,file"`                                                                          // SyncWindowsFile is the file containing the sync windows in YAML format
+	SyncWindows                   *syncwindow.Policy     `yaml:"-"`                                                                                              // SyncWindows is the parsed sync window policy. It is never nil after GetConfig.
 	MaxPayloadSize                int64                  `env:"MAX_PAYLOAD_SIZE,notEmpty" envDefault:"1048576" validate:"min=1"`                                 // MaxPayloadSize is the maximum size of the payload in bytes that the HTTP server will accept (default 1MB = 1048576 bytes)
 	MetricsPort                   uint16                 `env:"METRICS_PORT,notEmpty" envDefault:"9120" validate:"min=1,max=65535"`                              // MetricsPort is the port the prometheus metrics server will listen on
 	PprofEnabled                  bool                   `env:"PPROF_ENABLED,notEmpty" envDefault:"false"`                                                       // PprofEnabled enables the loopback-only Go runtime profiling server.
@@ -146,6 +150,11 @@ func GetConfig() (*Config, error) {
 	err = cfg.parsePollConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse poll config: %w", err)
+	}
+
+	err = cfg.parseSyncWindows()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse sync windows: %w", err)
 	}
 
 	err = cfg.parseGitAuthDomains()
@@ -367,6 +376,27 @@ func (cfg *Config) parsePollConfig() error {
 	}
 
 	cfg.PollConfig = []poll.Config{} // Default to an empty slice if no config is provided
+
+	return nil
+}
+
+// parseSyncWindows parses the sync window policy from either SYNC_WINDOWS or SYNC_WINDOWS_FILE.
+func (cfg *Config) parseSyncWindows() error {
+	if strings.TrimSpace(cfg.SyncWindowsYAML) != "" && strings.TrimSpace(cfg.SyncWindowsFile) != "" {
+		return syncwindow.ErrBothConfigSet
+	}
+
+	data := cfg.SyncWindowsYAML
+	if strings.TrimSpace(data) == "" {
+		data = cfg.SyncWindowsFile
+	}
+
+	policy, err := syncwindow.Parse(data)
+	if err != nil {
+		return err
+	}
+
+	cfg.SyncWindows = policy
 
 	return nil
 }

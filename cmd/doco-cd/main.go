@@ -37,6 +37,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/secretprovider/openbao"
 	"github.com/kimdre/doco-cd/internal/source/store"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/registryauth"
@@ -458,7 +459,9 @@ func run() error {
 					_ command.Cli, _ *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata,
 					_ secretprovider.SecretProvider, triggerReason string,
 				) error {
-					return RunPoll(ctx, pollConfig, appConfig, logger, metadata, triggerReason, deployment, notifier)
+					return selfupdate.WithPollLock(ctx, c.DataMountPath, func() error {
+						return RunPoll(ctx, pollConfig, appConfig, logger, metadata, triggerReason, deployment, notifier)
+					})
 				},
 			},
 		},
@@ -503,7 +506,7 @@ func run() error {
 	defer stopLifecycleWork()
 
 	if selfIdentity.OK {
-		finalizeHandover, err := finalizeSelfUpdate(ctx, log, dockerClient, notifier, selfUpdateStore, selfIdentity, controlPlaneRuns)
+		finalizeHandover, err := finalizeSelfUpdate(ctx, log, dockerClient, newSelfUpdateReporter(c, notifier), selfUpdateStore, selfIdentity, controlPlaneRuns)
 		if err != nil {
 			log.Critical("failed to finalize a pending self-update", logger.ErrAttr(err))
 
@@ -526,6 +529,8 @@ func run() error {
 			})
 		})
 	}
+
+	logSyncWindows(log.Logger, c.SyncWindows, time.Now())
 
 	if len(c.PollConfig) > 0 {
 		log.Info(
@@ -603,6 +608,7 @@ func run() error {
 			DockerCLI:            dockerCli,
 			Contexts:             contexts,
 			Runs:                 controlPlaneRuns,
+			SyncWindows:          c.SyncWindows,
 		})
 		if err != nil {
 			log.Critical("failed to create MCP handler", logger.ErrAttr(err))
@@ -631,4 +637,32 @@ func run() error {
 	}
 
 	return nil
+}
+
+// logSyncWindows logs every configured sync window and whether it is active at now.
+func logSyncWindows(log *slog.Logger, policy *syncwindow.Policy, now time.Time) {
+	for _, status := range policy.Statuses(now) {
+		attrs := []any{
+			slog.String("name", status.Name),
+			slog.String("kind", string(status.Kind)),
+			slog.String("schedule", status.Schedule),
+			slog.String("duration", status.Duration),
+			slog.String("timezone", status.Timezone),
+			slog.Any("repositories", status.Repositories),
+			slog.Any("deployments", status.Deployments),
+			slog.Any("contexts", status.Contexts),
+			slog.Bool("manual_sync", status.ManualSync),
+			slog.Bool("active", status.Active),
+		}
+
+		if status.ActiveUntil != nil {
+			attrs = append(attrs, slog.Time("active_until", *status.ActiveUntil))
+		}
+
+		if status.NextStart != nil {
+			attrs = append(attrs, slog.Time("next_start", *status.NextStart))
+		}
+
+		log.Info("sync window configured", attrs...)
+	}
 }

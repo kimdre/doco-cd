@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 
 	"github.com/kimdre/doco-cd/internal/git/ssh"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
@@ -35,13 +37,34 @@ var retrier = retry.New(
 	retry.Attempts(3),
 	retry.Delay(250*time.Millisecond),
 	retry.DelayType(retry.BackOffDelay),
-	retry.RetryIf(func(err error) bool {
-		_, isURLErr := errors.AsType[*url.Error](err)
-		netErr, isNetErr := errors.AsType[net.Error](err)
-
-		return isURLErr || (isNetErr && netErr.Timeout())
-	}),
+	retry.RetryIf(isTransientError),
 )
+
+// isTransientError reports whether a remote git failure is worth retrying:
+// network errors, timeouts and HTTP 5xx/429 from the server.
+func isTransientError(err error) bool {
+	// go-git wraps transport failures without Unwrap, so dig into the inner error by hand.
+	if unexpected, ok := errors.AsType[*plumbing.UnexpectedError](err); ok {
+		err = unexpected.Err
+	}
+
+	if _, ok := errors.AsType[*url.Error](err); ok {
+		return true
+	}
+
+	if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
+		return true
+	}
+
+	httpErr, ok := errors.AsType[*githttp.Err](err)
+	if !ok || httpErr.Response == nil {
+		return false
+	}
+
+	code := httpErr.Response.StatusCode
+
+	return code >= http.StatusInternalServerError || code == http.StatusTooManyRequests
+}
 
 // updateRemoteURL updates the remote URL of the repository.
 func updateRemoteURL(repo *git.Repository, url string) error {
@@ -258,6 +281,43 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 		}
 
 		return broadErr
+	}
+
+	if plumbing.IsHash(ref) {
+		if err := fetchPinnedCommit(repo, ref, func(refSpec config.RefSpec) error {
+			return fetch(newFetchOptions([]config.RefSpec{refSpec}, git.NoTags))
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// fetchPinnedCommit fetches a commit by its SHA when the all-refs fetch did not bring it.
+// A pinned commit may be reachable from no branch or tag any more, e.g. after a rebase,
+// while the remote still serves it by SHA.
+// If the remote does not serve the SHA, the caller's reference check reports
+// it as missing rather than treating go-git's "object not found" as corruption.
+func fetchPinnedCommit(repo *git.Repository, sha string, fetch func(config.RefSpec) error) error {
+	if err := repo.Storer.HasEncodedObject(plumbing.NewHash(sha)); err == nil {
+		return nil
+	} else if !errors.Is(err, plumbing.ErrObjectNotFound) {
+		return fmt.Errorf("check pinned commit %s: %w", sha, err)
+	}
+
+	if err := fetch(config.RefSpec(fmt.Sprintf(refSpecPinnedCommit, sha, sha))); err != nil {
+		if errors.Is(err, git.ErrExactSHA1NotSupported) ||
+			errors.Is(err, git.NoMatchingRefSpecError{}) ||
+			errors.Is(err, plumbing.ErrObjectNotFound) {
+			slog.Warn("failed to fetch pinned commit by SHA",
+				slog.String("commit", sha),
+				slog.String("error", FormatGitErrorMessage(err)))
+
+			return nil
+		}
+
+		return fmt.Errorf("fetch pinned commit %s: %w", sha, err)
 	}
 
 	return nil

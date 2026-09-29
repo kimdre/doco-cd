@@ -79,6 +79,11 @@ func deployComposeRuntime(ctx context.Context, req runtimeDeployRequest) error {
 		req.request.NeedSignal,
 		req.phase.Set,
 		req.selfDeployInput(),
+		composeDeployOptions{
+			ArtifactRoot: req.request.ExternalRepoPath,
+			SyncLive:     true,
+			Log:          req.stackLog,
+		},
 	)
 	if err != nil {
 		if errors.Is(err, selfupdate.ErrHandover) {
@@ -104,6 +109,7 @@ func (req runtimeDeployRequest) selfDeployInput() *SelfDeployInput {
 		CommitSHA:      req.request.LatestCommit,
 		ProjectHash:    req.projectHash,
 		TimeoutSeconds: req.request.DeployConfig.Timeout,
+		CommitStatus:   req.request.CommitStatus,
 		Log:            req.stackLog,
 	}
 

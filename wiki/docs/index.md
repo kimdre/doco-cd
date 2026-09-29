@@ -23,6 +23,7 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Supports [OCI artifacts](Advanced/OCI/Artifact-Usage.md) and Git repositories for deployment configurations.
 - Supports various [external secret providers](External-Secrets/index.md) and encryption with [SOPS](Advanced/Encryption.md)
 - Deploy to multiple Docker hosts with [Docker Contexts](Advanced/Docker-Contexts.md).
+- Control when deployments may happen with timezone-aware [sync windows](Advanced/Sync-Windows.md) and cron-scheduled [polling](Poll-Settings.md#cron-schedules).
 - Provides [Notifications](Advanced/Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
 - [Job Scheduling / Cron Jobs](Advanced/Job-Scheduling.md), [Pre/Post-deployment scripts](Advanced/Pre-Post-Deployment-Scripts.md), [REST API](Endpoints/REST-API.md) and [MCP Server](Endpoints/MCP-Server.md) for advanced automation and integrations.
 
@@ -44,9 +45,10 @@ More resources:
 - Gitea
 - Forgejo
 - Gogs
-- Azure DevOps* ([_Service Hooks_ not supported](Setup-Webhook.md#setup-in-git-providers-azure-devops))
+- Azure DevOps[^1] ([_Service Hooks_ not supported](Setup-Webhook.md#setup-in-git-providers-azure-devops))
+- [Plain Git servers](Advanced/Tips-and-Tricks.md#using-a-plain-git-server-no-forge) without a forge (bare repositories via SSH, HTTP(S) or the local filesystem)
 
-More info at [Setup Access Token](Setup-Access-Token.md#git-providers) and [Setup Webhook](Setup-Webhook.md)
+More info at [Setup Access Token](Setup-Access-Token.md#git-providers) and [Setup Webhook](Setup-Webhook.md).
 
 ## Releases and Changelog
 
@@ -82,12 +84,12 @@ Contributions are welcome! Please see the [Contributing Guidelines](Contributing
 
 Doco-CD has been featured by industry media and technical publications:
 
-| Date       | Publication | Article                                                                                                                    |
-|------------|-------------|----------------------------------------------------------------------------------------------------------------------------|
-| 2026-07-30 | c't Netherlands | [(Dutch) Docker-containers updaten: drie opties voor automatisch updaten](https://www.ct.nl/workshops/docker-containers-updaten-drie-opties-voor-automatisch-updaten/)     |
-| 2026-05-01 | c't Magazin | [(German) c't 10/2026](https://www.heise.de/select/ct/2026/10/2609115553794560316)                                         |
-| 2026-04-22 | heise+      | [(German) Watchtower and alternatives: how to keep Docker containers automatically up to date](https://heise.de/-11243856) |
-| 2025-11-14 | selfh.st    | [Weekly: 2025-11-14](https://selfh.st/weekly/2025-11-14/)                                                                  |
+| Date       | Publication     | Article                                                                                                                                                                |
+|------------|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 2026-07-30 | c't Netherlands | [(Dutch) Docker-containers updaten: drie opties voor automatisch updaten](https://www.ct.nl/workshops/docker-containers-updaten-drie-opties-voor-automatisch-updaten/) |
+| 2026-05-01 | c't Magazin     | [(German) c't 10/2026](https://www.heise.de/select/ct/2026/10/2609115553794560316)                                                                                     |
+| 2026-04-22 | heise+          | [(German) Watchtower and alternatives: how to keep Docker containers automatically up to date](https://heise.de/-11243856)                                             |
+| 2025-11-14 | selfh.st        | [Weekly: 2025-11-14](https://selfh.st/weekly/2025-11-14/)                                                                                                              |
 
 ## Support the Project
 
@@ -104,3 +106,7 @@ Doco-CD is proudly supported by
 
 [![Star History Chart](https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=saZ0hV4u45f86P2hpUFWpOZm-TTGM2b4M-z2Ji3FRAzBKzsZ5l1JmPPstp4FYVSkLI4mqT3OqCnGxuiJEhZ1KDWZs7P39Slsvd_dIJfC1tCRRsi5HafLag#only-light){ loading=lazy }](https://www.star-history.com/?repos=kimdre%2Fdoco-cd&type=date&legend=top-left)
 [![Star History Chart](https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&theme=dark&legend=top-left&sealed_token=saZ0hV4u45f86P2hpUFWpOZm-TTGM2b4M-z2Ji3FRAzBKzsZ5l1JmPPstp4FYVSkLI4mqT3OqCnGxuiJEhZ1KDWZs7P39Slsvd_dIJfC1tCRRsi5HafLag#only-dark){ loading=lazy }](https://www.star-history.com/?repos=kimdre%2Fdoco-cd&type=date&legend=top-left)
+
+[^1]: Azure DevOps *Service Hooks* are not supported, see [Setup Webhook](Setup-Webhook.md#setup-in-git-providers-azure-devops) for details. 
+You can use polling or a [`post-receive`](Advanced/Tips-and-Tricks.md#deploy-on-push-with-a-post-receive-hook) hook to 
+trigger deployments after a push via the [REST API](Endpoints/REST-API.md) for [webhook](Endpoints/Webhook-Listener.md)-like behavior.

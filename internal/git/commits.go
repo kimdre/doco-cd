@@ -1,20 +1,18 @@
 package git
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/storer"
-
-	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -58,8 +56,12 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 		return plumbing.ZeroHash.String(), err
 	}
 
-	// If RemoteRef is empty, it's a commit SHA - return it directly
+	// If RemoteRef is empty, it's a commit SHA - return it once it is present
 	if refSet.RemoteRef == "" {
+		if err := repo.Storer.HasEncodedObject(plumbing.NewHash(string(refSet.LocalRef))); err != nil {
+			return plumbing.ZeroHash.String(), fmt.Errorf("%w: commit %s: %w", ErrInvalidReference, refSet.LocalRef, err)
+		}
+
 		return string(refSet.LocalRef), nil
 	}
 
@@ -151,38 +153,6 @@ func (c CommitInfo) String() string {
 	return c.ShortHash + " " + c.Subject
 }
 
-// commitBoundary returns the hashes at which GetCommitsBetween should stop walking:
-// oldHash plus the merge-base of old and new. On a normal fast-forward the merge-base
-// is oldHash itself; after a rebase/force-push it is the point where the histories
-// diverged, so only the genuinely new commits are returned instead of the whole branch.
-func commitBoundary(repo *git.Repository, oldHash, newHash plumbing.Hash) set.Set[plumbing.Hash] {
-	boundary := set.New(oldHash)
-
-	newCommit, err := repo.CommitObject(newHash)
-	if err != nil {
-		return boundary
-	}
-
-	oldCommit, err := repo.CommitObject(oldHash)
-	if err != nil {
-		return boundary
-	}
-
-	bases, err := newCommit.MergeBase(oldCommit)
-	if err != nil {
-		return boundary
-	}
-
-	for _, b := range bases {
-		boundary.Add(b.Hash)
-	}
-
-	return boundary
-}
-
-// errStopWalk ends a commit log walk early.
-var errStopWalk = errors.New("stop walk")
-
 // maxScannedCommits caps how many commits a changelog walk reads. A path filter only
 // returns the commits of one stack, so a stack that was not touched for a long time can
 // otherwise pull the whole range through a tree diff before it collects maxCommits.
@@ -204,69 +174,301 @@ func newCommitInfo(c *object.Commit) CommitInfo {
 	}
 }
 
-// boundedCommitIter ends a commit walk at the first boundary commit, and after
-// maxScannedCommits commits at the latest.
+// walkEntry is a commit seen by rangeWalk.
+type walkEntry struct {
+	commit *object.Commit
+	// excluded marks a commit reachable from an excluded commit.
+	excluded bool
+	queued   bool
+	// visited marks a popped commit, its parents are in rangeWalk.entries.
+	visited bool
+	// seq keeps the order of commits with the same committer time stable.
+	seq int
+}
+
+// walkQueue is a max-heap of commits by committer time.
+type walkQueue []*walkEntry
+
+func (q walkQueue) Len() int { return len(q) }
+
+func (q walkQueue) Less(i, j int) bool {
+	ti, tj := q[i].commit.Committer.When, q[j].commit.Committer.When
+	if !ti.Equal(tj) {
+		return ti.After(tj)
+	}
+
+	return q[i].seq < q[j].seq
+}
+
+func (q walkQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
+
+func (q *walkQueue) Push(x any) { *q = append(*q, x.(*walkEntry)) }
+
+func (q *walkQueue) Pop() any {
+	old := *q
+	e := old[len(old)-1]
+	*q = old[:len(old)-1]
+
+	return e
+}
+
+// walkSlop is how many excluded commits the walk still visits once only excluded commits
+// are queued, the same heuristic as git's SLOP in revision.c. Committer times can be out
+// of order, a commit older than its parent, so an excluded path may still reach a commit
+// that was already visited as part of the range.
+const walkSlop = 5
+
+// rangeWalk collects the commits reachable from a tip but not from the excluded commits,
+// newest first by committer time, like `git rev-list <tip> ^<excluded>`.
 //
-// The boundary commit is still passed on, because object.NewCommitPathIterFromIter diffs
-// every commit against the next commit of the source iterator. Without it the oldest
-// commit of the range would be diffed against an empty tree and always look like a change.
-// Callers drop it by the same boundary check.
-type boundedCommitIter struct {
-	src      object.CommitIter
-	boundary set.Set[plumbing.Hash]
-	scanned  int
-	done     bool
-	// truncated marks that the scan limit ended the walk before the boundary.
+// The exclusion travels down the history together with the walk. Stopping at the first
+// excluded commit instead would lose a merged side branch that is older than the last
+// deploy, which is the normal shape of a Renovate or any other pull request merge.
+//
+// A commit is only known to be in the range once the walk is done: with committer times
+// out of order, an excluded path can reach a commit after it was visited. The exclusion is
+// then carried on to its visited ancestors, and the range is read off at the end.
+type rangeWalk struct {
+	repo    *git.Repository
+	queue   walkQueue
+	entries map[plumbing.Hash]*walkEntry
+	// visited are the popped entries in walk order.
+	visited []*walkEntry
+	seq     int
+	// included counts the queued entries that are not excluded. The range is done when
+	// only excluded entries are left.
+	included  int
+	scanned   int
 	truncated bool
+	// oldest is the committer time of the oldest visited commit in the range, valid while
+	// hasOldest is set. An exclusion of a visited commit resets it.
+	oldest    time.Time
+	hasOldest bool
+	// oldestStale marks oldest for recomputation after a visited commit was excluded.
+	oldestStale bool
 }
 
-func (i *boundedCommitIter) Next() (*object.Commit, error) {
-	if i.done {
-		return nil, io.EOF
-	}
-
-	c, err := i.src.Next()
-	if err != nil {
-		return nil, err
-	}
-
-	i.scanned++
-
-	if i.boundary.Contains(c.Hash) {
-		i.done = true
-	} else if i.scanned >= maxScannedCommits {
-		i.done = true
-		i.truncated = true
-	}
-
-	return c, nil
+func newRangeWalk(repo *git.Repository) *rangeWalk {
+	return &rangeWalk{repo: repo, entries: make(map[plumbing.Hash]*walkEntry)}
 }
 
-func (i *boundedCommitIter) ForEach(cb func(*object.Commit) error) error {
-	for {
-		c, err := i.Next()
-		if errors.Is(err, io.EOF) {
-			return nil
+func (w *rangeWalk) push(c *object.Commit, excluded bool) {
+	if e, ok := w.entries[c.Hash]; ok {
+		if excluded {
+			w.exclude(e)
+		}
+
+		return
+	}
+
+	e := &walkEntry{commit: c, excluded: excluded, queued: true, seq: w.seq}
+	w.seq++
+	w.entries[c.Hash] = e
+	heap.Push(&w.queue, e)
+
+	if !excluded {
+		w.included++
+	}
+}
+
+// exclude marks e and every visited ancestor of it as excluded, like git's
+// mark_parents_uninteresting. Ancestors that are still queued pass it on once visited.
+func (w *rangeWalk) exclude(e *walkEntry) {
+	stack := []*walkEntry{e}
+
+	for len(stack) > 0 {
+		e = stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		if e.excluded {
+			continue
+		}
+
+		e.excluded = true
+
+		if e.queued {
+			w.included--
+		}
+
+		if !e.visited {
+			continue
+		}
+
+		w.oldestStale = true
+
+		for _, h := range e.commit.ParentHashes {
+			if p, ok := w.entries[h]; ok && !p.excluded {
+				stack = append(stack, p)
+			}
+		}
+	}
+}
+
+// oldestIncluded returns the committer time of the oldest visited commit that is still in
+// the range, and false when there is none.
+func (w *rangeWalk) oldestIncluded() (time.Time, bool) {
+	if w.oldestStale {
+		w.oldestStale = false
+		w.hasOldest = false
+
+		for _, e := range w.visited {
+			if !e.excluded {
+				w.noteIncluded(e)
+			}
+		}
+	}
+
+	return w.oldest, w.hasOldest
+}
+
+// noteIncluded updates the oldest visited commit in the range with e, if it is older.
+func (w *rangeWalk) noteIncluded(e *walkEntry) {
+	if !w.hasOldest || e.commit.Committer.When.Before(w.oldest) {
+		w.oldest = e.commit.Committer.When
+		w.hasOldest = true
+	}
+}
+
+// run walks the range and returns its commits, newest first. It stops early at
+// maxScannedCommits, which marks the walk as truncated when the range was not done yet.
+func (w *rangeWalk) run() ([]*object.Commit, error) {
+	slop := walkSlop
+
+	for w.queue.Len() > 0 {
+		if w.included == 0 {
+			// Only excluded commits are left. Keep going while one of them is not older
+			// than a commit of the range, it may still reach it, and a few commits more.
+			if oldest, ok := w.oldestIncluded(); !ok {
+				break
+			} else if !w.queue[0].commit.Committer.When.Before(oldest) {
+				slop = walkSlop
+			} else if slop--; slop < 0 {
+				break
+			}
+		}
+
+		if w.scanned >= maxScannedCommits {
+			w.truncated = w.included > 0
+
+			break
+		}
+
+		e := heap.Pop(&w.queue).(*walkEntry)
+		e.queued = false
+		e.visited = true
+		w.scanned++
+		w.visited = append(w.visited, e)
+
+		if !e.excluded {
+			w.included--
+			w.noteIncluded(e)
+		}
+
+		parents, err := loadParents(w.repo, e.commit)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, p := range parents {
+			w.push(p, e.excluded)
+		}
+	}
+
+	commits := make([]*object.Commit, 0, len(w.visited))
+
+	for _, e := range w.visited {
+		if !e.excluded {
+			commits = append(commits, e.commit)
+		}
+	}
+
+	return commits, nil
+}
+
+// loadParents returns the parents of c that exist in the repository. A shallow clone ends
+// the history at a commit whose parents were not fetched.
+func loadParents(repo *git.Repository, c *object.Commit) ([]*object.Commit, error) {
+	parents := make([]*object.Commit, 0, len(c.ParentHashes))
+
+	for _, h := range c.ParentHashes {
+		p, err := repo.CommitObject(h)
+		if errors.Is(err, plumbing.ErrObjectNotFound) {
+			continue
 		}
 
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("failed to read parent %s of %s: %w", h, c.Hash, err)
 		}
 
-		if err = cb(c); err != nil {
-			if errors.Is(err, storer.ErrStop) {
-				return nil
-			}
-
-			return err
-		}
+		parents = append(parents, p)
 	}
+
+	return parents, nil
 }
 
-func (i *boundedCommitIter) Close() { i.src.Close() }
+// changesPaths reports whether c changed a path pathFilter matches, compared against its
+// real parents. A merge only counts when it differs from every parent, the same rule
+// `git log -- <paths>` applies: a merge that took the files from one side unchanged did not
+// change them, the commits of that side did, and those are part of the range themselves.
+func changesPaths(repo *git.Repository, c *object.Commit, pathFilter func(string) bool) (bool, error) {
+	tree, err := c.Tree()
+	if err != nil {
+		return false, fmt.Errorf("failed to read tree of %s: %w", c.Hash, err)
+	}
+
+	parents, err := loadParents(repo, c)
+	if err != nil {
+		return false, err
+	}
+
+	if len(parents) == 0 {
+		// Parents missing in a shallow clone cannot be compared, the whole tree of the
+		// commit would look new.
+		if len(c.ParentHashes) > 0 {
+			return false, nil
+		}
+
+		return treeChangesPaths(nil, tree, pathFilter)
+	}
+
+	for _, p := range parents {
+		parentTree, err := p.Tree()
+		if err != nil {
+			return false, fmt.Errorf("failed to read tree of %s: %w", p.Hash, err)
+		}
+
+		changed, err := treeChangesPaths(parentTree, tree, pathFilter)
+		if err != nil {
+			return false, err
+		}
+
+		if !changed {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func treeChangesPaths(from, to *object.Tree, pathFilter func(string) bool) (bool, error) {
+	changes, err := object.DiffTree(from, to)
+	if err != nil {
+		return false, fmt.Errorf("failed to diff trees: %w", err)
+	}
+
+	for _, change := range changes {
+		if (change.From.Name != "" && pathFilter(change.From.Name)) ||
+			(change.To.Name != "" && pathFilter(change.To.Name)) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
 
 // GetCommitsBetween returns commits reachable from newHash but not from oldHash,
-// newest first, capped at maxCommits.
+// newest first, capped at maxCommits. After a rebase or force-push, where oldHash is not an
+// ancestor of newHash any more, that is the commits since the histories diverged.
 //
 // A non-nil pathFilter keeps only the commits that changed a path it matches, so a stack
 // gets a changelog of its own files instead of everything that happened in the repository.
@@ -278,36 +480,42 @@ func GetCommitsBetween(log *slog.Logger, repo *git.Repository, oldHash, newHash 
 		return nil, fmt.Errorf("failed to read commit log from %s: %w", newHash, err)
 	}
 
-	boundary := commitBoundary(repo, oldHash, newHash)
+	walk := newRangeWalk(repo)
 
-	bounded := &boundedCommitIter{
-		src:      object.NewCommitIterCTime(newCommit, nil, nil),
-		boundary: boundary,
+	// An unknown old commit excludes nothing, the range is then the whole history.
+	if oldCommit, err := repo.CommitObject(oldHash); err == nil {
+		walk.push(oldCommit, true)
 	}
 
-	var iter object.CommitIter = bounded
-	if pathFilter != nil {
-		iter = object.NewCommitPathIterFromIter(pathFilter, bounded, false)
-	}
+	walk.push(newCommit, false)
 
-	defer iter.Close()
-
-	commits := make([]CommitInfo, 0, maxCommits)
-
-	err = iter.ForEach(func(c *object.Commit) error {
-		if boundary.Contains(c.Hash) || len(commits) >= maxCommits {
-			return errStopWalk
-		}
-
-		commits = append(commits, newCommitInfo(c))
-
-		return nil
-	})
-	if err != nil && !errors.Is(err, errStopWalk) {
+	rangeCommits, err := walk.run()
+	if err != nil {
 		return nil, fmt.Errorf("failed to walk commit log: %w", err)
 	}
 
-	if bounded.truncated && len(commits) < maxCommits && log != nil {
+	commits := make([]CommitInfo, 0, maxCommits)
+
+	for _, c := range rangeCommits {
+		if len(commits) >= maxCommits {
+			break
+		}
+
+		if pathFilter != nil {
+			changed, err := changesPaths(repo, c, pathFilter)
+			if err != nil {
+				return nil, fmt.Errorf("failed to walk commit log: %w", err)
+			}
+
+			if !changed {
+				continue
+			}
+		}
+
+		commits = append(commits, newCommitInfo(c))
+	}
+
+	if walk.truncated && len(commits) < maxCommits && log != nil {
 		log.Warn("commit changelog stopped at scan limit, older commits are left out",
 			slog.Int("scan_limit", maxScannedCommits))
 	}

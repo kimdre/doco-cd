@@ -39,8 +39,9 @@ ed25519
 
 *.env
 .env
-# examples commit their env files on purpose (cleartext non-secret config)
+# examples and e2e fixtures commit their env files on purpose (cleartext non-secret config)
 !examples/**/*.env
+!test/e2e/scenarios/**/*.env
 
 cover.out
 cover.html

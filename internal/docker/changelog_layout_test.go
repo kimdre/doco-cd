@@ -42,7 +42,7 @@ type changelogLayout struct {
 	profiles     []string
 	// deployConfig is the deployment configuration file of the stack, relative to the repo
 	// root. It is not part of the compose project, so it is passed to ProjectPathFilter
-	// separately, the way the post-deploy stage passes Config.Internal.File.
+	// separately and repo-relative, the way the post-deploy stage passes Config.Internal.File.
 	deployConfig string
 	// want are the commit subjects the changelog of the stack should have, newest first.
 	want []string
@@ -264,6 +264,69 @@ func mergeStackBranch(t *testing.T, r *layoutRepo) {
 
 	r.write(branchChange)
 	r.commit("merge feature", mainHead, featureHead)
+}
+
+// pullRequestBranch commits a change of stack a on a side branch forked from HEAD, then
+// returns to main. The branch commit is older than everything main gets afterwards, the
+// usual shape of a Renovate or any other pull request merged later.
+func pullRequestBranch(t *testing.T, r *layoutRepo) (fork, branchHead plumbing.Hash) {
+	t.Helper()
+
+	fork = r.head()
+
+	err := r.wt.Checkout(&gogit.CheckoutOptions{
+		Hash:   fork,
+		Branch: plumbing.NewBranchReferenceName("renovate"),
+		Create: true,
+	})
+	if err != nil {
+		t.Fatalf("checkout renovate: %v", err)
+	}
+
+	r.write(map[string]string{"stacks/a/compose.yaml": stackACompose + "# bumped\n"})
+	branchHead = r.commit("chore(deps): update a")
+
+	err = r.wt.Checkout(&gogit.CheckoutOptions{Branch: plumbing.NewBranchReferenceName("main")})
+	if err != nil {
+		t.Fatalf("checkout main: %v", err)
+	}
+
+	return fork, branchHead
+}
+
+// mergePullRequest merges branchHead into main. Only stack a changed on the branch, so the
+// merged tree is main plus that change.
+func mergePullRequest(r *layoutRepo, branchHead plumbing.Hash) {
+	r.write(map[string]string{"stacks/a/compose.yaml": stackACompose + "# bumped\n"})
+	r.commit("Merge pull request #1 from renovate", r.head(), branchHead)
+}
+
+// pullRequestOlderThanDeploy merges a branch whose commit is older than the commit the
+// stack was last deployed from. A walk that stops at the first deployed commit it meets
+// never reaches the branch commit.
+func pullRequestOlderThanDeploy(t *testing.T, r *layoutRepo) {
+	t.Helper()
+
+	_, branchHead := pullRequestBranch(t, r)
+
+	r.write(map[string]string{"stacks/b/compose.yaml": stackBCompose + "# b\n"})
+	r.baseline = r.commit("touch b, deployed")
+
+	mergePullRequest(r, branchHead)
+}
+
+// pullRequestNextToUnrelatedCommit merges a branch after main got a commit that does not
+// touch stack a. Diffing each commit against the next one by time, instead of its parent,
+// reports that unrelated commit too.
+func pullRequestNextToUnrelatedCommit(t *testing.T, r *layoutRepo) {
+	t.Helper()
+
+	_, branchHead := pullRequestBranch(t, r)
+
+	r.write(map[string]string{"stacks/b/compose.yaml": stackBCompose + "# b\n"})
+	r.commit("touch b on main")
+
+	mergePullRequest(r, branchHead)
 }
 
 // submoduleDir is where the stack of the submodule layout lives inside the repository.
@@ -667,6 +730,30 @@ secrets:
 			note:         "git simplifies the merge away because it matches one parent, go-git may not",
 		},
 		{
+			name: "pull request branch older than the last deploy",
+			files: map[string]string{
+				"stacks/a/compose.yaml": stackACompose,
+				"stacks/b/compose.yaml": stackBCompose,
+			},
+			steps:        []layoutStep{{fn: pullRequestOlderThanDeploy}},
+			workingDir:   "stacks/a",
+			composeFiles: []string{"stacks/a/compose.yaml"},
+			want:         []string{"chore(deps): update a"},
+			note:         "the branch commit is older than the deployed commit but not reachable from it, so it is still in the range",
+		},
+		{
+			name: "pull request merged next to an unrelated commit",
+			files: map[string]string{
+				"stacks/a/compose.yaml": stackACompose,
+				"stacks/b/compose.yaml": stackBCompose,
+			},
+			steps:        []layoutStep{{fn: pullRequestNextToUnrelatedCommit}},
+			workingDir:   "stacks/a",
+			composeFiles: []string{"stacks/a/compose.yaml"},
+			want:         []string{"chore(deps): update a"},
+			note:         "every commit is compared with its own parents, the merge and the unrelated main commit changed nothing of stack a",
+		},
+		{
 			name: "build context on the repository root",
 			files: map[string]string{
 				"Dockerfile":   "FROM scratch\n",
@@ -756,12 +843,12 @@ func TestChangelogFilterLayouts(t *testing.T) {
 				t.Fatalf("projectRepoPaths: %v", err)
 			}
 
-			var extraPaths []string
+			var extraRepoPaths []string
 			if l.deployConfig != "" {
-				extraPaths = append(extraPaths, filepath.Join(repoDir, l.deployConfig))
+				extraRepoPaths = append(extraRepoPaths, l.deployConfig)
 			}
 
-			pathFilter, err := ProjectPathFilter(repoDir, project, extraPaths...)
+			pathFilter, err := ProjectPathFilter(repoDir, project, extraRepoPaths...)
 			if err != nil {
 				t.Fatalf("ProjectPathFilter: %v", err)
 			}

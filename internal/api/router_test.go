@@ -120,6 +120,7 @@ func TestRegisterRoutesUsesExpectedPatternsAndOpaqueMounts(t *testing.T) {
 		APIPath + "/stack/{stackName}",
 		APIPath + "/stack/{stackName}/{action}",
 		APIPath + "/poll/run",
+		APIPath + "/sync-windows",
 		"POST " + MCPPath,
 		WebhookPath,
 		WebhookPath + "/{customTarget}",

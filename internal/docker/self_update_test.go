@@ -146,3 +146,36 @@ func TestSelfDeployInputFromLabels(t *testing.T) {
 		t.Errorf("deploy input lost label data: %+v", got)
 	}
 }
+
+// TestSelfDeployInputCarriesCommitStatus checks that the pending commit status
+// of a deployment reaches the journal, and that label-based redeploys, which
+// post none, do not hand one over.
+func TestSelfDeployInputCarriesCommitStatus(t *testing.T) {
+	t.Parallel()
+
+	status := &selfupdate.CommitStatusInfo{
+		SourceURL: "https://git.example.com/org/infra.git",
+		CommitSHA: "abc123",
+		Context:   "doco-cd/nas/doco-cd",
+	}
+
+	req := runtimeDeployRequest{request: DeployRequest{
+		DeployConfig: &deploy.Config{Name: "doco-cd"},
+		LatestCommit: "abc123",
+		CommitStatus: status,
+	}}
+
+	in := req.selfDeployInput()
+	if in.CommitStatus != status {
+		t.Fatalf("selfDeployInput().CommitStatus = %v, want %v", in.CommitStatus, status)
+	}
+
+	if got := selfSourceInfo(in).CommitStatus; got != status {
+		t.Errorf("selfSourceInfo().CommitStatus = %v, want %v", got, status)
+	}
+
+	fromLabels := SelfDeployInputFromLabels(map[string]string{DocoCDLabels.Deployment.CommitSHA: "abc123"})
+	if got := selfSourceInfo(fromLabels).CommitStatus; got != nil {
+		t.Errorf("label-based redeploy handed over commit status %+v, want nil", *got)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -325,9 +326,15 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, cfg *composety
 
 // RemoveSwarmStack removes a Docker Swarm stack using the provided deploy configuration.
 func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace string) error {
+	return RemoveSwarmStackWithLogger(ctx, dockerCli, namespace, nil)
+}
+
+// RemoveSwarmStackWithLogger records per-service removal details with the caller's logger.
+func RemoveSwarmStackWithLogger(ctx context.Context, dockerCli command.Cli, namespace string, log *slog.Logger) error {
 	opts := options.Remove{
 		Namespaces: []string{namespace},
 		Detach:     false,
+		Logger:     log,
 	}
 
 	return swarmInternal.RunRemove(ctx, dockerCli, opts)
@@ -344,11 +351,14 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 // triggers for the same repository), must never be added: swarm would recreate all
 // tasks of every service on each deployment, see
 // https://github.com/kimdre/doco-cd/issues/1153.
-func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.ParsedPayload, repoDir string) map[string]string {
+//
+// The working directory is not stable either: every revision is deployed from its own
+// immutable artifact directory, so it changes with every new commit, see
+// https://github.com/kimdre/doco-cd/issues/1909.
+func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.ParsedPayload) map[string]string {
 	return map[string]string{
 		DocoCDLabels.Metadata.Manager:        app.Name,
 		DocoCDLabels.Deployment.Name:         deployConfig.Name,
-		DocoCDLabels.Deployment.WorkingDir:   repoDir,
 		DocoCDLabels.Deployment.ConfigTarget: deployConfig.Internal.ConfigTarget,
 		DocoCDLabels.Deployment.TargetRef:    ExtractOciArtifactTag(deployConfig.Reference),
 		DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
@@ -374,11 +384,12 @@ func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.Par
 func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
 	sourceURL, repoDir, appVersion, timestamp, latestCommit, projectHash string,
 ) {
-	stableLabels := stableSwarmMetadataLabels(deployConfig, payload, repoDir)
+	stableLabels := stableSwarmMetadataLabels(deployConfig, payload)
 
 	sharedServiceSpecLabels := map[string]string{
 		DocoCDLabels.Metadata.Version:               appVersion,
 		DocoCDLabels.Deployment.Timestamp:           timestamp,
+		DocoCDLabels.Deployment.WorkingDir:          repoDir,
 		DocoCDLabels.Deployment.ComposeHash:         projectHash,
 		DocoCDLabels.Deployment.Trigger:             payload.TriggerString(),
 		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
@@ -421,10 +432,8 @@ func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, d
 // subset of the deployment metadata may be set here. Volumes are looked up by their
 // stack namespace label and doco-cd labels are ignored when comparing volume configs,
 // so deployment metadata such as the timestamp is intentionally left out.
-func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	repoDir string,
-) {
-	customLabels := stableSwarmMetadataLabels(deployConfig, payload, repoDir)
+func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload) {
+	customLabels := stableSwarmMetadataLabels(deployConfig, payload)
 
 	for i, v := range stack.Volumes {
 		if v.Labels == nil {
@@ -768,7 +777,7 @@ func RestartService(ctx context.Context, cli dockerClient.APIClient, serviceName
 		Spec:    spec,
 	})
 	if err != nil {
-		return fmt.Errorf("update service %s: %w", serviceName, err)
+		return fmt.Errorf("update service %s: %w", swarmInternal.ServiceIdentity(svc.Spec.Name, svc.ID), err)
 	}
 
 	return nil
@@ -860,7 +869,7 @@ func RerunJobService(ctx context.Context, cli dockerClient.APIClient, serviceNam
 		Spec:    spec,
 	})
 	if err != nil {
-		return fmt.Errorf("update (rerun) job service %s: %w", serviceName, err)
+		return fmt.Errorf("update (rerun) job service %s: %w", swarmInternal.ServiceIdentity(svc.Spec.Name, svc.ID), err)
 	}
 
 	return nil
@@ -927,7 +936,7 @@ func StopSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName st
 
 	// Scale to 0.
 	if err := swarmInternal.ScaleService(ctx, dockerCLI, serviceName, 0, false, false); err != nil {
-		return 0, fmt.Errorf("scale service %s to 0: %w", serviceName, err)
+		return 0, fmt.Errorf("scale to 0: %w", err)
 	}
 
 	waitTimeout := resolveSwarmStopWaitTimeout(timeoutOverride, svc.Spec.TaskTemplate.ContainerSpec)
@@ -977,10 +986,10 @@ func waitForSwarmServiceTasksStopped(ctx context.Context, dockerCLI command.Cli,
 		})
 		if err != nil {
 			if waitCtx.Err() != nil && ctx.Err() == nil {
-				return fmt.Errorf("timed out after %s waiting for task(s) of service %s to stop", timeout, serviceName)
+				return fmt.Errorf("timed out after %s waiting for task(s) of service %s to stop", timeout, swarmInternal.ServiceIdentity(serviceName, serviceID))
 			}
 
-			return fmt.Errorf("list tasks of service %s: %w", serviceName, err)
+			return fmt.Errorf("list tasks of service %s: %w", swarmInternal.ServiceIdentity(serviceName, serviceID), err)
 		}
 
 		live := 0
@@ -1004,7 +1013,7 @@ func waitForSwarmServiceTasksStopped(ctx context.Context, dockerCLI command.Cli,
 
 		select {
 		case <-waitCtx.Done():
-			return fmt.Errorf("timed out after %s waiting for %d task(s) of service %s to stop", timeout, live, serviceName)
+			return fmt.Errorf("timed out after %s waiting for %d task(s) of service %s to stop", timeout, live, swarmInternal.ServiceIdentity(serviceName, serviceID))
 		case <-ticker.C:
 		}
 	}
@@ -1025,7 +1034,7 @@ func StartSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName s
 	}
 
 	if err := swarmInternal.ScaleService(ctx, dockerCLI, serviceName, replicas, false, false); err != nil {
-		return fmt.Errorf("scale service %s back to %d: %w", serviceName, replicas, err)
+		return fmt.Errorf("scale back to %d: %w", replicas, err)
 	}
 
 	return nil

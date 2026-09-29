@@ -539,6 +539,14 @@ It accepts one or more of the following scopes: `configs`, `secrets`, `bindMount
 1. `configs` and `secrets` items refer to names defined in the top-level `configs` and `secrets` sections.
 2. `bindMounts` items refer to the **target paths** of bind mounts (not the source paths).
 
+Ignored files and directories from the repository are mounted from a [live copy](Reference/Artifact-Storage.md#live-files)
+that doco-cd updates in place on each deployment, so the service sees the changed content without being recreated
+(e.g. to reload it on a [signal](#send-signal-on-ignored-recreation) or by watching the files).
+A service is recreated once when it starts or stops using live copies, e.g. after adding or changing this label.
+
+!!! note
+    Live copies are only used for Docker (Standalone) deployments.
+
 !!! example
 
     === "Single line YAML value"

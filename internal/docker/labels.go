@@ -28,6 +28,8 @@ type docoCdLabelNamesDeployment struct {
 	CertExpiry           string // RFC3339 timestamp of the earliest expiry among the deployment's cert-bearing external secrets
 	CertRotatable        string // Whether all cert-bearing external secrets for this deployment can be auto-rotated (issued via a role, as opposed to read-only refs)
 	CertState            string // JSON-serialized deployed pki-role cert refs and serials for revocation-aware rotation checks
+	PinnedRevisions      string // Comma-separated source revisions whose artifacts are still mounted by a service because their content is unchanged
+	LiveResources        string // Comma-separated repository paths a service mounts from its stack's live directory (see recreate.ignore)
 }
 
 // docoCdLabelNamesSource contains the labels used by DocoCD to identify the deployment source.
@@ -80,6 +82,8 @@ var DocoCDLabels = docoCdLabelNames{
 		CertExpiry:           "cd.doco.deployment.cert.expiry",
 		CertRotatable:        "cd.doco.deployment.cert.rotatable",
 		CertState:            "cd.doco.deployment.cert.state",
+		PinnedRevisions:      "cd.doco.deployment.pinned_revisions",
+		LiveResources:        "cd.doco.deployment.live_resources",
 	},
 	Source: docoCdLabelNamesSource{
 		Type:             "cd.doco.source",
@@ -205,4 +209,23 @@ func SourceTypeLabelValue(primary, fallback string) string {
 	}
 
 	return "git"
+}
+
+// ParsePinnedRevisions returns the revisions listed in a pinned revisions label value
+// (see DocoCDLabels.Deployment.PinnedRevisions), ignoring empty entries.
+func ParsePinnedRevisions(value string) []string {
+	var revisions []string
+
+	for revision := range strings.SplitSeq(value, ",") {
+		if revision = strings.TrimSpace(revision); revision != "" {
+			revisions = append(revisions, revision)
+		}
+	}
+
+	return revisions
+}
+
+// FormatPinnedRevisions returns the pinned revisions label value for revisions.
+func FormatPinnedRevisions(revisions []string) string {
+	return strings.Join(revisions, ",")
 }

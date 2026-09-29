@@ -1,5 +1,7 @@
 package secrettypes
 
+import "errors"
+
 type ResolvedSecrets map[string]string
 
 // PKIRoleKeySuffix is the suffix appended to the env var name to hold the
@@ -10,3 +12,7 @@ const PKIRoleKeySuffix = "_KEY"
 // chain (leaf certificate followed by its issuing CA chain) of a pki or pki-role external
 // secret (e.g. CERT → CERT_FULL).
 const PKIFullChainSuffix = "_FULL"
+
+// ErrNotRetryable marks a provider error that must not be retried as a whole, e.g. a failure
+// after a non-idempotent write like certificate issuance, where a retry would replay it.
+var ErrNotRetryable = errors.New("not retryable")

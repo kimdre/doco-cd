@@ -92,7 +92,7 @@ func TestSelfUpdateIntegration_RejectsLateVolumeChangeBeforeReducedCreate(t *tes
 	fake := &volumeChangesBeforeReducedCreateClient{APIClient: stack.Client, name: stackName + "_data"}
 
 	err := deployCompose(ctx, selfApplyTestCli{Cli: stack.DockerCli, apiClient: fake},
-		project, &deploy.Config{Name: stackName}, "", nil, nil, nil, &SelfDeployInput{SourceType: "git"})
+		project, &deploy.Config{Name: stackName}, "", nil, nil, nil, &SelfDeployInput{SourceType: "git"}, composeDeployOptions{})
 	if !errors.Is(err, selfupdate.ErrUnsupported) || fake.checks < 2 {
 		t.Fatalf("late volume change before reduced Create = %v after %d checks; want refusal", err, fake.checks)
 	}

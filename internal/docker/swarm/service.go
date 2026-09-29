@@ -70,10 +70,10 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 			return progressErr
 		}
 
-		return fmt.Errorf("failed to inspect service %s update status: %w", serviceID, err)
+		return fmt.Errorf("failed to inspect service update status: %w", err)
 	}
 
-	rollbackErr := rollbackUpdateStatusError(serviceID, serviceResult.Service.Spec.Name, serviceResult.Service.UpdateStatus)
+	rollbackErr := rollbackUpdateStatusError(serviceResult.Service.UpdateStatus)
 	if rollbackErr != nil {
 		return rollbackErr
 	}
@@ -83,7 +83,6 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 			ctx,
 			dockerCli.Client(),
 			serviceID,
-			serviceResult.Service.Spec.Name,
 			rollbackStatusObservationTimeout,
 		)
 		if delayedRollbackErr != nil {
@@ -285,13 +284,13 @@ func newJobTaskFailure(task swarm.Task) error {
 
 // waitForRollbackUpdateStatus keeps observing a service update for a short time
 // to catch rollback states that may appear after the first progress error.
-func waitForRollbackUpdateStatus(ctx context.Context, apiClient client.APIClient, serviceID, serviceName string, timeout time.Duration) error {
+func waitForRollbackUpdateStatus(ctx context.Context, apiClient client.APIClient, serviceID string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
 		serviceResult, err := apiClient.ServiceInspect(ctx, serviceID, client.ServiceInspectOptions{})
 		if err == nil {
-			rollbackErr := rollbackUpdateStatusError(serviceID, serviceName, serviceResult.Service.UpdateStatus)
+			rollbackErr := rollbackUpdateStatusError(serviceResult.Service.UpdateStatus)
 			if rollbackErr != nil {
 				return rollbackErr
 			}
@@ -312,22 +311,18 @@ func waitForRollbackUpdateStatus(ctx context.Context, apiClient client.APIClient
 }
 
 // rollbackUpdateStatusError returns an error when a service update finished in a rollback state.
-func rollbackUpdateStatusError(serviceID, serviceName string, status *swarm.UpdateStatus) error {
+// Callers add the service name and ID so the identity appears exactly once.
+func rollbackUpdateStatusError(status *swarm.UpdateStatus) error {
 	if status == nil || !isRollbackUpdateState(status.State) {
 		return nil
 	}
 
-	target := strings.TrimSpace(serviceName)
-	if target == "" {
-		target = serviceID
-	}
-
 	message := strings.TrimSpace(status.Message)
 	if message == "" {
-		return fmt.Errorf("service %s entered rollback state %q", target, status.State)
+		return fmt.Errorf("entered rollback state %q", status.State)
 	}
 
-	return fmt.Errorf("service %s entered rollback state %q: %s", target, status.State, message)
+	return fmt.Errorf("entered rollback state %q: %s", status.State, message)
 }
 
 // isRollbackUpdateState reports whether the update state indicates a rollback lifecycle.

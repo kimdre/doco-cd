@@ -66,6 +66,7 @@ type SelfDeployInput struct {
 	RecreateMode   string
 	Services       []string
 	RemoveOrphans  bool
+	CommitStatus   *selfupdate.CommitStatusInfo
 	Log            *slog.Logger
 }
 

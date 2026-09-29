@@ -70,6 +70,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		HashNormMap:      pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment),
 		Project:          s.Docker.Project,
 		ProjectHash:      s.Docker.ProjectHash,
+		CommitStatus:     s.selfUpdateCommitStatus(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)

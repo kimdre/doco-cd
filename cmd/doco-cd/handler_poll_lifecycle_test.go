@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/stages"
 )
 
 func pollOutcomeLog(t *testing.T, deployErr error) string {
@@ -52,5 +53,19 @@ func TestReportPollOutcomeReportsGenuineFailures(t *testing.T) {
 	output = pollOutcomeLog(t, nil)
 	if !strings.Contains(output, "job completed successfully") {
 		t.Fatalf("expected success log, got %q", output)
+	}
+}
+
+func TestReportPollOutcomeTreatsSyncWindowDeferralAsNoOp(t *testing.T) {
+	t.Parallel()
+
+	output := pollOutcomeLog(t, &stages.SyncWindowBlockedError{Stacks: []string{"web"}, Windows: []string{"freeze"}})
+	if strings.Contains(output, "level=ERROR") || strings.Contains(output, "level=WARN") {
+		t.Fatalf("a sync window deferral must not be reported as a poll failure, got %q", output)
+	}
+
+	if !strings.Contains(output, "level=INFO msg=\"job deferred by sync window\"") ||
+		!strings.Contains(output, "deployment of web deferred by sync window freeze") {
+		t.Fatalf("expected a deferral info log, got %q", output)
 	}
 }

@@ -46,6 +46,9 @@ type GitStoreOptions struct {
 	// submodules checked out, since Publish reads tree objects, not the
 	// mirror's worktree.
 	CloneSubmodules bool
+	// SkipAbsoluteSymlinks allows Git includes to omit unrelated absolute
+	// links during export. Regular Git sources keep the strict default.
+	SkipAbsoluteSymlinks bool
 	// Depth is the shallow-clone depth passed to the underlying sync.
 	// 0 clones full history.
 	Depth int
@@ -149,6 +152,7 @@ func (s *GitStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 
 	exportOpts := git.ExportOptions{
 		Log:                     s.opts.Log,
+		SkipAbsoluteSymlinks:    s.opts.SkipAbsoluteSymlinks,
 		Private:                 s.opts.Private,
 		SSHPrivateKey:           s.opts.SSHPrivateKey,
 		SSHPrivateKeyPassphrase: s.opts.SSHPrivateKeyPassphrase,

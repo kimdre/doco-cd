@@ -78,3 +78,53 @@ With `project_directory: .`, any `.env` file you place in your repository root (
 
     !!! tip
         To delete volumes, networks, and images, you can use `destroy: true` for the default destructive cleanup behavior, or the full `destroy` object for custom removal options (See [Destroy settings](../Deploy-Settings.md#destroy-settings)).
+
+## Using a plain Git server (no forge)
+
+Doco-CD does not need a Git hosting platform (forge) like GitHub, GitLab or Forgejo. 
+It only needs a clone URL it can reach, so it also works with bare Git repositories served by a plain Git server, 
+e.g. via SSH, smart HTTP (`git http-backend`) or the [local filesystem](#repository-on-the-same-host).
+
+Plain Git servers do not send webhook payloads, so use [polling](../Poll-Settings.md) or 
+use a [`post-receive`](#deploy-on-push-with-a-post-receive-hook) hook to trigger deployments after a push via the REST API for [webhook](../Endpoints/Webhook-Listener.md)-like behavior.
+
+### Polling via SSH
+
+Add the public key of doco-cd to the `authorized_keys` of the user on the Git server (see [Setup SSH Key](../Setup-SSH-Key.md)) and point a poll job at the SSH URL of the repository:
+
+```yaml title="docker-compose.yml" hl_lines="4-8"
+services:
+  app:
+    environment:
+      SSH_PRIVATE_KEY_FILE: /run/secrets/git_key
+      POLL_CONFIG: |
+        - url: ssh://me@myserver.org/home/me/myrepo.git
+          reference: main
+          interval: 5m
+```
+
+!!! warning "Use the `ssh://` URL format"
+    SCP-like URLs (`user@host:path`) are only recognized as SSH URLs when they start with `git@`.
+    For any other user, use the `ssh://user@host/path` format (e.g. `ssh://me@myserver.org/home/me/myrepo.git`).
+
+For repositories served via HTTP(S), set [`GIT_ACCESS_TOKEN`](../Git-Settings.md#authentication) to the password and [`GIT_ACCESS_TOKEN_USER`](../Git-Settings.md#authentication) to the username required by your server.
+
+### Deploy on push with a `post-receive` hook
+
+To deploy immediately after a push instead of waiting for the next poll interval, let a `post-receive` hook in the bare repository trigger a poll run via the [REST API](../Endpoints/REST-API.md#polling).
+This requires `API_SECRET` to be set (see [App Settings](../App-Settings.md#api-and-webhook-settings)), otherwise the REST API is disabled.
+
+```sh title="hooks/post-receive"
+#!/bin/sh
+curl -s -X POST "https://cd.example.com/v1/api/poll/run?wait=false" \
+  -H 'x-api-key: your-api-key' \
+  -H 'content-type: application/json' \
+  -d '[{"url": "ssh://me@myserver.org/home/me/myrepo.git", "reference": "main"}]'
+```
+
+Make the hook executable with `chmod +x hooks/post-receive`.
+
+### Repository on the same host
+
+If doco-cd runs on the same machine as the bare repository, you don't need SSH or a hook at all: bind-mount the repository into the container (read-only is fine) and use its path as the poll URL, e.g. `url: /local-repos/myrepo.git`.
+doco-cd watches local repositories for new commits and deploys right after a push. See [Polling Local Filesystem Repositories](Local-Filesystem-Polling.md).

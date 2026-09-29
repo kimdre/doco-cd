@@ -20,25 +20,34 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
+// shouldSkipDeployment reports whether a deployment can be skipped because nothing changed.
+//
+// Changes that are excluded from recreation with recreate.ignore still require a deployment in
+// Docker (Standalone) mode, since services use live copies of these files that are only updated
+// by a deployment. In Swarm mode, they only require a deployment if a signal must be sent.
 func shouldSkipDeployment(retryAfterFailure bool,
 	composeChanged bool,
 	autoDiscoveryLabelChanged bool,
 	changedServices []docker.Change,
 	ignoredInfo docker.IgnoredInfo,
+	swarmMode bool,
 	imagesChanged bool,
 	mismatchServices []docker.ServiceMismatch,
 ) bool {
+	ignoredChangesNeedDeploy := ignoredInfo.IsNeedSignal() || (!swarmMode && !ignoredInfo.IsEmpty())
+
 	return !retryAfterFailure &&
 		!composeChanged &&
 		!autoDiscoveryLabelChanged &&
 		len(changedServices) == 0 &&
-		!ignoredInfo.IsNeedSignal() &&
+		!ignoredChangesNeedDeploy &&
 		!imagesChanged &&
 		len(mismatchServices) == 0
 }
@@ -291,6 +300,19 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
+	}
+
+	if s.Docker.SwarmMode {
+		for _, status := range deployedState.DeployedStatus {
+			name, serviceID := swarmServiceLogIdentity(status, "")
+
+			stageLog.Debug("checked deployed swarm service status",
+				slog.String("service", name),
+				slog.String("service_id", serviceID),
+				slog.String("mode", string(status.SwarmMode)),
+				slog.Uint64("replicas", status.Replicas),
+			)
+		}
 	}
 
 	// A recorded failure means the last attempt of this stack did not finish.
@@ -571,12 +593,25 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		mismatchServices := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus, s.Docker.Project.Services)
 		mismatchServices = s.dropSchedulerHeldMismatches(mismatchServices, stageLog)
 
+		if s.Docker.SwarmMode {
+			for _, mismatch := range mismatchServices {
+				status := deployedState.DeployedStatus[docker.Service(mismatch.ServiceName)]
+				name, serviceID := swarmServiceLogIdentity(status, s.DeployConfig.Name+"_"+mismatch.ServiceName)
+
+				stageLog.Debug("swarm service status mismatch",
+					slog.String("service", name),
+					slog.String("service_id", serviceID),
+					slog.Any("reasons", mismatch.Reasons),
+				)
+			}
+		}
+
 		if s.DeployConfig.ForceRecreate {
 			stageLog.Debug("force recreate enabled, proceeding with deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
 		} else if !s.DeployState.modeMigrationNeeded &&
-			shouldSkipDeployment(retryAfterFailure, composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
+			shouldSkipDeployment(retryAfterFailure, composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, s.Docker.SwarmMode, imagesChanged, mismatchServices) {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
@@ -623,6 +658,15 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	}
 
 	return nil
+}
+
+func swarmServiceLogIdentity(status docker.ServiceStatus, fallbackName string) (string, string) {
+	name := status.Name
+	if name == "" {
+		name = fallbackName
+	}
+
+	return swarm.OrUnavailable(name), swarm.OrUnavailable(status.ID)
 }
 
 // dropSchedulerHeldMismatches removes service mismatches that doco-cd caused

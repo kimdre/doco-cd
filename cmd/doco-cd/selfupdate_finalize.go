@@ -15,7 +15,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
@@ -66,7 +65,7 @@ func finalizeSelfUpdate(
 	ctx context.Context,
 	log *logger.Logger,
 	apiClient client.APIClient,
-	notifier *notification.Notifier,
+	reporter *selfUpdateReporter,
 	store *selfupdate.Store,
 	identity selfupdate.Identity,
 	runs *controlplane.Runs,
@@ -94,7 +93,7 @@ func finalizeSelfUpdate(
 		pending := *record
 
 		return func() {
-			if err := finalizeAsSuccessor(ctx, log, apiClient, notifier, store, pending, identity.ContainerID); err != nil {
+			if err := finalizeAsSuccessor(ctx, log, apiClient, reporter, store, pending, identity.ContainerID); err != nil {
 				log.Error("self-update: failed to finalize the handover", logger.ErrAttr(err))
 			}
 		}, nil
@@ -131,7 +130,7 @@ func finalizeSelfUpdate(
 			return nil, nil
 		}
 
-		return nil, finalizeAsPredecessor(ctx, log, apiClient, notifier, store, *record)
+		return nil, finalizeAsPredecessor(ctx, log, apiClient, reporter, store, *record)
 	default:
 		// Neither container of the record is us: the record belongs to a stack
 		// state that no longer exists, so it must not block this boot.
@@ -175,7 +174,7 @@ func finalizeAsSuccessor(
 	ctx context.Context,
 	log *logger.Logger,
 	apiClient client.APIClient,
-	notifier *notification.Notifier,
+	reporter *selfUpdateReporter,
 	store *selfupdate.Store,
 	record selfupdate.Record,
 	ownID string,
@@ -204,7 +203,7 @@ func finalizeAsSuccessor(
 			// A rollback that recreated this container records it as restored
 			// only after starting it, so this boot took it for the successor.
 			if ownID != "" && record.Restored.ID == ownID {
-				return finalizeAsPredecessor(ctx, log, apiClient, notifier, store, record)
+				return finalizeAsPredecessor(ctx, log, apiClient, reporter, store, record)
 			}
 
 			return nil
@@ -245,7 +244,7 @@ func finalizeAsSuccessor(
 
 	selfupdate.MaybeCrash(docker.SelfUpdateConfig().DataMountPath, string(selfupdate.StateFinalising), log.Logger)
 
-	reportSelfUpdateSuccess(log, notifier, record)
+	reporter.reportSuccess(ctx, log, record)
 
 	docker.RecordDeployStatus(record.Source.RepoName, record.Stack, record.Source.CommitSHA, record.Source.ProjectHash)
 
@@ -268,7 +267,7 @@ func finalizeAsPredecessor(
 	ctx context.Context,
 	log *logger.Logger,
 	apiClient client.APIClient,
-	notifier *notification.Notifier,
+	reporter *selfUpdateReporter,
 	store *selfupdate.Store,
 	record selfupdate.Record,
 ) error {
@@ -283,7 +282,7 @@ func finalizeAsPredecessor(
 			slog.String("reason", record.Error),
 		)
 
-		reportSelfUpdateFailure(log, notifier, record)
+		reporter.reportFailure(ctx, log, record)
 
 		if err := poisonSelfUpdate(store, record); err != nil {
 			return fmt.Errorf("record failed self-update before clearing its journal: %w", err)
@@ -330,7 +329,7 @@ func finalizeAsPredecessor(
 				return updateErr
 			}
 
-			return finalizeAsPredecessor(ctx, log, apiClient, notifier, store, aborted)
+			return finalizeAsPredecessor(ctx, log, apiClient, reporter, store, aborted)
 		}
 
 		updated, err := store.Update(record, selfupdate.StateHandover, selfupdate.ActorPredecessor)
@@ -359,7 +358,7 @@ func finalizeAsPredecessor(
 		}
 
 		if current.State.RolledBackOrFailed() {
-			return finalizeAsPredecessor(ctx, log, apiClient, notifier, store, current)
+			return finalizeAsPredecessor(ctx, log, apiClient, reporter, store, current)
 		}
 
 		selfupdate.RequestDrain()
@@ -658,52 +657,4 @@ func poisonSelfUpdate(store *selfupdate.Store, record selfupdate.Record) error {
 		ProjectHash: record.Source.ProjectHash,
 		Reason:      reason,
 	})
-}
-
-func selfUpdateMetadata(record selfupdate.Record) notification.Metadata {
-	return notification.Metadata{
-		Repository: record.Source.FullName,
-		Stack:      record.Stack,
-		Context:    record.Context,
-		Target:     record.Source.ConfigTarget,
-		Revision:   record.Source.CommitSHA,
-		JobID:      record.Source.JobID,
-	}
-}
-
-func reportSelfUpdateSuccess(log *logger.Logger, notifier *notification.Notifier, record selfupdate.Record) {
-	if notifier == nil {
-		return
-	}
-
-	err := notifier.Send(
-		notification.Success,
-		"Deployment completed",
-		fmt.Sprintf("Successfully deployed stack %s (self-update, %s)", record.Stack, record.Strategy),
-		selfUpdateMetadata(record),
-	)
-	if err != nil {
-		log.Warn("self-update: failed to send the success notification", logger.ErrAttr(err))
-	}
-}
-
-func reportSelfUpdateFailure(log *logger.Logger, notifier *notification.Notifier, record selfupdate.Record) {
-	if notifier == nil {
-		return
-	}
-
-	reason := record.Error
-	if reason == "" {
-		reason = "the new version did not become healthy"
-	}
-
-	err := notifier.Send(
-		notification.Failure,
-		"Deployment failed",
-		fmt.Sprintf("Self-update of stack %s was rolled back: %s", record.Stack, reason),
-		selfUpdateMetadata(record),
-	)
-	if err != nil {
-		log.Warn("self-update: failed to send the failure notification", logger.ErrAttr(err))
-	}
 }

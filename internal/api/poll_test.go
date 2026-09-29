@@ -30,6 +30,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 func TestHandler_TriggerPollHandler(t *testing.T) {
@@ -434,4 +436,49 @@ func (r *trackingReadCloser) Close() error {
 	r.closed = true
 
 	return nil
+}
+
+func TestHandler_TriggerPollHandlerReportsSyncWindowDeferral(t *testing.T) {
+	log := logger.New(logger.LevelCritical)
+	h := &Handler{
+		appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+		log:       log,
+	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig: h.appConfig,
+		log:       log,
+		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
+		) error {
+			if origin := controlplane.DeploymentOrigin(ctx); origin != syncwindow.OriginManual {
+				t.Errorf("API poll origin = %q, want manual", origin)
+			}
+
+			return &stages.SyncWindowBlockedError{Stacks: []string{"web"}, Windows: []string{"freeze"}}
+		},
+	})
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, APIPath+"/poll/run", strings.NewReader(`[{"url":"https://example.com/repo.git"}]`))
+	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+
+	h.TriggerPollHandler(response, request)
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusAccepted, response.Body.String())
+	}
+
+	var result restAPI.Response
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+
+	const want = "deployment of web deferred by sync window freeze"
+	if result.Content != want || result.JobID == "" {
+		t.Fatalf("response = %#v", result)
+	}
+
+	run, ok := h.controlPlaneRuns.Get(result.JobID)
+	if !ok || run.Status != controlplane.RunStatusSkipped || run.Message != want {
+		t.Fatalf("tracked run = %#v, found = %t", run, ok)
+	}
 }

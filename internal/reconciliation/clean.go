@@ -24,10 +24,12 @@ import (
 // the current deployment configurations but still exist on the Docker host.
 // contextName is the Docker context dockerCli is connected to and is only used to attribute
 // notifications, since the same stack name can exist on several contexts.
+// allowRemoval, if not nil, decides whether an obsolete stack may be removed
+// now (see syncWindowGate.allowRemoval); stacks it rejects are kept.
 func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
 	dockerCli command.Cli, swarmMode bool, contextName string,
 	cloneUrl string, deployConfigs []*deployConfig.Config, metadata notification.Metadata,
-	notifier notification.Sender,
+	notifier notification.Sender, allowRemoval func(stackLog *slog.Logger, stackName string) bool,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
 	runConfigTargets := set.New[string]()
@@ -121,6 +123,12 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 		if !autoDiscoverCfg.Delete {
 			stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
 
+			processedStacks = append(processedStacks, stackName)
+
+			continue
+		}
+
+		if allowRemoval != nil && !allowRemoval(stackLog, stackName) {
 			processedStacks = append(processedStacks, stackName)
 
 			continue
