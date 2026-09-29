@@ -127,10 +127,20 @@ The `_FULL` value is a single PEM bundle, with the leaf certificate always first
 -----BEGIN CERTIFICATE-----   <- root CA
 ```
 
-The chain comes from OpenBao's `ca_chain` response field, falling back to `issuing_ca` when the
-mount does not return a chain. For read-only `pki:` references whose response carries no chain,
-the mount's `<secretEngine>/cert/ca_chain` endpoint is read instead. When no chain is available at
-all, `_FULL` holds the leaf certificate on its own.
+How the chain is determined depends on the reference type:
+
+- `pki-role:` references use the `ca_chain` field of the issue response, falling back to
+  `issuing_ca` when the mount does not return a chain.
+- `pki:` references use the chain of the issuer that actually signed the certificate, so
+  certificates from a non-default issuer on a multi-issuer mount get the correct chain. The
+  issuers are listed via `<secretEngine>/issuers` and read via `<secretEngine>/issuer/<id>/json`,
+  both unauthenticated endpoints, so no additional policy is required. When several issuers share
+  the signing key (e.g. a reissued CA), the currently valid one is preferred.
+  The mount's default chain (`<secretEngine>/cert/ca_chain`) is only used when all issuers could be
+  read and none of them signed the certificate. If some issuers could not be read and none of the
+  readable ones matches, resolving the reference fails instead of returning a possibly wrong chain.
+
+When no chain is available at all, `_FULL` holds the leaf certificate on its own.
 
 !!! note
     Use `CERT` where a leaf-only certificate is expected and `CERT_FULL` where a bundle is; both

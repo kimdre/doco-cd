@@ -38,8 +38,9 @@ var testCredentials = struct {
 	password: "test123",
 }
 
-// setupOpenBaoContainers sets up the OpenBao test containers and returns the site URL and access token.
-func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
+// setupOpenBaoContainers sets up the OpenBao test containers and returns the site URL, the root
+// access token and the multi-issuer PKI fixture.
+func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string, multiIssuer multiIssuerPKIFixture) {
 	t.Helper()
 	t.Log("starting OpenBao test container")
 
@@ -148,13 +149,94 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Fatalf("failed to add test secret to namespace (exit code %d)", exitStatus)
 	}
 
+	multiIssuer = setupMultiIssuerPKIMount(ctx, t, stack)
+
 	t.Logf("OpenBao container setup complete")
 
-	return "http://localhost:" + mappedPort, initData.RootToken
+	return "http://localhost:" + mappedPort, initData.RootToken, multiIssuer
+}
+
+// multiIssuerPKIFixture describes the "pki-multi" mount: its certificate for multiIssuerCommonName
+// was signed by SigningCA, after which DefaultCA was added and made the mount's default issuer.
+// RestrictedToken may only list the mount's certificates, like a least-privilege doco-cd token.
+type multiIssuerPKIFixture struct {
+	SigningCA       string
+	DefaultCA       string
+	RestrictedToken string
+}
+
+const multiIssuerCommonName = "multi.example.com"
+
+func setupMultiIssuerPKIMount(ctx context.Context, t *testing.T, stack *test.ComposeStack) multiIssuerPKIFixture {
+	t.Helper()
+
+	execVault(ctx, t, stack, "vault", "secrets", "enable", "-path=pki-multi", "pki")
+
+	var signing, defaultIssuer struct {
+		Data struct {
+			Certificate string `json:"certificate"`
+		} `json:"data"`
+	}
+
+	execVaultJSON(ctx, t, stack, &signing, "vault", "write", "-format=json", "pki-multi/root/generate/internal",
+		"common_name=signing-ca.example.com", "issuer_name=signing", "ttl=8760h")
+
+	execVault(ctx, t, stack, "vault", "write", "pki-multi/roles/multi",
+		"allowed_domains=example.com", "allow_subdomains=true", "max_ttl=72h", "issuer_ref=signing")
+	execVault(ctx, t, stack, "vault", "write", "pki-multi/issue/multi", "common_name="+multiIssuerCommonName, "ttl=24h")
+
+	execVaultJSON(ctx, t, stack, &defaultIssuer, "vault", "write", "-format=json", "pki-multi/root/generate/internal",
+		"common_name=default-ca.example.com", "issuer_name=fallback", "ttl=8760h")
+	execVault(ctx, t, stack, "vault", "write", "pki-multi/config/issuers", "default=fallback")
+
+	execVault(ctx, t, stack, "vault", "write", "sys/policies/acl/pki-multi-reader",
+		`policy=path "pki-multi/certs/detailed" { capabilities = ["list"] }`)
+
+	var token struct {
+		Auth struct {
+			ClientToken string `json:"client_token"`
+		} `json:"auth"`
+	}
+
+	execVaultJSON(ctx, t, stack, &token, "vault", "token", "create", "-policy=pki-multi-reader", "-format=json")
+
+	return multiIssuerPKIFixture{
+		SigningCA:       signing.Data.Certificate,
+		DefaultCA:       defaultIssuer.Data.Certificate,
+		RestrictedToken: token.Auth.ClientToken,
+	}
+}
+
+// execVault runs cmd in the OpenBao container and returns its stdout, failing the test when the
+// command exits with a non-zero status.
+func execVault(ctx context.Context, t *testing.T, stack *test.ComposeStack, cmd ...string) []byte {
+	t.Helper()
+
+	exitStatus, output := stack.Exec(ctx, t, "vault", cmd)
+
+	var stdout, stderr bytes.Buffer
+	if _, err := stdcopy.StdCopy(&stdout, &stderr, output); err != nil {
+		t.Fatalf("failed to demultiplex output of %v: %v", cmd, err)
+	}
+
+	if exitStatus != 0 {
+		t.Fatalf("%v failed with exit code %d: %s", cmd, exitStatus, stderr.String())
+	}
+
+	return stdout.Bytes()
+}
+
+// execVaultJSON runs cmd in the OpenBao container and decodes its JSON stdout into out.
+func execVaultJSON(ctx context.Context, t *testing.T, stack *test.ComposeStack, out any, cmd ...string) {
+	t.Helper()
+
+	if err := json.Unmarshal(execVault(ctx, t, stack, cmd...), out); err != nil {
+		t.Fatalf("failed to decode JSON output of %v: %v", cmd, err)
+	}
 }
 
 func TestProvider_OpenBao(t *testing.T) {
-	siteUrl, accessToken := setupOpenBaoContainers(t)
+	siteUrl, accessToken, multiIssuer := setupOpenBaoContainers(t)
 
 	provider, err := NewProvider(t.Context(), siteUrl, accessToken)
 	if err != nil {
@@ -460,6 +542,34 @@ func TestProvider_OpenBao(t *testing.T) {
 
 		if got := countPEMCertificates(t, resolved["CERT_KEY"]); got != 0 {
 			t.Errorf("Expected the private key entry to hold no certificates, got %d", got)
+		}
+	})
+
+	t.Run("PKIFullChainOfNonDefaultIssuerWithRestrictedToken", func(t *testing.T) {
+		restricted, err := NewProvider(t.Context(), siteUrl, multiIssuer.RestrictedToken)
+		if err != nil {
+			t.Fatalf("Failed to create provider with restricted token: %v", err)
+		}
+
+		// The token must not be able to read the authenticated issuer endpoint, otherwise this
+		// test wouldn't cover least-privilege tokens.
+		if _, err := restricted.Client.Logical().ReadWithContext(t.Context(), "pki-multi/issuer/signing"); err == nil {
+			t.Fatal("Expected the restricted token to be denied reading pki-multi/issuer/signing")
+		}
+
+		resolved, err := restricted.ResolveSecretReferences(t.Context(), map[string]string{
+			"CERT": "pki:pki-multi:" + multiIssuerCommonName, // #nosec G101
+		})
+		if err != nil {
+			t.Fatalf("Failed to resolve pki reference with restricted token: %v", err)
+		}
+
+		if want := pemBundle(resolved["CERT"], multiIssuer.SigningCA); resolved["CERT_FULL"] != want {
+			t.Errorf("Expected CERT_FULL to hold the leaf followed by the signing (non-default) issuer\nwant %q\ngot  %q", want, resolved["CERT_FULL"])
+		}
+
+		if strings.Contains(resolved["CERT_FULL"], strings.TrimSpace(multiIssuer.DefaultCA)) {
+			t.Error("Expected CERT_FULL not to contain the mount's default issuer, which did not sign the certificate")
 		}
 	})
 

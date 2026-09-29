@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/openbao/openbao/api/v2"
@@ -119,19 +120,39 @@ func GetCert(ctx context.Context, client *api.Client, engineName, serial string)
 	return cert, err
 }
 
+// pkiIssuer is a CA issuer configured on a PKI mount, with its certificate parsed once so it can be
+// matched against any number of leaf certificates.
+type pkiIssuer struct {
+	Certificate *x509.Certificate
+	PEM         string
+	CAChain     []string
+}
+
+// issuerLoader returns the issuers configured on a PKI mount. It may return the issuers that were
+// loaded successfully together with an error describing the ones that could not be loaded.
+type issuerLoader func(ctx context.Context) ([]pkiIssuer, error)
+
 // GetCertWithFullChain retrieves a certificate from the PKI engine in OpenBao and returns both the
 // leaf certificate on its own and the PEM bundle of the leaf followed by its issuing CA chain.
 // When the read response carries no chain, the chain of the issuer that actually signed the
 // certificate is resolved and fetched instead, since a mount with multiple CAs configured may
 // have issued the certificate from a non-default issuer.
 func GetCertWithFullChain(ctx context.Context, client *api.Client, engineName, serial string) (cert, fullChain string, err error) {
+	return getCertWithFullChain(ctx, client, engineName, serial, func(ctx context.Context) ([]pkiIssuer, error) {
+		return loadIssuers(ctx, client, engineName)
+	})
+}
+
+// getCertWithFullChain is GetCertWithFullChain with the mount's issuers provided by loadIssuers,
+// which is only invoked when the certificate response carries no chain of its own.
+func getCertWithFullChain(ctx context.Context, client *api.Client, engineName, serial string, loadIssuers issuerLoader) (cert, fullChain string, err error) {
 	cert, chain, err := readCert(ctx, client, engineName, serial)
 	if err != nil {
 		return "", "", err
 	}
 
 	if len(chain) == 0 {
-		chain, err = issuingCAChain(ctx, client, engineName, cert)
+		chain, err = issuingCAChain(ctx, client, engineName, cert, loadIssuers)
 		if err != nil {
 			return "", "", err
 		}
@@ -142,32 +163,25 @@ func GetCertWithFullChain(ctx context.Context, client *api.Client, engineName, s
 
 // issuingCAChain resolves the CA chain of the issuer that actually signed certPEM, so mounts with
 // multiple configured issuers don't have a certificate paired with the wrong authority's chain.
-// It falls back to the mount's default CA chain when no matching issuer can be determined, e.g. on
-// mounts predating multi-issuer support.
-func issuingCAChain(ctx context.Context, client *api.Client, engineName, certPEM string) ([]string, error) {
+//
+// When no issuer matches, it falls back to the mount's default CA chain only if every issuer could
+// be read (e.g. mounts predating multi-issuer support, which list no issuers). If some issuers
+// could not be read, the signing issuer may be among them, so an error is returned instead of
+// guessing a chain that may belong to a different CA.
+func issuingCAChain(ctx context.Context, client *api.Client, engineName, certPEM string, loadIssuers issuerLoader) ([]string, error) {
 	leaf, err := parsePEMCertificate(certPEM)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse certificate to determine its issuer: %w", err)
 	}
 
-	refs, err := listIssuerRefs(ctx, client, engineName)
-	if err != nil {
-		return nil, err
-	}
+	issuers, loadErr := loadIssuers(ctx)
 
-	issuers := make([]map[string]any, 0, len(refs))
-
-	for _, ref := range refs {
-		data, err := readIssuer(ctx, client, engineName, ref)
-		if err != nil {
-			continue
-		}
-
-		issuers = append(issuers, data)
-	}
-
-	if chain, ok := matchingIssuerChain(leaf, issuers); ok {
+	if chain, ok := matchingIssuerChain(leaf, issuers, time.Now()); ok {
 		return chain, nil
+	}
+
+	if loadErr != nil {
+		return nil, fmt.Errorf("unable to determine the issuing CA of the certificate: %w", loadErr)
 	}
 
 	return GetCAChain(ctx, client, engineName)
@@ -176,26 +190,112 @@ func issuingCAChain(ctx context.Context, client *api.Client, engineName, certPEM
 // matchingIssuerChain returns the CA chain of the issuer, among issuers, that actually signed leaf.
 // The issuer is identified by verifying leaf's signature against each candidate's public key,
 // rather than by matching names or serials, since either can be ambiguous or absent.
-func matchingIssuerChain(leaf *x509.Certificate, issuers []map[string]any) (chain []string, ok bool) {
-	for _, data := range issuers {
-		issuerCertPEM, isStr := data["certificate"].(string)
-		if !isStr {
+//
+// Issuers reissued with the same key all verify the leaf, so a candidate valid at now is preferred
+// over an expired or not yet valid one, and among equally valid candidates the one expiring last.
+func matchingIssuerChain(leaf *x509.Certificate, issuers []pkiIssuer, now time.Time) (chain []string, ok bool) {
+	var (
+		best      *pkiIssuer
+		bestValid bool
+	)
+
+	for i := range issuers {
+		candidate := &issuers[i]
+		if candidate.Certificate == nil || leaf.CheckSignatureFrom(candidate.Certificate) != nil {
 			continue
 		}
 
-		issuerCert, err := parsePEMCertificate(issuerCertPEM)
-		if err != nil || leaf.CheckSignatureFrom(issuerCert) != nil {
-			continue
-		}
+		valid := !now.Before(candidate.Certificate.NotBefore) && !now.After(candidate.Certificate.NotAfter)
 
-		if chain := parseCAChain(data); len(chain) > 0 {
-			return chain, true
+		switch {
+		case best == nil,
+			valid && !bestValid,
+			valid == bestValid && candidate.Certificate.NotAfter.After(best.Certificate.NotAfter):
+			best, bestValid = candidate, valid
 		}
-
-		return []string{issuerCertPEM}, true
 	}
 
-	return nil, false
+	if best == nil {
+		return nil, false
+	}
+
+	if len(best.CAChain) > 0 {
+		return best.CAChain, true
+	}
+
+	return []string{best.PEM}, true
+}
+
+// loadIssuers lists the issuers configured on the given PKI mount and reads each of them. It
+// returns every issuer that could be read, together with an error describing those that could not.
+func loadIssuers(ctx context.Context, client *api.Client, engineName string) ([]pkiIssuer, error) {
+	refs, err := listIssuerRefs(ctx, client, engineName)
+	if err != nil {
+		return nil, err
+	}
+
+	issuers := make([]pkiIssuer, 0, len(refs))
+
+	var errs []error
+
+	for _, ref := range refs {
+		issuer, err := readIssuer(ctx, client, engineName, ref)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		issuers = append(issuers, issuer)
+	}
+
+	if len(errs) > 0 {
+		return issuers, fmt.Errorf("failed to read %d of %d issuer(s): %w", len(errs), len(refs), errors.Join(errs...))
+	}
+
+	return issuers, nil
+}
+
+// issuerCache shares the issuers of each PKI mount between the pki references resolved by a single
+// ResolveSecretReferences call, so references on the same mount list and read its issuers once
+// instead of once per reference. It is scoped to that call, so issuer changes in OpenBao are
+// picked up by the next resolution.
+type issuerCache struct {
+	mu      sync.Mutex
+	entries map[string]*issuerCacheEntry
+}
+
+type issuerCacheEntry struct {
+	once    sync.Once
+	issuers []pkiIssuer
+	err     error
+}
+
+func newIssuerCache() *issuerCache {
+	return &issuerCache{entries: make(map[string]*issuerCacheEntry)}
+}
+
+// loader returns an issuerLoader for the PKI mount engineName in namespace that loads the mount's
+// issuers through client at most once for the lifetime of the cache.
+func (c *issuerCache) loader(client *api.Client, namespace, engineName string) issuerLoader {
+	key := namespace + "\x00" + engineName
+
+	return func(ctx context.Context) ([]pkiIssuer, error) {
+		c.mu.Lock()
+
+		entry, ok := c.entries[key]
+		if !ok {
+			entry = &issuerCacheEntry{}
+			c.entries[key] = entry
+		}
+
+		c.mu.Unlock()
+
+		entry.once.Do(func() {
+			entry.issuers, entry.err = loadIssuers(ctx, client, engineName)
+		})
+
+		return entry.issuers, entry.err
+	}
 }
 
 // listIssuerRefs returns the issuer IDs configured on the given PKI mount.
@@ -236,20 +336,32 @@ func listIssuerRefs(ctx context.Context, client *api.Client, engineName string) 
 	}
 }
 
-// readIssuer reads the certificate and CA chain of a single issuer from the given PKI mount.
-func readIssuer(ctx context.Context, client *api.Client, engineName, issuerRef string) (map[string]any, error) {
-	pathToRead := engineName + "/issuer/" + issuerRef
+// readIssuer reads the certificate and CA chain of a single issuer from the given PKI mount through
+// the unauthenticated <engine>/issuer/<ref>/json endpoint, so resolving a certificate's chain needs
+// no permission beyond what reading the certificate itself already requires.
+func readIssuer(ctx context.Context, client *api.Client, engineName, issuerRef string) (pkiIssuer, error) {
+	pathToRead := engineName + "/issuer/" + issuerRef + "/json"
 
 	response, err := client.Logical().ReadWithContext(ctx, pathToRead)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read issuer %s from OpenBao: %w", issuerRef, err)
+		return pkiIssuer{}, fmt.Errorf("unable to read issuer %s from OpenBao: %w", issuerRef, err)
 	}
 
 	if response == nil || response.Data == nil {
-		return nil, fmt.Errorf("no data found for issuer %s", issuerRef)
+		return pkiIssuer{}, fmt.Errorf("no data found for issuer %s", issuerRef)
 	}
 
-	return response.Data, nil
+	certPEM, ok := response.Data["certificate"].(string)
+	if !ok || strings.TrimSpace(certPEM) == "" {
+		return pkiIssuer{}, fmt.Errorf("no certificate found for issuer %s", issuerRef)
+	}
+
+	cert, err := parsePEMCertificate(certPEM)
+	if err != nil {
+		return pkiIssuer{}, fmt.Errorf("unable to parse certificate of issuer %s: %w", issuerRef, err)
+	}
+
+	return pkiIssuer{Certificate: cert, PEM: certPEM, CAChain: parseCAChain(response.Data)}, nil
 }
 
 // parsePEMCertificate decodes a single PEM-encoded X.509 certificate.

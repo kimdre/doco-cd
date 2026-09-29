@@ -362,6 +362,10 @@ func (p *Provider) resolvePKICerts(ctx context.Context, refs map[string]string) 
 
 	errCh := make(chan error, 1)
 
+	// Each pki reference needs its mount's issuers to resolve its chain; share them between
+	// references on the same mount instead of listing and reading them once per reference.
+	issuers := newIssuerCache()
+
 	for envVar, ref := range refs {
 		wg.Add(1)
 
@@ -390,7 +394,7 @@ func (p *Provider) resolvePKICerts(ctx context.Context, refs map[string]string) 
 				return
 			}
 
-			cert, fullChain, err := GetCertWithFullChain(ctx, c, engineName, serial)
+			cert, fullChain, err := getCertWithFullChain(ctx, c, engineName, serial, issuers.loader(c, namespace, engineName))
 			if err != nil {
 				fail(fmt.Errorf("failed to retrieve certificate with serial %s: %w", serial, err))
 				return
