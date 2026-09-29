@@ -35,6 +35,17 @@ A doco-cd stack must be defined in the deploy repository with the following rule
 - Give the service a `healthcheck`. Without one doco-cd falls back to running
   `#!sh doco-cd healthcheck` inside the new container, which is slower.
 
+!!! warning "Keep Docker socket proxies outside the self-updating project"
+    If doco-cd accesses Docker through a socket proxy, run the proxy in a separate
+    Compose project. Self-update deploys the other services in doco-cd's project
+    before replacing doco-cd; Compose may recreate the proxy even when its
+    configuration has not changed. That cuts off Docker API access and fails the
+    deployment. **`depends_on` and restart policies do not prevent this.**
+
+    For a Unix-socket proxy, share a named socket volume between the projects
+    and declare it `#!yaml external: true` in both Compose files. Start the proxy before
+    doco-cd and update it separately. The same lifecycle risk applies to TCP proxies.
+
 ## Bootstrap
 
 !!! tip "If you already have an existing doco-cd instance, skip to [Migrating an existing instance](#migrating-an-existing-instance)."
