@@ -646,14 +646,16 @@ func TestPkiRoleNormMap_BuildsStablePlaceholders(t *testing.T) {
 
 	certPEM := "-----BEGIN CERTIFICATE-----\nMIIFake...\n-----END CERTIFICATE-----\n"
 	keyPEM := "-----BEGIN EC PRIVATE KEY-----\nMIIFakeKey...\n-----END EC PRIVATE KEY-----\n" // #nosec G101
+	fullChainPEM := certPEM + "-----BEGIN CERTIFICATE-----\nMIIFakeCA...\n-----END CERTIFICATE-----\n"
 	ref := "pki-role:pki:my-role:app.example.com"
 
 	externalSecrets := map[string]secrettypes.ExternalSecretRef{
 		"CERT": {LegacyRef: ref},
 	}
 	env := map[string]string{
-		"CERT":     certPEM,
-		"CERT_KEY": keyPEM,
+		"CERT":      certPEM,
+		"CERT_KEY":  keyPEM,
+		"CERT_FULL": fullChainPEM,
 	}
 
 	norm := pkiRoleNormMap(externalSecrets, env)
@@ -664,6 +666,10 @@ func TestPkiRoleNormMap_BuildsStablePlaceholders(t *testing.T) {
 
 	if norm[keyPEM] != ref+"_KEY" {
 		t.Errorf("key placeholder: want %q, got %q", ref+"_KEY", norm[keyPEM])
+	}
+
+	if norm[fullChainPEM] != ref+"_FULL" {
+		t.Errorf("full chain placeholder: want %q, got %q", ref+"_FULL", norm[fullChainPEM])
 	}
 }
 
@@ -697,38 +703,50 @@ func TestPkiRoleNormMap_HashStability(t *testing.T) {
 	cert2 := "-----BEGIN CERTIFICATE-----\nserial-2\n-----END CERTIFICATE-----\n"
 	key1 := "-----BEGIN EC PRIVATE KEY-----\nkey-1\n-----END EC PRIVATE KEY-----\n" // #nosec G101
 	key2 := "-----BEGIN EC PRIVATE KEY-----\nkey-2\n-----END EC PRIVATE KEY-----\n" // #nosec G101
+	caPEM := "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----\n"
+	fullChain1 := cert1 + caPEM
+	fullChain2 := cert2 + caPEM
 
 	externalSecrets := map[string]secrettypes.ExternalSecretRef{"CERT": {LegacyRef: ref}}
 
-	env1 := map[string]string{"CERT": cert1, "CERT_KEY": key1}
-	env2 := map[string]string{"CERT": cert2, "CERT_KEY": key2}
+	env1 := map[string]string{"CERT": cert1, "CERT_KEY": key1, "CERT_FULL": fullChain1}
+	env2 := map[string]string{"CERT": cert2, "CERT_KEY": key2, "CERT_FULL": fullChain2}
 
 	norm1 := pkiRoleNormMap(externalSecrets, env1)
 	norm2 := pkiRoleNormMap(externalSecrets, env2)
 
 	strPtr := func(s string) *string { return &s }
 
-	makeProject := func(cert, key string) *types.Project {
+	// The full chain is consumed both through the service environment and through a top-level
+	// config fed from CERT_FULL, the way TLS servers typically mount a fullchain bundle.
+	makeProject := func(cert, key, fullChain string) *types.Project {
 		return &types.Project{
 			Services: types.Services{
 				"app": {
 					Name:  "app",
 					Image: "myapp:latest",
 					Environment: types.MappingWithEquals{
-						"CERT":     strPtr(cert),
-						"CERT_KEY": strPtr(key),
+						"CERT":      strPtr(cert),
+						"CERT_KEY":  strPtr(key),
+						"CERT_FULL": strPtr(fullChain),
+					},
+					Configs: []types.ServiceConfigObjConfig{
+						{Source: "fullchain", Target: "/etc/ssl/certs/fullchain.crt"},
 					},
 				},
+			},
+			Configs: types.Configs{
+				"fullchain": {Name: "fullchain", Content: fullChain, Environment: "CERT_FULL"},
 			},
 		}
 	}
 
-	h1, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert1, key1), norm1), "")
+	h1, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert1, key1, fullChain1), norm1), "")
 	if err != nil {
 		t.Fatalf("hash 1: %v", err)
 	}
 
-	h2, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert2, key2), norm2), "")
+	h2, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert2, key2, fullChain2), norm2), "")
 	if err != nil {
 		t.Fatalf("hash 2: %v", err)
 	}

@@ -276,6 +276,49 @@ func TestApplyCertRotationLabelsToService(t *testing.T) {
 	}
 }
 
+func TestApplyCertRotationLabelsToService_FullChainOnly(t *testing.T) {
+	expiry := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+	certPEM := generateTestCertPEM(t, expiry)
+	fullChainPEM := certPEM + "\nissuer-chain"
+
+	deployConfig := &deploy.Config{
+		ExternalSecrets: map[string]secrettypes.ExternalSecretRef{
+			"CERT": {LegacyRef: "pki-role:pki:my-role:app.example.com"},
+		},
+	}
+	deployConfig.Internal.Environment = map[string]string{
+		"CERT":      certPEM,
+		"CERT_FULL": fullChainPEM,
+	}
+
+	// This service only consumes CERT_FULL, never the bare CERT or CERT_KEY values, e.g. a
+	// reverse proxy that needs the full chain to present to clients.
+	project := &types.Project{
+		Services: types.Services{
+			"uses-full-chain-only": {
+				Name:        "uses-full-chain-only",
+				Environment: types.MappingWithEquals{"CERT_FULL": &fullChainPEM},
+			},
+		},
+	}
+
+	labels := map[string]string{}
+	applyCertRotationLabelsToService(labels, project.Services["uses-full-chain-only"], project, deployConfig)
+
+	if labels[DocoCDLabels.Deployment.CertRotatable] != "true" {
+		t.Fatalf("expected the CERT_FULL-only service to be labeled, got %v", labels)
+	}
+
+	var certState []deployedRotatableCertState
+	if err := json.Unmarshal([]byte(labels[DocoCDLabels.Deployment.CertState]), &certState); err != nil {
+		t.Fatalf("expected cert state label to contain valid JSON, got %q: %v", labels[DocoCDLabels.Deployment.CertState], err)
+	}
+
+	if len(certState) != 1 {
+		t.Fatalf("expected the CERT_FULL-only service to have a tracked cert state so revocation is detected, got %v", certState)
+	}
+}
+
 func TestCertificateSerial(t *testing.T) {
 	expiry := time.Now().Add(24 * time.Hour)
 	certPEM := generateTestCertPEM(t, expiry)
