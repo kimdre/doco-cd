@@ -20,6 +20,7 @@ func init() {
 		DeploymentQueueDuration, DeploymentAdmissionDuration, PreDeployOperationDuration,
 		SourcePreparationDuration,
 		DeploymentsActive, DeploymentsQueued, PreDeploymentsActive, PreDeploymentsQueued,
+		SyncWindowBlockedTotal,
 		ScheduledRunsTotal, ScheduledRunErrorsTotal, ScheduledRunSkippedTotal,
 		ScheduledRunDuration, ScheduledRunsActive,
 		McpRequestsTotal, McpErrorsTotal, McpRequestDuration,
@@ -140,6 +141,11 @@ var (
 		Help:      "Time deployment work spends waiting for phase admission",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"repository", "phase", "outcome"})
+	SyncWindowBlockedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "sync_window_blocked_total",
+		Help:      "Total number of deployments and stack removals deferred by a sync window",
+	}, []string{"repository", "deployment", "context", "window"})
 	ScheduledRunsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "scheduled_runs_total",

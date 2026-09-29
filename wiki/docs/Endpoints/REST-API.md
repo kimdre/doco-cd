@@ -107,7 +107,10 @@ curl --request GET \
 
 The request body must be a JSON array of [poll configurations](../Poll-Settings.md), each containing at least a `url` field containing the Git clone URL to the repository.
 
-The fields `run_once` and `interval` will be ignored for poll runs triggered via the API, as they are only relevant for the scheduled poll runs.
+The fields `run_once`, `interval` and `schedule` will be ignored for poll runs triggered via the API, as they are only relevant for the scheduled poll runs.
+They are still validated when the request is parsed: a configuration that sets both a `schedule` and a non-zero `interval` is rejected with `400 Bad Request`, because the two are mutually exclusive.
+
+Poll runs triggered via the API count as manual deployments for [sync windows](../Advanced/Sync-Windows.md#manual-deployments). If a sync window defers every deployment of the run, the run status is `skipped` and, with `wait=true`, the endpoint responds with `202 Accepted` and a message like `deployment of my-app deferred by sync window business-hours until 2026-01-05T08:00:00+01:00`.
 
 #### Example Request
 
@@ -201,6 +204,62 @@ curl --request POST \
       --url 'https://cd.example.com/v1/api/jobs?stack=my-stack' \
       --header 'x-api-key: your-api-key'
     ```
+
+### Sync Windows
+
+| Endpoint               | Method | Description                                                                                                                      | Query Parameters                                                                                                                                                                                                                                                                                                                                                                     |
+|------------------------|--------|----------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/v1/api/sync-windows` | GET    | List the configured [sync windows](../Advanced/Sync-Windows.md) and, if a target is given, whether it may be deployed right now. | - `repository` (string, optional): Repository name to evaluate, e.g. `github.com/acme/app`.<br/>- `deployment` (string, optional): Deployment (Compose project or Swarm stack) name to evaluate.<br/>- `context` (string, optional): Docker context name to evaluate (default: `default`).<br/>- `origin` (string, optional): `automatic` (default) or `manual` (API/MCP poll runs). |
+
+The response lists every window with its settings and current state (`active`, `active_since`, `active_until` and `next_start`).
+If at least one of `repository`, `deployment` or `context` is given, the response also contains a `decision` for that target:
+
+| Field             | Description                                                                                                |
+|-------------------|------------------------------------------------------------------------------------------------------------|
+| `allowed`         | Whether the target may be deployed right now.                                                              |
+| `manual_override` | `true` if the deployment is only allowed because it is manual and every blocking window has `manual_sync`. |
+| `windows`         | Names of the windows that block (or, with `manual_override`, would block) the deployment.                  |
+| `next_open`       | Earliest time the target may be deployed again, if it is blocked and the time is known.                    |
+
+#### Example Request
+
+```sh
+curl --request GET \
+  --url 'https://cd.example.com/v1/api/sync-windows?repository=github.com/acme/app&deployment=web' \
+  --header 'x-api-key: your-api-key'
+```
+
+```json title="Response"
+{
+  "content": {
+    "time": "2026-01-03T10:00:00+01:00",
+    "windows": [
+      {
+        "name": "weekend-freeze",
+        "kind": "deny",
+        "schedule": "0 18 * * 5",
+        "duration": "62h0m0s",
+        "timezone": "Europe/Berlin",
+        "repositories": [],
+        "deployments": [],
+        "contexts": [],
+        "manual_sync": false,
+        "active": true,
+        "active_since": "2026-01-02T18:00:00+01:00",
+        "active_until": "2026-01-05T08:00:00+01:00",
+        "next_start": "2026-01-09T18:00:00+01:00"
+      }
+    ],
+    "decision": {
+      "allowed": false,
+      "manual_override": false,
+      "windows": ["weekend-freeze"],
+      "next_open": "2026-01-05T08:00:00+01:00"
+    }
+  },
+  "job_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
 
 ### Compose Projects
 

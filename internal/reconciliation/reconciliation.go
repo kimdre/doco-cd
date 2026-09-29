@@ -25,6 +25,8 @@ import (
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 const reconciliationTraceIDAttr = "doco_cd_reconciliation_trace_id"
@@ -120,6 +122,14 @@ func (j *job) deployConfigsForContext(contextName string) []*deployConfig.Config
 
 func (j *job) deployConfigsForContextMode(contextName string, swarmMode bool) []*deployConfig.Config {
 	return filterConfigsByMode(j.deployConfigsForContext(contextName), j.swarmModeForContext(contextName), swarmMode)
+}
+
+// cleanupConfigsForContextMode returns the deploy configs whose stacks the
+// obsolete-stack cleanup treats as present: the job's own and its pinned ones.
+func (j *job) cleanupConfigsForContextMode(contextName string, swarmMode bool) []*deployConfig.Config {
+	pinned := filterConfigsByMode(filterConfigsByContext(j.pinned, contextName), j.swarmModeForContext(contextName), swarmMode)
+
+	return append(j.deployConfigsForContextMode(contextName, swarmMode), pinned...)
 }
 
 func (j *job) run(ctx context.Context) {
@@ -600,18 +610,21 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	// Use the context-specific CLI and only the deploy configs targeting this context
 	// for cleanup, so we inspect the correct remote daemon for obsolete containers.
 	contextCLI := j.cliForContext(contextName)
-	contextDCs := j.deployConfigsForContextMode(contextName, swarmMode)
+	contextDCs := j.cleanupConfigsForContextMode(contextName, swarmMode)
+
+	// Removing an obsolete stack is a change, not the recovery of a deployed
+	// revision, so sync windows apply to it like to any automatic deployment.
+	removalReq := j.info
+	removalReq.DeployConfigs = nil
+	removalReq.Origin = syncwindow.OriginAutomatic
+	removalGate := j.manager.newSyncWindowGate(removalReq, time.Now())
 
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
 		contextCLI, swarmMode, contextName, j.info.Repository.SourceUrl,
 		contextDCs,
-		j.info.Metadata, j.manager.notifier); err != nil {
+		j.info.Metadata, j.manager.notifier, removalGate.removalPredicate(contextName)); err != nil {
 		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))
 	}
-
-	// Reconciliation deploys should always force recreate so missing containers are restored
-	// even when there are no Git/compose changes.
-	reconcileDCs := cloneDeployConfigsWithForcedRecreate(dcs)
 
 	// Enrich metadata with reconciliation event information for deploy notifications
 	actorKind := "container"
@@ -619,21 +632,77 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 		actorKind = "service"
 	}
 
-	metadata := j.info.Metadata
-	metadata.ReconciliationEvent = action
-	metadata.TraceID = strings.TrimSpace(traceID)
-	metadata.AffectedActorKind = actorKind
-	metadata.AffectedActorID = shortID(event.Actor.ID)
-	metadata.AffectedActorName = strings.TrimSpace(event.Actor.Attributes["name"])
+	// Stacks carried over from a previous job are restored from the request
+	// of the revision that is actually deployed, see reconciliationJobInfo.
+	for _, group := range j.groupByRequest(dcs) {
+		metadata := group.request.Metadata
+		metadata.ReconciliationEvent = action
+		metadata.TraceID = strings.TrimSpace(traceID)
+		metadata.AffectedActorKind = actorKind
+		metadata.AffectedActorID = shortID(event.Actor.ID)
+		metadata.AffectedActorName = strings.TrimSpace(event.Actor.Attributes["name"])
 
-	// handleDeploy accepts the base CLI; it handles per-context routing internally.
-	req := j.info
-	req.Metadata = metadata
-	req.DeployConfigs = reconcileDCs
+		// handleDeploy accepts the base CLI; it handles per-context routing internally.
+		req := group.request
+		req.Metadata = metadata
+		// Reconciliation deploys should always force recreate so missing containers are restored
+		// even when there are no Git/compose changes.
+		req.DeployConfigs = cloneDeployConfigsWithForcedRecreate(group.configs)
+		req.Origin = syncwindow.OriginReconciliation
 
-	if err := j.manager.handleDeploy(ctx, req); err != nil {
-		jobLog.Error("failed to deploy", logger.ErrAttr(err))
+		err := j.manager.handleDeploy(ctx, req)
+		if errors.Is(err, stages.ErrSyncWindowBlocked) {
+			// The gate already logged the deferral.
+			continue
+		}
+
+		if err != nil {
+			jobLog.Error("failed to deploy", logger.ErrAttr(err))
+		}
 	}
+}
+
+// requestGroup is a set of deploy configs deployed with the same request.
+type requestGroup struct {
+	request DeployRequest
+	configs []*deployConfig.Config
+}
+
+// groupByRequest partitions dcs by the request each config was deployed
+// with. The job's own request comes first and is always present, even if
+// dcs is empty.
+func (j *job) groupByRequest(dcs []*deployConfig.Config) []requestGroup {
+	var (
+		own     []*deployConfig.Config
+		order   []*DeployRequest
+		carried = make(map[*DeployRequest][]*deployConfig.Config)
+	)
+
+	for _, dc := range dcs {
+		source, ok := j.carried[dc]
+		if !ok {
+			own = append(own, dc)
+
+			continue
+		}
+
+		if _, seen := carried[source]; !seen {
+			order = append(order, source)
+		}
+
+		carried[source] = append(carried[source], dc)
+	}
+
+	groups := make([]requestGroup, 0, len(order)+1)
+	if len(own) > 0 || len(order) == 0 {
+		groups = append(groups, requestGroup{request: j.info, configs: own})
+	}
+
+	for _, source := range order {
+		groups = append(groups, requestGroup{request: *source, configs: carried[source]})
+	}
+
+	return groups
 }
 
 func withReconciliationTraceID(event events.Message, traceID string) events.Message {

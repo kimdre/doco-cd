@@ -20,6 +20,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 // RunOperations is the control-plane surface consumed by the MCP server.
@@ -42,6 +43,8 @@ type Dependencies struct {
 	DockerCLI            command.Cli             `validate:"required,nostructlevel"`
 	Contexts             *docker.ContextRegistry `validate:"required,nostructlevel"`
 	Runs                 RunOperations           `validate:"required,nostructlevel"`
+	// SyncWindows is the sync-window policy. Nil means no windows.
+	SyncWindows *syncwindow.Policy `validate:"-"`
 }
 
 // Handler serves the stateless MCP HTTP transport and owns all MCP tools.
@@ -53,6 +56,7 @@ type Handler struct {
 	dockerCli            command.Cli
 	contexts             *docker.ContextRegistry
 	controlPlaneRuns     RunOperations
+	syncWindows          *syncwindow.Policy
 	transport            http.Handler
 }
 
@@ -91,6 +95,7 @@ func newHandler(dependencies Dependencies) *Handler {
 		dockerCli:            dependencies.DockerCLI,
 		contexts:             dependencies.Contexts,
 		controlPlaneRuns:     dependencies.Runs,
+		syncWindows:          dependencies.SyncWindows,
 	}
 
 	// Suppress the verbose MCP server connection logs.
@@ -125,6 +130,7 @@ func (h *Handler) registerTools(server *sdkmcp.Server) {
 	h.addHealthTool(server)
 	h.addRunTools(server)
 	h.addScheduledJobReadTool(server)
+	h.addSyncWindowTool(server)
 	h.addProjectReadTools(server)
 	h.addStackReadTools(server)
 	h.addProjectTools(server)

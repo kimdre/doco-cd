@@ -64,6 +64,7 @@ nav = [
     { "Self-Updating" = "Advanced/Self-Updating.md" },
     { "Source URL Rewrites" = "Advanced/Source-URL-Rewrites.md" },
     { "Swarm Mode" = "Advanced/Swarm-Mode.md" },
+    { "Sync Windows" = "Advanced/Sync-Windows.md" },
     { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" },
   ] },
   { Reference = [

@@ -23,6 +23,7 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Supports [OCI artifacts](Advanced/OCI/Artifact-Usage.md) and Git repositories for deployment configurations.
 - Supports various [external secret providers](External-Secrets/index.md) and encryption with [SOPS](Advanced/Encryption.md)
 - Deploy to multiple Docker hosts with [Docker Contexts](Advanced/Docker-Contexts.md).
+- Control when deployments may happen with timezone-aware [sync windows](Advanced/Sync-Windows.md) and cron-scheduled [polling](Poll-Settings.md#cron-schedules).
 - Provides [Notifications](Advanced/Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
 - [Job Scheduling / Cron Jobs](Advanced/Job-Scheduling.md), [Pre/Post-deployment scripts](Advanced/Pre-Post-Deployment-Scripts.md), [REST API](Endpoints/REST-API.md) and [MCP Server](Endpoints/MCP-Server.md) for advanced automation and integrations.
 

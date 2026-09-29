@@ -54,7 +54,7 @@ func TestDeploy_RejectsUnverifiedOCIArtifact(t *testing.T) {
 			SourceUrl:  "ghcr.io/example/repo:latest",
 			OCITrusted: false,
 		},
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected deploy to fail for unverified OCI artifact")
 	}

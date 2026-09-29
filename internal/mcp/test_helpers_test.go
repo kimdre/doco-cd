@@ -212,6 +212,7 @@ func newMCPTestServerWithHandler(
 			DockerCLI:      handler.dockerCli,
 			Contexts:       handler.contexts,
 			Runs:           handler.controlPlaneRuns,
+			SyncWindows:    handler.syncWindows,
 		})
 		mux.Handle("POST "+testMCPPath, mcpHandler)
 		enabledEndpoints = append(enabledEndpoints, testMCPPath)
