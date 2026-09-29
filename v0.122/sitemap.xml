@@ -4,33 +4,6 @@
         <loc>https://doco.cd/latest/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/latest/Getting-Started/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/Setup-Access-Token/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/Setup-SSH-Key/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/Setup-Webhook/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/App-Settings/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/Deploy-Settings/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/Docker-Settings/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/Git-Settings/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/Poll-Settings/</loc>
-      </url>
-      <url>
         <loc>https://doco.cd/latest/Advanced/Container-Registry-Authentication/</loc>
       </url>
       <url>
@@ -41,36 +14,6 @@
       </url>
       <url>
         <loc>https://doco.cd/latest/Advanced/Encryption/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/AWS-Secrets-Manager/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/Azure-Key-Vault/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/Bitwarden-Secrets-Manager/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/Bitwarden-Vault-Vaultwarden/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/1Password/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/1Password-Connect/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/Infisical/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/Openbao/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/latest/External-Secrets/Webhook/</loc>
       </url>
       <url>
         <loc>https://doco.cd/latest/Advanced/Job-Scheduling/</loc>
@@ -112,10 +55,19 @@
         <loc>https://doco.cd/latest/Advanced/Tips-and-Tricks/</loc>
       </url>
       <url>
+        <loc>https://doco.cd/latest/App-Settings/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/Contributing/</loc>
+      </url>
+      <url>
         <loc>https://doco.cd/latest/Core-Concepts/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/latest/Reference/Artifact-Storage/</loc>
+        <loc>https://doco.cd/latest/Deploy-Settings/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/Docker-Settings/</loc>
       </url>
       <url>
         <loc>https://doco.cd/latest/Endpoints/Healthcheck/</loc>
@@ -136,15 +88,66 @@
         <loc>https://doco.cd/latest/Endpoints/Webhook-Listener/</loc>
       </url>
       <url>
+        <loc>https://doco.cd/latest/External-Secrets/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/External-Secrets/1Password-Connect/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/External-Secrets/1Password/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/External-Secrets/AWS-Secrets-Manager/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/External-Secrets/Azure-Key-Vault/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/External-Secrets/Bitwarden-Secrets-Manager/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/External-Secrets/Bitwarden-Vault-Vaultwarden/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/External-Secrets/Infisical/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/External-Secrets/Openbao/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/External-Secrets/Webhook/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/Getting-Started/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/Git-Settings/</loc>
+      </url>
+      <url>
         <loc>https://doco.cd/latest/Known-Limitations/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/latest/Contributing/</loc>
+        <loc>https://doco.cd/latest/License/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/Poll-Settings/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/Reference/Artifact-Storage/</loc>
       </url>
       <url>
         <loc>https://doco.cd/latest/Security/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/latest/License/</loc>
+        <loc>https://doco.cd/latest/Setup-Access-Token/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/Setup-SSH-Key/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/Setup-Webhook/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/latest/wiki/</loc>
       </url>
 </urlset>
