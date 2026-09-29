@@ -85,6 +85,55 @@ func TestGitResourceLoaderLoadsComposeFromLocalGoGitRepository(t *testing.T) {
 	}
 }
 
+func TestGitResourceLoaderSkipsUnrelatedAbsoluteSymlinkAtPinnedCommit(t *testing.T) {
+	repo := createGitIncludeRepository(t)
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("get worktree: %v", err)
+	}
+
+	if err := os.Symlink("/var/www/html/storage/app/public/src", filepath.Join(wt.Filesystem.Root(), "public-src")); err != nil {
+		t.Fatalf("create absolute symlink: %v", err)
+	}
+
+	if _, err := wt.Add("public-src"); err != nil {
+		t.Fatalf("stage absolute symlink: %v", err)
+	}
+
+	pinned, err := wt.Commit("add absolute symlink", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "test@example.invalid", When: time.Now()},
+	})
+	if err != nil {
+		t.Fatalf("commit absolute symlink: %v", err)
+	}
+
+	restoreTransport := installLocalGitTransport(t, repo)
+	defer restoreTransport()
+
+	resource := fmt.Sprintf("git://example.test/repo.git#%s:docker", pinned)
+	l := newGitResourceLoader(gitResourceLoaderConfig{CacheBase: t.TempDir()})
+
+	loaded, err := l.Load(context.Background(), resource)
+	if err != nil {
+		t.Fatalf("load pinned Git include: %v", err)
+	}
+
+	content, err := os.ReadFile(loaded)
+	if err != nil {
+		t.Fatalf("read included Compose file: %v", err)
+	}
+
+	if string(content) != "services:\n  included:\n    image: busybox\n" {
+		t.Fatalf("included Compose file = %q", content)
+	}
+
+	artifactRoot := filepath.Dir(filepath.Dir(loaded))
+	if _, err := os.Lstat(filepath.Join(artifactRoot, "public-src")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("absolute symlink must be absent from include artifact, stat err = %v", err)
+	}
+}
+
 func TestGitResourceLoaderRejectsEscapingSubpaths(t *testing.T) {
 	repoPath := t.TempDir()
 	if _, err := gitIncludePath(repoPath, "../outside"); err == nil {

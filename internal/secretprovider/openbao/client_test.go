@@ -8,6 +8,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -493,5 +496,26 @@ func TestResolveSecretReferences_RejectsGeneratedPrivateKeyCollision(t *testing.
 
 	if !strings.Contains(err.Error(), "CERT_KEY") {
 		t.Fatalf("expected collision error to identify CERT_KEY, got: %v", err)
+	}
+}
+
+func TestResolveSecretReferences_IssueFailureIsNotRetryable(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"errors":["permission denied"]}`, http.StatusForbidden)
+	}))
+	t.Cleanup(server.Close)
+
+	provider, err := NewProvider(t.Context(), server.URL, "token")
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	_, err = provider.ResolveSecretReferences(t.Context(), map[string]string{
+		"CERT": "pki-role:pki:example-dot-com:issued.example.com", // #nosec G101
+	})
+	if !errors.Is(err, secrettypes.ErrNotRetryable) {
+		t.Fatalf("ResolveSecretReferences() error = %v, want ErrNotRetryable", err)
 	}
 }
