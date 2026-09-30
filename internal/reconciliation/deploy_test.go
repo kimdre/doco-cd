@@ -552,11 +552,16 @@ func waitForReconciliationJobReady(t *testing.T, manager *Manager, repository st
 	for {
 		manager.jobs.mu.Lock()
 		job := manager.jobs.jobs[repository]
-		ready := job != nil && job.contextCLIs != nil
 		manager.jobs.mu.Unlock()
 
-		if ready {
-			return
+		// readyChan closes once the job's event listeners are subscribed. Unlike
+		// contextCLIs, it is safe to observe from outside the job goroutine.
+		if job != nil {
+			select {
+			case <-job.readyChan:
+				return
+			default:
+			}
 		}
 
 		if time.Now().After(deadline) {
