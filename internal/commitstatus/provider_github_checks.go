@@ -66,16 +66,21 @@ type githubCheckOutput struct {
 
 // githubCheckRequest represents a request to create or update a GitHub check run.
 type githubCheckRequest struct {
-	Name        string            `json:"name"`
-	HeadSHA     string            `json:"head_sha,omitempty"`
-	ExternalID  string            `json:"external_id"`
-	Status      string            `json:"status"`
-	Conclusion  string            `json:"conclusion,omitempty"`
-	DetailsURL  string            `json:"details_url,omitempty"`
-	StartedAt   *time.Time        `json:"started_at,omitempty"`
-	CompletedAt *time.Time        `json:"completed_at,omitempty"`
-	Output      githubCheckOutput `json:"output"`
+	Name        string             `json:"name"`
+	HeadSHA     string             `json:"head_sha,omitempty"`
+	ExternalID  string             `json:"external_id"`
+	Status      string             `json:"status"`
+	Conclusion  string             `json:"conclusion,omitempty"`
+	DetailsURL  string             `json:"details_url,omitempty"`
+	StartedAt   *time.Time         `json:"started_at,omitempty"`
+	CompletedAt *time.Time         `json:"completed_at,omitempty"`
+	Output      *githubCheckOutput `json:"output,omitempty"`
 }
+
+// resumedCheckTitle replaces a deferred check's sync window output once the
+// deployment is admitted, since GitHub keeps a check's output until it is
+// overwritten.
+const resumedCheckTitle = "Resumed after sync window"
 
 // githubAPIURL returns the GitHub API URL for the given request.
 func (r Request) githubAPIURL() (string, error) {
@@ -184,6 +189,8 @@ func (r Request) postCheck(ctx context.Context, status Status) error {
 	}
 	defer unlock()
 
+	resumedDeferral := false
+
 	if r.Target.CheckRunID == 0 {
 		check, found, err := r.findCheck(ctx, baseURL, func(check githubCheck) bool {
 			return check.ExternalID == r.Target.ExternalID ||
@@ -195,6 +202,7 @@ func (r Request) postCheck(ctx context.Context, status Status) error {
 
 		if found {
 			r.Target.CheckRunID = check.ID
+			resumedDeferral = check.ExternalID == r.deferredExternalID()
 			// A resumed deferral starts when its deployment is admitted, not when it was queued.
 			if check.StartedAt != nil && check.Status != "queued" {
 				r.Target.StartedAt = *check.StartedAt
@@ -209,6 +217,10 @@ func (r Request) postCheck(ctx context.Context, status Status) error {
 	body, err := r.checkRequest(status)
 	if err != nil {
 		return err
+	}
+
+	if resumedDeferral && body.Output == nil {
+		body.Output = &githubCheckOutput{Title: resumedCheckTitle, Summary: resumedCheckTitle}
 	}
 
 	apiURL := fmt.Sprintf("%s/repos/%s/check-runs", baseURL, r.RepoFullName)
@@ -259,15 +271,15 @@ func (r Request) postCheck(ctx context.Context, status Status) error {
 }
 
 // checkRequest creates a GitHub check run request for the given status.
+//
+// GitHub already renders the status, conclusion and duration of a check run
+// next to its output title, so the output is only sent when the description
+// adds to that: a sync window deferral or a failure reason.
 func (r Request) checkRequest(status Status) (githubCheckRequest, error) {
 	body := githubCheckRequest{
 		Name:       r.Context,
 		ExternalID: r.Target.ExternalID,
 		DetailsURL: status.TargetURL,
-		Output: githubCheckOutput{
-			Title:   status.Description,
-			Summary: status.Description,
-		},
 	}
 
 	now := time.Now().UTC()
@@ -310,16 +322,12 @@ func (r Request) checkRequest(status Status) (githubCheckRequest, error) {
 		body.CompletedAt = &now
 	}
 
-	// GitHub requires a check output title and summary.
-	if strings.TrimSpace(body.Output.Title) == "" {
-		title := body.Status
-		if body.Conclusion != "" {
-			title = body.Conclusion
-		}
+	description := strings.TrimSpace(status.Description)
+	informative := status.Outcome == OutcomeDeferred ||
+		body.Conclusion == "failure" || body.Conclusion == string(OutcomeTimedOut)
 
-		title = strings.ReplaceAll(title, "_", " ")
-		body.Output.Title = strings.ToUpper(title[:1]) + title[1:]
-		body.Output.Summary = body.Output.Title
+	if informative && description != "" {
+		body.Output = &githubCheckOutput{Title: description, Summary: description}
 	}
 
 	return body, nil

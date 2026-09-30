@@ -117,8 +117,8 @@ func TestGitHubCheckLifecycle(t *testing.T) {
 	}
 
 	for _, body := range received {
-		if body.Name != req.Context || body.ExternalID != "doco-cd:attempt" ||
-			body.Output.Title == "" || body.Output.Summary != body.Output.Title {
+		// GitHub renders the status and duration itself; repeating them as output duplicates them.
+		if body.Name != req.Context || body.ExternalID != "doco-cd:attempt" || body.Output != nil {
 			t.Fatalf("unexpected check metadata: %+v", body)
 		}
 	}
@@ -155,24 +155,37 @@ func TestGitHubCheckConclusions(t *testing.T) {
 	}
 }
 
-func TestGitHubCheckFallsBackToOutcomeTitle(t *testing.T) {
+func TestGitHubCheckOutputOnlyAddsInformation(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
 		status Status
 		title  string
 	}{
-		{Status{State: StateFailure, Outcome: OutcomeTimedOut}, "Timed out"},
-		{Status{State: StateSuccess, Outcome: OutcomeSkipped, Description: " "}, "Skipped"},
-		{Status{State: StatePending, Outcome: OutcomeQueued}, "Queued"},
-		{Status{State: StatePending}, "In progress"},
+		{Status{State: StatePending, Outcome: OutcomeQueued, Description: "Queued"}, ""},
+		{Status{State: StatePending, Description: "In Progress"}, ""},
+		{Status{State: StateSuccess, Description: "Successful in 3s"}, ""},
+		{Status{State: StateSuccess, Outcome: OutcomeSkipped, Description: "Skipped"}, ""},
+		{Status{State: StateFailure, Outcome: OutcomeTimedOut}, ""},
+		{Status{State: StateFailure, Description: " "}, ""},
+		{Status{State: StatePending, Outcome: OutcomeDeferred, Description: "Deferred by sync window"}, "Deferred by sync window"},
+		{Status{State: StateFailure, Outcome: OutcomeTimedOut, Description: "readiness timed out"}, "readiness timed out"},
+		{Status{State: StateError, Description: " compose up failed "}, "compose up failed"},
 	} {
 		body, err := checkTestRequest("").checkRequest(tt.status)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if body.Output.Title != tt.title || body.Output.Summary != tt.title {
+		if tt.title == "" {
+			if body.Output != nil {
+				t.Fatalf("checkRequest(%+v) output = %+v, want none", tt.status, body.Output)
+			}
+
+			continue
+		}
+
+		if body.Output == nil || body.Output.Title != tt.title || body.Output.Summary != tt.title {
 			t.Fatalf("checkRequest(%+v) output = %+v, want %q", tt.status, body.Output, tt.title)
 		}
 	}
@@ -300,6 +313,11 @@ func TestGitHubCheckResumesDeferredAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// GitHub keeps output until it is overwritten, so the deferral reason must not outlive it.
+	if lastBody.Output == nil || lastBody.Output.Title != resumedCheckTitle {
+		t.Fatalf("resumed check kept its deferral output: %+v", lastBody.Output)
+	}
+
 	if creates != 1 || updates != 1 || resumed.Target.CheckRunID != 456 ||
 		saved.ExternalID != "doco-cd:later-attempt" || !resumed.Target.StartedAt.IsZero() {
 		t.Fatalf("deferred target not claimed: creates=%d updates=%d target=%+v saved=%+v",
@@ -308,6 +326,10 @@ func TestGitHubCheckResumesDeferredAttempt(t *testing.T) {
 
 	if err := resumed.Post(t.Context(), Status{State: StatePending, Description: "Deploying"}); err != nil {
 		t.Fatal(err)
+	}
+
+	if lastBody.Output != nil {
+		t.Fatalf("resumed check repeated its output: %+v", lastBody.Output)
 	}
 
 	if lastBody.StartedAt == nil || !lastBody.StartedAt.After(queuedAt) {

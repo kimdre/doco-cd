@@ -228,6 +228,8 @@ This name is also used for failures before deployment configuration can be resol
 
     Native `timed_out` is reserved for an actual deployment deadline or readiness timeout, not errors whose text merely mentions a timeout. A deployment deferred by a [sync window](Advanced/Sync-Windows.md) resumes its original check run on retry.
 
+    GitHub renders a check run's state and duration itself, measured from `in_progress` to completion. Doco-CD therefore only adds a check output title when it carries more information: the sync window deferral (replaced by _Resumed after sync window_ once the deployment is admitted) or the failure reason.
+
     !!! note "Skipped checks and branch protection"
         GitHub displays the native `skipped` conclusion separately, but treats it as passing for a required check. The overall **Checks passed** banner can therefore remain.
 
