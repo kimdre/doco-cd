@@ -326,6 +326,94 @@ func TestGetAuthMethod_UsesScopedGitHubAppToken(t *testing.T) {
 	}
 }
 
+func TestGetAuthMethod_GistSkipsGitHubApp(t *testing.T) {
+	ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{
+		ID:         "12345",
+		PrivateKey: "test-private-key",
+	})
+
+	oldProvider := SwapGitHubAppTokenProviderForTest(func(repoURL string, _ GitHubAppConfig) (string, error) {
+		t.Errorf("github app token provider should not be called for gist URL %s", repoURL)
+		return "", errors.New("failed to parse owner/repo from URL")
+	})
+
+	t.Cleanup(func() {
+		oldProvider()
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
+	})
+
+	auth, err := GetAuthMethod("https://gist.github.com/4009787fb1e156c5d0aec4ebfa8d3514.git", "", "", "")
+	if err != nil {
+		t.Fatalf("expected anonymous gist access, got error %v", err)
+	}
+
+	if auth != nil {
+		t.Fatalf("expected no auth method for gist, got %s", auth.Name())
+	}
+}
+
+func TestGetAuthMethod_GistUsesScopedTokenInsteadOfGitHubApp(t *testing.T) {
+	ConfigureAuthResolver([]ScopedAuthConfig{
+		{
+			Domains:        []string{"gist.github.com"},
+			GitAccessToken: "gist-token",
+		},
+	}, "", "", "", "", GitHubAppConfig{ID: "12345", PrivateKey: "test-private-key"})
+
+	oldProvider := SwapGitHubAppTokenProviderForTest(func(repoURL string, _ GitHubAppConfig) (string, error) {
+		t.Errorf("github app token provider should not be called for gist URL %s", repoURL)
+		return "", nil
+	})
+
+	t.Cleanup(func() {
+		oldProvider()
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
+	})
+
+	auth, err := GetAuthMethod("https://gist.github.com/4009787fb1e156c5d0aec4ebfa8d3514.git", "", "", "")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	basicAuth, ok := auth.(*githttp.BasicAuth)
+	if !ok || basicAuth.Password != "gist-token" {
+		t.Fatalf("expected scoped gist token auth, got %#v", auth)
+	}
+}
+
+func TestResolveAuthConfig_DropsGitHubAppOnlyForGists(t *testing.T) {
+	app := GitHubAppConfig{ID: "12345", PrivateKey: "test-private-key"}
+
+	ConfigureAuthResolver([]ScopedAuthConfig{
+		{
+			Domains:             []string{"*.github.com"},
+			GitHubAppID:         app.ID,
+			GitHubAppPrivateKey: app.PrivateKey,
+		},
+	}, "", "", "", "", app)
+	t.Cleanup(func() { ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{}) })
+
+	testCases := []struct {
+		url     string
+		wantApp bool
+	}{
+		{url: "https://gist.github.com/4009787fb1e156c5d0aec4ebfa8d3514.git", wantApp: false},
+		{url: "https://gist.github.com/kimdre/4009787fb1e156c5d0aec4ebfa8d3514", wantApp: false},
+		{url: "https://gist.ghes.example.com/4009787fb1e156c5d0aec4ebfa8d3514.git", wantApp: false},
+		{url: "https://ghes.example.com/gist/4009787fb1e156c5d0aec4ebfa8d3514.git", wantApp: false},
+		{url: "https://github.com/org/repo.git", wantApp: true},
+		{url: "https://github.com/gist-owner/repo.git", wantApp: true},
+		{url: "https://ghes.example.com/org/gist.git", wantApp: true},
+	}
+
+	for _, tc := range testCases {
+		got := ResolveAuthConfig(tc.url, "", "", "").GitHubApp
+		if hasApp := got.ID != "" && got.PrivateKey != ""; hasApp != tc.wantApp {
+			t.Errorf("ResolveAuthConfig(%q) GitHub App = %+v, want configured: %v", tc.url, got, tc.wantApp)
+		}
+	}
+}
+
 func TestHttpTokenAuth(t *testing.T) {
 	testCases := []struct {
 		name         string
