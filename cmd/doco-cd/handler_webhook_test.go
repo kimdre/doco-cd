@@ -768,10 +768,12 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			h.testName = test.ConvertTestName(t.Name())
+			// Copy the shared handler so parallel subtests do not race on testName.
+			handler := h
+			handler.testName = test.ConvertTestName(t.Name())
 
 			rr := httptest.NewRecorder()
-			h.WebhookHandler(rr, req)
+			handler.WebhookHandler(rr, req)
 
 			if rr.Code == 0 {
 				t.Fatalf("expected recorder to have a status code")
