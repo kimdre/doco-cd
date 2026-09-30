@@ -48,8 +48,9 @@ type ExportOptions struct {
 
 	// Credentials and network options, applied both to the top-level
 	// repository (already fetched by the caller) and to any submodule
-	// mirrors this export fetches.
-	Private                 bool
+	// mirrors this export fetches. Credentials are resolved per submodule
+	// URL, so a submodule on another host (or a gist) may fall back to
+	// anonymous access.
 	SSHPrivateKey           string
 	SSHPrivateKeyPassphrase string
 	AccessToken             string
@@ -440,9 +441,15 @@ func exportSubmodule(ctx exportCtx, target string, entry object.TreeEntry, cfg *
 	// its object database below (subRepo.CommitObject(...).Tree()) and
 	// exported the same way the top-level repository is, never from a
 	// checked-out working tree.
+	//
+	// The parent's visibility says nothing about the submodule's, so no
+	// credentials are required up front: a public submodule (e.g. a gist,
+	// which GitHub App tokens cannot access) must still be fetchable
+	// anonymously from a private parent, and a private one without
+	// credentials is rejected by its remote instead.
 	subRepo, err := CloneOrUpdateBareMirror(ctx.opts.Log,
 		resolvedURL, entry.Hash.String(), mirrorDir,
-		ctx.opts.Private, ctx.opts.SSHPrivateKey, ctx.opts.SSHPrivateKeyPassphrase, ctx.opts.AccessToken,
+		false, ctx.opts.SSHPrivateKey, ctx.opts.SSHPrivateKeyPassphrase, ctx.opts.AccessToken,
 		ctx.opts.SkipTLSVerify, ctx.opts.ProxyOptions, ctx.opts.Depth)
 	if err != nil {
 		return fmt.Errorf("fetch submodule %s: %w", resolvedURL, err)
