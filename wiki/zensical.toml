@@ -23,6 +23,7 @@ nav = [
   { Home = "index.md" },
   { "Getting Started" = [
     { "Getting Started" = "Getting-Started.md" },
+    { "Migrating from Docker Compose" = "Migrating-from-Docker-Compose.md" },
     { "Setup Access Token" = "Setup-Access-Token.md" },
     { "Setup SSH Key" = "Setup-SSH-Key.md" },
     { "Setup Webhook" = "Setup-Webhook.md" },
