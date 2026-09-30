@@ -53,6 +53,7 @@ func (p *Preparer) postEarlyFailureCommitStatus(
 
 	if err := commitStatusReq.Post(ctx, commitstatus.Status{
 		State:       commitstatus.StateError,
+		Outcome:     commitstatus.FailureOutcome(cause),
 		Description: description,
 	}); err != nil {
 		if lifecycle.IsCanceled(err) {

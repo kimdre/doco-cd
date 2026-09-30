@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -11,10 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
+
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
+	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
@@ -153,6 +158,170 @@ func TestSelfUpdateReporterPostsFinalCommitStatus(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
+	gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{
+		ID: "12345", PrivateKey: "test-private-key",
+	})
+
+	restoreProvider := gitInternal.SwapGitHubAppTokenProviderForTest(func(_ string, cfg gitInternal.GitHubAppConfig) (string, error) {
+		if cfg.ID != "12345" {
+			t.Errorf("finishing App ID = %q, want 12345", cfg.ID)
+		}
+
+		return "ghs-finishing-token", nil
+	})
+
+	t.Cleanup(func() {
+		restoreProvider()
+		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
+	})
+
+	for _, tc := range []struct {
+		name          string
+		legacy        bool
+		failure       bool
+		timedOut      bool
+		reason        string
+		statusEnabled bool
+		conclusion    string
+		externalOnly  bool
+	}{
+		{name: "old journal with App credentials", legacy: true, statusEnabled: true},
+		{name: "old journal after reporting disabled", legacy: true, failure: true},
+		{name: "recorded check success", statusEnabled: true, conclusion: "success"},
+		{name: "recorded check after reporting disabled", conclusion: "success"},
+		{name: "recorded external identity after reporting disabled", externalOnly: true, conclusion: "success"},
+		{name: "ordinary unhealthy", failure: true, reason: "new reported unhealthy", statusEnabled: true, conclusion: "failure"},
+		{name: "deadline text is not typed timeout", failure: true, reason: "context deadline exceeded", statusEnabled: true, conclusion: "failure"},
+		{name: "structured timeout without deadline text", failure: true, timedOut: true, reason: "health gate expired", statusEnabled: true, conclusion: "timed_out"},
+		{name: "timeout after reporting disabled", failure: true, timedOut: true, conclusion: "timed_out"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			type postedReport struct {
+				postedCommitStatus
+				Method      string    `json:"-"`
+				Name        string    `json:"name"`
+				ExternalID  string    `json:"external_id"`
+				Status      string    `json:"status"`
+				Conclusion  string    `json:"conclusion"`
+				StartedAt   time.Time `json:"started_at"`
+				CompletedAt time.Time `json:"completed_at"`
+			}
+
+			var (
+				mu     sync.Mutex
+				posted []postedReport
+			)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get("Authorization"); got != "Bearer ghs-finishing-token" {
+					t.Errorf("Authorization = %q; want credentials resolved by the finishing process", got)
+				}
+
+				if r.Method == http.MethodGet {
+					if !tc.externalOnly || r.URL.Path != "/api/v3/repos/owner/infra/commits/"+selfUpdateTestCommitSHA+"/check-runs" {
+						t.Errorf("unexpected check lookup: %s", r.URL.Path)
+					}
+
+					err := json.NewEncoder(w).Encode(map[string]any{
+						"total_count": 2,
+						"check_runs": []map[string]any{
+							{"id": 71, "name": "doco-cd/nas/doco-cd", "external_id": "doco-cd:original-attempt", "app": map[string]int{"id": 12345}},
+							{"id": 99, "name": "doco-cd/nas/doco-cd", "external_id": "doco-cd:newer-attempt", "app": map[string]int{"id": 12345}},
+						},
+					})
+					if err != nil {
+						t.Errorf("encode check lookup: %v", err)
+					}
+
+					return
+				}
+
+				var report postedReport
+				if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
+					t.Errorf("decode report: %v", err)
+				}
+
+				report.Path, report.Method = r.URL.Path, r.Method
+
+				mu.Lock()
+
+				posted = append(posted, report)
+				mu.Unlock()
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			record := handedOverRecord(server.URL, selfupdate.StateFinalising)
+			record.Source.CommitStatus.SourceURL = "https://github.com/owner/infra.git"
+
+			record.Error, record.TimedOut = tc.reason, tc.timedOut
+			if !tc.legacy {
+				record.Source.CommitStatus.Target = &commitstatus.Target{
+					Backend: commitstatus.BackendChecks, CheckRunID: 71,
+					ExternalID: "doco-cd:original-attempt", AppID: "12345",
+					StartedAt: record.Source.CommitStatus.StartedAt,
+				}
+				if tc.externalOnly {
+					record.Source.CommitStatus.Target.CheckRunID = 0
+				}
+			}
+
+			cfg := &app.Config{
+				GitCommitStatus: tc.statusEnabled,
+				GitAccessToken:  "fallback-must-not-be-used",
+				GitScmProvider:  string(commitstatus.ProviderGitHub),
+				GitScmApiUrl:    config.HttpUrl(server.URL),
+			}
+			reporter := newSelfUpdateReporter(cfg, nil)
+
+			log := logger.New(slog.LevelError)
+			if tc.failure {
+				reporter.reportFailure(t.Context(), log, record)
+			} else {
+				reporter.reportSuccess(t.Context(), log, record)
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			if len(posted) != 1 {
+				t.Fatalf("posted reports = %+v; want exactly one final report", posted)
+			}
+
+			got := posted[0]
+
+			if tc.legacy {
+				wantState := commitstatus.StateSuccess
+				if tc.failure {
+					wantState = commitstatus.StateFailure
+				}
+
+				if got.Method != http.MethodPost || got.Path != "/api/v3/repos/owner/infra/statuses/"+selfUpdateTestCommitSHA ||
+					got.State != string(wantState) || got.Context != record.Source.CommitStatus.Context {
+					t.Errorf("legacy completion = %+v; want the original status, not a check", got)
+				}
+
+				return
+			}
+
+			target := record.Source.CommitStatus.Target
+			if got.Method != http.MethodPatch || got.Path != "/api/v3/repos/owner/infra/check-runs/71" ||
+				got.ExternalID != target.ExternalID || got.Name != record.Source.CommitStatus.Context ||
+				got.Status != "completed" || got.Conclusion != tc.conclusion ||
+				!got.StartedAt.Equal(target.StartedAt) || got.CompletedAt.IsZero() {
+				t.Errorf("check completion = %+v; want PATCH of the original check with conclusion %s", got, tc.conclusion)
+			}
+		})
+	}
+}
+
+func TestSelfUpdateReporterPostsFailedCommitStatus(t *testing.T) {
+	t.Parallel()
+
+	log := logger.New(slog.LevelError)
 
 	for _, tt := range []struct {
 		name          string
@@ -306,5 +475,67 @@ func TestRolledBackPredecessorPostsFailureCommitStatus(t *testing.T) {
 	got := recorder.requireSingle(t, commitstatus.StateFailure)
 	if got.Description != "new version unhealthy" {
 		t.Errorf("description = %q, want the rollback reason", got.Description)
+	}
+}
+
+type reportingHealthClient struct {
+	finalizerDockerClient
+	status container.HealthStatus
+}
+
+func (c *reportingHealthClient) ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+	return client.ContainerInspectResult{Container: container.InspectResponse{
+		State: &container.State{Running: true, Health: &container.Health{Status: c.status}},
+	}}, nil
+}
+
+func TestPredecessorHealthFailureRecordsTimeout(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		status   container.HealthStatus
+		timedOut bool
+	}{
+		{name: "ordinary unhealthy", status: container.Unhealthy},
+		{name: "health deadline", status: container.Starting, timedOut: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := selfupdate.NewStore(t.TempDir())
+
+			var record selfupdate.Record
+
+			recorder := newCommitStatusRecorder(t, func() {
+				persisted, err := store.Load(record.ID)
+				if err != nil {
+					t.Errorf("load failure journal before final reporting: %v", err)
+					return
+				}
+
+				if persisted.State != selfupdate.StateAborted || persisted.TimedOut != tc.timedOut {
+					t.Errorf("failure journal = %+v; want aborted with timedOut=%t", persisted, tc.timedOut)
+				}
+			})
+			record = handedOverRecord(recorder.URL, selfupdate.StateStarted)
+
+			record.Deploy.TimeoutSeconds = 1
+			if err := store.Create(&record); err != nil {
+				t.Fatal(err)
+			}
+
+			err := finalizeAsPredecessor(t.Context(), logger.New(slog.LevelError), &reportingHealthClient{status: tc.status},
+				newSelfUpdateReporter(recorder.appConfig(), nil), store, record)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			recorder.requireSingle(t, commitstatus.StateFailure)
+
+			if _, err = store.Load(record.ID); !errors.Is(err, selfupdate.ErrNoRecord) {
+				t.Errorf("journal still active after health failure reporting: %v", err)
+			}
+		})
 	}
 }

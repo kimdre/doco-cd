@@ -1,8 +1,10 @@
 package source
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,6 +28,50 @@ import (
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+func TestEarlySourceFailureReportsNativeTimeout(t *testing.T) {
+	git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{ID: "42", PrivateKey: "test-key"})
+
+	restore := git.SwapGitHubAppTokenProviderForTest(func(string, git.GitHubAppConfig) (string, error) {
+		return "installation-token", nil
+	})
+
+	t.Cleanup(func() {
+		restore()
+		git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{})
+	})
+
+	var conclusion string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"total_count":0,"check_runs":[]}`))
+			return
+		}
+
+		var body struct {
+			Conclusion string `json:"conclusion"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode check: %v", err)
+		}
+
+		conclusion = body.Conclusion
+		_, _ = w.Write([]byte(`{"id":123}`))
+	}))
+	defer server.Close()
+
+	preparer := &Preparer{appConfig: &app.Config{
+		GitCommitStatus: true, GitScmProvider: "github", GitScmApiUrl: config.HttpUrl(server.URL),
+	}}
+	preparer.postEarlyFailureCommitStatus(t.Context(), Request{
+		Logger: slog.Default(), SourceRef: "https://github.com/owner/repo",
+	}, config.SourceTypeGit, "deadbeef", webhook.ParsedPayload{}, context.DeadlineExceeded)
+
+	if conclusion != "timed_out" {
+		t.Fatalf("expected source timeout check, got %q", conclusion)
+	}
+}
 
 func newTestPreparer(t *testing.T, appConfig *app.Config) *Preparer {
 	t.Helper()

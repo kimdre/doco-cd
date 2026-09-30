@@ -11,6 +11,7 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -228,6 +229,8 @@ func recordApplierDrain(
 ) (selfupdate.Record, error) {
 	if err := docker.ReleaseSelfApplierRestartLimit(ctx, apiClient, record.Applier.ID); err != nil {
 		record.Error = fmt.Sprintf("predecessor could not lift the applier restart limit: %v", err)
+
+		record.TimedOut = lifecycle.IsTimeout(err)
 		if saveErr := store.Save(record); saveErr != nil {
 			return record, errors.Join(err, fmt.Errorf("save the drain failure: %w", saveErr))
 		}
@@ -346,6 +349,7 @@ func abortHandover(ctx context.Context, log *logger.Logger, deps selfUpdateCoord
 	}
 
 	record.Error = "the successor stopped before it could take over"
+	record.TimedOut = false
 
 	if err := deps.store.Save(record); err != nil {
 		log.Warn("self-update: failed to save the abort reason", logger.ErrAttr(err))

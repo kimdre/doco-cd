@@ -12,6 +12,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -320,6 +321,8 @@ func finalizeAsPredecessor(
 			}
 
 			record.Error = fmt.Sprintf("successor did not recover after predecessor restarted: %v", err)
+
+			record.TimedOut = lifecycle.IsTimeout(err)
 			if saveErr := store.Save(record); saveErr != nil {
 				return saveErr
 			}
@@ -413,6 +416,7 @@ func failStoppedSelfApplier(
 	const reason = "self-update applier stopped without completing the handover"
 	if current.Error == "" {
 		current.Error = reason
+		current.TimedOut = false
 	} else {
 		current.Error = current.Error + "; " + reason
 	}

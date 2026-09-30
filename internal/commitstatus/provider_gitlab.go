@@ -2,7 +2,9 @@ package commitstatus
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -12,16 +14,6 @@ func postGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token str
 	encodedPath := strings.ReplaceAll(repoFullName, "/", "%2F")
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", baseURL, encodedPath, commitSHA)
 
-	// Map our states to GitLab pipeline states.
-	gitlabState := string(status.State)
-
-	switch status.State {
-	case StateFailure, StateError:
-		gitlabState = "failed"
-	case StatePending:
-		gitlabState = "running"
-	}
-
 	type gitlabRequest struct {
 		State       string `json:"state"`
 		Name        string `json:"name"`
@@ -30,13 +22,59 @@ func postGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token str
 	}
 
 	body := gitlabRequest{
-		State:       gitlabState,
+		State:       commitStatusToGitLabState(status),
 		Name:        status.Context,
 		Description: status.Description,
 		TargetURL:   status.TargetURL,
 	}
 
-	return doPost(ctx, apiURL, bearerAuthToken(token), body)
+	err := doPost(ctx, apiURL, bearerAuthToken(token), body)
+	if err == nil || !isGitLabInvalidTransition(err) {
+		return err
+	}
+
+	switch body.State {
+	case "pending", "running":
+		// GitLab cannot re-enter an active state, so the status is already pending or running.
+		return nil
+	case "skipped":
+		// GitLab cannot skip a running status, so finish it with the legacy result instead.
+		body.State = "success"
+
+		return doPost(ctx, apiURL, bearerAuthToken(token), body)
+	default:
+		return err
+	}
+}
+
+// commitStatusToGitLabState maps a status to GitLab's native commit status states.
+// GitLab has no timed-out state, so timeouts are reported as failed.
+func commitStatusToGitLabState(status Status) string {
+	switch status.State {
+	case StateFailure, StateError:
+		return "failed"
+	case StatePending:
+		if status.Outcome == OutcomeQueued || status.Outcome == OutcomeDeferred {
+			return "pending"
+		}
+
+		return "running"
+	case StateSuccess:
+		if status.Outcome == OutcomeSkipped {
+			return "skipped"
+		}
+	}
+
+	return string(status.State)
+}
+
+// isGitLabInvalidTransition reports whether GitLab rejected a status because
+// the existing status for the context cannot move to the requested state.
+func isGitLabInvalidTransition(err error) bool {
+	var postErr *commitStatusPostRetryError
+
+	return errors.As(err, &postErr) && postErr.statusCode == http.StatusBadRequest &&
+		strings.Contains(postErr.details, "Cannot transition status")
 }
 
 func getGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
@@ -60,8 +98,11 @@ func getGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token, con
 			continue
 		}
 
+		state, outcome := gitLabStateToCommitStatus(status.Status)
+
 		return Status{
-			State:       gitLabStateToCommitStatus(status.Status),
+			State:       state,
+			Outcome:     outcome,
 			Description: status.Description,
 			Context:     status.Name,
 			TargetURL:   status.TargetURL,
@@ -71,15 +112,19 @@ func getGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token, con
 	return Status{}, false, nil
 }
 
-func gitLabStateToCommitStatus(state string) State {
+func gitLabStateToCommitStatus(state string) (State, Outcome) {
 	switch strings.ToLower(strings.TrimSpace(state)) {
-	case "running", "pending":
-		return StatePending
+	case "pending":
+		return StatePending, OutcomeQueued
+	case "running":
+		return StatePending, OutcomeInProgress
 	case "success":
-		return StateSuccess
+		return StateSuccess, ""
+	case "skipped":
+		return StateSuccess, OutcomeSkipped
 	case "failed", "failure":
-		return StateFailure
+		return StateFailure, ""
 	default:
-		return StateError
+		return StateError, ""
 	}
 }

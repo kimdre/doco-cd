@@ -100,9 +100,9 @@ The default `auto` uses `scale_out` unless the compose file rules it out.
    The running instance keeps serving throughout.
 3. The running instance waits for the new container to report healthy, bounded by the deploy config's `timeout`.
 4. On success it finishes its in-flight work, records the handover on the data volume and waits to be stopped. 
-   The new instance removes it, then sends the deployment notification and the commit status.
+   The new instance removes it, then sends the deployment notification and completes the check run or commit status.
 5. On failure the new container is removed. Nothing else changed, and the running instance reports the failure
-   and sets the commit status to failed.
+   and completes the check run or commit status with the failure outcome.
 
 `scale_out` is impossible when the service sets `container_name`, publishes host ports, 
 uses `#!yaml network_mode: host`, or when a project network must be recreated. 
@@ -116,7 +116,7 @@ doco-cd clones its own container into a throwaway container running `doco-cd app
 The clone recreates the doco-cd service from outside, waits for health, and exits. 
 If the new version never becomes healthy, the clone restores the previous container 
 from a snapshot taken before the attempt. Whichever instance runs afterwards, the replacement or the restored one,
-sends the deployment notification and the final commit status.
+sends the deployment notification and completes the check run or commit status.
 
 Expect a brief interruption while the replacement starts and becomes healthy. 
 Webhook requests during the interruption may receive an 503 error. 
@@ -126,6 +126,10 @@ The next poll catches up with missed changes.
 
 Every handover is journaled on the data volume, so a crash at any point is resolved on the next boot: 
 whichever instance comes up finishes the handover or reverses it.
+
+The journal preserves the exact [reporting backend](../Git-Settings.md#commit-status-reporting) and, for native GitHub Checks, the original check-run target, without storing credentials.
+The finishing instance resolves its credentials and completes that original report even if its configuration sets `#!ini GIT_COMMIT_STATUS=false`.
+It must retain credentials and permissions for that backend. Older journals without a check-run target always finish legacy commit statuses, even when the finishing instance now uses GitHub App authentication; keep the App's **Commit statuses: Read and write** permission until those handovers finish.
 
 A self-update that fails is recorded against that commit and **not retried** until a new commit arrives, 
 so a broken version cannot loop. The reason appears in the logs and in the failure notification.

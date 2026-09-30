@@ -3,14 +3,58 @@ package stages
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
+
+func TestHandleStageFailurePostsNativeTimeoutConclusion(t *testing.T) {
+	t.Parallel()
+
+	var conclusion string
+
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("expected update of existing check, got %s", r.Method)
+		}
+
+		var body struct {
+			Conclusion string `json:"conclusion"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode check: %v", err)
+		}
+
+		conclusion = body.Conclusion
+	}))
+	defer server.Close()
+
+	sm := newFailureTestManager(t, "app-native-timeout")
+	sm.AppConfig = &app.Config{
+		GitCommitStatus: true, GitScmProvider: "github", GitScmApiUrl: config.HttpUrl(server.URL), GitAccessToken: "test-token",
+	}
+	sm.Repository.SourceUrl = "https://github.com/owner/repo"
+	sm.Repository.Revision = "deadbeef"
+	sm.commitStatusTarget = &commitstatus.Target{Backend: commitstatus.BackendChecks, CheckRunID: 123, ExternalID: "attempt"}
+
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	err := sm.handleStageFailure(ctx, StageDeploy, sm.Log, context.DeadlineExceeded)
+	if !errors.Is(err, context.DeadlineExceeded) || conclusion != "timed_out" {
+		t.Fatalf("timeout result=%q err=%v", conclusion, err)
+	}
+}
 
 func TestHandleStageFailureSuppressesLifecycleCancellationReporting(t *testing.T) {
 	t.Parallel()

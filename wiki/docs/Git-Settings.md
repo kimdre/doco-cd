@@ -5,7 +5,7 @@ tags:
 
 # Git Settings
 
-Settings to configure Git authentication and clone behavior.
+Settings to configure Git authentication, clone behavior, and deployment reporting.
 
 ## General
 
@@ -192,48 +192,140 @@ Doco-CD will auto-detect the installation by repository _owner/name_ and mint sh
 
 ## Commit Status Reporting
 
-Doco-CD can post a commit status back to the source Git provider after each deployment, making the result visible directly on the commit or pull request in the Git web UI.
+Doco-CD can report deployment outcomes to the source Git provider, making the result visible directly on the commit or pull request in the Git web UI. 
+Reporting is disabled by default. Enable it with `#!ini GIT_COMMIT_STATUS=true`.
 
-This closes the GitOps feedback loop: instead of only seeing success or failure in container logs or Apprise notifications, the commit itself is marked with the deployment outcome.
+This closes the GitOps feedback loop: instead of only seeing success or failure in container logs or Apprise notifications, 
+the commit itself is marked with the deployment outcome.
 
-Once a webhook's deployment configuration is resolved, Doco-CD reports each deployment under its own context, such as `doco-cd/<target>/<project>`:
+Once pre-deployment checks confirm work is needed, Doco-CD reports each deployment under its existing name, 
+`doco-cd/<stack>` or `doco-cd/<target>/<stack>` when a target is configured. 
+Queued reporting is published before waiting for a mutation admission slot.
 
-- **pending / Queued**: the deployment is waiting to run.
-- **pending / In Progress**: the deployment has started.
-- **success**: set when all deployment stages complete successfully.
-- **failure**: set when any stage fails after initialization.
+Deployments excluded by a webhook reference filter or requiring no changes do not receive deployment-specific checks or statuses. 
+When the entire webhook run is skipped, Doco-CD reports only a generic `doco-cd/deploy` result. 
+This name is also used for failures before deployment configuration can be resolved.
 
-When doco-cd [updates itself](Advanced/Self-Updating.md), the instance that finishes the handover posts the final **success** or **failure** status.
-If the update disables `GIT_COMMIT_STATUS`, it still completes any status the previous instance left pending; the setting only prevents new statuses from being started.
-The finishing instance must still have credentials to post the final status.
+=== "GitHub"
 
-Deployments excluded by a webhook reference filter or requiring no changes do not receive deployment-specific statuses. When the entire webhook run is skipped, Doco-CD posts one **success / Skipped** status under the generic `doco-cd/deploy` context. This context is also used for failures that happen before deployment configuration can be resolved.
+    The resolved authentication method selects the reporting backend:
 
-| Key                 | Type    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                           | Default |
-|---------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| `GIT_COMMIT_STATUS` | boolean | Enable commit status reporting. When `true`, doco-cd posts a status to the source provider for every deployment. Requires [`GIT_ACCESS_TOKEN`](#authentication) (or [domain-scoped token](#domain-scoped-authentication) via `GIT_AUTH_DOMAINS`), or a configured [GitHub App](#github-apps) with the **Commit statuses: Read and write** permission. Doco-cd reuses the same installation token minted for git operations, no separate token needed. | `false` |
-| `GIT_SCM_PROVIDER`  | string  | Override automatic SCM provider detection. Accepted values: `auto`, `github`, `gitlab`, `gitea`, `forgejo`, `azuredevops`. Set to `auto` to detect the provider from the repository URL. Required when your self-hosted instance hostname does not reveal the product (e.g. `git.mycompany.com` running GitLab must set `gitlab`).                                                                                                                    | `auto`  |
-| `GIT_SCM_API_URL`   | string  | Optional override for the SCM API base URL used by commit status requests (must be `http://` or `https://`). Use this for self-hosted instances when the API endpoint cannot be inferred from the clone URL (for example when SSH and HTTPS use different hosts/ports: `https://gitea.example.com:8443`).                                                                                                                                             |         |
+    - **GitHub App installation authentication** uses native check runs.
+    - **Token-only authentication** (classic or fine-grained PAT, or OAuth token) keeps using commit statuses, not native Checks.
+
+    Each attempt uses only one backend; configuring an App elsewhere does not change reporting for a repository whose resolved credentials are token-only.
+
+    | Deployment state                           | GitHub App check run                        | GitHub commit status (token-only)     |
+    |--------------------------------------------|---------------------------------------------|---------------------------------------|
+    | Waiting for deployment admission           | `queued`                                    | **pending / Queued**                  |
+    | Deferred by a [sync window]                  | `queued`                                    | **pending / Deferred by sync window** |
+    | Admitted and deploying                     | `in_progress`                               | **pending / In Progress**             |
+    | All deployment stages succeeded            | `completed` / `success`                     | **success**                           |
+    | Deployment failed                          | `completed` / `failure`                     | **error / failure**                   |
+    | Deployment deadline or readiness timed out | `completed` / `timed_out`                   | **error / failure**                   |
+    | Entire webhook run skipped                 | `completed` / `skipped` on `doco-cd/deploy` | **success / Skipped**                 |
+
+    Native `timed_out` is reserved for an actual deployment deadline or readiness timeout, not errors whose text merely mentions a timeout. A deployment deferred by a [sync window](Advanced/Sync-Windows.md) resumes its original check run on retry.
+
+    !!! note "Skipped checks and branch protection"
+        GitHub displays the native `skipped` conclusion separately, but treats it as passing for a required check. The overall **Checks passed** banner can therefore remain.
+
+        Check runs and commit statuses with the same name can have different source-bound branch protection requirements. Review and, if necessary, update required checks manually when switching backends; doco-cd does not change branch protection settings.
+
+=== "GitLab"
+
+    | Deployment state                           | Commit status | Description              |
+    |--------------------------------------------|---------------|--------------------------|
+    | Waiting for deployment admission           | `pending`     | Queued                   |
+    | Deferred by a [sync window]                | `pending`     | Deferred by sync window  |
+    | Admitted and deploying                     | `running`     | In Progress              |
+    | All deployment stages succeeded            | `success`     | Successful in _duration_ |
+    | Deployment failed                          | `failed`      | _Failure reason_         |
+    | Deployment deadline or readiness timed out | `failed`      | _Failure reason_         |
+    | Entire webhook run skipped                 | `skipped`     | Skipped                  |
+
+    GitLab has no timed-out state, so timeouts are reported as `failed`. GitLab cannot move a status that is already pending or running back into the same state, so a later queued or deferred update keeps the existing description.
+
+    !!! note "Skipped pipelines and merge checks"
+        If doco-cd's status is the only job in a commit's pipeline, a skipped webhook run makes that pipeline _skipped_. With **Pipelines must succeed** enabled, also enable **Skipped pipelines are considered successful** to merge such commits.
+
+=== "Gitea / Forgejo"
+
+    | Deployment state                           | Commit status                                            | Description              |
+    |--------------------------------------------|----------------------------------------------------------|--------------------------|
+    | Waiting for deployment admission           | `pending`                                                | Queued                   |
+    | Deferred by a [sync window]                | `pending`                                                | Deferred by sync window  |
+    | Admitted and deploying                     | `pending`                                                | In Progress              |
+    | All deployment stages succeeded            | `success`                                                | Successful in _duration_ |
+    | Deployment failed                          | `error` / `failure`                                      | _Failure reason_         |
+    | Deployment deadline or readiness timed out | `error` / `failure`                                      | _Failure reason_         |
+    | Entire webhook run skipped                 | `skipped` on Gitea 1.25+ and Forgejo 16+, else `success` | Skipped                  |
+
+    Gitea and Forgejo have no separate queued, running, or timed-out states. Their versions are detected through `/api/v1/version` and cached for one hour. Older versions store unknown states without validation, which would leave required checks pending, so they keep receiving `success` for skipped runs.
+
+=== "Azure DevOps"
+
+    | Deployment state                           | Commit status       | Description              |
+    |--------------------------------------------|---------------------|--------------------------|
+    | Waiting for deployment admission           | `pending`           | Queued                   |
+    | Deferred by a [sync window]                | `pending`           | Deferred by sync window  |
+    | Admitted and deploying                     | `pending`           | In Progress              |
+    | All deployment stages succeeded            | `succeeded`         | Successful in _duration_ |
+    | Deployment failed                          | `error` / `failed`  | _Failure reason_         |
+    | Deployment deadline or readiness timed out | `error` / `failed`  | _Failure reason_         |
+    | Entire webhook run skipped                 | `notApplicable`     | Skipped                  |
+
+    Azure DevOps has no separate queued, running, timed-out, or skipped states. Skipped webhook runs use `notApplicable`, its closest equivalent.
+
+When doco-cd [updates itself](Advanced/Self-Updating.md), the instance that finishes the handover completes the original reporting backend and target, even if the update disables `GIT_COMMIT_STATUS`. The finishing instance must still have credentials with the required permissions.
+
+| Key                 | Type    | Description                                                                                                                                                                                                                                                                                                                                                       | Default |
+|---------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| `GIT_COMMIT_STATUS` | boolean | Enable deployment reporting. Resolved [GitHub App installation authentication](#github-apps) uses native Checks and requires **Checks: Read and write**; token-only GitHub authentication and other providers use commit statuses with the permissions below. App reporting reuses the installation token minted for git operations; no separate token is needed. | `false` |
+| `GIT_SCM_PROVIDER`  | string  | Override automatic SCM provider detection. Accepted values: `auto`, `github`, `gitlab`, `gitea`, `forgejo`, `azuredevops`. Set to `auto` to detect the provider from the repository URL. Required when your self-hosted instance hostname does not reveal the product (e.g. `git.mycompany.com` running GitLab must set `gitlab`).                                | `auto`  |
+| `GIT_SCM_API_URL`   | string  | Optional override for the SCM API base URL used by commit status and native GitHub Checks requests (must be `http://` or `https://`). Use this for self-hosted instances when the API endpoint cannot be inferred from the clone URL (for example when SSH and HTTPS use different hosts/ports: `https://gitea.example.com:8443`).                                |         |
 
 ### Required Token Permissions
 
-The token used for commit status reporting needs permission to **write commit statuses** through the provider API. The same requirements apply whether you use the global [`GIT_ACCESS_TOKEN`](#authentication), a [domain-scoped token](#domain-scoped-authentication) from `GIT_AUTH_DOMAINS`, or a [GitHub App](#github-apps).
+Token-based reporting needs permission to **write commit statuses** through the provider API, whether credentials come from the global [`GIT_ACCESS_TOKEN`](#authentication) or a [domain-scoped token](#domain-scoped-authentication) in `GIT_AUTH_DOMAINS`.
 
 If an access token is also used to clone Git repositories over HTTP(S) (see [Authentication](#authentication)), add the permission below **in addition to** the existing clone permissions required by your provider (see [Required Token Permissions](#required-token-permissions) above).
 
-!!! info "GitHub Apps reuse their installation token"
-    When no `GIT_ACCESS_TOKEN` is configured (globally or per domain) but a GitHub App is, doco-cd reuses the same short-lived installation token used for git clone/fetch to post commit statuses. Grant the App the **Commit statuses: Read and write** repository permission; no additional PAT is required.
+=== "GitHub"
 
-| Provider        | Token type                               | Required permission                                                                                                                                                                                                                 |
-|-----------------|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| GitHub          | Classic PAT / OAuth token                | `repo:status` is the minimum recommended scope. `repo` also works, but grants broader repository access than necessary.                                                                                                             |
-| GitHub          | Fine-grained PAT / GitHub App            | Repository permission **Commit statuses: Read and write**                                                                                                                                                                           |
-| GitLab          | Personal, project, or group access token | `api` scope                                                                                                                                                                                                                         |
-| Gitea / Forgejo | API access token                         | Must be allowed to write repository API endpoints. On Forgejo scoped tokens, use `write:repository`. Some Gitea versions expose different token controls, so ensure the token can create commit statuses for the target repository. |
-| Azure DevOps    | Personal Access Token (PAT)              | Token must allow Git status writes on the target repo (for example **Code (Read & write)** in the PAT scopes).                                                                                                                      |
+    | Token type                    | Required permission                                                                                                                  |
+    |-------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+    | Classic PAT / OAuth token     | `repo:status` is the minimum recommended scope. `repo` also works, but grants broader repository access than necessary.              |
+    | Fine-grained PAT              | Repository permission **Commit statuses: Read and write** (token-only reporting remains on commit statuses)                          |
+    | GitHub App installation token | Repository permission **Checks: Read and write**; keep **Commit statuses: Read and write** for older pending self-update handovers |
 
-!!! info "Why GitLab needs `api` instead of `write_repository`"
-    Doco-CD posts commit statuses through the GitLab REST API. The `write_repository` scope covers Git-over-HTTP push access, but does not grant general REST API write access.
+    !!! info "GitHub Apps reuse their installation token"
+        When the repository's resolved authentication is a [GitHub App](#github-apps) installation, doco-cd reuses its short-lived git clone/fetch token to create and update check runs. Grant the App the **Checks: Read and write** repository permission in addition to its existing clone permissions; no additional PAT is required.
+
+        For an existing App previously using **Commit statuses: Read and write**, enable the additional **Checks: Read and write** permission in the App settings and approve the updated permissions for its installation. Keep **Commit statuses: Read and write** during pending self-update handovers from older versions: journals without a check-run target must still finish their legacy commit statuses, even with newer App configuration.
+
+=== "GitLab"
+
+    | Token type                               | Required permission |
+    |------------------------------------------|---------------------|
+    | Personal, project, or group access token | `api` scope         |
+
+    !!! info "Why GitLab needs `api` instead of `write_repository`"
+        Doco-CD posts commit statuses through the GitLab REST API. The `write_repository` scope covers Git-over-HTTP push access, but does not grant general REST API write access.
+
+=== "Gitea / Forgejo"
+
+    | Token type       | Required permission                                                                                                                                                                                                                 |
+    |------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+    | API access token | Must be allowed to write repository API endpoints. On Forgejo scoped tokens, use `write:repository`. Some Gitea versions expose different token controls, so ensure the token can create commit statuses for the target repository. |
+
+    Doco-CD also reads `/api/v1/version` with the same token to detect support for the native `skipped` state. If the version cannot be read, skipped runs are reported as `success`.
+
+=== "Azure DevOps"
+
+    | Token type                  | Required permission                                                                                           |
+    |-----------------------------|---------------------------------------------------------------------------------------------------------------|
+    | Personal Access Token (PAT) | Token must allow Git status writes on the target repo (for example **Code (Read & write)** in the PAT scopes). |
 
 ### Provider Auto-Detection
 
@@ -249,9 +341,9 @@ When `GIT_SCM_PROVIDER` is not set, doco-cd detects the provider from the reposi
 !!! warning "Self-hosted instances"
     Set `GIT_SCM_PROVIDER` explicitly when running a self-hosted SCM/Git provider instance and the auto-detection cannot determine the correct provider.
 
-    - **GitHub Enterprise Server**: set `GIT_SCM_PROVIDER=github`
-    - **Self-hosted GitLab**: set `GIT_SCM_PROVIDER=gitlab`
-    - **Self-hosted Gitea / Forgejo**: set `GIT_SCM_PROVIDER=gitea` or `GIT_SCM_PROVIDER=forgejo`
+    - **GitHub Enterprise Server**: set `#!ini GIT_SCM_PROVIDER=github`
+    - **Self-hosted GitLab**: set `#!ini GIT_SCM_PROVIDER=gitlab`
+    - **Self-hosted Gitea / Forgejo**: set `#!ini GIT_SCM_PROVIDER=gitea` or `#!ini GIT_SCM_PROVIDER=forgejo`
 
 ### Self-Hosted Instances and API URL
 
@@ -273,7 +365,9 @@ Some self-hosted setups route SSH clones through a dedicated hostname or port (e
 GIT_SCM_API_URL: "https://git.example.com"
 ```
 
-`GIT_SCM_API_URL` must be an `http://` or `https://` URL pointing to the root of the SCM instance (no path, no trailing slash). Provider-specific API paths (e.g. `/api/v1`, `/api/v4`) are appended automatically.
+For commit status reporting, configure `GIT_SCM_API_URL` as an `http://` or `https://` URL pointing to the root of the SCM instance (no path, no trailing slash). Provider-specific API paths (e.g. `/api/v1`, `/api/v4`) are appended automatically.
+
+This override also applies to native GitHub Checks requests. For GitHub Enterprise Server, a root URL automatically gains `/api/v3`; an explicit API prefix such as `https://ghe.example.com/api/v3` is used as-is. Set `#!ini GIT_SCM_PROVIDER=github` as described above.
 
 ### Example
 
@@ -286,3 +380,5 @@ services:
       # GIT_SCM_PROVIDER: gitlab   # uncomment for self-hosted GitLab at a custom domain
       # GIT_SCM_API_URL: https://git.example.com  # optional explicit API base URL override
 ```
+
+[sync window]: Advanced/Sync-Windows.md

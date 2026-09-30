@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
@@ -41,10 +43,12 @@ func TestCleanupFailedScaleOutPreservesJournalForRetry(t *testing.T) {
 		state   selfupdate.State
 		known   bool
 		listErr error
+		cause   error
 	}{
 		{name: "started successor known", state: selfupdate.StateStarted, known: true},
 		{name: "partially created successor discovered", state: selfupdate.StateStaged},
 		{name: "candidate list unavailable", state: selfupdate.StateStaged, listErr: errors.New("daemon unavailable")},
+		{name: "health deadline", state: selfupdate.StateStarted, known: true, cause: fmt.Errorf("successor failed health: %w", lifecycle.MarkTimedOut(selfupdate.ErrUnhealthy))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := selfupdate.NewStore(t.TempDir())
@@ -70,8 +74,13 @@ func TestCleanupFailedScaleOutPreservesJournalForRetry(t *testing.T) {
 				listErr: tc.listErr, removeErr: errors.New("Docker remove unavailable"),
 			}
 
+			cause := tc.cause
+			if cause == nil {
+				cause = errors.New("successor failed health")
+			}
+
 			preserve, err := cleanupFailedScaleOut(t.Context(), fake, store, &record,
-				&selfTarget{Project: "self-stack", Service: "app"}, errors.New("successor failed health"))
+				&selfTarget{Project: "self-stack", Service: "app"}, cause)
 			if !preserve || err == nil {
 				t.Fatalf("cleanup = preserve %t, error %v; want retryable failure", preserve, err)
 			}
@@ -89,6 +98,10 @@ func TestCleanupFailedScaleOutPreservesJournalForRetry(t *testing.T) {
 			if after.State != selfupdate.StateAborted ||
 				!strings.Contains(after.Error, "successor failed health") {
 				t.Errorf("recovery record = %s/%q; want aborted with failure reason", after.State, after.Error)
+			}
+
+			if after.TimedOut != lifecycle.IsTimeout(cause) {
+				t.Errorf("TimedOut = %t; want the typed cleanup cause preserved", after.TimedOut)
 			}
 
 			if tc.listErr == nil {

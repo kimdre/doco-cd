@@ -351,6 +351,7 @@ func postSkippedWebhookCommitStatus(ctx context.Context, appConfig *app.Config, 
 
 	if err := req.Post(ctx, commitstatus.Status{
 		State:       commitstatus.StateSuccess,
+		Outcome:     commitstatus.OutcomeSkipped,
 		Description: "Skipped",
 	}); err != nil {
 		log.Warn("failed to post skipped webhook commit status", slog.String("error", err.Error()))

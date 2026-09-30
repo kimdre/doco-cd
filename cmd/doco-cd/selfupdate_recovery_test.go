@@ -12,6 +12,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -134,6 +135,7 @@ func TestFailStoppedSelfApplierKeepsRecordedReason(t *testing.T) {
 		Predecessor: selfupdate.ContainerRef{ID: "old"},
 		Applier:     selfupdate.ContainerRef{ID: "clone"},
 		Error:       "load the self stack: boom",
+		TimedOut:    true,
 	}
 	if err := store.Create(&record); err != nil {
 		t.Fatal(err)
@@ -144,7 +146,7 @@ func TestFailStoppedSelfApplierKeepsRecordedReason(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if failed.State != selfupdate.StateFailed || !strings.HasPrefix(failed.Error, record.Error+"; ") {
+	if failed.State != selfupdate.StateFailed || !strings.HasPrefix(failed.Error, record.Error+"; ") || !failed.TimedOut {
 		t.Errorf("recovered applier = %s/%q; want failed with the recorded reason kept", failed.State, failed.Error)
 	}
 }
@@ -237,6 +239,7 @@ func TestRecordApplierDrainLiftsRestartLimitFirst(t *testing.T) {
 	}{
 		{name: "limit lifted", wantState: selfupdate.StateApplyDrained},
 		{name: "update fails", updateErr: errdefs.ErrUnavailable, wantState: selfupdate.StateApplyReady},
+		{name: "update deadline", updateErr: context.DeadlineExceeded, wantState: selfupdate.StateApplyReady},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -277,6 +280,10 @@ func TestRecordApplierDrainLiftsRestartLimitFirst(t *testing.T) {
 
 			if stored.State != tc.wantState || (stored.Error != "") != (tc.updateErr != nil) {
 				t.Errorf("journal = %s/%q; want %s with an error only on failure", stored.State, stored.Error, tc.wantState)
+			}
+
+			if stored.TimedOut != lifecycle.IsTimeout(tc.updateErr) {
+				t.Errorf("TimedOut = %t; want the typed drain failure preserved", stored.TimedOut)
 			}
 		})
 	}

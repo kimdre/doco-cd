@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -148,6 +149,24 @@ func TestSelfUpdateCommitStatusRecordsPendingTarget(t *testing.T) {
 
 	if want.Context != "doco-cd/nas/stack" {
 		t.Fatalf("context = %q, want the pending status context", want.Context)
+	}
+}
+
+func TestSelfUpdateCommitStatusCopiesNativeTarget(t *testing.T) {
+	t.Parallel()
+
+	sm := newTestStageManagerForCommitStatus(&app.Config{GitCommitStatus: true}, "https://github.com/org/repo.git")
+	sm.commitStatusTarget = &commitstatus.Target{
+		Backend: commitstatus.BackendChecks, CheckRunID: 123, ExternalID: "attempt", AppID: "42",
+	}
+
+	info := sm.selfUpdateCommitStatus()
+	if info == nil || info.Target == nil || *info.Target != *sm.commitStatusTarget {
+		t.Fatalf("native check target not handed over: %+v", info)
+	}
+
+	if info.Target == sm.commitStatusTarget {
+		t.Fatal("journal must snapshot the target rather than share mutable reporting state")
 	}
 }
 

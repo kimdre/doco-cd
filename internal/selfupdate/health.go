@@ -9,6 +9,8 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 )
 
 const (
@@ -42,7 +44,7 @@ func WaitHealthy(ctx context.Context, apiClient client.APIClient, containerID st
 
 	for {
 		if time.Now().After(deadline) {
-			return fmt.Errorf("%w: %s within %s", ErrUnhealthy, containerID, timeout)
+			return lifecycle.MarkTimedOut(fmt.Errorf("%w: %s within %s", ErrUnhealthy, containerID, timeout))
 		}
 
 		ok, reason, err := sampleHealth(ctx, apiClient, containerID)

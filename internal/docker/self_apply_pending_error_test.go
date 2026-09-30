@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
@@ -29,6 +31,8 @@ func TestFinishSelfApplyFailurePreservesConcurrentRecoveryReason(t *testing.T) {
 	stale := record
 
 	record.Error = "existing failure intent"
+
+	record.TimedOut = true
 	if err := store.Save(record); err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +49,52 @@ func TestFinishSelfApplyFailurePreservesConcurrentRecoveryReason(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if after.State != selfupdate.StateFailed || after.Error != record.Error {
+	if after.State != selfupdate.StateFailed || after.Error != record.Error || !after.TimedOut {
 		t.Errorf("concurrent failure intent was overwritten: %s/%q", after.State, after.Error)
+	}
+}
+
+func TestFinishSelfApplyFailurePersistsTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		cause    error
+		timedOut bool
+	}{
+		{name: "typed deadline", cause: fmt.Errorf("health gate: %w", context.DeadlineExceeded), timedOut: true},
+		{name: "operation time limit", cause: lifecycle.MarkTimedOut(errors.New("health gate expired")), timedOut: true},
+		{name: "deadline text only", cause: errors.New("context deadline exceeded")},
+		{name: "unhealthy", cause: selfupdate.ErrUnhealthy},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := selfupdate.NewStore(t.TempDir())
+
+			record := selfupdate.Record{
+				ID: "handover", State: selfupdate.StateApplying,
+				Predecessor: selfupdate.ContainerRef{ID: "old"},
+			}
+			if err := store.Create(&record); err != nil {
+				t.Fatal(err)
+			}
+
+			log := slog.New(slog.NewTextHandler(io.Discard, nil))
+			if err := finishSelfApplyFailure(t.Context(), &selfApplyTestClient{}, store, record, tc.cause, log); err != nil {
+				t.Fatal(err)
+			}
+
+			after, err := store.Load(record.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if after.State != selfupdate.StateFailed || after.Error != tc.cause.Error() || after.TimedOut != tc.timedOut {
+				t.Errorf("failure record = %+v; want unchanged reason and timedOut=%t", after, tc.timedOut)
+			}
+
+			pending := pendingSelfApplyFailure(after)
+			if pending.Error() != tc.cause.Error() || lifecycle.IsTimeout(pending) != tc.timedOut || lifecycle.IsCancellation(pending) {
+				t.Errorf("reconstructed failure = %v; want unchanged reason and typed timeout=%t", pending, tc.timedOut)
+			}
+		})
 	}
 }
 
@@ -146,21 +194,25 @@ func TestReadyAndWaitSelfApplyDetectsFailureSavedWhileWaiting(t *testing.T) {
 // restarted clone resumes rollback rather than requesting another drain.
 func TestApplySelfUpdateRetriesPendingRecoveryInsteadOfDraining(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		state   selfupdate.State
-		stopped bool
-		want    selfupdate.State
+		name     string
+		state    selfupdate.State
+		stopped  bool
+		timedOut bool
+		want     selfupdate.State
 	}{
 		{name: "applying running predecessor", state: selfupdate.StateApplying, want: selfupdate.StateFailed},
 		{name: "applying stopped predecessor", state: selfupdate.StateApplying, stopped: true, want: selfupdate.StateRolledBack},
 		{name: "ready running predecessor", state: selfupdate.StateApplyReady, want: selfupdate.StateFailed},
 		{name: "ready stopped predecessor", state: selfupdate.StateApplyReady, stopped: true, want: selfupdate.StateRolledBack},
+		{name: "saved timeout running predecessor", state: selfupdate.StateApplying, timedOut: true, want: selfupdate.StateFailed},
+		{name: "saved timeout stopped predecessor", state: selfupdate.StateApplyReady, stopped: true, timedOut: true, want: selfupdate.StateRolledBack},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := selfupdate.NewStore(t.TempDir())
 			record := selfupdate.Record{
 				ID: "handover", State: tc.state,
 				Error:       "secret provider unavailable; restore also failed: Docker unavailable",
+				TimedOut:    tc.timedOut,
 				Predecessor: selfupdate.ContainerRef{ID: "old"},
 			}
 
@@ -181,6 +233,7 @@ func TestApplySelfUpdateRetriesPendingRecoveryInsteadOfDraining(t *testing.T) {
 			}
 
 			if after.State != tc.want || after.Error != "secret provider unavailable" ||
+				after.TimedOut != tc.timedOut ||
 				fake.stopped || (tc.stopped && fake.started != 1) ||
 				(!tc.stopped && fake.started != 0) {
 				t.Errorf("retry = state %s, error %q, stopped %v, started %d; want %s with original reason",

@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
@@ -291,6 +292,8 @@ func cleanupFailedScaleOut(
 	}
 
 	record.Error = cause.Error()
+
+	record.TimedOut = lifecycle.IsTimeout(cause)
 	if err := store.Save(*record); err != nil {
 		return true, errors.Join(cause, fmt.Errorf("save failed scale-out for recovery: %w", err))
 	}
@@ -332,6 +335,8 @@ func cleanupFailedApplierStage(
 	current.Applier = record.Applier
 
 	current.Error = cause.Error()
+
+	current.TimedOut = lifecycle.IsTimeout(cause)
 	if err = store.Save(current); err != nil {
 		return true, errors.Join(cause, fmt.Errorf("save failed applier for recovery: %w", err))
 	}

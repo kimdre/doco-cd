@@ -60,7 +60,10 @@ func (r *selfUpdateReporter) reportSuccess(ctx context.Context, log *logger.Logg
 		startedAt = record.Source.CommitStatus.StartedAt
 	}
 
-	r.postCommitStatus(ctx, log, record, commitstatus.StateSuccess, commitstatus.SuccessDescription(startedAt, time.Now()))
+	r.postCommitStatus(ctx, log, record, commitstatus.Status{
+		State:       commitstatus.StateSuccess,
+		Description: commitstatus.SuccessDescription(startedAt, time.Now()),
+	})
 }
 
 func (r *selfUpdateReporter) reportFailure(ctx context.Context, log *logger.Logger, record selfupdate.Record) {
@@ -85,17 +88,31 @@ func (r *selfUpdateReporter) reportFailure(ctx context.Context, log *logger.Logg
 		}
 	}
 
-	r.postCommitStatus(ctx, log, record, commitstatus.StateFailure, commitstatus.FailureDescription(errors.New(reason)))
+	status := commitstatus.Status{
+		State:       commitstatus.StateFailure,
+		Description: commitstatus.FailureDescription(errors.New(reason)),
+	}
+	if record.TimedOut {
+		status.Outcome = commitstatus.OutcomeTimedOut
+	}
+
+	r.postCommitStatus(ctx, log, record, status)
 }
 
 // postCommitStatus resolves the commit status the predecessor left pending. The
 // token is resolved from this process's configuration, never from the journal.
 func (r *selfUpdateReporter) postCommitStatus(
-	ctx context.Context, log *logger.Logger, record selfupdate.Record, state commitstatus.State, description string,
+	ctx context.Context, log *logger.Logger, record selfupdate.Record, status commitstatus.Status,
 ) {
 	info := record.Source.CommitStatus
 	if r.appConfig == nil || info == nil {
 		return
+	}
+
+	target := info.Target
+	if target == nil {
+		// Older journals always refer to a legacy status, even with App credentials now.
+		target = &commitstatus.Target{Backend: commitstatus.BackendStatus}
 	}
 
 	req, ok := commitstatus.ResolveRequest(log.Logger, commitstatus.RequestParams{
@@ -111,6 +128,7 @@ func (r *selfUpdateReporter) postCommitStatus(
 		APIBaseURL:       string(r.appConfig.GitScmApiUrl),
 		AccessToken:      r.appConfig.GitAccessToken,
 		ContextName:      info.Context,
+		Target:           target,
 	})
 	if !ok {
 		return
@@ -122,11 +140,11 @@ func (r *selfUpdateReporter) postCommitStatus(
 		slog.String("repository", req.RepoFullName),
 		slog.String("commit_sha", req.CommitSHA),
 		slog.String("context", req.Context),
-		slog.String("state", string(state)),
-		slog.String("description", description),
+		slog.String("state", string(status.State)),
+		slog.String("description", status.Description),
 	)
 
-	if err := req.Post(ctx, commitstatus.Status{State: state, Description: description}); err != nil {
+	if err := req.Post(ctx, status); err != nil {
 		if lifecycle.IsCanceled(err) {
 			log.Debug("self-update: skipped commit status during application shutdown", logger.ErrAttr(err))
 

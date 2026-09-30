@@ -2,11 +2,15 @@ package commitstatus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/git"
 )
 
@@ -14,6 +18,17 @@ import (
 // description may contain. Longer descriptions are truncated with a trailing
 // ellipsis so they fit the limits enforced by SCM provider APIs.
 const maxDescriptionLength = 140
+
+// FailureOutcome returns the Outcome corresponding to err, or "" if err is not
+// a recognized failure type. This is used to normalize SCM API errors into
+// commit status outcomes.
+func FailureOutcome(err error) Outcome {
+	if lifecycle.IsTimeout(err) {
+		return OutcomeTimedOut
+	}
+
+	return ""
+}
 
 // SuccessDescription describes a successful deployment with its duration. It
 // omits the duration when either timestamp is missing or they are out of order.
@@ -83,6 +98,10 @@ type RequestParams struct {
 	// ContextName is the commit status context label (e.g. "doco-cd/demo").
 	// Empty defaults to DeployContext.
 	ContextName string
+	// Target pins an already-started reporting attempt, including handovers.
+	Target *Target
+	// Scope separates deployments with the same check name on different Docker contexts.
+	Scope string
 }
 
 // Request is a fully-resolved commit status request, ready to Post or Get.
@@ -94,6 +113,7 @@ type Request struct {
 	CommitSHA    string
 	Token        string
 	Context      string
+	Target       *Target
 }
 
 // ResolveRequest resolves a Request from params, applying credential
@@ -120,6 +140,9 @@ func ResolveRequest(logger *slog.Logger, params RequestParams) (Request, bool) {
 	resolved := git.ResolveAuthConfig(params.SourceURL, "", "", "")
 
 	token, err := git.ResolveHTTPToken(params.SourceURL, resolved)
+
+	usesApp := err == nil && token != "" && resolved.GitAccessToken == "" &&
+		resolved.GitHubApp.ID != "" && resolved.GitHubApp.PrivateKey != ""
 	if err != nil {
 		logger.Warn("failed to resolve commit status token", slog.String("error", err.Error()))
 	}
@@ -151,6 +174,22 @@ func ResolveRequest(logger *slog.Logger, params RequestParams) (Request, bool) {
 		contextName = DeployContext
 	}
 
+	target := params.Target
+	if target == nil {
+		target = &Target{Backend: BackendStatus, Scope: params.Scope}
+
+		host, _, parseErr := parseHostAndScheme(repoURL)
+		if parseErr == nil && resolveProvider(provider, host) == ProviderGitHub && usesApp {
+			target.Backend = BackendChecks
+			target.ExternalID = "doco-cd:" + uuid.NewString()
+			target.AppID = resolved.GitHubApp.ID
+		}
+	}
+
+	if target.Backend == BackendChecks {
+		provider = ProviderGitHub
+	}
+
 	return Request{
 		Provider:     provider,
 		APIBaseURL:   params.APIBaseURL,
@@ -159,6 +198,7 @@ func ResolveRequest(logger *slog.Logger, params RequestParams) (Request, bool) {
 		CommitSHA:    commitSHA,
 		Token:        token,
 		Context:      contextName,
+		Target:       target,
 	}, true
 }
 
@@ -167,10 +207,25 @@ func ResolveRequest(logger *slog.Logger, params RequestParams) (Request, bool) {
 func (r Request) Post(ctx context.Context, status Status) error {
 	status.Context = r.Context
 
+	if status.Outcome == OutcomeTimedOut && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+
+		ctx = reportCtx
+	}
+
+	if r.Target != nil && r.Target.Backend == BackendChecks {
+		return r.postCheck(ctx, status)
+	}
+
 	return Post(ctx, r.Provider, r.APIBaseURL, r.RepoURL, r.RepoFullName, r.CommitSHA, r.Token, status)
 }
 
 // Get returns the latest commit status for the resolved request's context.
 func (r Request) Get(ctx context.Context) (Status, bool, error) {
+	if r.Target != nil && r.Target.Backend == BackendChecks {
+		return r.getCheck(ctx)
+	}
+
 	return Get(ctx, r.Provider, r.APIBaseURL, r.RepoURL, r.RepoFullName, r.CommitSHA, r.Token, r.Context)
 }

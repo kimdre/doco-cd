@@ -300,6 +300,7 @@ type StageManager struct {
 	// resolvedOwnReference is set by the init stage if it resolved the deploy
 	// config's own reference instead of reusing the revision of the request.
 	resolvedOwnReference bool
+	commitStatusTarget   *commitstatus.Target
 }
 
 // ResolvedOwnReference reports whether the init stage resolved the deploy
@@ -600,11 +601,18 @@ func (s *StageManager) commitStatusParams() commitstatus.RequestParams {
 		APIBaseURL:       string(s.AppConfig.GitScmApiUrl),
 		AccessToken:      s.AppConfig.GitAccessToken,
 		ContextName:      s.resolveCommitStatusContext(),
+		Target:           s.commitStatusTarget,
+		Scope:            docker.NormalizeContextName(s.DeployConfig.Context),
 	}
 }
 
 func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool) {
-	return commitstatus.ResolveRequest(s.Log, s.commitStatusParams())
+	req, ok := commitstatus.ResolveRequest(s.Log, s.commitStatusParams())
+	if ok {
+		s.commitStatusTarget = req.Target
+	}
+
+	return req, ok
 }
 
 // selfUpdateCommitStatus returns the target of the commit status this
@@ -627,7 +635,7 @@ func (s *StageManager) selfUpdateCommitStatus() *selfupdate.CommitStatusInfo {
 		startedAt = s.Stages.Init.StartedAt
 	}
 
-	return &selfupdate.CommitStatusInfo{
+	info := &selfupdate.CommitStatusInfo{
 		SourceURL: params.SourceURL,
 		RepoURL:   strings.TrimSpace(params.PayloadWebURL),
 		FullName:  strings.TrimSpace(params.PayloadFullName),
@@ -635,6 +643,13 @@ func (s *StageManager) selfUpdateCommitStatus() *selfupdate.CommitStatusInfo {
 		Context:   params.ContextName,
 		StartedAt: startedAt,
 	}
+
+	if s.commitStatusTarget != nil && s.commitStatusTarget.Backend == commitstatus.BackendChecks {
+		target := *s.commitStatusTarget
+		info.Target = &target
+	}
+
+	return info
 }
 
 func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus.Status, bool) {
@@ -673,6 +688,10 @@ func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus
 // or when no access token / commit SHA is available.
 // Errors are logged as warnings so they never block a deployment.
 func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.State, description string) {
+	s.PostCommitStatusWithOutcome(ctx, state, description, "")
+}
+
+func (s *StageManager) PostCommitStatusWithOutcome(ctx context.Context, state commitstatus.State, description string, outcome commitstatus.Outcome) {
 	req, ok := s.resolveCommitStatusRequest()
 	if !ok {
 		return
@@ -689,6 +708,7 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 
 	err := req.Post(ctx, commitstatus.Status{
 		State:       state,
+		Outcome:     outcome,
 		Description: description,
 	})
 	if err != nil {
