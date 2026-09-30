@@ -384,8 +384,7 @@ env_files:
 
 			ctx := context.Background()
 
-			err = docker.VerifySocketConnection()
-			if err != nil {
+			if err := docker.VerifySocketConnection(); err != nil {
 				t.Fatalf("Failed to verify docker socket connection: %v", err)
 			}
 

@@ -106,7 +106,35 @@ func SwapGitHubAppTokenProviderForTest(provider func(string, GitHubAppConfig) (s
 
 // ResolveAuthConfig resolves credentials for a repository URL using exact domain matches,
 // then the most specific wildcard suffix, and finally global fallback credentials.
+// GitHub App credentials are never resolved for gist URLs, because installation tokens
+// cannot access gists; those fall back to an access token or anonymous access.
 func ResolveAuthConfig(url, privateKey, keyPassphrase, token string) ResolvedAuthConfig {
+	resolved := resolveAuthConfig(url, privateKey, keyPassphrase, token)
+	if isGistURL(url) {
+		resolved.GitHubApp = GitHubAppConfig{}
+	}
+
+	return resolved
+}
+
+// isGistURL reports whether an HTTP(S) URL points to a GitHub gist, served from a
+// gist.* host or, on GitHub Enterprise Server without subdomain isolation, under /gist/.
+func isGistURL(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+
+	if strings.HasPrefix(normalizeHost(parsed.Hostname()), "gist.") {
+		return true
+	}
+
+	firstSegment, _, _ := strings.Cut(strings.TrimPrefix(parsed.Path, "/"), "/")
+
+	return strings.EqualFold(firstSegment, "gist")
+}
+
+func resolveAuthConfig(url, privateKey, keyPassphrase, token string) ResolvedAuthConfig {
 	authResolverMu.RLock()
 
 	resolver := configuredResolver
