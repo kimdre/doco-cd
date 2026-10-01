@@ -29,8 +29,9 @@ type phaseReporter struct {
 	post  phasePoster
 	dwell time.Duration
 
-	mu     sync.Mutex
-	latest string
+	mu          sync.Mutex
+	latest      string
+	latestSince time.Time
 
 	notify   chan struct{}
 	stop     chan struct{}
@@ -59,6 +60,7 @@ func newPhaseReporter(ctx context.Context, log *slog.Logger, dwell time.Duration
 func (r *phaseReporter) Report(phase string) {
 	r.mu.Lock()
 	r.latest = phase
+	r.latestSince = time.Now()
 	r.mu.Unlock()
 
 	select {
@@ -74,11 +76,11 @@ func (r *phaseReporter) Stop() {
 	<-r.done
 }
 
-func (r *phaseReporter) current() string {
+func (r *phaseReporter) current() (string, time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return r.latest
+	return r.latest, r.latestSince
 }
 
 func (r *phaseReporter) stopped() bool {
@@ -108,8 +110,15 @@ func (r *phaseReporter) run(ctx context.Context) {
 			// A phase is published only once it stayed current for the dwell time.
 			timer.Reset(r.dwell)
 		case <-timer.C:
-			phase := r.current()
+			phase, since := r.current()
 			if phase == "" || phase == published || r.stopped() {
+				continue
+			}
+
+			// An old timer can fire while a newer report is queued.
+			if remaining := r.dwell - time.Since(since); remaining > 0 {
+				timer.Reset(remaining)
+
 				continue
 			}
 
