@@ -274,7 +274,8 @@ func (r Request) postCheck(ctx context.Context, status Status) error {
 // GitHub renders the status, conclusion and duration of a check run next to
 // its output title, and a placeholder when a pending check has no output. The
 // description is therefore only used when it adds to that (a sync window
-// deferral or a failure reason); other states get a complementary title.
+// deferral, a failure reason or a skipped run with a summary); other states
+// get a complementary title.
 func (r Request) checkRequest(status Status) (githubCheckRequest, error) {
 	body := githubCheckRequest{
 		Name:       r.Context,
@@ -322,15 +323,41 @@ func (r Request) checkRequest(status Status) (githubCheckRequest, error) {
 		body.CompletedAt = &now
 	}
 
-	if title := checkTitle(status, body); title != "" {
-		body.Output = &githubCheckOutput{Title: title, Summary: title}
+	title := checkTitle(status, body)
+	summary := strings.TrimSpace(status.Summary)
+
+	if title == "" && summary != "" {
+		title = strings.TrimSpace(status.Description)
+	}
+
+	if title != "" {
+		if summary == "" {
+			summary = title
+		}
+
+		body.Output = &githubCheckOutput{Title: title, Summary: truncateCheckSummary(summary)}
 	}
 
 	return body, nil
 }
 
+// maxCheckSummaryLength is the maximum number of characters of a check run
+// output summary accepted by GitHub.
+const maxCheckSummaryLength = 65535
+
+// truncateCheckSummary shortens summary to at most maxCheckSummaryLength
+// characters.
+func truncateCheckSummary(summary string) string {
+	runes := []rune(summary)
+	if len(runes) <= maxCheckSummaryLength {
+		return summary
+	}
+
+	return string(runes[:maxCheckSummaryLength-1]) + "…"
+}
+
 // checkTitle returns the output title for a check run request, or "" when
-// GitHub's own rendering of the state needs no addition (a skipped run).
+// GitHub's own rendering of the state needs no addition (a skipped run without a summary).
 func checkTitle(status Status, body githubCheckRequest) string {
 	description := strings.TrimSpace(status.Description)
 

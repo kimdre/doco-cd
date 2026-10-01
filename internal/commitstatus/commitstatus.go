@@ -109,6 +109,9 @@ type Status struct {
 	State       State
 	Outcome     Outcome
 	Description string
+	// Summary optionally explains the status in Markdown. Only GitHub check
+	// runs show it, other providers only show the description.
+	Summary string
 	// Context is the label shown in the Git UI (e.g. "doco-cd/demo").
 	// Defaults to BaseContext when empty.
 	Context   string

@@ -76,7 +76,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 				stageLog.Debug("reference does not match the webhook event filter, skipping deployment",
 					slog.String("webhook_filter", s.DeployConfig.WebhookEventFilter), slog.String("ref", s.Payload.Ref))
 
-				return ErrWebhookFilterMismatch
+				return s.WebhookFilterMismatch()
 			}
 
 			stageLog.Debug("reference matches the webhook event filter, proceeding with deployment",

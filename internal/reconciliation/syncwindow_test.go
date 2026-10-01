@@ -3,7 +3,9 @@ package reconciliation
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -512,7 +514,12 @@ func TestSummarizeDeployResults(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := summarizeDeployResults(tt.results, len(tt.results))
+			results := make([]stackResult, 0, len(tt.results))
+			for i, err := range tt.results {
+				results = append(results, stackResult{name: fmt.Sprintf("stack-%d", i), err: err})
+			}
+
+			got := summarizeDeployResults(results, len(results))
 
 			if tt.want == nil {
 				if got != nil {
@@ -537,6 +544,32 @@ func TestSummarizeDeployResults(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSummarizeDeployResultsExplainsSkips(t *testing.T) {
+	t.Parallel()
+
+	got := summarizeDeployResults([]stackResult{
+		{name: "web", context: "remote", err: stages.NothingToDestroy()},
+		{name: "api", err: stages.ErrWebhookFilterMismatch},
+	}, 2)
+
+	run, ok := errors.AsType[*stages.SkippedRunError](got)
+	if !ok {
+		t.Fatalf("summarizeDeployResults() = %v, want *stages.SkippedRunError", got)
+	}
+
+	if !errors.Is(got, stages.ErrSkipDeployment) || errors.Is(got, stages.ErrWebhookFilterMismatch) {
+		t.Fatalf("summarizeDeployResults() = %v, want a skip that is not a filter mismatch", got)
+	}
+
+	want := []stages.SkippedStack{
+		{Name: "api", Reason: stages.SkipReasonWebhookFilter},
+		{Name: "web", Context: "remote", Reason: stages.SkipReasonNothingDestroy, Detail: "the stack does not exist"},
+	}
+	if !reflect.DeepEqual(run.Stacks, want) {
+		t.Fatalf("skipped stacks = %+v, want %+v", run.Stacks, want)
 	}
 }
 

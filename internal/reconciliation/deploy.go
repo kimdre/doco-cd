@@ -115,7 +115,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 	// limited by this manager's deployment limiter.
 	var wg sync.WaitGroup
 
-	resultCh := make(chan error, len(req.DeployConfigs))
+	resultCh := make(chan stackResult, len(req.DeployConfigs))
 	gitChanges := stages.NewGitChangeCache()
 	gitAncestry := stages.NewGitAncestryCache()
 
@@ -154,7 +154,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 				if recovered := recover(); recovered != nil {
 					logger.LogRecoveredPanic(deployLog, "stack deployment", recovered)
 
-					resultCh <- fmt.Errorf("panic during deployment of stack %q: %v", dc.Name, recovered)
+					resultCh <- stackResult{name: dc.Name, context: dc.Context, err: fmt.Errorf("panic during deployment of stack %q: %v", dc.Name, recovered)}
 				}
 			}()
 
@@ -169,7 +169,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 
 				gate.record(dc, err)
 
-				resultCh <- err
+				resultCh <- stackResult{name: dc.Name, context: dc.Context, err: err}
 
 				return
 			}
@@ -178,7 +178,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 
 			gate.record(dc, err)
 
-			resultCh <- err
+			resultCh <- stackResult{name: dc.Name, context: dc.Context, err: err}
 		}(deployCfg)
 	}
 
@@ -186,7 +186,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 	wg.Wait()
 	close(resultCh)
 
-	results := make([]error, 0, len(req.DeployConfigs))
+	results := make([]stackResult, 0, len(req.DeployConfigs))
 	for e := range resultCh {
 		results = append(results, e)
 	}
@@ -194,24 +194,35 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 	return summarizeDeployResults(results, len(req.DeployConfigs))
 }
 
+// stackResult is the result of deploying one stack of a request.
+type stackResult struct {
+	name    string
+	context string
+	err     error
+}
+
 // summarizeDeployResults combines the results of the stacks of one request
 // into the request's result. total is the number of stacks in the request.
 //
 // If no stack was deployed and every stack was skipped, filtered out or
 // deferred by a sync window, the result is a merged
-// *stages.SyncWindowBlockedError if any stack was deferred, and
+// *stages.SyncWindowBlockedError if any stack was deferred, and a
+// *stages.SkippedRunError with the reason for each stack otherwise, which
+// wraps stages.ErrWebhookFilterMismatch if every stack was filtered out and
 // stages.ErrSkipDeployment otherwise.
-func summarizeDeployResults(results []error, total int) error {
+func summarizeDeployResults(results []stackResult, total int) error {
 	var (
 		errs            []error
 		blocked         []*stages.SyncWindowBlockedError
+		skipped         []stages.SkippedStack
 		successCount    int
 		skipCount       int
 		filterSkipCount int
 		handoverCount   int
 	)
 
-	for _, e := range results {
+	for _, result := range results {
+		e := result.err
 		if e == nil {
 			successCount++
 			continue
@@ -219,6 +230,9 @@ func summarizeDeployResults(results []error, total int) error {
 
 		if errors.Is(e, stages.ErrWebhookFilterMismatch) {
 			filterSkipCount++
+
+			skipped = append(skipped, stages.NewSkippedStack(result.name, result.context, e))
+
 			continue
 		}
 
@@ -229,6 +243,9 @@ func summarizeDeployResults(results []error, total int) error {
 
 		if errors.Is(e, stages.ErrSkipDeployment) {
 			skipCount++
+
+			skipped = append(skipped, stages.NewSkippedStack(result.name, result.context, e))
+
 			continue
 		}
 
@@ -248,18 +265,12 @@ func summarizeDeployResults(results []error, total int) error {
 		return selfupdate.ErrHandover
 	}
 
-	if successCount == 0 && total > 0 {
-		if filterSkipCount == total {
-			return stages.ErrWebhookFilterMismatch
+	if successCount == 0 && total > 0 && skipCount+filterSkipCount+len(blocked) == total {
+		if len(blocked) > 0 {
+			return stages.MergeSyncWindowBlocked(blocked)
 		}
 
-		if skipCount+filterSkipCount+len(blocked) == total {
-			if len(blocked) > 0 {
-				return stages.MergeSyncWindowBlocked(blocked)
-			}
-
-			return stages.ErrSkipDeployment
-		}
+		return stages.NewSkippedRunError(skipped)
 	}
 
 	return nil
@@ -345,7 +356,7 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 	}
 
 	if !stageMgr.MatchesWebhookEventFilter() {
-		return stages.ErrWebhookFilterMismatch
+		return stageMgr.WebhookFilterMismatch()
 	}
 
 	if dc.Destroy.Enabled {
@@ -355,7 +366,7 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 		if gate.blocks(dc) && destroyHasNothingToRemove(ctx, deployLog, deploymentDockerCli.Client(), swarmMode, dc) {
 			deployLog.Debug("stack to destroy does not exist, skipping destruction")
 
-			return stages.ErrSkipDeployment
+			return stages.NothingToDestroy()
 		}
 
 		if err := gate.admit(deployLog, dc, nil); err != nil {
