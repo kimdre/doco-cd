@@ -116,9 +116,11 @@ func TestGitHubCheckLifecycle(t *testing.T) {
 		t.Fatalf("unexpected successful check: %+v", received[2])
 	}
 
-	for _, body := range received {
-		// GitHub renders the status and duration itself; repeating them as output duplicates them.
-		if body.Name != req.Context || body.ExternalID != "doco-cd:attempt" || body.Output != nil {
+	// GitHub renders the state and duration itself; the output must not repeat them.
+	for i, title := range []string{checkTitleQueued, checkTitleDeploying, checkTitleDeployed} {
+		body := received[i]
+		if body.Name != req.Context || body.ExternalID != "doco-cd:attempt" ||
+			body.Output == nil || body.Output.Title != title || body.Output.Summary != title {
 			t.Fatalf("unexpected check metadata: %+v", body)
 		}
 	}
@@ -162,12 +164,14 @@ func TestGitHubCheckOutputOnlyAddsInformation(t *testing.T) {
 		status Status
 		title  string
 	}{
-		{Status{State: StatePending, Outcome: OutcomeQueued, Description: "Queued"}, ""},
-		{Status{State: StatePending, Description: "In Progress"}, ""},
-		{Status{State: StateSuccess, Description: "Successful in 3s"}, ""},
+		{Status{State: StatePending, Outcome: OutcomeQueued, Description: "Queued"}, checkTitleQueued},
+		{Status{State: StatePending, Outcome: OutcomeInProgress, Description: "In Progress"}, checkTitleDeploying},
+		{Status{State: StatePending, Description: "In Progress"}, checkTitleDeploying},
+		{Status{State: StateSuccess, Description: "Successful in 3s"}, checkTitleDeployed},
 		{Status{State: StateSuccess, Outcome: OutcomeSkipped, Description: "Skipped"}, ""},
-		{Status{State: StateFailure, Outcome: OutcomeTimedOut}, ""},
-		{Status{State: StateFailure, Description: " "}, ""},
+		{Status{State: StateFailure, Outcome: OutcomeTimedOut}, checkTitleTimedOut},
+		{Status{State: StateFailure, Description: " "}, checkTitleFailed},
+		{Status{State: StatePending, Outcome: OutcomeDeferred}, checkTitleQueued},
 		{Status{State: StatePending, Outcome: OutcomeDeferred, Description: "Deferred by sync window"}, "Deferred by sync window"},
 		{Status{State: StateFailure, Outcome: OutcomeTimedOut, Description: "readiness timed out"}, "readiness timed out"},
 		{Status{State: StateError, Description: " compose up failed "}, "compose up failed"},
@@ -314,7 +318,7 @@ func TestGitHubCheckResumesDeferredAttempt(t *testing.T) {
 	}
 
 	// GitHub keeps output until it is overwritten, so the deferral reason must not outlive it.
-	if lastBody.Output == nil || lastBody.Output.Title != resumedCheckTitle {
+	if lastBody.Output == nil || lastBody.Output.Title != checkTitleQueued {
 		t.Fatalf("resumed check kept its deferral output: %+v", lastBody.Output)
 	}
 
@@ -326,10 +330,6 @@ func TestGitHubCheckResumesDeferredAttempt(t *testing.T) {
 
 	if err := resumed.Post(t.Context(), Status{State: StatePending, Description: "Deploying"}); err != nil {
 		t.Fatal(err)
-	}
-
-	if lastBody.Output != nil {
-		t.Fatalf("resumed check repeated its output: %+v", lastBody.Output)
 	}
 
 	if lastBody.StartedAt == nil || !lastBody.StartedAt.After(queuedAt) {

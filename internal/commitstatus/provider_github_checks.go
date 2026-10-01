@@ -77,10 +77,16 @@ type githubCheckRequest struct {
 	Output      *githubCheckOutput `json:"output,omitempty"`
 }
 
-// resumedCheckTitle replaces a deferred check's sync window output once the
-// deployment is admitted, since GitHub keeps a check's output until it is
-// overwritten.
-const resumedCheckTitle = "Resumed after sync window"
+// Check output titles that complement, rather than repeat, the state GitHub
+// renders next to them. GitHub keeps a check's output until it is overwritten,
+// so every state that follows one with output needs its own title.
+const (
+	checkTitleQueued    = "Waiting for a deployment slot"
+	checkTitleDeploying = "Deploying"
+	checkTitleDeployed  = "Deployed"
+	checkTitleFailed    = "Deployment failed"
+	checkTitleTimedOut  = "Deployment timed out"
+)
 
 // githubAPIURL returns the GitHub API URL for the given request.
 func (r Request) githubAPIURL() (string, error) {
@@ -189,8 +195,6 @@ func (r Request) postCheck(ctx context.Context, status Status) error {
 	}
 	defer unlock()
 
-	resumedDeferral := false
-
 	if r.Target.CheckRunID == 0 {
 		check, found, err := r.findCheck(ctx, baseURL, func(check githubCheck) bool {
 			return check.ExternalID == r.Target.ExternalID ||
@@ -202,7 +206,6 @@ func (r Request) postCheck(ctx context.Context, status Status) error {
 
 		if found {
 			r.Target.CheckRunID = check.ID
-			resumedDeferral = check.ExternalID == r.deferredExternalID()
 			// A resumed deferral starts when its deployment is admitted, not when it was queued.
 			if check.StartedAt != nil && check.Status != "queued" {
 				r.Target.StartedAt = *check.StartedAt
@@ -217,10 +220,6 @@ func (r Request) postCheck(ctx context.Context, status Status) error {
 	body, err := r.checkRequest(status)
 	if err != nil {
 		return err
-	}
-
-	if resumedDeferral && body.Output == nil {
-		body.Output = &githubCheckOutput{Title: resumedCheckTitle, Summary: resumedCheckTitle}
 	}
 
 	apiURL := fmt.Sprintf("%s/repos/%s/check-runs", baseURL, r.RepoFullName)
@@ -272,9 +271,10 @@ func (r Request) postCheck(ctx context.Context, status Status) error {
 
 // checkRequest creates a GitHub check run request for the given status.
 //
-// GitHub already renders the status, conclusion and duration of a check run
-// next to its output title, so the output is only sent when the description
-// adds to that: a sync window deferral or a failure reason.
+// GitHub renders the status, conclusion and duration of a check run next to
+// its output title, and a placeholder when a pending check has no output. The
+// description is therefore only used when it adds to that (a sync window
+// deferral or a failure reason); other states get a complementary title.
 func (r Request) checkRequest(status Status) (githubCheckRequest, error) {
 	body := githubCheckRequest{
 		Name:       r.Context,
@@ -322,15 +322,40 @@ func (r Request) checkRequest(status Status) (githubCheckRequest, error) {
 		body.CompletedAt = &now
 	}
 
-	description := strings.TrimSpace(status.Description)
-	informative := status.Outcome == OutcomeDeferred ||
-		body.Conclusion == "failure" || body.Conclusion == string(OutcomeTimedOut)
-
-	if informative && description != "" {
-		body.Output = &githubCheckOutput{Title: description, Summary: description}
+	if title := checkTitle(status, body); title != "" {
+		body.Output = &githubCheckOutput{Title: title, Summary: title}
 	}
 
 	return body, nil
+}
+
+// checkTitle returns the output title for a check run request, or "" when
+// GitHub's own rendering of the state needs no addition (a skipped run).
+func checkTitle(status Status, body githubCheckRequest) string {
+	description := strings.TrimSpace(status.Description)
+
+	switch {
+	case status.Outcome == OutcomeDeferred && description != "":
+		return description
+	case body.Conclusion == "failure" || body.Conclusion == string(OutcomeTimedOut):
+		if description != "" {
+			return description
+		}
+
+		if body.Conclusion == string(OutcomeTimedOut) {
+			return checkTitleTimedOut
+		}
+
+		return checkTitleFailed
+	case body.Status == "queued":
+		return checkTitleQueued
+	case body.Status == "in_progress":
+		return checkTitleDeploying
+	case body.Conclusion == "success":
+		return checkTitleDeployed
+	default:
+		return ""
+	}
 }
 
 // getCheck retrieves the status of a GitHub check run.
