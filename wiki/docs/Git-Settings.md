@@ -181,6 +181,7 @@ Each entry in the list has the following structure:
 
 [GitHub Apps](https://docs.github.com/en/apps) are supported natively and can be configured globally (see below) or [per domain](#domain-scoped-authentication). 
 Doco-CD will auto-detect the installation by repository _owner/name_ and mint short-lived installation access tokens.
+The detected installation ID is cached for an hour, and looked up again earlier if the App is reinstalled; set `GITHUB_APP_INSTALLATION_ID` to skip the lookup entirely.
 Installation tokens cannot access [gists](https://docs.github.com/en/get-started/writing-on-github/editing-and-sharing-content-with-gists), so gist URLs (for example, gist submodules) use a configured access token or anonymous access instead.
 
 | Key                             | Type   | Description                                                                                                                                                                  | Default value     |
