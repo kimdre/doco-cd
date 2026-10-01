@@ -239,6 +239,41 @@ func TestResolveInstallationToken_ReinstalledAppRefreshesCachedInstallation(t *t
 	expectCalls(t, fake, 2, 3)
 }
 
+func TestResolveInstallationToken_ReinstalledAppRefreshesRacingCachedInstallation(t *testing.T) {
+	fake := setupResolver(t)
+	cfg := appConfig(t)
+	installKey := installationCacheKey("github.com", cfg.ID, "acme", "deploy")
+
+	cacheInstallationID(installKey, 42)
+	fake.advance(installationCacheTTL)
+	fake.installationID.Store(77)
+
+	var clockCalls atomic.Int32
+
+	nowFn = func() time.Time {
+		now := fake.currentTime()
+
+		if clockCalls.Add(1) == 1 {
+			// Another lookup fills the cache after the outer check reads an
+			// expired entry, but before the singleflight cache recheck.
+			installationCacheMu.Lock()
+			installationCache[installKey] = cachedInstallation{
+				ID:        42,
+				ExpiresAt: now.Add(installationCacheTTL),
+			}
+			installationCacheMu.Unlock()
+		}
+
+		return now
+	}
+
+	if got := resolve(t, cfg); got != "token-77" {
+		t.Fatalf("token = %q, want token-77", got)
+	}
+
+	expectCalls(t, fake, 1, 2)
+}
+
 func TestResolveInstallationToken_DoesNotCacheFailedLookups(t *testing.T) {
 	fake := setupResolver(t)
 	cfg := appConfig(t)
