@@ -83,6 +83,66 @@ func TestPhaseReporterPublishesLatestPhaseAfterDwell(t *testing.T) {
 	}
 }
 
+func TestPhaseReporterNewPhaseDoesNotInheritExpiredDwell(t *testing.T) {
+	t.Parallel()
+
+	const dwell = 100 * time.Millisecond
+
+	type phaseUpdate struct {
+		phase string
+		at    time.Time
+	}
+
+	updates := make(chan phaseUpdate, 2)
+	reporter := newPhaseReporter(t.Context(), newTestStageManager(t).Log, dwell,
+		func(_ context.Context, phase string) error {
+			updates <- phaseUpdate{phase: phase, at: time.Now()}
+
+			return nil
+		})
+
+	defer reporter.Stop()
+
+	reporter.Report("pulling images")
+	waitFor(t, func() bool { return len(reporter.notify) == 0 })
+
+	// Hold the snapshot lock until the old phase's timer expires, with
+	// the replacement report already waiting to update the snapshot.
+	reporter.mu.Lock()
+
+	started := make(chan struct{})
+	reported := make(chan struct{})
+
+	go func() {
+		close(started)
+		reporter.Report("creating services")
+		close(reported)
+	}()
+
+	<-started
+	time.Sleep(2 * dwell)
+	changedAt := time.Now()
+	reporter.mu.Unlock()
+	<-reported
+
+	for {
+		select {
+		case update := <-updates:
+			if update.phase != "creating services" {
+				continue
+			}
+
+			if elapsed := update.at.Sub(changedAt); elapsed < dwell {
+				t.Fatalf("replacement phase published after %s, want at least %s", elapsed, dwell)
+			}
+
+			return
+		case <-time.After(2 * time.Second):
+			t.Fatal("replacement phase was not published")
+		}
+	}
+}
+
 func TestPhaseReporterStopWaitsForPostInFlight(t *testing.T) {
 	t.Parallel()
 
