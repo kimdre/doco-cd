@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
+	"slices"
+	"sync"
 	"testing"
+
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 )
 
 func TestNormalizeDeploymentPhase(t *testing.T) {
@@ -66,4 +70,78 @@ func TestLogDeploymentHeartbeat_EmitsPhaseField(t *testing.T) {
 	if phase != "pulling images" {
 		t.Fatalf("unexpected phase field: %q", phase)
 	}
+}
+
+type recordingPhaseReporter struct {
+	mu      sync.Mutex
+	phases  []string
+	stopped int
+}
+
+func (r *recordingPhaseReporter) Report(phase string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.phases = append(r.phases, phase)
+}
+
+func (r *recordingPhaseReporter) Stop() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.stopped++
+}
+
+func TestDeploymentPhaseState_ReportsOnlyChanges(t *testing.T) {
+	t.Parallel()
+
+	reporter := &recordingPhaseReporter{}
+	state := newDeploymentPhaseState("resolving working directory", reporter)
+
+	state.Set("pulling images")
+	state.Set(" pulling images ")
+	state.Set("creating services")
+	state.Set("")
+
+	want := []string{"resolving working directory", "pulling images", "creating services", "unknown"}
+	if !slices.Equal(reporter.phases, want) {
+		t.Fatalf("reported phases = %q, want %q", reporter.phases, want)
+	}
+
+	if got := state.Get(); got != "unknown" {
+		t.Fatalf("Get() = %q, want unknown", got)
+	}
+}
+
+func TestDeploymentPhaseState_WithoutReporter(t *testing.T) {
+	t.Parallel()
+
+	state := newDeploymentPhaseState("pulling images", nil)
+	state.Set("creating services")
+	state.stopReporting()
+
+	if got := state.Get(); got != "creating services" {
+		t.Fatalf("Get() = %q, want creating services", got)
+	}
+}
+
+func TestSelfDeployInput_StopsPhaseReports(t *testing.T) {
+	t.Parallel()
+
+	reporter := &recordingPhaseReporter{}
+	req := runtimeDeployRequest{
+		request: DeployRequest{DeployConfig: &deploy.Config{}},
+		phase:   newDeploymentPhaseState("deploying compose stack", reporter),
+	}
+
+	req.selfDeployInput().stopPhaseReports()
+
+	if reporter.stopped != 1 {
+		t.Fatalf("reporter stopped %d times, want 1", reporter.stopped)
+	}
+
+	var nilInput *SelfDeployInput
+
+	nilInput.stopPhaseReports()
+	(&SelfDeployInput{}).stopPhaseReports()
 }

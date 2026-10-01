@@ -167,6 +167,7 @@ func TestGitHubCheckOutputOnlyAddsInformation(t *testing.T) {
 		{Status{State: StatePending, Outcome: OutcomeQueued, Description: "Queued"}, checkTitleQueued},
 		{Status{State: StatePending, Outcome: OutcomeInProgress, Description: "In Progress"}, checkTitleDeploying},
 		{Status{State: StatePending, Description: "In Progress"}, checkTitleDeploying},
+		{ProgressStatus("pulling images"), "Deploying: pulling images"},
 		{Status{State: StateSuccess, Description: "Successful in 3s"}, checkTitleDeployed},
 		{Status{State: StateSuccess, Outcome: OutcomeSkipped, Description: "Skipped"}, ""},
 		{Status{State: StateFailure, Outcome: OutcomeTimedOut}, checkTitleTimedOut},

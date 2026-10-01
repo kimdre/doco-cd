@@ -54,7 +54,12 @@ func FailureDescription(err error) string {
 		return "Failed"
 	}
 
-	description := strings.Join(strings.Fields(err.Error()), " ")
+	return truncateDescription(strings.Join(strings.Fields(err.Error()), " "))
+}
+
+// truncateDescription shortens description to at most maxDescriptionLength
+// runes, ending it with an ellipsis when it was cut.
+func truncateDescription(description string) string {
 	if len([]rune(description)) <= maxDescriptionLength {
 		return description
 	}

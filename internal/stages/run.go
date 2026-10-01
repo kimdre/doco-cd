@@ -200,7 +200,7 @@ func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmi
 				s.PostQueuedCommitStatus(ctx)
 			}
 
-			s.PostCommitStatus(ctx, commitstatus.StatePending, "In Progress")
+			s.inProgressPosted = s.postCommitStatus(ctx, commitstatus.StatePending, "In Progress", "")
 
 			pendingPosted = true
 		}

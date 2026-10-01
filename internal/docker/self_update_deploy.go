@@ -86,6 +86,9 @@ func prepareSelfUpdate(
 	}
 
 	if active != nil {
+		// The successor of that handover owns the commit status now.
+		self.stopPhaseReports()
+
 		// Not a failure: the handover this instance is part of is still being
 		// converged. Reporting it as one would record a failed deploy and make
 		// the next poll force-recreate the stack.
@@ -144,6 +147,10 @@ func runSelfUpdate(
 	self *SelfDeployInput,
 	log *slog.Logger,
 ) error {
+	// The successor reports the final commit status from the journal, so no
+	// phase may be published after it could have started.
+	self.stopPhaseReports()
+
 	opts := SelfUpdateConfig()
 	apiClient := dockerCli.Client()
 
