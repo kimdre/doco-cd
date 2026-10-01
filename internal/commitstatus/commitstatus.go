@@ -113,6 +113,9 @@ type Status struct {
 	// Defaults to BaseContext when empty.
 	Context   string
 	TargetURL string // optional link to deployment logs
+	// Phase is the current phase of a running deployment, e.g. "pulling
+	// images". GitHub check runs show it in their title.
+	Phase string
 }
 
 // Post posts a commit status to the appropriate Git provider.

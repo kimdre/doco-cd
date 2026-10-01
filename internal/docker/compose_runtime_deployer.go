@@ -113,6 +113,10 @@ func (req runtimeDeployRequest) selfDeployInput() *SelfDeployInput {
 		Log:            req.stackLog,
 	}
 
+	if req.phase != nil {
+		in.StopPhaseReports = req.phase.stopReporting
+	}
+
 	if req.request.Payload != nil {
 		in.RepoName = req.request.Payload.Name
 		in.FullName = req.request.Payload.FullName

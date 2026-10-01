@@ -207,6 +207,10 @@ Deployments excluded by a webhook reference filter or requiring no changes do no
 When the entire webhook run is skipped, Doco-CD reports only a generic `doco-cd/deploy` result. 
 This name is also used for failures before deployment configuration can be resolved.
 
+While a deployment runs, its check or status also shows the current deployment phase, the same one logged by the `deployment in progress` heartbeat, for example _pulling images_ or _waiting for services to start_.
+A phase is only published once it has lasted 3 seconds, so short phases cost no API requests.
+Phase updates are best-effort: each is sent once without retries, a provider rate limit pauses them for the rest of the deployment, and the final result always replaces them.
+
 === "GitHub"
 
     The resolved authentication method selects the reporting backend:
@@ -221,6 +225,7 @@ This name is also used for failures before deployment configuration can be resol
     | Waiting for deployment admission           | `queued`                                    | **pending / Queued**                  |
     | Deferred by a [sync window]                  | `queued`                                    | **pending / Deferred by sync window** |
     | Admitted and deploying                     | `in_progress`                               | **pending / In Progress**             |
+    | Deployment phase lasting 3s or longer      | `in_progress`, titled _Deploying: phase_    | **pending / In Progress: _phase_**    |
     | All deployment stages succeeded            | `completed` / `success`                     | **success**                           |
     | Deployment failed                          | `completed` / `failure`                     | **error / failure**                   |
     | Deployment deadline or readiness timed out | `completed` / `timed_out`                   | **error / failure**                   |
@@ -245,7 +250,7 @@ This name is also used for failures before deployment configuration can be resol
     | Deployment deadline or readiness timed out | `failed`      | _Failure reason_         |
     | Entire webhook run skipped                 | `skipped`     | Skipped                  |
 
-    GitLab has no timed-out state, so timeouts are reported as `failed`. GitLab cannot move a status that is already pending or running back into the same state, so a later queued or deferred update keeps the existing description.
+    GitLab has no timed-out state, so timeouts are reported as `failed`. GitLab cannot move a status that is already pending or running back into the same state, so a later queued or deferred update keeps the existing description. For the same reason, deployment phases are not shown and a running deployment keeps the description _In Progress_.
 
     !!! note "Skipped pipelines and merge checks"
         If doco-cd's status is the only job in a commit's pipeline, a skipped webhook run makes that pipeline _skipped_. With **Pipelines must succeed** enabled, also enable **Skipped pipelines are considered successful** to merge such commits.
@@ -257,6 +262,7 @@ This name is also used for failures before deployment configuration can be resol
     | Waiting for deployment admission           | `pending`                                                | Queued                   |
     | Deferred by a [sync window]                | `pending`                                                | Deferred by sync window  |
     | Admitted and deploying                     | `pending`                                                | In Progress              |
+    | Deployment phase lasting 3s or longer      | `pending`                                                | In Progress: _phase_     |
     | All deployment stages succeeded            | `success`                                                | Successful in _duration_ |
     | Deployment failed                          | `error` / `failure`                                      | _Failure reason_         |
     | Deployment deadline or readiness timed out | `error` / `failure`                                      | _Failure reason_         |
@@ -271,6 +277,7 @@ This name is also used for failures before deployment configuration can be resol
     | Waiting for deployment admission           | `pending`           | Queued                   |
     | Deferred by a [sync window]                | `pending`           | Deferred by sync window  |
     | Admitted and deploying                     | `pending`           | In Progress              |
+    | Deployment phase lasting 3s or longer      | `pending`           | In Progress: _phase_     |
     | All deployment stages succeeded            | `succeeded`         | Successful in _duration_ |
     | Deployment failed                          | `error` / `failed`  | _Failure reason_         |
     | Deployment deadline or readiness timed out | `error` / `failed`  | _Failure reason_         |

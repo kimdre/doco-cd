@@ -68,6 +68,16 @@ type SelfDeployInput struct {
 	RemoveOrphans  bool
 	CommitStatus   *selfupdate.CommitStatusInfo
 	Log            *slog.Logger
+	// StopPhaseReports stops publishing deployment phases before the
+	// successor takes over the commit status. Optional.
+	StopPhaseReports func()
+}
+
+// stopPhaseReports stops phase reporting for the deployment, if any.
+func (in *SelfDeployInput) stopPhaseReports() {
+	if in != nil && in.StopPhaseReports != nil {
+		in.StopPhaseReports()
+	}
 }
 
 // selfTarget describes the self service inside a project being deployed.

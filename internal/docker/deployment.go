@@ -23,23 +23,56 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-// deploymentPhaseState is a thread-safe structure to hold the current phase of a deployment.
-type deploymentPhaseState struct {
-	mu    sync.RWMutex
-	phase string
+// PhaseReporter receives the phases of a running deployment, for example to
+// publish them in a commit status.
+type PhaseReporter interface {
+	// Report is called whenever the phase changes. It must not block.
+	Report(phase string)
+	// Stop ends reporting and waits for any report in flight. Reports after
+	// Stop are ignored, and calling Stop more than once is safe.
+	Stop()
 }
 
-// newDeploymentPhaseState creates a new deploymentPhaseState with the given initial phase.
-func newDeploymentPhaseState(initialPhase string) *deploymentPhaseState {
-	return &deploymentPhaseState{phase: normalizeDeploymentPhase(initialPhase)}
+// deploymentPhaseState is a thread-safe structure to hold the current phase of a deployment.
+type deploymentPhaseState struct {
+	mu       sync.RWMutex
+	phase    string
+	reporter PhaseReporter
+}
+
+// newDeploymentPhaseState creates a new deploymentPhaseState with the given
+// initial phase. reporter is optional and receives every phase change,
+// starting with the initial phase.
+func newDeploymentPhaseState(initialPhase string, reporter PhaseReporter) *deploymentPhaseState {
+	s := &deploymentPhaseState{phase: normalizeDeploymentPhase(initialPhase), reporter: reporter}
+
+	if reporter != nil {
+		reporter.Report(s.phase)
+	}
+
+	return s
 }
 
 // Set updates the current phase of the deployment.
 func (s *deploymentPhaseState) Set(phase string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	phase = normalizeDeploymentPhase(phase)
 
-	s.phase = normalizeDeploymentPhase(phase)
+	s.mu.Lock()
+	changed := s.phase != phase
+	s.phase = phase
+	s.mu.Unlock()
+
+	if changed && s.reporter != nil {
+		s.reporter.Report(phase)
+	}
+}
+
+// stopReporting stops the phase reporter, if any, so no further phase is
+// published for this deployment.
+func (s *deploymentPhaseState) stopReporting() {
+	if s.reporter != nil {
+		s.reporter.Stop()
+	}
 }
 
 // Get retrieves the current phase of the deployment.
@@ -144,6 +177,10 @@ type DeployRequest struct {
 	// self-update records it so the process that resolves the handover can
 	// post the final state.
 	CommitStatus *selfupdate.CommitStatusInfo
+	// PhaseReporter optionally receives the deployment's phase changes. It is
+	// stopped before a self-update hands over, so it never reports past the
+	// point where a successor takes over the commit status.
+	PhaseReporter PhaseReporter
 }
 
 type runtimeDeployRequest struct {
@@ -184,7 +221,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 
 	stackLog.Debug("acquired scheduler/deploy lock")
 
-	deploymentPhase := newDeploymentPhaseState("resolving working directory")
+	deploymentPhase := newDeploymentPhaseState("resolving working directory", req.PhaseReporter)
 
 	externalWorkingDir, err := resolveExternalWorkingDir(req.ExternalRepoPath, req.DeployConfig.WorkingDirectory)
 	if err != nil {

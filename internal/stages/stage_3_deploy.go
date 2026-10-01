@@ -52,6 +52,15 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 	s.DeployConfig.Internal.ConfigSourceRevision = s.Repository.ConfigRevision
 	s.DeployConfig.Internal.ConfigSourceWorkingDir = s.Repository.ConfigPath
 
+	// Phase updates stop before this stage returns, so they can never
+	// overwrite the final commit status.
+	var phaseReporter docker.PhaseReporter
+	if reporter := s.startPhaseReporter(ctx, phaseReportDwell); reporter != nil {
+		phaseReporter = reporter
+
+		defer reporter.Stop()
+	}
+
 	err = docker.DeployStack(ctx, docker.DeployRequest{
 		JobLog:           stageLog,
 		ExternalRepoPath: s.Repository.PathExternal,
@@ -71,6 +80,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		Project:          s.Docker.Project,
 		ProjectHash:      s.Docker.ProjectHash,
 		CommitStatus:     s.selfUpdateCommitStatus(),
+		PhaseReporter:    phaseReporter,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)

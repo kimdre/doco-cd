@@ -301,6 +301,9 @@ type StageManager struct {
 	// config's own reference instead of reusing the revision of the request.
 	resolvedOwnReference bool
 	commitStatusTarget   *commitstatus.Target
+	// inProgressPosted is set once the deployment's "In Progress" commit
+	// status was posted, which phase updates then refine.
+	inProgressPosted bool
 }
 
 // ResolvedOwnReference reports whether the init stage resolved the deploy
@@ -692,9 +695,15 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 }
 
 func (s *StageManager) PostCommitStatusWithOutcome(ctx context.Context, state commitstatus.State, description string, outcome commitstatus.Outcome) {
+	s.postCommitStatus(ctx, state, description, outcome)
+}
+
+// postCommitStatus posts a commit status like PostCommitStatusWithOutcome and
+// reports whether it was posted.
+func (s *StageManager) postCommitStatus(ctx context.Context, state commitstatus.State, description string, outcome commitstatus.Outcome) bool {
 	req, ok := s.resolveCommitStatusRequest()
 	if !ok {
-		return
+		return false
 	}
 
 	s.Log.Debug("posting commit status",
@@ -715,11 +724,15 @@ func (s *StageManager) PostCommitStatusWithOutcome(ctx context.Context, state co
 		if lifecycle.IsCanceled(err) {
 			s.Log.Debug("skipped commit status during application shutdown", slog.String("error", err.Error()))
 
-			return
+			return false
 		}
 
 		s.Log.Warn("failed to post commit status", slog.String("error", err.Error()))
+
+		return false
 	}
+
+	return true
 }
 
 // sourceLockKey returns the key used to serialize in-place mutation of this

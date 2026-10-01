@@ -350,6 +350,10 @@ func checkTitle(status Status, body githubCheckRequest) string {
 	case body.Status == "queued":
 		return checkTitleQueued
 	case body.Status == "in_progress":
+		if phase := strings.TrimSpace(status.Phase); phase != "" {
+			return checkTitleDeploying + ": " + phase
+		}
+
 		return checkTitleDeploying
 	case body.Conclusion == "success":
 		return checkTitleDeployed

@@ -57,6 +57,10 @@ func doPost(ctx context.Context, apiURL, authHeaderValue string, body any) error
 }
 
 func retryWrite(ctx context.Context, write func() error) error {
+	if isSingleAttempt(ctx) {
+		return write()
+	}
+
 	return retry.New(
 		retry.Attempts(postRetryMaxAttempts),
 		retry.Delay(postRetryInitialBackoff),
