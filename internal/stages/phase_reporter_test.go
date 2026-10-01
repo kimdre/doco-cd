@@ -121,6 +121,7 @@ func TestPhaseReporterNewPhaseDoesNotInheritExpiredDwell(t *testing.T) {
 
 	<-started
 	time.Sleep(2 * dwell)
+
 	changedAt := time.Now()
 	reporter.mu.Unlock()
 	<-reported
