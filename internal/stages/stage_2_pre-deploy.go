@@ -369,7 +369,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		s.DeployState.DeployedCommit = deployedState.GetDeploymentCommitSHA()
 		s.DeployState.latestCommit = s.Repository.Revision
 
-		return ErrSkipDeployment
+		return skipDeployment(SkipReasonNoChanges, "")
 	}
 
 	if s.Repository.Source == config.SourceTypeOCI {
@@ -395,7 +395,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				slog.String("resolved_project_hash", strings.TrimSpace(resolvedProjectHash)),
 			)
 
-			return ErrSkipDeployment
+			return skipDeployment(SkipReasonNoChanges, "the artifact digest and compose project are unchanged")
 		}
 
 		stageLog.Debug("OCI deployment state changed, proceeding with deployment",
@@ -456,7 +456,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		if skip, poisonErr := selfUpdatePoisoned(s.DeployConfig, latestCommit, newHash, stageLog); poisonErr != nil {
 			stageLog.Warn("failed to read the self-update poison state", slog.Any("error", poisonErr))
 		} else if skip {
-			return ErrSkipDeployment
+			return skipDeployment(SkipReasonSelfUpdate, "it is not retried automatically")
 		}
 
 		if s.DeployConfig.ForceRecreate {
@@ -520,7 +520,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 						return isStaleDeployment(repo, s.Repository.MirrorDir, latestHash, deployedHash, s.GitAncestry, stageLog), nil
 					})
 					if stale {
-						return ErrSkipDeployment
+						return skipDeployment(SkipReasonStale, MarkdownCode(shortCommit(deployedCommit))+" is newer than this commit")
 					}
 				}
 
@@ -620,7 +620,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				s.cacheUnchangedProject(stageLog, deployedCommit, newHash)
 			}
 
-			return ErrSkipDeployment
+			return skipDeployment(SkipReasonNoChanges, "")
 		}
 
 		// The digest comparison above only runs under force_image_pull, but a tag bump in

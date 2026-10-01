@@ -34,7 +34,7 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 	// If no containers are found, skip the destruction step
 	if len(serviceLabels) == 0 {
 		stageLog.Info("no services found for the stack, skipping destruction")
-		return ErrSkipDeployment
+		return NothingToDestroy()
 	}
 
 	// Find deployed commit and external secrets hash from labels of deployed services

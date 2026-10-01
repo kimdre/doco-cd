@@ -230,7 +230,9 @@ Phase updates are best-effort: each is sent once without retries, a provider rat
     | All deployment stages succeeded            | `completed` / `success`                     | **success**                           |
     | Deployment failed                          | `completed` / `failure`                     | **error / failure**                   |
     | Deployment deadline or readiness timed out | `completed` / `timed_out`                   | **error / failure**                   |
-    | Entire webhook run skipped                 | `completed` / `skipped` on `doco-cd/deploy` | **success / Skipped**                 |
+    | Entire webhook run skipped                 | `completed` / `skipped` on `doco-cd/deploy` | **success / Skipped: _reason_**       |
+
+    The check run of a skipped webhook run also lists every stack with its skip reason and details in its summary, such as the webhook filter that did not match.
 
     Native `timed_out` is reserved for an actual deployment deadline or readiness timeout, not errors whose text merely mentions a timeout. A deployment deferred by a [sync window](Advanced/Sync-Windows.md) resumes its original check run on retry.
 
@@ -249,7 +251,7 @@ Phase updates are best-effort: each is sent once without retries, a provider rat
     | All deployment stages succeeded            | `success`     | Successful in _duration_ |
     | Deployment failed                          | `failed`      | _Failure reason_         |
     | Deployment deadline or readiness timed out | `failed`      | _Failure reason_         |
-    | Entire webhook run skipped                 | `skipped`     | Skipped                  |
+    | Entire webhook run skipped                 | `skipped`     | Skipped: _reason_        |
 
     GitLab has no timed-out state, so timeouts are reported as `failed`. GitLab cannot move a status that is already pending or running back into the same state, so a later queued or deferred update keeps the existing description. For the same reason, deployment phases are not shown and a running deployment keeps the description _In Progress_.
 
@@ -267,7 +269,7 @@ Phase updates are best-effort: each is sent once without retries, a provider rat
     | All deployment stages succeeded            | `success`                                                | Successful in _duration_ |
     | Deployment failed                          | `error` / `failure`                                      | _Failure reason_         |
     | Deployment deadline or readiness timed out | `error` / `failure`                                      | _Failure reason_         |
-    | Entire webhook run skipped                 | `skipped` on Gitea 1.25+ and Forgejo 16+, else `success` | Skipped                  |
+    | Entire webhook run skipped                 | `skipped` on Gitea 1.25+ and Forgejo 16+, else `success` | Skipped: _reason_        |
 
     Gitea and Forgejo have no separate queued, running, or timed-out states. Their versions are detected through `/api/v1/version` and cached for one hour. Older versions store unknown states without validation, which would leave required checks pending, so they keep receiving `success` for skipped runs.
 
@@ -282,7 +284,7 @@ Phase updates are best-effort: each is sent once without retries, a provider rat
     | All deployment stages succeeded            | `succeeded`         | Successful in _duration_ |
     | Deployment failed                          | `error` / `failed`  | _Failure reason_         |
     | Deployment deadline or readiness timed out | `error` / `failed`  | _Failure reason_         |
-    | Entire webhook run skipped                 | `notApplicable`     | Skipped                  |
+    | Entire webhook run skipped                 | `notApplicable`     | Skipped: _reason_        |
 
     Azure DevOps has no separate queued, running, timed-out, or skipped states. Skipped webhook runs use `notApplicable`, its closest equivalent.
 

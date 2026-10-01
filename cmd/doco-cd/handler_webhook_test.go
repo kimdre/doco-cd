@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -43,6 +44,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/source"
+	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -62,6 +64,10 @@ func TestPostSkippedWebhookUsesNativeGitHubConclusion(t *testing.T) {
 		Name       string `json:"name"`
 		Status     string `json:"status"`
 		Conclusion string `json:"conclusion"`
+		Output     struct {
+			Title   string `json:"title"`
+			Summary string `json:"summary"`
+		} `json:"output"`
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,10 +96,24 @@ func TestPostSkippedWebhookUsesNativeGitHubConclusion(t *testing.T) {
 		FullName:  "owner/repo",
 		CloneURL:  "https://github.com/owner/repo.git",
 		WebURL:    "https://github.com/owner/repo",
-	})
+		Ref:       "refs/heads/renovate/x",
+	}, stages.NewSkippedRunError([]stages.SkippedStack{{
+		Name:   "web",
+		Reason: stages.SkipReasonWebhookFilter,
+		Detail: "`^refs/heads/main$` does not match `refs/heads/renovate/x`",
+	}}))
 
 	if received.Name != commitstatus.DeployContext || received.Status != "completed" || received.Conclusion != "skipped" {
 		t.Fatalf("unexpected skipped check: %+v", received)
+	}
+
+	if received.Output.Title != "Skipped: webhook filter did not match" {
+		t.Fatalf("output title = %q", received.Output.Title)
+	}
+
+	wantRow := "| `web` | Webhook filter did not match: `^refs/heads/main$` does not match `refs/heads/renovate/x` |"
+	if !strings.Contains(received.Output.Summary, wantRow) || !strings.Contains(received.Output.Summary, "`refs/heads/renovate/x` at `0123456`") {
+		t.Fatalf("output summary = %q, want row %q", received.Output.Summary, wantRow)
 	}
 }
 
@@ -132,7 +152,7 @@ func TestPostSkippedWebhookCommitStatusUsesRunContext(t *testing.T) {
 		FullName:  "owner/repo",
 		CloneURL:  "https://git.example.com/owner/repo.git",
 		WebURL:    "https://git.example.com/owner/repo",
-	})
+	}, stages.ErrSkipDeployment)
 
 	if received.State != "skipped" || received.Description != "Skipped" {
 		t.Fatalf("unexpected skipped status: %+v", received)

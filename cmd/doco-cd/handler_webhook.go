@@ -323,7 +323,9 @@ func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 	return "unknown"
 }
 
-func postSkippedWebhookCommitStatus(ctx context.Context, appConfig *app.Config, log *slog.Logger, payload webhook.ParsedPayload) {
+// postSkippedWebhookCommitStatus reports a webhook run skipped with
+// skipErr, explaining the reason for each stack if known.
+func postSkippedWebhookCommitStatus(ctx context.Context, appConfig *app.Config, log *slog.Logger, payload webhook.ParsedPayload, skipErr error) {
 	if appConfig == nil {
 		return
 	}
@@ -352,7 +354,8 @@ func postSkippedWebhookCommitStatus(ctx context.Context, appConfig *app.Config, 
 	if err := req.Post(ctx, commitstatus.Status{
 		State:       commitstatus.StateSuccess,
 		Outcome:     commitstatus.OutcomeSkipped,
-		Description: "Skipped",
+		Description: stages.SkippedCommitStatusDescription(skipErr),
+		Summary:     stages.SkippedCommitStatusSummary(skipErr, payload.Ref, payload.CommitSHAString()),
 	}); err != nil {
 		log.Warn("failed to post skipped webhook commit status", slog.String("error", err.Error()))
 	}
@@ -533,7 +536,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	if errors.Is(deployErr, stages.ErrSkipDeployment) {
-		postSkippedWebhookCommitStatus(ctx, appConfig, jobLog, payload)
+		postSkippedWebhookCommitStatus(ctx, appConfig, jobLog, payload, deployErr)
 	}
 
 	if errors.Is(deployErr, stages.ErrWebhookFilterMismatch) {

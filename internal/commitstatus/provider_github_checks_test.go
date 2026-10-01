@@ -196,6 +196,40 @@ func TestGitHubCheckOutputOnlyAddsInformation(t *testing.T) {
 	}
 }
 
+func TestGitHubCheckOutputUsesSummary(t *testing.T) {
+	t.Parallel()
+
+	const summary = "| Stack | Reason |\n| --- | --- |\n| `web` | No changes detected |"
+
+	for _, tt := range []struct {
+		status Status
+		title  string
+	}{
+		{Status{State: StateSuccess, Outcome: OutcomeSkipped, Description: "Skipped: no changes detected", Summary: summary}, "Skipped: no changes detected"},
+		{Status{State: StateSuccess, Description: "Successful in 3s", Summary: summary}, checkTitleDeployed},
+	} {
+		body, err := checkTestRequest("").checkRequest(tt.status)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if body.Output == nil || body.Output.Title != tt.title || body.Output.Summary != summary {
+			t.Fatalf("checkRequest(%+v) output = %+v, want title %q and the summary", tt.status, body.Output, tt.title)
+		}
+	}
+
+	long := strings.Repeat("ä", maxCheckSummaryLength+10)
+
+	body, err := checkTestRequest("").checkRequest(Status{State: StateSuccess, Outcome: OutcomeSkipped, Description: "Skipped", Summary: long})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := []rune(body.Output.Summary); len(got) != maxCheckSummaryLength || got[len(got)-1] != '…' {
+		t.Fatalf("summary has %d characters, want %d ending in an ellipsis", len(got), maxCheckSummaryLength)
+	}
+}
+
 func TestLegacyStatusesPreserveNativeOutcomeFallbacks(t *testing.T) {
 	t.Parallel()
 
