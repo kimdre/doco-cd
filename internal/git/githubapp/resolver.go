@@ -13,9 +13,16 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/sync/singleflight"
 )
 
-const tokenRenewalBuffer = 30 * time.Second
+const (
+	tokenRenewalBuffer = 30 * time.Second
+	// installationCacheTTL bounds how long a looked-up installation ID is
+	// reused. A reinstalled App is also detected earlier, when minting a token
+	// for the cached ID fails with 404.
+	installationCacheTTL = time.Hour
+)
 
 // Config contains credentials used to mint short-lived GitHub App installation tokens.
 type Config struct {
@@ -30,11 +37,40 @@ var (
 
 	tokenCacheMu sync.RWMutex
 	tokenCache   = map[string]cachedToken{}
+
+	installationCacheMu sync.RWMutex
+	installationCache   = map[string]cachedInstallation{}
+
+	// lookupGroup and mintGroup collapse concurrent identical API calls, so
+	// deployments starting together share one request.
+	lookupGroup singleflight.Group
+	mintGroup   singleflight.Group
 )
 
 type cachedToken struct {
 	Token     string
 	ExpiresAt time.Time
+}
+
+type cachedInstallation struct {
+	ID        int64
+	ExpiresAt time.Time
+}
+
+// apiStatusError is returned when the GitHub API answers with a non-2xx status.
+type apiStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *apiStatusError) Error() string {
+	return fmt.Sprintf("GitHub API request failed with status %d: %s", e.StatusCode, e.Body)
+}
+
+func isNotFound(err error) bool {
+	var statusErr *apiStatusError
+
+	return errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound
 }
 
 type installationResponse struct {
@@ -65,27 +101,144 @@ func ResolveInstallationToken(repoURL string, cfg Config) (string, error) {
 		return "", err
 	}
 
-	installationID := cfg.InstallationID
-	if installationID == 0 {
-		installationID, err = lookupInstallationID(host, owner, repo, appID, privateKey)
-		if err != nil {
-			return "", err
-		}
+	if cfg.InstallationID != 0 {
+		return resolveToken(host, appID, privateKey, cfg.InstallationID)
 	}
 
+	installKey := installationCacheKey(host, appID, owner, repo)
+
+	installationID, cached, err := resolveInstallationID(installKey, host, owner, repo, appID, privateKey)
+	if err != nil {
+		return "", err
+	}
+
+	token, err := resolveToken(host, appID, privateKey, installationID)
+	if err == nil || !cached || !isNotFound(err) {
+		return token, err
+	}
+
+	// The cached installation no longer exists (the App was uninstalled or
+	// reinstalled), so look it up once more.
+	forgetInstallationID(installKey, installationID)
+
+	installationID, _, err = resolveInstallationID(installKey, host, owner, repo, appID, privateKey)
+	if err != nil {
+		return "", err
+	}
+
+	return resolveToken(host, appID, privateKey, installationID)
+}
+
+// resolveInstallationID returns the installation ID for a repository, from
+// the cache when possible. cached reports whether the ID came from the cache.
+func resolveInstallationID(key, host, owner, repo, appID, privateKey string) (int64, bool, error) {
+	if id, ok := getCachedInstallationID(key); ok {
+		return id, true, nil
+	}
+
+	lookup := func() (int64, error) {
+		id, err := lookupInstallationID(host, owner, repo, appID, privateKey)
+		if err != nil {
+			return 0, err
+		}
+
+		cacheInstallationID(key, id)
+
+		return id, nil
+	}
+
+	value, err, _ := lookupGroup.Do(key, func() (any, error) {
+		if id, ok := getCachedInstallationID(key); ok {
+			return id, nil
+		}
+
+		return lookup()
+	})
+	if err != nil {
+		return 0, false, err
+	}
+
+	id, ok := value.(int64)
+	if !ok {
+		id, err = lookup()
+
+		return id, false, err
+	}
+
+	return id, false, nil
+}
+
+// resolveToken returns a cached installation token or mints a new one.
+func resolveToken(host, appID, privateKey string, installationID int64) (string, error) {
 	cacheKey := fmt.Sprintf("%s|%s|%d", host, appID, installationID)
 	if token, ok := getCachedToken(cacheKey); ok {
 		return token, nil
 	}
 
-	tokenResp, err := createInstallationToken(host, installationID, appID, privateKey)
+	mint := func() (string, error) {
+		tokenResp, err := createInstallationToken(host, installationID, appID, privateKey)
+		if err != nil {
+			return "", err
+		}
+
+		cacheToken(cacheKey, tokenResp.Token, tokenResp.ExpiresAt)
+
+		return tokenResp.Token, nil
+	}
+
+	value, err, _ := mintGroup.Do(cacheKey, func() (any, error) {
+		if token, ok := getCachedToken(cacheKey); ok {
+			return token, nil
+		}
+
+		return mint()
+	})
 	if err != nil {
 		return "", err
 	}
 
-	cacheToken(cacheKey, tokenResp.Token, tokenResp.ExpiresAt)
+	token, ok := value.(string)
+	if !ok {
+		return mint()
+	}
 
-	return tokenResp.Token, nil
+	return token, nil
+}
+
+func installationCacheKey(host, appID, owner, repo string) string {
+	return strings.ToLower(fmt.Sprintf("%s|%s|%s/%s", host, appID, owner, repo))
+}
+
+func getCachedInstallationID(key string) (int64, bool) {
+	installationCacheMu.RLock()
+
+	entry, ok := installationCache[key]
+
+	installationCacheMu.RUnlock()
+
+	if !ok || !nowFn().Before(entry.ExpiresAt) {
+		return 0, false
+	}
+
+	return entry.ID, true
+}
+
+func cacheInstallationID(key string, id int64) {
+	installationCacheMu.Lock()
+	defer installationCacheMu.Unlock()
+
+	installationCache[key] = cachedInstallation{ID: id, ExpiresAt: nowFn().Add(installationCacheTTL)}
+}
+
+// forgetInstallationID drops a cached installation ID unless another caller
+// already replaced it with a different one.
+func forgetInstallationID(key string, id int64) {
+	installationCacheMu.Lock()
+	defer installationCacheMu.Unlock()
+
+	if entry, ok := installationCache[key]; ok && entry.ID == id {
+		delete(installationCache, key)
+	}
 }
 
 func getCachedToken(cacheKey string) (string, bool) {
@@ -264,7 +417,7 @@ func doAPIRequest(method, endpoint, jwtToken string, payload any, out any) error
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("GitHub API request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		return &apiStatusError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(bodyBytes))}
 	}
 
 	if out == nil {
