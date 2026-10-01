@@ -147,25 +147,32 @@ func resolveInstallationID(key, host, owner, repo, appID, privateKey string) (in
 		return id, nil
 	}
 
+	type lookupResult struct {
+		id     int64
+		cached bool
+	}
+
 	value, err, _ := lookupGroup.Do(key, func() (any, error) {
 		if id, ok := getCachedInstallationID(key); ok {
-			return id, nil
+			return lookupResult{id: id, cached: true}, nil
 		}
 
-		return lookup()
+		id, err := lookup()
+
+		return lookupResult{id: id}, err
 	})
 	if err != nil {
 		return 0, false, err
 	}
 
-	id, ok := value.(int64)
+	result, ok := value.(lookupResult)
 	if !ok {
-		id, err = lookup()
+		id, err := lookup()
 
 		return id, false, err
 	}
 
-	return id, false, nil
+	return result.id, result.cached, nil
 }
 
 // resolveToken returns a cached installation token or mints a new one.
