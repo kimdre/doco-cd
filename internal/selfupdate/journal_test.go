@@ -1,15 +1,19 @@
 package selfupdate
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
+
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -317,10 +321,18 @@ func TestStoreKeepsCommitStatusTarget(t *testing.T) {
 		CommitSHA: "0123456789abcdef",
 		Context:   "doco-cd/nas/doco-cd",
 		StartedAt: startedAt,
+		Target: &commitstatus.Target{
+			Backend:    commitstatus.BackendChecks,
+			ExternalID: "doco-cd:original-attempt",
+			CheckRunID: 71,
+			AppID:      "12345",
+			StartedAt:  startedAt,
+		},
 	}
 
 	withStatus := newTestRecord("with-status")
 	withStatus.Source.CommitStatus = &want
+	withStatus.TimedOut = true
 
 	if err := store.Create(withStatus); err != nil {
 		t.Fatalf("create: %v", err)
@@ -341,8 +353,12 @@ func TestStoreKeepsCommitStatusTarget(t *testing.T) {
 	}
 
 	got.StartedAt = want.StartedAt
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("commit status target = %+v, want %+v", got, want)
+	}
+
+	if !loaded.TimedOut {
+		t.Error("structured timeout was not persisted")
 	}
 
 	if err = store.Remove(withStatus.ID); err != nil {
@@ -363,6 +379,10 @@ func TestStoreKeepsCommitStatusTarget(t *testing.T) {
 		t.Errorf("record without a commit status wrote the field: %s", raw)
 	}
 
+	if strings.Contains(string(raw), "timed_out") {
+		t.Errorf("record without a timeout wrote the field: %s", raw)
+	}
+
 	loaded, err = store.Load(without.ID)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -370,5 +390,41 @@ func TestStoreKeepsCommitStatusTarget(t *testing.T) {
 
 	if loaded.Source.CommitStatus != nil {
 		t.Errorf("commit status = %+v, want nil", *loaded.Source.CommitStatus)
+	}
+}
+
+func TestLegacyJournalDefaultsReportingFields(t *testing.T) {
+	t.Parallel()
+
+	const legacy = `{
+		"version": 1,
+		"id": "legacy",
+		"state": "rolled_back",
+		"error": "context deadline exceeded",
+		"source": {
+			"commit_status": {
+				"source_url": "https://github.com/owner/infra.git",
+				"commit_sha": "0123456789abcdef",
+				"context": "doco-cd/nas/doco-cd"
+			}
+		}
+	}`
+
+	var record Record
+	if err := json.Unmarshal([]byte(legacy), &record); err != nil {
+		t.Fatal(err)
+	}
+
+	if record.Source.CommitStatus == nil || record.Source.CommitStatus.Target != nil || record.TimedOut {
+		t.Fatalf("legacy journal changed reporting defaults: %+v", record)
+	}
+
+	raw, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(string(raw), `"target"`) || strings.Contains(string(raw), `"timed_out"`) {
+		t.Errorf("legacy journal roundtrip wrote optional fields: %s", raw)
 	}
 }

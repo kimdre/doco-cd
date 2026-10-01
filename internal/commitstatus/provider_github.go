@@ -65,12 +65,19 @@ func getGitHubStyle(ctx context.Context, apiURL, token, contextName string) (Sta
 			continue
 		}
 
-		return Status{
+		result := Status{
 			State:       State(status.State),
 			Description: status.Description,
 			Context:     status.Context,
 			TargetURL:   status.TargetURL,
-		}, true, nil
+		}
+
+		// Gitea 1.25+ and Forgejo 16+ report native skipped statuses.
+		if status.State == "skipped" {
+			result.State, result.Outcome = StateSuccess, OutcomeSkipped
+		}
+
+		return result, true, nil
 	}
 
 	return Status{}, false, nil

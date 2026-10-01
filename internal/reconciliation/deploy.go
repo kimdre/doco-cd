@@ -395,13 +395,22 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 		}
 
 		if err := gate.admitStack(deployLog, dc, rev, func(description string) {
-			stageMgr.PostCommitStatus(ctx, commitstatus.StatePending, description)
+			stageMgr.PostCommitStatusWithOutcome(ctx, commitstatus.StatePending, description, commitstatus.OutcomeDeferred)
 		}); err != nil {
 			return nil, err
 		}
 
-		return m.acquireDeploymentPhase(ctx, deployLog, req.Repository.Name, phaseDeployment, m.limiter, false)
+		return m.acquireQueuedDeploymentPhase(ctx, stageMgr)
 	})
+}
+
+// acquireQueuedDeploymentPhase acquires a deploymentPhase (phaseDeployment) from the manager's limiter
+// and posts a queued commit status to the repository. It returns a release function that must be
+// called to release the acquired phase, and an error if the acquisition failed.
+func (m *Manager) acquireQueuedDeploymentPhase(ctx context.Context, stageMgr *stages.StageManager) (func(), error) {
+	stageMgr.PostQueuedCommitStatus(ctx)
+
+	return m.acquireDeploymentPhase(ctx, stageMgr.Log, stageMgr.Repository.Name, phaseDeployment, m.limiter, false)
 }
 
 // acquireDeploymentPhase acquires a deploymentPhase (phasePreDeploy or phaseDeployment) from the given limiter.

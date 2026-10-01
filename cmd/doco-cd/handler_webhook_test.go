@@ -46,6 +46,57 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
+func TestPostSkippedWebhookUsesNativeGitHubConclusion(t *testing.T) {
+	git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{ID: "42", PrivateKey: "test-key"})
+
+	restore := git.SwapGitHubAppTokenProviderForTest(func(string, git.GitHubAppConfig) (string, error) {
+		return "installation-token", nil
+	})
+
+	t.Cleanup(func() {
+		restore()
+		git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{})
+	})
+
+	var received struct {
+		Name       string `json:"name"`
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"total_count":0,"check_runs":[]}`))
+			return
+		}
+
+		if r.Method != http.MethodPost || r.URL.Path != "/repos/owner/repo/check-runs" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Errorf("decode check: %v", err)
+		}
+
+		_, _ = w.Write([]byte(`{"id":123}`))
+	}))
+	defer server.Close()
+
+	postSkippedWebhookCommitStatus(t.Context(), &app.Config{
+		GitCommitStatus: true, GitScmProvider: "github", GitScmApiUrl: config.HttpUrl(server.URL),
+	}, logger.New(logger.LevelCritical).Logger, webhook.ParsedPayload{
+		Source:    webhook.PayloadSourceGit,
+		CommitSHA: plumbing.NewHash("0123456789012345678901234567890123456789"),
+		FullName:  "owner/repo",
+		CloneURL:  "https://github.com/owner/repo.git",
+		WebURL:    "https://github.com/owner/repo",
+	})
+
+	if received.Name != commitstatus.DeployContext || received.Status != "completed" || received.Conclusion != "skipped" {
+		t.Fatalf("unexpected skipped check: %+v", received)
+	}
+}
+
 func TestPostSkippedWebhookCommitStatusUsesRunContext(t *testing.T) {
 	type postedStatus struct {
 		State       string `json:"state"`
@@ -56,6 +107,12 @@ func TestPostSkippedWebhookCommitStatusUsesRunContext(t *testing.T) {
 	var received postedStatus
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/version" {
+			_, _ = w.Write([]byte(`{"version":"1.25.0"}`))
+
+			return
+		}
+
 		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
 			t.Errorf("decode status: %v", err)
 		}
@@ -77,7 +134,7 @@ func TestPostSkippedWebhookCommitStatusUsesRunContext(t *testing.T) {
 		WebURL:    "https://git.example.com/owner/repo",
 	})
 
-	if received.State != string(commitstatus.StateSuccess) || received.Description != "Skipped" {
+	if received.State != "skipped" || received.Description != "Skipped" {
 		t.Fatalf("unexpected skipped status: %+v", received)
 	}
 

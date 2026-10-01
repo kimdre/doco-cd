@@ -27,7 +27,7 @@ func postAzureDevOps(ctx context.Context, baseURL, host, repoURL, repoFullName, 
 	}
 
 	body := azureRequest{
-		State:       commitStatusToAzureState(status.State),
+		State:       commitStatusToAzureState(status),
 		Description: status.Description,
 		Context: azureContext{
 			Name:  status.Context,
@@ -71,8 +71,11 @@ func getAzureDevOps(ctx context.Context, baseURL, host, repoURL, repoFullName, c
 			continue
 		}
 
+		state, outcome := azureStateToCommitStatus(status.State)
+
 		return Status{
-			State:       azureStateToCommitStatus(status.State),
+			State:       state,
+			Outcome:     outcome,
 			Description: status.Description,
 			Context:     status.Context.Name,
 			TargetURL:   status.TargetURL,
@@ -185,11 +188,17 @@ func splitPathSegments(value string) []string {
 	return segments
 }
 
-func commitStatusToAzureState(state State) string {
-	switch state {
+// commitStatusToAzureState maps a status to Azure DevOps Git status states.
+// Skipped deployments use notApplicable; Azure DevOps has no queued or timed-out state.
+func commitStatusToAzureState(status Status) string {
+	switch status.State {
 	case StatePending:
 		return "pending"
 	case StateSuccess:
+		if status.Outcome == OutcomeSkipped {
+			return "notApplicable"
+		}
+
 		return "succeeded"
 	case StateFailure:
 		return "failed"
@@ -198,15 +207,17 @@ func commitStatusToAzureState(state State) string {
 	}
 }
 
-func azureStateToCommitStatus(state string) State {
+func azureStateToCommitStatus(state string) (State, Outcome) {
 	switch strings.ToLower(strings.TrimSpace(state)) {
 	case "pending", "inprogress":
-		return StatePending
+		return StatePending, ""
 	case "succeeded", "success":
-		return StateSuccess
+		return StateSuccess, ""
+	case "notapplicable":
+		return StateSuccess, OutcomeSkipped
 	case "failed", "failure":
-		return StateFailure
+		return StateFailure, ""
 	default:
-		return StateError
+		return StateError, ""
 	}
 }

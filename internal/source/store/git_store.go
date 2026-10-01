@@ -153,7 +153,6 @@ func (s *GitStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 	exportOpts := git.ExportOptions{
 		Log:                     s.opts.Log,
 		SkipAbsoluteSymlinks:    s.opts.SkipAbsoluteSymlinks,
-		Private:                 s.opts.Private,
 		SSHPrivateKey:           s.opts.SSHPrivateKey,
 		SSHPrivateKeyPassphrase: s.opts.SSHPrivateKeyPassphrase,
 		AccessToken:             s.opts.AccessToken,

@@ -2,14 +2,30 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
+
+func TestWaitForStartedServicesTimeoutIsTypedFailure(t *testing.T) {
+	t.Parallel()
+
+	lister := func(context.Context) ([]api.ContainerSummary, error) {
+		return nil, nil
+	}
+
+	err := waitForStartedServicesWith(t.Context(), lister, []string{"api"},
+		set.New[string](), set.New[string](), time.Nanosecond)
+	if !errors.Is(err, lifecycle.ErrTimedOut) || lifecycle.IsCancellation(err) {
+		t.Fatalf("readiness timeout must be a typed failure, not lifecycle cancellation: %v", err)
+	}
+}
 
 func TestGetStartServicesForDeploy(t *testing.T) {
 	t.Parallel()

@@ -99,6 +99,7 @@ func TestFailedApplierStageCleansOrRetainsClone(t *testing.T) {
 		name       string
 		failStep   string
 		removeFail bool
+		timedOut   bool
 		wantState  selfupdate.State
 	}{
 		{name: "Save failure clone removed", failStep: "save"},
@@ -107,6 +108,7 @@ func TestFailedApplierStageCleansOrRetainsClone(t *testing.T) {
 		{name: "Connect failure clone removed", failStep: "connect"},
 		{name: "Update failure removal retained", failStep: "update", removeFail: true, wantState: selfupdate.StateAborted},
 		{name: "Start failure removal retained", failStep: "start", removeFail: true, wantState: selfupdate.StateFailed},
+		{name: "Start deadline removal retained", failStep: "start", removeFail: true, timedOut: true, wantState: selfupdate.StateFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := selfupdate.NewStore(t.TempDir())
@@ -133,6 +135,9 @@ func TestFailedApplierStageCleansOrRetainsClone(t *testing.T) {
 
 			if tc.failStep == "start" {
 				fake.startErr = errors.New("start clone unavailable")
+				if tc.timedOut {
+					fake.startErr = errors.Join(fake.startErr, context.DeadlineExceeded)
+				}
 			}
 
 			if tc.failStep == "connect" {
@@ -179,6 +184,10 @@ func TestFailedApplierStageCleansOrRetainsClone(t *testing.T) {
 					!strings.Contains(after.Error, "remove clone unavailable") ||
 					!strings.Contains(after.Error, tc.failStep) {
 					t.Errorf("persisted cleanup failure = %+v; want %s with both errors", after, tc.wantState)
+				}
+
+				if after.TimedOut != tc.timedOut {
+					t.Errorf("TimedOut = %t, want %t", after.TimedOut, tc.timedOut)
 				}
 
 				return

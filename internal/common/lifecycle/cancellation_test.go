@@ -42,3 +42,26 @@ func TestIsCanceledExcludesDeadline(t *testing.T) {
 		t.Fatal("IsCanceled() = true for deadline exceeded")
 	}
 }
+
+func TestIsTimeout(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("services not ready")
+
+	timedOut := fmt.Errorf("deploy: %w", MarkTimedOut(cause))
+	if !IsTimeout(timedOut) || !IsTimeout(fmt.Errorf("request: %w", context.DeadlineExceeded)) {
+		t.Fatal("IsTimeout() = false for a time limit or deadline")
+	}
+
+	if timedOut.Error() != "deploy: services not ready" || !errors.Is(timedOut, cause) || MarkTimedOut(nil) != nil {
+		t.Fatalf("MarkTimedOut() changed the error: %v", timedOut)
+	}
+
+	if IsCancellation(timedOut) {
+		t.Fatal("an operation time limit must not be lifecycle cancellation")
+	}
+
+	if IsTimeout(context.Canceled) || IsTimeout(errors.New("timeout-like error message")) {
+		t.Fatal("IsTimeout() = true for an untyped or canceled error")
+	}
+}

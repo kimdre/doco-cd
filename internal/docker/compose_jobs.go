@@ -17,6 +17,7 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -586,8 +587,8 @@ func waitForStartedServicesWith(ctx context.Context, listContainers projectConta
 			lastOneShotFailure = ""
 
 			if time.Now().After(deadline) {
-				return fmt.Errorf("timed out after %s waiting for services to become ready: %s",
-					timeout, strings.Join(waiting, ", "))
+				return lifecycle.MarkTimedOut(fmt.Errorf("timed out after %s waiting for services to become ready: %s",
+					timeout, strings.Join(waiting, ", ")))
 			}
 		}
 

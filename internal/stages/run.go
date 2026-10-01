@@ -114,6 +114,7 @@ func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmi
 
 	pendingPosted := false
 	startedNotified := false
+	queuedByAdmission := admitMutation != nil
 
 	var finishedAt time.Time
 
@@ -173,6 +174,12 @@ func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmi
 
 			releaseMutation, admissionErr = admitMutation(ctx)
 			if admissionErr != nil {
+				if !errors.Is(admissionErr, ErrSkipDeployment) && !lifecycle.IsCanceled(admissionErr) &&
+					shouldPostFailureCommitStatus(s.DeployConfig.Destroy.Enabled) {
+					s.PostCommitStatusWithOutcome(ctx, failureCommitStatusState(stageName),
+						commitstatus.FailureDescription(admissionErr), commitstatus.FailureOutcome(admissionErr))
+				}
+
 				return admissionErr
 			}
 
@@ -189,7 +196,10 @@ func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmi
 
 		// Post pending statuses only after pre-deploy confirms work is required.
 		if shouldPostPendingCommitStatus(stageName, s.DeployConfig.Destroy.Enabled, pendingPosted) {
-			s.PostQueuedCommitStatus(ctx)
+			if !queuedByAdmission {
+				s.PostQueuedCommitStatus(ctx)
+			}
+
 			s.PostCommitStatus(ctx, commitstatus.StatePending, "In Progress")
 
 			pendingPosted = true
@@ -229,7 +239,8 @@ func (s *StageManager) handleStageFailure(ctx context.Context, stageName StageNa
 	notifiedErr := s.NotifyFailure(err)
 
 	if shouldPostFailureCommitStatus(s.DeployConfig.Destroy.Enabled) {
-		s.PostCommitStatus(ctx, failureCommitStatusState(stageName), commitstatus.FailureDescription(err))
+		s.PostCommitStatusWithOutcome(ctx, failureCommitStatusState(stageName),
+			commitstatus.FailureDescription(err), commitstatus.FailureOutcome(err))
 	}
 
 	return notifiedErr
@@ -263,7 +274,7 @@ func deploymentMetricsContext(config *deploy.Config) string {
 // work. Poll and destroy operations do not publish queued statuses.
 func (s *StageManager) PostQueuedCommitStatus(ctx context.Context) {
 	if shouldPostWebhookCommitStatus(s.JobTrigger, s.DeployConfig.Destroy.Enabled) {
-		s.PostCommitStatus(ctx, commitstatus.StatePending, "Queued")
+		s.PostCommitStatusWithOutcome(ctx, commitstatus.StatePending, "Queued", commitstatus.OutcomeQueued)
 	}
 }
 

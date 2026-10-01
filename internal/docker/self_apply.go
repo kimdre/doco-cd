@@ -15,6 +15,7 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -166,6 +167,8 @@ func ApplySelfUpdate(ctx context.Context, dockerCli command.Cli, opts ApplySelfO
 
 	if applyErr == nil {
 		record.Error = ""
+		record.TimedOut = false
+
 		if err = opts.Store.Save(record); err != nil {
 			return err
 		}
@@ -194,7 +197,12 @@ func pendingSelfApplyFailure(record selfupdate.Record) error {
 		reason, _, _ = strings.Cut(reason, "; restore also failed: ")
 	}
 
-	return errors.New(reason)
+	err := errors.New(reason)
+	if record.TimedOut {
+		return lifecycle.MarkTimedOut(err)
+	}
+
+	return err
 }
 
 // readyAndWaitSelfApply commits preflight readiness before waiting for the
@@ -441,6 +449,7 @@ func finishSelfApplyFailureOnce(
 
 	record = latest
 	record.Error = applyErr.Error()
+	record.TimedOut = lifecycle.IsTimeout(applyErr)
 
 	state := selfupdate.StateFailed
 

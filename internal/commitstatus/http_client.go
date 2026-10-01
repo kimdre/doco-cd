@@ -24,8 +24,10 @@ const (
 )
 
 type commitStatusPostRetryError struct {
-	err       error
-	retryable bool
+	err        error
+	retryable  bool
+	statusCode int
+	details    string
 }
 
 func (e *commitStatusPostRetryError) Error() string {
@@ -51,13 +53,10 @@ func azureDevOpsAuthToken(token string) string {
 }
 
 func doPost(ctx context.Context, apiURL, authHeaderValue string, body any) error {
-	jsonData, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
+	return doWrite(ctx, http.MethodPost, apiURL, authHeaderValue, body, nil)
+}
 
-	client := &http.Client{Timeout: 15 * time.Second}
-
+func retryWrite(ctx context.Context, write func() error) error {
 	return retry.New(
 		retry.Attempts(postRetryMaxAttempts),
 		retry.Delay(postRetryInitialBackoff),
@@ -66,43 +65,65 @@ func doPost(ctx context.Context, apiURL, authHeaderValue string, body any) error
 		retry.LastErrorOnly(true),
 		retry.RetryIf(func(err error) bool {
 			var postErr *commitStatusPostRetryError
-			if !errors.As(err, &postErr) {
-				return false
-			}
-
-			return postErr.retryable
+			return errors.As(err, &postErr) && postErr.retryable
 		}),
-	).Do(func() error {
-		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(jsonData)) // #nosec G107
-		if reqErr != nil {
-			return fmt.Errorf("failed to create request: %w", reqErr)
-		}
+	).Do(write)
+}
 
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", authHeaderValue)
-
-		resp, postErr := client.Do(req)
-		if postErr != nil {
-			return &commitStatusPostRetryError{
-				err:       fmt.Errorf("failed to post commit status: %w", postErr),
-				retryable: true,
-			}
-		}
-
-		defer func() {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
-		}()
-
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return &commitStatusPostRetryError{
-				err:       fmt.Errorf("commit status API returned %s for %s%s", resp.Status, apiURL, responseErrorDetails(resp)),
-				retryable: isRetryablePostStatusCode(resp.StatusCode),
-			}
-		}
-
-		return nil
+func doWrite(ctx context.Context, method, apiURL, authHeaderValue string, body, dst any) error {
+	return retryWrite(ctx, func() error {
+		return doWriteRequest(ctx, method, apiURL, authHeaderValue, body, dst)
 	})
+}
+
+func doWriteRequest(ctx context.Context, method, apiURL, authHeaderValue string, body, dst any) error {
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+
+	req, reqErr := http.NewRequestWithContext(ctx, method, apiURL, bytes.NewReader(jsonData)) // #nosec G107
+	if reqErr != nil {
+		return fmt.Errorf("failed to create request: %w", reqErr)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeaderValue)
+	req.Header.Set("Accept", "application/json")
+
+	resp, postErr := client.Do(req)
+	if postErr != nil {
+		return &commitStatusPostRetryError{
+			err:       fmt.Errorf("failed to post commit status: %w", postErr),
+			retryable: true,
+		}
+	}
+
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		details := responseErrorDetails(resp)
+
+		return &commitStatusPostRetryError{
+			err:        fmt.Errorf("commit status API returned %s for %s%s", resp.Status, apiURL, details),
+			retryable:  isRetryablePostStatusCode(resp.StatusCode),
+			statusCode: resp.StatusCode,
+			details:    details,
+		}
+	}
+
+	if dst != nil {
+		if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
+			return fmt.Errorf("failed to decode response: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func isRetryablePostStatusCode(statusCode int) bool {
@@ -118,6 +139,7 @@ func doGet(ctx context.Context, apiURL, authHeaderValue string, dst any) error {
 	}
 
 	req.Header.Set("Authorization", authHeaderValue)
+	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{Timeout: 15 * time.Second}
 

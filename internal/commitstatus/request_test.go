@@ -138,6 +138,41 @@ func TestResolveRequest_FallsBackToGitHubAppToken(t *testing.T) {
 	if req.Token != "ghs-install-token" { // #nosec G101 -- test fixture, not a real credential
 		t.Fatalf("expected github app installation token, got '%s'", req.Token)
 	}
+
+	if req.Target == nil || req.Target.Backend != commitstatus.BackendChecks || req.Target.AppID != "12345" ||
+		req.Target.ExternalID == "" {
+		t.Fatalf("expected GitHub App check target, got %+v", req.Target)
+	}
+
+	legacy := &commitstatus.Target{Backend: commitstatus.BackendStatus}
+
+	pinned, ok := commitstatus.ResolveRequest(newTestLogger(), commitstatus.RequestParams{
+		Enabled: true, SourceIsGit: true, SourceURL: "https://github.com/org/repo.git",
+		CommitSHA: "deadbeef", Target: legacy,
+	})
+	if !ok || pinned.Target != legacy || pinned.Target.Backend != commitstatus.BackendStatus {
+		t.Fatalf("legacy handover backend changed: %+v", pinned.Target)
+	}
+
+	for _, override := range []string{"auto", "gitea"} {
+		checks := &commitstatus.Target{Backend: commitstatus.BackendChecks, ExternalID: "doco-cd:handover", CheckRunID: 42}
+
+		pinned, ok := commitstatus.ResolveRequest(newTestLogger(), commitstatus.RequestParams{
+			Enabled: true, SourceIsGit: true, SourceURL: "https://ghe.example/org/repo.git",
+			CommitSHA: "deadbeef", ProviderOverride: override, Target: checks,
+		})
+		if !ok || pinned.Target != checks || pinned.Provider != commitstatus.ProviderGitHub {
+			t.Fatalf("check handover provider changed with override %q: %+v", override, pinned)
+		}
+	}
+
+	other, ok := commitstatus.ResolveRequest(newTestLogger(), commitstatus.RequestParams{
+		Enabled: true, SourceIsGit: true, SourceURL: "https://github.com/org/repo.git",
+		CommitSHA: "deadbeef", ProviderOverride: "gitea",
+	})
+	if !ok || other.Target.Backend != commitstatus.BackendStatus {
+		t.Fatalf("non-GitHub provider switched to checks: %+v", other.Target)
+	}
 }
 
 func TestResolveRequest_PrefersExplicitToken(t *testing.T) {
@@ -170,6 +205,10 @@ func TestResolveRequest_PrefersExplicitToken(t *testing.T) {
 
 	if req.Token != "pat-token" {
 		t.Fatalf("expected explicit access token, got '%s'", req.Token)
+	}
+
+	if req.Target == nil || req.Target.Backend != commitstatus.BackendStatus {
+		t.Fatalf("expected token-only legacy status target, got %+v", req.Target)
 	}
 }
 

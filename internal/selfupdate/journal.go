@@ -13,6 +13,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
@@ -102,12 +103,13 @@ type SourceInfo struct {
 // the process that resolves the handover can post its final state.
 type CommitStatusInfo struct {
 	// SourceURL is the deployment repository, used to resolve credentials.
-	SourceURL string    `json:"source_url"`
-	RepoURL   string    `json:"repo_url,omitempty"`
-	FullName  string    `json:"full_name,omitempty"`
-	CommitSHA string    `json:"commit_sha"`
-	Context   string    `json:"context"`
-	StartedAt time.Time `json:"started_at,omitzero"`
+	SourceURL string               `json:"source_url"`
+	RepoURL   string               `json:"repo_url,omitempty"`
+	FullName  string               `json:"full_name,omitempty"`
+	CommitSHA string               `json:"commit_sha"`
+	Context   string               `json:"context"`
+	StartedAt time.Time            `json:"started_at,omitzero"`
+	Target    *commitstatus.Target `json:"target,omitempty"`
 }
 
 // DeployInfo carries the deploy parameters the applier must reproduce.
@@ -150,6 +152,7 @@ type Record struct {
 	DriftStarted bool              `json:"drift_started,omitempty"`
 	Labels       map[string]string `json:"labels"`
 	Error        string            `json:"error,omitempty"`
+	TimedOut     bool              `json:"timed_out,omitempty"`
 	CreatedAt    time.Time         `json:"created_at"`
 	UpdatedAt    time.Time         `json:"updated_at"`
 	History      []Transition      `json:"history"`
