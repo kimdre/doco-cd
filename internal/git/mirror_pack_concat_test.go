@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -57,7 +58,7 @@ func ofsDeltaEntry(b, base testBlob, baseIndex int) testPackEntry {
 
 // writeTestPack writes a pack holding entries, and its index, into packDir and
 // sets the pack's modification time to modTime.
-func writeTestPack(t *testing.T, packDir string, modTime time.Time, entries ...testPackEntry) plumbing.Hash {
+func writeTestPack(t testing.TB, packDir string, modTime time.Time, entries ...testPackEntry) plumbing.Hash {
 	t.Helper()
 
 	var pack bytes.Buffer
@@ -132,7 +133,7 @@ func writeTestPack(t *testing.T, packDir string, modTime time.Time, entries ...t
 }
 
 // newBareTestRepo returns an empty bare repository and its pack directory.
-func newBareTestRepo(t *testing.T) (string, *filesystem.Storage, string) {
+func newBareTestRepo(t testing.TB) (string, *filesystem.Storage, string) {
 	t.Helper()
 
 	path := t.TempDir()
@@ -415,6 +416,64 @@ func TestPackEntryHeader_RoundTrip(t *testing.T) {
 			if h.typ != plumbing.OFSDeltaObject || h.size != size || h.baseOffset != ofs || !bytes.Equal(h.raw, raw) {
 				t.Fatalf("size %d offset %d: decoded %+v", size, ofs, h)
 			}
+		}
+	}
+}
+
+// BenchmarkConsolidatePacks consolidates a mirror shaped by many small fetches:
+// hundreds of small packs, some holding deltas against older packs, and a few
+// loose objects.
+func BenchmarkConsolidatePacks(b *testing.B) {
+	const (
+		packCount  = 500
+		looseCount = 50
+	)
+
+	b.ReportAllocs()
+
+	for range b.N {
+		b.StopTimer()
+
+		_, storage, packDir := newBareTestRepo(b)
+
+		start := time.Now().Add(-time.Hour)
+		prev := newTestBlob(strings.Repeat("the quick brown fox jumps over the lazy dog\n", 20))
+		packs := []plumbing.Hash{writeTestPack(b, packDir, start, fullEntry(prev))}
+
+		for i := 1; i < packCount; i++ {
+			blob := newTestBlob(string(prev.content) + "line " + strconv.Itoa(i) + "\n")
+
+			entry := fullEntry(blob)
+			if i%4 == 0 {
+				entry = refDeltaEntry(blob, prev)
+			}
+
+			packs = append(packs, writeTestPack(b, packDir, start.Add(time.Duration(i)*time.Second), entry))
+			prev = blob
+		}
+
+		for i := range looseCount {
+			obj := storage.NewEncodedObject()
+			obj.SetType(plumbing.BlobObject)
+
+			w, err := obj.Writer()
+			if err != nil {
+				b.Fatalf("write loose object: %v", err)
+			}
+
+			_, _ = w.Write([]byte("loose " + strconv.Itoa(i) + "\n"))
+			_ = w.Close()
+
+			if _, err := storage.SetEncodedObject(obj); err != nil {
+				b.Fatalf("store loose object: %v", err)
+			}
+		}
+
+		b.StartTimer()
+
+		result, err := consolidatePacks(storage, packDir, packs)
+		if err != nil || result.objects != packCount+looseCount {
+			b.Fatalf("consolidatePacks() = %+v, %v, want %d objects", result, err, packCount+looseCount)
 		}
 	}
 }
