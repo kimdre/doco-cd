@@ -75,9 +75,9 @@ The source directory is organized by source type and source name, and contains t
               refs/
               ...
             mirror.lock  # Lock file for mirror access
-            submodules/  # Cached submodule data
-              <submodule-revision>/  # Submodule data for a specific revision
-              <submodule-revision>.lock  # Lock file for submodule access
+            submodules/  # Bare Git mirrors of submodules
+              <url-hash>/  # Bare Git mirror of one submodule URL
+              <url-hash>.lock  # Lock file for submodule mirror access
               ...
             live/  # Mutable live files of stacks
               <context>/
@@ -90,12 +90,16 @@ The source directory is organized by source type and source name, and contains t
 
     - `mirror` is a bare Git mirror used to resolve revisions. It is never checked out directly.
       Its packfiles are [compacted](#git-mirror-compaction) automatically.
-      - `artifacts/<revision>` is an immutable export of a Git tree. Deployments use this directory,
-        allowing multiple revisions of the same source to be deployed in parallel.
-      - `mirror.lock`, `<revision>.lock`, and `<submodule-cache>.lock` coordinate access to shared
-        source data to prevent race conditions when multiple deployments are running in parallel.
-      - `submodules/<submodule-revision>` contains cached submodule data when Git submodules are used
-        in the source repository.
+    - `artifacts/<revision>` is an immutable export of a Git tree. Deployments use this directory,
+      allowing multiple revisions of the same source to be deployed in parallel.
+    - `mirror.lock`, `<revision>.lock`, and `submodules/<url-hash>.lock` coordinate access to shared
+      source data to prevent race conditions when multiple deployments are running in parallel.
+    - `submodules/<url-hash>` is a bare Git mirror of a submodule, named after the SHA-256 hash of its URL,
+      when [`GIT_CLONE_SUBMODULES`](../Git-Settings.md#general) is enabled. Each submodule URL, including those of
+      nested submodules, has one mirror that is shared by all revisions of the source. The files of a submodule
+      are exported into the artifact of every revision that uses it.
+      Like `mirror`, these mirrors are compacted automatically. They are not removed by garbage collection,
+      even once no revision uses the submodule anymore.
     - `live/<context>/<stack>` contains the [live files](#live-files) of a stack.
 
 === "OCI Source"
@@ -167,7 +171,7 @@ entirely with `#!yaml ARTIFACT_GC_ENABLED: false` if you prefer to manage disk u
 Every fetch that brings new objects (e.g. new commits, branches or tags) adds a packfile to the Git mirror of a source.
 Since every packfile slows down reads from the mirror, the packfiles of a mirror are consolidated into a single one
 after a fetch once the mirror holds more than 32 of them. This happens about once every 32 fetches that bring
-new objects; fetches without new objects do not add packfiles.
+new objects; fetches without new objects do not add packfiles. The mirrors of submodules are consolidated the same way.
 
 - Consolidation copies the already compressed objects into the new packfile without recompressing them. It is
   bounded by disk throughput and usually takes only seconds, even for large repositories.
