@@ -3,6 +3,7 @@ package stages
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -263,7 +264,8 @@ func TestGitAncestryCacheIncompleteHistoryIsUnknown(t *testing.T) {
 	}
 
 	// Like a shallow mirror: the oldest commit's parent is not stored.
-	shallow := storeChain(t, repo, plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), 0, 5)
+	boundary := plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+	shallow := storeChain(t, repo, boundary, 0, 5)
 	latest := shallow[len(shallow)-1]
 	cache := NewGitAncestryCache()
 
@@ -278,6 +280,47 @@ func TestGitAncestryCacheIncompleteHistoryIsUnknown(t *testing.T) {
 
 	if got, err := cache.isAncestorFromHistory(repo, "repo", shallow[2], latest); err != nil || !got {
 		t.Fatalf("stored ancestor after incomplete walk: ancestor = %t, err = %v", got, err)
+	}
+
+	// The walk reached the missing parent. A commit that cannot be read must
+	// still be reported as unknown, as it is before any walk reached it.
+	if got, err := cache.isAncestorFromHistory(repo, "repo", boundary, latest); err == nil {
+		t.Fatalf("missing parent after walk: ancestor = %t, want an error", got)
+	}
+
+	if got, err := walkAncestry(repo, unrelated, latest); err == nil {
+		t.Fatalf("uncached walk of incomplete history proved non-ancestry: ancestor = %t", got)
+	}
+}
+
+func TestIsStaleDeploymentKeepsOnlyForwardWalk(t *testing.T) {
+	t.Parallel()
+
+	repo, err := gogit.Init(memory.NewStorage(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stacks deployed from a history that was rewritten since, and a deployment
+	// newer than the latest revision.
+	old := storeChain(t, repo, plumbing.ZeroHash, 0, 20)
+	rewritten := storeChain(t, repo, plumbing.ZeroHash, 100, 5)
+	latest := rewritten[2]
+	cache := NewGitAncestryCache()
+	stageLog := slog.New(slog.DiscardHandler)
+
+	for _, deployed := range old[15:] {
+		if isStaleDeployment(repo, "repo", latest, deployed, cache, stageLog) {
+			t.Fatalf("deployed %s from rewritten history: stale", deployed)
+		}
+	}
+
+	if !isStaleDeployment(repo, "repo", latest, rewritten[4], cache, stageLog) {
+		t.Fatal("deployed commit newer than latest: not stale")
+	}
+
+	if len(cache.histories) != 1 || cache.histories[gitHistoryKey{"repo", latest}] == nil {
+		t.Fatalf("kept %d ancestry walks, want only the forward walk from the latest commit", len(cache.histories))
 	}
 }
 

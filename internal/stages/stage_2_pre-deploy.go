@@ -149,8 +149,9 @@ func shouldRecoverFromMissingDeployedCommit(err error) bool {
 // fall back to the expensive reverse check, which must walk deployedHash's entire reachable history to
 // prove non-ancestry.
 //
-// cache shares each walk across stacks with the same descendant commit,
-// even when they were last deployed at different commits. Exact pairs are
+// cache shares the forward walk across stacks at the same latest revision,
+// even when they were last deployed at different commits. The reverse walk
+// starts at each stack's deployed commit, so it is not kept. Exact pairs are
 // also deduplicated. cache may be nil, in which case each call walks alone.
 func isStaleDeployment(
 	repo *gogit.Repository, repository string, latestHash, deployedHash plumbing.Hash,
@@ -176,7 +177,7 @@ func isStaleDeployment(
 	}
 
 	isStale, err := cache.isAncestor(repository, latestHash, deployedHash, func() (bool, error) {
-		return cache.isAncestorFromHistory(repo, repository, latestHash, deployedHash)
+		return walkAncestry(repo, latestHash, deployedHash)
 	})
 	if err != nil {
 		stageLog.Debug("could not determine ancestry between latest and deployed commit, proceeding with deployment",

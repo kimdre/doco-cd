@@ -53,16 +53,25 @@ type gitHistory struct {
 	mu sync.Mutex
 	// started is set once the descendant commit was queued.
 	started bool
-	// seen holds every commit known to be reachable from the descendant: the
-	// visited commits and the parents queued or found missing.
+	// seen holds every commit read from the mirror and known to be reachable
+	// from the descendant: the visited commits and the queued parents.
 	seen  set.Set[plumbing.Hash]
 	queue ancestryQueue
 	seq   int
 	// visited counts the commits whose parents were read.
 	visited int
-	// incomplete is set once a parent was missing from the mirror, for example
-	// beyond a shallow clone's boundary, so the walk cannot prove non-ancestry.
-	incomplete bool
+	// missing holds the parents not found in the mirror, for example beyond a
+	// shallow clone's boundary. They are kept out of seen, so a found ancestor
+	// can always be read, and the walk cannot prove non-ancestry once any is
+	// missing.
+	missing set.Set[plumbing.Hash]
+}
+
+func newGitHistory() *gitHistory {
+	return &gitHistory{
+		seen:    set.New[plumbing.Hash](),
+		missing: set.New[plumbing.Hash](),
+	}
 }
 
 // ancestryEntry is one queued commit of an ancestry walk. It keeps only what the
@@ -114,7 +123,7 @@ func (h *gitHistory) push(commit *object.Commit) {
 }
 
 // walkTo continues the walk until ancestor is reached or the history is
-// exhausted. The caller must hold h.mu.
+// exhausted. The caller must hold h.mu if h is shared.
 func (h *gitHistory) walkTo(repo *gogit.Repository, ancestor, descendant plumbing.Hash) (bool, error) {
 	if !h.started {
 		commit, err := repo.CommitObject(descendant)
@@ -128,7 +137,7 @@ func (h *gitHistory) walkTo(repo *gogit.Repository, ancestor, descendant plumbin
 
 	for !h.seen.Contains(ancestor) {
 		if h.queue.Len() == 0 {
-			if h.incomplete {
+			if len(h.missing) > 0 {
 				return false, fmt.Errorf("history of commit %s is incomplete in the mirror", descendant)
 			}
 
@@ -143,7 +152,7 @@ func (h *gitHistory) walkTo(repo *gogit.Repository, ancestor, descendant plumbin
 		var missing []plumbing.Hash
 
 		for _, hash := range next.parents {
-			if h.seen.Contains(hash) {
+			if h.seen.Contains(hash) || h.missing.Contains(hash) {
 				continue
 			}
 
@@ -166,12 +175,24 @@ func (h *gitHistory) walkTo(repo *gogit.Repository, ancestor, descendant plumbin
 		}
 
 		for _, hash := range missing {
-			h.seen.Add(hash)
-			h.incomplete = true
+			h.missing.Add(hash)
 		}
 	}
 
 	return true, nil
+}
+
+// walkAncestry reports whether ancestor is an ancestor of descendant with a
+// walk that no cache keeps. It suits checks no other check can resume, such as
+// the reverse stale check: a history kept per deployed commit would only be
+// asked about the latest revision again, which the exact pair cache answers,
+// while keeping the deployed commit's whole history for the rest of the job.
+func walkAncestry(repo *gogit.Repository, ancestor, descendant plumbing.Hash) (bool, error) {
+	if _, err := repo.CommitObject(ancestor); err != nil {
+		return false, fmt.Errorf("failed to get commit %s: %w", ancestor, err)
+	}
+
+	return newGitHistory().walkTo(repo, ancestor, descendant)
 }
 
 // NewGitAncestryCache creates a new GitAncestryCache.
@@ -184,7 +205,8 @@ func NewGitAncestryCache() *GitAncestryCache {
 
 // isAncestorFromHistory incrementally walks the latest commit's ancestry.
 // Each stack resumes where the previous one stopped rather than starting at
-// the latest commit again when stacks have different deployed revisions.
+// the latest commit again when stacks have different deployed revisions. The
+// stale check and the project skip check share the walk.
 func (c *GitAncestryCache) isAncestorFromHistory(
 	repo *gogit.Repository, repository string, ancestor, descendant plumbing.Hash,
 ) (bool, error) {
@@ -198,13 +220,13 @@ func (c *GitAncestryCache) isAncestorFromHistory(
 
 	history := c.histories[key]
 	if history == nil {
-		history = &gitHistory{seen: set.New[plumbing.Hash]()}
+		history = newGitHistory()
 		c.histories[key] = history
 	}
 	c.historyMu.Unlock()
 
-	// Seen commits are reachable from the descendant in this mirror, so they
-	// need no existence check through this stack's handle.
+	// Seen commits were read from this mirror during the job, so they need no
+	// existence check through this stack's handle.
 	history.mu.Lock()
 	found := history.seen.Contains(ancestor)
 	history.mu.Unlock()
