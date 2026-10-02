@@ -229,9 +229,12 @@ const walkSlop = 5
 // out of order, an excluded path can reach a commit after it was visited. The exclusion is
 // then carried on to its visited ancestors, and the range is read off at the end.
 type rangeWalk struct {
+	// oldest is the committer time of the oldest visited commit in the range, valid while
+	// hasOldest is set. An exclusion of a visited commit resets it.
+	oldest  time.Time
 	repo    *git.Repository
-	queue   walkQueue
 	entries map[plumbing.Hash]*walkEntry
+	queue   walkQueue
 	// visited are the popped entries in walk order.
 	visited []*walkEntry
 	seq     int
@@ -240,9 +243,6 @@ type rangeWalk struct {
 	included  int
 	scanned   int
 	truncated bool
-	// oldest is the committer time of the oldest visited commit in the range, valid while
-	// hasOldest is set. An exclusion of a visited commit resets it.
-	oldest    time.Time
 	hasOldest bool
 	// oldestStale marks oldest for recomputation after a visited commit was excluded.
 	oldestStale bool

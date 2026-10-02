@@ -67,14 +67,14 @@ type keptObject struct {
 
 // packEntryHeader is a decoded pack entry header.
 type packEntryHeader struct {
-	typ  plumbing.ObjectType
+	// raw holds the header bytes as stored in the pack.
+	raw  []byte
 	size int64
 	// baseOffset is the distance back to an OFS_DELTA's base.
 	baseOffset int64
 	// baseHash is a REF_DELTA's base.
 	baseHash plumbing.Hash
-	// raw holds the header bytes as stored in the pack.
-	raw []byte
+	typ      plumbing.ObjectType
 }
 
 // packOutput writes the new pack while tracking its checksum, the current
