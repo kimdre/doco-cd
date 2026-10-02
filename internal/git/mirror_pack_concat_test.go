@@ -263,9 +263,9 @@ func TestConsolidatePacks_RewritesDeltasAcrossPacks(t *testing.T) {
 		t.Fatalf("store loose object: %v", err)
 	}
 
-	changed, err := consolidatePacks(storage, packDir, []plumbing.Hash{newest, oldest, middle})
-	if err != nil || !changed {
-		t.Fatalf("consolidatePacks() = %v, %v, want true, nil", changed, err)
+	result, err := consolidatePacks(storage, packDir, []plumbing.Hash{newest, oldest, middle})
+	if err != nil || !result.written {
+		t.Fatalf("consolidatePacks() = %+v, %v, want written, nil", result, err)
 	}
 
 	want := map[plumbing.Hash]plumbing.ObjectType{
@@ -275,6 +275,11 @@ func TestConsolidatePacks_RewritesDeltasAcrossPacks(t *testing.T) {
 		y.hash:    plumbing.BlobObject,
 		x.hash:    plumbing.REFDeltaObject,
 		looseHash: plumbing.BlobObject,
+	}
+
+	if result.objects != len(want) || result.looseObjects != 1 {
+		t.Fatalf("consolidatePacks() counted %d objects and %d loose objects, want %d and 1",
+			result.objects, result.looseObjects, len(want))
 	}
 
 	got := packEntryTypes(t, packDir)
@@ -318,9 +323,9 @@ func TestConsolidatePacks_RebuildsDeltaAgainstNewerPack(t *testing.T) {
 	older := writeTestPack(t, packDir, now.Add(-2*time.Hour), refDeltaEntry(y, x))
 	newer := writeTestPack(t, packDir, now.Add(-time.Hour), fullEntry(x))
 
-	changed, err := consolidatePacks(storage, packDir, []plumbing.Hash{newer, older})
-	if err != nil || !changed {
-		t.Fatalf("consolidatePacks() = %v, %v, want true, nil", changed, err)
+	result, err := consolidatePacks(storage, packDir, []plumbing.Hash{newer, older})
+	if err != nil || !result.written {
+		t.Fatalf("consolidatePacks() = %+v, %v, want written, nil", result, err)
 	}
 
 	want := map[plumbing.Hash]plumbing.ObjectType{
@@ -376,12 +381,12 @@ func TestConsolidatePacks_KeepsPacksWhenSourceIsCorrupt(t *testing.T) {
 		t.Fatalf("write pack: %v", err)
 	}
 
-	changed, err := consolidatePacks(storage, packDir, []plumbing.Hash{first, second})
+	result, err := consolidatePacks(storage, packDir, []plumbing.Hash{first, second})
 	if err == nil || !strings.Contains(err.Error(), "CRC-32 mismatch") {
 		t.Fatalf("consolidatePacks() error = %v, want a CRC-32 mismatch", err)
 	}
 
-	if changed {
+	if result.written {
 		t.Fatal("consolidatePacks() reported a changed pack directory after failing")
 	}
 

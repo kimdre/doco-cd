@@ -1,6 +1,8 @@
 package git
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -22,6 +24,68 @@ import (
 )
 
 var discardLog = slog.New(slog.NewTextHandler(io.Discard, nil))
+
+// captureLogRecords returns a JSON logger and a function that decodes the
+// records written to it so far.
+func captureLogRecords(t *testing.T) (*slog.Logger, func() []map[string]any) {
+	t.Helper()
+
+	var buf bytes.Buffer
+
+	return slog.New(slog.NewJSONHandler(&buf, nil)), func() []map[string]any {
+		t.Helper()
+
+		var records []map[string]any
+
+		dec := json.NewDecoder(bytes.NewReader(buf.Bytes()))
+		for dec.More() {
+			var record map[string]any
+			if err := dec.Decode(&record); err != nil {
+				t.Fatalf("decode log record: %v", err)
+			}
+
+			records = append(records, record)
+		}
+
+		return records
+	}
+}
+
+// logField returns the value at the dotted key in record, descending into
+// groups, or nil if it is missing.
+func logField(record map[string]any, key string) any {
+	var value any = record
+
+	for name := range strings.SplitSeq(key, ".") {
+		group, ok := value.(map[string]any)
+		if !ok {
+			return nil
+		}
+
+		value = group[name]
+	}
+
+	return value
+}
+
+// assertElapsedTime fails the test unless record holds a readable elapsed_time
+// instead of a raw duration.
+func assertElapsedTime(t *testing.T, record map[string]any) {
+	t.Helper()
+
+	elapsed, ok := record["elapsed_time"].(string)
+	if !ok {
+		t.Fatalf("log record elapsed_time = %v, want a duration string", record["elapsed_time"])
+	}
+
+	if _, err := time.ParseDuration(elapsed); err != nil {
+		t.Fatalf("log record elapsed_time = %q: %v", elapsed, err)
+	}
+
+	if _, ok := record["duration"]; ok {
+		t.Fatalf("log record still holds the raw duration: %v", record)
+	}
+}
 
 // setupMirrorWithPacks returns a bare mirror holding exactly packs packfiles,
 // one per fetched commit, and the commits that were fetched into it.
@@ -141,7 +205,9 @@ func TestCompactBareMirrorLocked_ConsolidatesPacksAndLooseObjects(t *testing.T) 
 		t.Fatalf("store loose object: %v", err)
 	}
 
-	if !compactBareMirrorLocked(discardLog, repo, mirrorPath, "example.com/owner/repo") {
+	log, logRecords := captureLogRecords(t)
+
+	if !compactBareMirrorLocked(log, repo, mirrorPath, "example.com/owner/repo") {
 		t.Fatal("compactBareMirrorLocked() = false, want true")
 	}
 
@@ -185,6 +251,31 @@ func TestCompactBareMirrorLocked_ConsolidatesPacksAndLooseObjects(t *testing.T) 
 	if got[0] != want {
 		t.Fatalf("observer stats = %+v, want %+v", got[0], want)
 	}
+
+	records := logRecords()
+	if len(records) != 1 || records[0]["msg"] != "compacted bare mirror packfiles" {
+		t.Fatalf("log records = %v, want one compaction record", records)
+	}
+
+	record := records[0]
+
+	for key, want := range map[string]float64{
+		"packs.before":  mirrorCompactPackThreshold + 1,
+		"packs.after":   1,
+		"objects.loose": 1,
+	} {
+		if got := logField(record, key); got != want {
+			t.Errorf("log record %s = %v, want %v", key, got, want)
+		}
+	}
+
+	for _, key := range []string{"objects.total", "size_bytes.before", "size_bytes.after"} {
+		if n, ok := logField(record, key).(float64); !ok || n <= 0 {
+			t.Errorf("log record %s = %v, want a positive number", key, logField(record, key))
+		}
+	}
+
+	assertElapsedTime(t, record)
 }
 
 func TestCompactBareMirrorLocked_LeavesMirrorAtThresholdAlone(t *testing.T) {
@@ -223,9 +314,22 @@ func TestCompactBareMirrorLocked_KeepsPacksWhenCompactionFails(t *testing.T) {
 
 	t.Cleanup(func() { _ = os.Chmod(packDir, 0o755) }) //nolint:gosec // restores the default directory mode for TempDir cleanup.
 
-	if compactBareMirrorLocked(discardLog, openMirror(t, mirrorPath), mirrorPath, "example.com/owner/repo") {
+	log, logRecords := captureLogRecords(t)
+
+	if compactBareMirrorLocked(log, openMirror(t, mirrorPath), mirrorPath, "example.com/owner/repo") {
 		t.Fatal("compactBareMirrorLocked() = true without writing a pack, want false")
 	}
+
+	records := logRecords()
+	if len(records) != 1 || records[0]["msg"] != "failed to compact bare mirror packfiles, keeping the existing packs" {
+		t.Fatalf("log records = %v, want one compaction failure record", records)
+	}
+
+	if logField(records[0], "packs.before") != float64(mirrorCompactPackThreshold+1) || records[0]["retry_delay"] != "1h0m0s" {
+		t.Fatalf("log record = %v, want packs.before %d and retry_delay 1h0m0s", records[0], mirrorCompactPackThreshold+1)
+	}
+
+	assertElapsedTime(t, records[0])
 
 	if got := countPacks(t, mirrorPath); got != mirrorCompactPackThreshold+1 {
 		t.Fatalf("mirror holds %d packs after failed compaction, want %d", got, mirrorCompactPackThreshold+1)
