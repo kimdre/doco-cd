@@ -22,7 +22,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/git"
 )
 
 const maxProjectSkipCacheEntries = 512
@@ -557,7 +556,7 @@ func (s *StageManager) skipFromCachedProject(
 		}
 		// Do not use a cached answer from a newer or diverged revision.
 		ancestor, err := s.GitAncestry.isAncestor(s.Repository.MirrorDir, validated, latest, func() (bool, error) {
-			return git.IsAncestorCommit(repo, validated, latest)
+			return s.GitAncestry.isAncestorFromHistory(repo, s.Repository.MirrorDir, validated, latest)
 		})
 		if err != nil || !ancestor {
 			return err
