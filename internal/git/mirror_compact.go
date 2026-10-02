@@ -118,13 +118,17 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 
 	packDir := filepath.Join(path, "objects", "pack")
 
-	size, err := packfilesSize(packDir, packs)
+	sizeBefore, err := packfilesSize(packDir, packs)
 	if err != nil {
 		stats.Result = MirrorCompactionFailed
 
 		mirrorCompactionFailedAt.Store(path, time.Now())
 		log.Warn("failed to measure bare mirror packfiles, skipping compaction",
 			slog.String("path", path),
+			slog.Group("packs",
+				slog.Int("before", stats.PacksBefore),
+			),
+			slog.String("retry_delay", mirrorCompactRetryDelay.String()),
 			slog.Any("error", err))
 
 		return false
@@ -133,12 +137,14 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 	removeTempPacks(log, packDir)
 
 	start := time.Now()
-	written, err := consolidatePacks(storage, packDir, packs)
+	result, err := consolidatePacks(storage, packDir, packs)
 	stats.Duration = time.Since(start)
 
 	if remaining, listErr := storage.ObjectPacks(); listErr == nil {
 		stats.PacksAfter = len(remaining)
 	}
+
+	elapsed := slog.String("elapsed_time", stats.Duration.Truncate(time.Millisecond).String())
 
 	if err != nil {
 		stats.Result = MirrorCompactionFailed
@@ -147,56 +153,95 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 		removeTempPacks(log, packDir)
 		log.Warn("failed to compact bare mirror packfiles, keeping the existing packs",
 			slog.String("path", path),
-			slog.Int("packs", len(packs)),
-			slog.Duration("retry_delay", mirrorCompactRetryDelay),
+			slog.Group("packs",
+				slog.Int("before", stats.PacksBefore),
+				slog.Int("after", stats.PacksAfter),
+			),
+			slog.Group("size_bytes",
+				slog.Int64("before", sizeBefore),
+			),
+			elapsed,
+			slog.String("retry_delay", mirrorCompactRetryDelay.String()),
 			slog.Any("error", err))
 
-		return written
+		return result.written
 	}
 
 	mirrorCompactionFailedAt.Delete(path)
 
-	if !written {
+	if !result.written {
 		return false
 	}
 
 	stats.Result = MirrorCompactionCompacted
 
+	size := []any{slog.Int64("before", sizeBefore)}
+
+	// The size is informational, so a pack that cannot be measured only drops it from the log.
+	if sizeAfter, sizeErr := packfilesSize(packDir, []plumbing.Hash{result.pack}); sizeErr == nil {
+		size = append(size, slog.Int64("after", sizeAfter))
+	}
+
 	log.Info("compacted bare mirror packfiles",
 		slog.String("path", path),
-		slog.Int("packs_before", stats.PacksBefore),
-		slog.Int("packs_after", stats.PacksAfter),
-		slog.Int64("size_bytes_before", size),
-		slog.Duration("duration", stats.Duration))
+		slog.Group("packs",
+			slog.Int("before", stats.PacksBefore),
+			slog.Int("after", stats.PacksAfter),
+		),
+		slog.Group("size_bytes", size...),
+		slog.Group("objects",
+			slog.Int("total", result.objects),
+			slog.Int("loose", result.looseObjects),
+		),
+		elapsed)
 
 	return true
 }
 
+// packConsolidation describes the outcome of consolidatePacks.
+type packConsolidation struct {
+	// written reports whether the pack directory was modified.
+	written bool
+	// pack is the consolidated pack.
+	pack plumbing.Hash
+	// objects is the number of objects in the consolidated pack.
+	objects int
+	// looseObjects is the number of loose objects the consolidated pack replaces.
+	looseObjects int
+}
+
 // consolidatePacks copies every object of the mirror into one new pack, verifies
-// it and then deletes the packs and loose objects it replaces. It reports
+// it and then deletes the packs and loose objects it replaces. The result reports
 // whether the pack directory was modified, even when it also returns an error.
-func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumbing.Hash) (bool, error) {
+func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumbing.Hash) (packConsolidation, error) {
 	var loose []plumbing.Hash
 
 	if err := storage.ForEachObjectHash(func(h plumbing.Hash) error {
 		loose = append(loose, h)
 		return nil
 	}); err != nil {
-		return false, fmt.Errorf("list loose objects: %w", err)
+		return packConsolidation{}, fmt.Errorf("list loose objects: %w", err)
 	}
 
 	sources, err := loadPackSources(packDir, packs)
 	if err != nil {
-		return false, fmt.Errorf("read packs: %w", err)
+		return packConsolidation{}, fmt.Errorf("read packs: %w", err)
 	}
 
 	newPack, hashes, err := concatPacks(storage, packDir, sources, loose)
 	if err != nil {
-		return false, err
+		return packConsolidation{}, err
 	}
 
 	if len(hashes) == 0 {
-		return false, nil
+		return packConsolidation{}, nil
+	}
+
+	result := packConsolidation{
+		written:      true,
+		pack:         newPack,
+		objects:      len(hashes),
+		looseObjects: len(loose),
 	}
 
 	if err := verifyPack(packDir, newPack, hashes); err != nil {
@@ -208,7 +253,7 @@ func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumb
 			}
 		}
 
-		return true, err
+		return result, err
 	}
 
 	var errs []error
@@ -232,7 +277,7 @@ func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumb
 		}
 	}
 
-	return true, errors.Join(errs...)
+	return result, errors.Join(errs...)
 }
 
 // verifyPack decodes the new pack's index from disk and checks it holds every object in hashes.
