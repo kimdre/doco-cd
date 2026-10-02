@@ -63,7 +63,14 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 
 // deployedCommitDetails returns the short SHA of the deployed commit and the
 // changelog since the previously deployed commit, read in a single mirror read.
+// Without a changelog to build, a memoized short SHA needs no read at all.
 func (s *StageManager) deployedCommitDetails(stageLog *slog.Logger) (string, []git.CommitInfo, error) {
+	if s.DeployState.DeployedCommit == "" {
+		if shortCommit, ok := s.cachedShortCommitSHA(strings.TrimSpace(s.Repository.Revision)); ok {
+			return shortCommit, nil, nil
+		}
+	}
+
 	var pathFilter func(string) bool
 
 	if s.DeployState.DeployedCommit != "" {

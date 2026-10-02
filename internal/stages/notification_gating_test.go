@@ -195,6 +195,52 @@ func TestPostDeployToleratesUnreadableMirror(t *testing.T) {
 	}
 }
 
+// TestPostDeployUsesMemoizedShortCommit ensures the post-deploy stage reuses a short
+// SHA computed earlier in the deployment instead of reading the mirror again, unless
+// it still has to read the changelog.
+func TestPostDeployUsesMemoizedShortCommit(t *testing.T) {
+	t.Parallel()
+
+	revision := strings.Repeat("b", 40)
+	memoized := revision[:7]
+	// Reading this mirror fails, so the notification only carries the memoized
+	// short SHA if the stage skips the read.
+	missingMirror := filepath.Join(t.TempDir(), "missing.git")
+
+	testCases := []struct {
+		name           string
+		deployedCommit string
+		wantCommit     string
+	}{
+		{name: "no changelog", wantCommit: memoized},
+		{name: "changelog", deployedCommit: strings.Repeat("c", 40), wantCommit: revision},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			sender := &levelGatedSender{minLevel: notification.Success}
+			sm := newNotifyingStageManager(missingMirror, revision, sender)
+			sm.DeployState.DeployedCommit = tc.deployedCommit
+			sm.shortCommit = memoizedShortSHA{full: revision, short: memoized}
+
+			if err := sm.RunPostDeployStage(context.Background(), sm.Log); err != nil {
+				t.Fatalf("RunPostDeployStage() = %v", err)
+			}
+
+			sent := sender.sentNotifications()
+			if len(sent) != 1 {
+				t.Fatalf("RunPostDeployStage() sent %+v, want one notification", sent)
+			}
+
+			if want := notification.GetRevision("main", tc.wantCommit); sent[0].metadata.Revision != want {
+				t.Fatalf("notification revision = %q, want %q", sent[0].metadata.Revision, want)
+			}
+		})
+	}
+}
+
 // TestPostDeployReportsShortCommitAndChangelog covers the delivered success
 // notification: the short SHA and changelog come from one mirror read, and the
 // short SHA is memoized for the rest of the deployment.
