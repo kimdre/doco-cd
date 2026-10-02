@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -157,6 +158,36 @@ func TestSendIncludesAppriseErrorDetails(t *testing.T) {
 
 	if strings.Contains(got, "discord://user:pass@discord.example/abcd") {
 		t.Fatalf("expected sensitive url to be redacted, got %q", got)
+	}
+}
+
+func TestSendTimesOutOnUnresponsiveApprise(t *testing.T) {
+	t.Parallel()
+
+	if appriseClient.Timeout != appriseRequestTimeout {
+		t.Fatalf("Apprise client timeout = %s, want %s", appriseClient.Timeout, appriseRequestTimeout)
+	}
+
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		<-release
+	}))
+
+	defer server.Close()
+	defer close(release)
+
+	client := &http.Client{Timeout: 100 * time.Millisecond}
+	start := time.Now()
+
+	err := sendWithClient(client, server.URL, "apprise://example.test", "Test Notification", "This is a test message", "info")
+
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) || !urlErr.Timeout() {
+		t.Fatalf("expected a timeout error, got %v", err)
+	}
+
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("send returned after %s, want it bounded by the client timeout", elapsed)
 	}
 }
 

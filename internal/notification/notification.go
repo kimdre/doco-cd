@@ -44,7 +44,15 @@ const (
 	maxAppriseErrorResponseBodyBytes = 4 * 1024
 	redactedURL                      = "[REDACTED_URL]"
 	redactedValue                    = "[REDACTED]"
+
+	// appriseRequestTimeout bounds one request to Apprise, which answers only after
+	// delivering to every notify URL. Notifications are sent from the deployment
+	// path, so an unresponsive Apprise server would otherwise stall it for good.
+	appriseRequestTimeout = 30 * time.Second
 )
+
+// appriseClient sends the requests to Apprise.
+var appriseClient = &http.Client{Timeout: appriseRequestTimeout}
 
 var urlLikePattern = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.-]*://[^\s,"]+`)
 
@@ -199,6 +207,11 @@ func parseLevel(level string) Level {
 
 // send a notification to the Apprise service.
 func send(apiUrl, notifyUrls, title, message, level string) error {
+	return sendWithClient(appriseClient, apiUrl, notifyUrls, title, message, level)
+}
+
+// sendWithClient sends a notification to the Apprise service with client.
+func sendWithClient(client *http.Client, apiUrl, notifyUrls, title, message, level string) error {
 	jsonData, err := json.Marshal(appriseRequest{
 		NotifyUrls: notifyUrls,
 		Title:      title,
@@ -209,7 +222,7 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 		return fmt.Errorf("failed to marshal appriseRequest: %w", err)
 	}
 
-	resp, err := http.Post(apiUrl, "application/json", bytes.NewBuffer(jsonData)) // #nosec G107
+	resp, err := client.Post(apiUrl, "application/json", bytes.NewBuffer(jsonData)) // #nosec G107
 	if err != nil {
 		if strings.Contains(err.Error(), "malformed HTTP status code") {
 			return ErrNotifyFailed
