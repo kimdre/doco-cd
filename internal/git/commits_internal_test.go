@@ -280,6 +280,115 @@ func TestGetShortestUniqueCommitHash(t *testing.T) {
 	}
 }
 
+func TestGetShortestUniqueCommitHash_MatchesFullObjectScan(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+
+	src, err := gogit.PlainInit(srcDir, false)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := src.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	// 40 commits are far more objects than 16 one-character prefixes, so many
+	// prefixes collide and need extra characters.
+	hashes := commitN(t, wt, 40)
+
+	mirror, err := gogit.PlainClone(t.TempDir(), true, &gogit.CloneOptions{URL: "file://" + srcDir})
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+
+	// Mix loose objects into the packed mirror.
+	for i := range 8 {
+		blob := mirror.Storer.NewEncodedObject()
+		blob.SetType(plumbing.BlobObject)
+
+		w, err := blob.Writer()
+		if err != nil {
+			t.Fatalf("blob writer: %v", err)
+		}
+
+		if _, err = fmt.Fprintf(w, "loose blob %d", i); err != nil {
+			t.Fatalf("write blob: %v", err)
+		}
+
+		if err = w.Close(); err != nil {
+			t.Fatalf("close blob: %v", err)
+		}
+
+		if _, err = mirror.Storer.SetEncodedObject(blob); err != nil {
+			t.Fatalf("store blob: %v", err)
+		}
+	}
+
+	for name, repo := range map[string]*gogit.Repository{"loose": src, "packed": mirror} {
+		if _, ok := repo.Storer.(hashPrefixLister); !ok {
+			t.Fatalf("%s storer does not list hashes by prefix", name)
+		}
+
+		all := allObjectHashes(t, repo)
+
+		for _, hash := range hashes {
+			for _, minLength := range []int{0, 1, 4, DefaultShortSHALength} {
+				sha := hash.String()
+
+				want := minLength
+
+				for _, other := range all {
+					if other != hash {
+						want = max(want, sharedPrefixLength(sha, other.String())+1)
+					}
+				}
+
+				got, err := GetShortestUniqueCommitHash(repo, sha, minLength)
+				if err != nil {
+					t.Fatalf("%s: GetShortestUniqueCommitHash(%s, %d): %v", name, sha, minLength, err)
+				}
+
+				if got != sha[:want] {
+					t.Fatalf("%s: GetShortestUniqueCommitHash(%s, %d) = %q, want %q", name, sha, minLength, got, sha[:want])
+				}
+			}
+		}
+	}
+
+	if _, err = GetShortestUniqueCommitHash(mirror, hashes[0].String(), 41); err == nil {
+		t.Fatal("expected an error when the minimum length exceeds the SHA")
+	}
+
+	if _, err = GetShortestUniqueCommitHash(mirror, "0000000000000000000000000000000000000001", DefaultShortSHALength); err == nil {
+		t.Fatal("expected an error for a commit that is not in the repository")
+	}
+}
+
+// allObjectHashes returns the hash of every object stored in repo.
+func allObjectHashes(t *testing.T, repo *gogit.Repository) []plumbing.Hash {
+	t.Helper()
+
+	iter, err := repo.Storer.IterEncodedObjects(plumbing.AnyObject)
+	if err != nil {
+		t.Fatalf("iterate objects: %v", err)
+	}
+
+	var hashes []plumbing.Hash
+
+	if err = iter.ForEach(func(obj plumbing.EncodedObject) error {
+		hashes = append(hashes, obj.Hash())
+
+		return nil
+	}); err != nil {
+		t.Fatalf("iterate objects: %v", err)
+	}
+
+	return hashes
+}
+
 func TestSharedPrefixLength(t *testing.T) {
 	t.Parallel()
 

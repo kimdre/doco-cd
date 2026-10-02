@@ -523,7 +523,15 @@ func GetCommitsBetween(log *slog.Logger, repo *git.Repository, oldHash, newHash 
 	return commits, nil
 }
 
-// GetShortestUniqueCommitHash returns the shortest unique prefix of a commit SHA in the repository.
+// hashPrefixLister is implemented by storers that can list object hashes by
+// prefix from their pack indexes without reading any object, such as go-git's
+// filesystem storage.
+type hashPrefixLister interface {
+	HashesWithPrefix(prefix []byte) ([]plumbing.Hash, error)
+}
+
+// GetShortestUniqueCommitHash returns the shortest prefix of a commit SHA, at least
+// minLength characters long, that no other object in the repository shares.
 // Similar to the git command `git rev-parse --short=<length> <commitSHA>`.
 func GetShortestUniqueCommitHash(repo *git.Repository, commitSHA string, minLength int) (string, error) {
 	if repo == nil {
@@ -534,38 +542,55 @@ func GetShortestUniqueCommitHash(repo *git.Repository, commitSHA string, minLeng
 		return "", errors.New("commit SHA is empty")
 	}
 
-	iter, err := repo.Storer.IterEncodedObjects(plumbing.CommitObject)
-	if err != nil {
-		return "", err
-	}
-	defer iter.Close()
-
 	var (
-		foundCommit    bool
+		found          bool
 		requiredLength = minLength
 	)
 
-	err = iter.ForEach(func(encoded plumbing.EncodedObject) error {
-		if encoded == nil {
-			return nil
-		}
-
-		sha := encoded.Hash().String()
+	collide := func(hash plumbing.Hash) {
+		sha := hash.String()
 		if sha == commitSHA {
-			foundCommit = true
+			found = true
 
-			return nil
+			return
 		}
 
 		requiredLength = max(requiredLength, sharedPrefixLength(commitSHA, sha)+1)
-
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("error iterating commits: %w", err)
 	}
 
-	if !foundCommit {
+	if lister, ok := repo.Storer.(hashPrefixLister); ok && plumbing.IsHash(commitSHA) && commitSHA == strings.ToLower(commitSHA) {
+		// Only objects sharing the first minLength characters can force a longer
+		// prefix, so the pack indexes are searched for those alone.
+		hash := plumbing.NewHash(commitSHA)
+
+		candidates, err := lister.HashesWithPrefix(hash[:min(max(minLength, 0)/2, len(hash))])
+		if err != nil {
+			return "", fmt.Errorf("error listing objects with prefix: %w", err)
+		}
+
+		for _, candidate := range candidates {
+			collide(candidate)
+		}
+	} else {
+		iter, err := repo.Storer.IterEncodedObjects(plumbing.AnyObject)
+		if err != nil {
+			return "", err
+		}
+		defer iter.Close()
+
+		err = iter.ForEach(func(encoded plumbing.EncodedObject) error {
+			if encoded != nil {
+				collide(encoded.Hash())
+			}
+
+			return nil
+		})
+		if err != nil {
+			return "", fmt.Errorf("error iterating objects: %w", err)
+		}
+	}
+
+	if !found {
 		return "", fmt.Errorf("commit SHA %s not found in repository", commitSHA)
 	}
 
