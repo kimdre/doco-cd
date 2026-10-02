@@ -36,11 +36,14 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 	// clears the stack's reported failure. Only the repository reads that decorate
 	// it are skipped when it is not delivered.
 	if s.Repository.Source != config.SourceTypeOCI && notification.WouldSend(s.Notifier, notification.Success) {
-		var err error
-
-		shortCommit, metadata.Commits, err = s.deployedCommitDetails(stageLog)
+		commitSha, commits, err := s.deployedCommitDetails(stageLog)
 		if err != nil {
-			return err
+			// The stack is already deployed and these details only decorate its
+			// notification, so a failed read must not turn it into a failed deployment.
+			stageLog.Warn("failed to read deployed commit details, notifying with the full revision", logger.ErrAttr(err))
+		} else {
+			shortCommit = commitSha
+			metadata.Commits = commits
 		}
 	}
 

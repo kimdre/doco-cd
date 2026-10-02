@@ -133,15 +133,14 @@ func TestNotifyDeploymentStartedSkipsCommitLookupBelowLevel(t *testing.T) {
 func TestPostDeploySkipsCommitDetailsBelowLevel(t *testing.T) {
 	t.Parallel()
 
-	revision := strings.Repeat("a", 40)
-	// Reading this mirror fails, so the stage only succeeds if it skips the read.
-	missingMirror := filepath.Join(t.TempDir(), "missing.git")
+	_, mirrorPath := setupOriginAndMirror(t)
+	head := mirrorHead(t, mirrorPath)
 
 	dropped := &levelGatedSender{minLevel: notification.Failure}
-	sm := newNotifyingStageManager(missingMirror, revision, dropped)
+	sm := newNotifyingStageManager(mirrorPath, head, dropped)
 
 	if err := sm.RunPostDeployStage(context.Background(), sm.Log); err != nil {
-		t.Fatalf("RunPostDeployStage() = %v, want nil without reading the mirror", err)
+		t.Fatalf("RunPostDeployStage() = %v", err)
 	}
 
 	sent := dropped.sentNotifications()
@@ -149,13 +148,50 @@ func TestPostDeploySkipsCommitDetailsBelowLevel(t *testing.T) {
 		t.Fatalf("RunPostDeployStage() sent %+v, want one success notification", sent)
 	}
 
-	if want := notification.GetRevision("main", revision); sent[0].metadata.Revision != want {
-		t.Fatalf("notification revision = %q, want %q", sent[0].metadata.Revision, want)
+	if want := notification.GetRevision("main", head); sent[0].metadata.Revision != want {
+		t.Fatalf("notification revision = %q, want the unshortened %q", sent[0].metadata.Revision, want)
 	}
 
-	sm.Notifier = &levelGatedSender{minLevel: notification.Success}
-	if err := sm.RunPostDeployStage(context.Background(), sm.Log); err == nil {
-		t.Fatal("RunPostDeployStage() = nil for a delivered notification, want the mirror read error")
+	if _, ok := sm.cachedShortCommitSHA(head); ok {
+		t.Fatal("RunPostDeployStage() computed the short SHA for a notification it does not deliver")
+	}
+
+	delivered := &levelGatedSender{minLevel: notification.Success}
+	sm.Notifier = delivered
+
+	if err := sm.RunPostDeployStage(context.Background(), sm.Log); err != nil {
+		t.Fatalf("RunPostDeployStage() = %v", err)
+	}
+
+	sent = delivered.sentNotifications()
+	if want := notification.GetRevision("main", head[:7]); len(sent) != 1 || sent[0].metadata.Revision != want {
+		t.Fatalf("RunPostDeployStage() sent %+v, want one notification with revision %q", sent, want)
+	}
+}
+
+// TestPostDeployToleratesUnreadableMirror ensures a mirror that cannot be read only
+// costs the notification its short SHA: the stack is already deployed, so the
+// stage must not fail over it.
+func TestPostDeployToleratesUnreadableMirror(t *testing.T) {
+	t.Parallel()
+
+	revision := strings.Repeat("a", 40)
+	missingMirror := filepath.Join(t.TempDir(), "missing.git")
+
+	sender := &levelGatedSender{minLevel: notification.Success}
+	sm := newNotifyingStageManager(missingMirror, revision, sender)
+
+	if err := sm.RunPostDeployStage(context.Background(), sm.Log); err != nil {
+		t.Fatalf("RunPostDeployStage() = %v for an unreadable mirror, want nil", err)
+	}
+
+	sent := sender.sentNotifications()
+	if len(sent) != 1 || sent[0].level != notification.Success {
+		t.Fatalf("RunPostDeployStage() sent %+v, want one success notification", sent)
+	}
+
+	if want := notification.GetRevision("main", revision); sent[0].metadata.Revision != want {
+		t.Fatalf("notification revision = %q, want the full SHA fallback %q", sent[0].metadata.Revision, want)
 	}
 }
 
