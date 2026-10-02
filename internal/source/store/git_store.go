@@ -139,6 +139,15 @@ func (s *GitStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 	unlock := git.AcquireExclusiveMirrorLock(s.mirrorDir)
 	defer unlock()
 
+	// Another job may have published the same revision while this one waited
+	// for the lock. Exporting and decrypting the tree again would only produce
+	// a copy that publishDir discards.
+	if existing, ok, err := s.Lookup(revision); err != nil {
+		return Artifact{}, err
+	} else if ok {
+		return existing, nil
+	}
+
 	repo, err := git.OpenRepository(s.mirrorDir)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("publish %s: %w", revision, err)
