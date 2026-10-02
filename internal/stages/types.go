@@ -553,15 +553,37 @@ func (s *StageManager) NotifyDeploymentStarted() error {
 	)
 }
 
-// resolveCommitSHA returns the full commit SHA for the current deployment.
-// For webhook triggers the SHA is taken directly from the payload; for poll
-// triggers it is resolved from the cloned repository after the init stage.
+// revisionBelongsToStack reports whether Repository.Revision is the revision of
+// this stack's own repository and reference. The request's revision is set before
+// the init stage runs, but it was resolved for the job's reference, which a stack
+// with its own reference or repository_url does not deploy until the init stage
+// replaced it with the revision resolved for that stack.
+func (s *StageManager) revisionBelongsToStack() bool {
+	if s.resolvedOwnReference {
+		return true
+	}
+
+	return s.DeployConfig.RepositoryUrl == "" &&
+		resolvedReferenceMatches(s.Repository.ResolvedReference, s.DeployConfig.Reference)
+}
+
+// resolveCommitSHA returns the full commit SHA the commit status of this
+// deployment belongs to. Once Repository.Revision is the stack's own revision,
+// that immutable revision is used: the mirror's branch head may already have moved
+// on with a later push, and reading it opens a mirror handle on every status.
+// Otherwise, such as when the init stage failed before resolving the stack's own
+// reference, the reference is resolved from the mirror, falling back to the SHA
+// carried in the webhook payload and then to the request's revision.
 func (s *StageManager) resolveCommitSHA() string {
 	if s.Repository.Source == types2.SourceTypeOCI {
 		return "" // OCI digests are not git commit SHAs
 	}
 
-	// Prefer the full SHA from the local git mirror when available.
+	revision := strings.TrimSpace(s.Repository.Revision)
+	if revision != "" && s.revisionBelongsToStack() {
+		return revision
+	}
+
 	if s.hasGitMirror() {
 		sha, err := s.latestCommitFromMirror()
 		if err == nil && strings.TrimSpace(sha) != "" {
@@ -569,7 +591,6 @@ func (s *StageManager) resolveCommitSHA() string {
 		}
 	}
 
-	// Fall back to the SHA carried in the webhook payload.
 	if s.Payload != nil {
 		sha := strings.TrimSpace(s.Payload.CommitSHAString())
 		if sha != "" && s.Payload.CommitSHA != plumbing.ZeroHash {
@@ -577,7 +598,7 @@ func (s *StageManager) resolveCommitSHA() string {
 		}
 	}
 
-	return strings.TrimSpace(s.Repository.Revision)
+	return revision
 }
 
 func (s *StageManager) resolveCommitStatusContext() string {
@@ -593,11 +614,21 @@ func (s *StageManager) commitStatusParams() commitstatus.RequestParams {
 		repoFullName = s.Payload.FullName
 	}
 
+	enabled := s.AppConfig.GitCommitStatus
+	sourceIsGit := s.Repository.Source != types2.SourceTypeOCI
+
+	// The commit SHA may need a mirror read, which is wasted when no commit
+	// status is posted.
+	var commitSHA string
+	if enabled && sourceIsGit {
+		commitSHA = s.resolveCommitSHA()
+	}
+
 	return commitstatus.RequestParams{
-		Enabled:          s.AppConfig.GitCommitStatus,
-		SourceIsGit:      s.Repository.Source != types2.SourceTypeOCI,
+		Enabled:          enabled,
+		SourceIsGit:      sourceIsGit,
 		SourceURL:        s.Repository.SourceUrl,
-		CommitSHA:        s.resolveCommitSHA(),
+		CommitSHA:        commitSHA,
 		PayloadWebURL:    repoURL,
 		PayloadFullName:  repoFullName,
 		ProviderOverride: s.AppConfig.GitScmProvider,

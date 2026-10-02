@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -188,6 +189,107 @@ func TestSelfUpdateCommitStatusSkipsWithoutPendingStatus(t *testing.T) {
 
 			if got := sm.selfUpdateCommitStatus(); got != nil {
 				t.Fatalf("selfUpdateCommitStatus() = %+v, want nil", *got)
+			}
+		})
+	}
+}
+
+// TestCommitStatusUsesPublishedRevision checks that the commit status belongs to
+// the revision this deployment published, not to the branch head a later push
+// has since fetched into the shared mirror, and that a request revision resolved
+// for another reference is not used for a stack before the init stage resolved
+// the stack's own reference.
+func TestCommitStatusUsesPublishedRevision(t *testing.T) {
+	t.Parallel()
+
+	originPath, mirrorPath := setupOriginAndMirror(t)
+
+	resolve := func(reference string) string {
+		t.Helper()
+
+		sm := newMirrorStageManager(mirrorPath)
+		sm.DeployConfig.Reference = reference
+
+		sha, err := sm.latestCommitFromMirror()
+		if err != nil {
+			t.Fatalf("latestCommitFromMirror(%s) = %v", reference, err)
+		}
+
+		return sha
+	}
+
+	published := resolve("main")
+
+	runGit(t, originPath, "checkout", "-b", "release")
+	writeFile(t, filepath.Join(originPath, "README.md"), "release\n")
+	runGit(t, originPath, "add", ".")
+	runGit(t, originPath, "commit", "-m", "release commit")
+	runGit(t, originPath, "checkout", "main")
+	writeFile(t, filepath.Join(originPath, "README.md"), "second\n")
+	runGit(t, originPath, "add", ".")
+	runGit(t, originPath, "commit", "-m", "second commit")
+	runGitBare(t, mirrorPath, "fetch", "origin", "+refs/heads/*:refs/remotes/origin/*")
+
+	head := resolve("main")
+	release := resolve("release")
+
+	if head == published {
+		t.Fatal("mirror head did not move")
+	}
+
+	tests := []struct {
+		name                 string
+		disabled             bool
+		resolvedReference    string
+		revision             string
+		resolvedOwnReference bool
+		want                 string
+	}{
+		{
+			name:              "request revision of the stack's reference",
+			resolvedReference: "refs/heads/main",
+			revision:          published,
+			want:              published,
+		},
+		{
+			name:                 "revision the init stage resolved for the stack's own reference",
+			resolvedReference:    "refs/heads/release",
+			revision:             published,
+			resolvedOwnReference: true,
+			want:                 published,
+		},
+		{
+			// The init stage failed before resolving the stack's own reference.
+			name:              "request revision of another reference",
+			resolvedReference: "refs/heads/release",
+			revision:          release,
+			want:              head,
+		},
+		{
+			name:              "no revision",
+			resolvedReference: "refs/heads/main",
+			want:              head,
+		},
+		{
+			name:              "commit statuses disabled",
+			disabled:          true,
+			resolvedReference: "refs/heads/main",
+			revision:          published,
+			want:              "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sm := newMirrorStageManager(mirrorPath)
+			sm.AppConfig = &app.Config{GitCommitStatus: !tc.disabled}
+			sm.Repository.Source = config.SourceTypeGit
+			sm.Repository.ResolvedReference = tc.resolvedReference
+			sm.Repository.Revision = tc.revision
+			sm.resolvedOwnReference = tc.resolvedOwnReference
+
+			if got := sm.commitStatusParams().CommitSHA; got != tc.want {
+				t.Fatalf("commit status SHA = %q, want %q", got, tc.want)
 			}
 		})
 	}
