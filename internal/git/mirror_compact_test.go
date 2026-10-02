@@ -350,6 +350,39 @@ func TestCompactBareMirrorLocked_KeepsPacksWhenCompactionFails(t *testing.T) {
 	}
 }
 
+// Not parallel: syncPackDir is process-global.
+func TestCompactBareMirrorLocked_KeepsPacksWhenPackDirSyncFails(t *testing.T) {
+	_, mirrorPath, commits := setupMirrorWithPacks(t, mirrorCompactPackThreshold+1)
+	packDir := filepath.Join(mirrorPath, "objects", "pack")
+
+	var synced []string
+
+	syncPackDir = func(dir string) error {
+		synced = append(synced, dir)
+		return errors.New("sync failed")
+	}
+
+	t.Cleanup(func() { syncPackDir = syncDir })
+
+	// The new pack was installed before the sync failed, so the mirror must be reopened.
+	if !compactBareMirrorLocked(discardLog, openMirror(t, mirrorPath), mirrorPath, "example.com/owner/repo") {
+		t.Fatal("compactBareMirrorLocked() = false after installing a pack, want true")
+	}
+
+	if len(synced) != 1 || synced[0] != packDir {
+		t.Fatalf("synced directories = %v, want [%s]", synced, packDir)
+	}
+
+	// The old packs are kept next to the new one.
+	if got := countPacks(t, mirrorPath); got != mirrorCompactPackThreshold+2 {
+		t.Fatalf("mirror holds %d packs after the failed sync, want %d", got, mirrorCompactPackThreshold+2)
+	}
+
+	if err := readCommits(openMirror(t, mirrorPath), commits); err != nil {
+		t.Fatalf("read commits after the failed sync: %v", err)
+	}
+}
+
 // commitGitlink commits a tree on top of origin's main that adds a gitlink to a
 // commit origin does not hold, the way a submodule pointer looks to its parent.
 func commitGitlink(t *testing.T, originPath string) plumbing.Hash {
