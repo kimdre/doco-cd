@@ -18,7 +18,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/doco-cd/internal/git"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 // GitStoreOptions configures a GitStore. It mirrors the parameters that
@@ -137,7 +136,7 @@ func (s *GitStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 		return existing, nil
 	}
 
-	unlock := sourcecache.AcquireExclusivePathLock(s.mirrorDir)
+	unlock := git.AcquireExclusiveMirrorLock(s.mirrorDir)
 	defer unlock()
 
 	repo, err := git.OpenRepository(s.mirrorDir)
@@ -184,7 +183,7 @@ func (s *GitStore) Lookup(revision Revision) (Artifact, bool, error) {
 // (e.g. resolving a different reference, or GetLatestCommit/
 // GetChangedFilesBetweenCommits-style lookups) can open it directly with
 // git.OpenRepository. Such reads should still hold a shared
-// sourcecache.AcquireSharedPathLock(mirrorDir) for their duration: Resolve/
+// git.AcquireSharedMirrorLock(mirrorDir) for their duration: Resolve/
 // Publish only exclude each other via the matching exclusive lock, so an
 // unguarded read can otherwise observe the mirror mid-fetch from a
 // concurrent stack sharing this repository.

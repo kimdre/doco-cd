@@ -14,6 +14,7 @@ import (
 
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
@@ -524,7 +525,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 					}
 				}
 
-				if _, err := repo.CommitObject(deployedHash); err != nil {
+				if _, err := measurePreDeployOperation(stageLog, "deployed_commit_lookup", func() (*object.Commit, error) {
+					return repo.CommitObject(deployedHash)
+				}); err != nil {
 					if !shouldRecoverFromMissingDeployedCommit(err) {
 						return fmt.Errorf("failed to resolve deployed commit %s: %w", deployedCommit, err)
 					}

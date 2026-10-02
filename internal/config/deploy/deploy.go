@@ -428,7 +428,7 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 			return func() {}
 		}
 
-		return sourcecache.AcquireSharedPathLock(mirrorDir)
+		return gitInternal.AcquireSharedMirrorLock(mirrorDir)
 	}
 
 	// openGitRead opens a fresh handle on the repository for a single read region.

@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"github.com/go-git/go-git/v5"
-
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 // ErrMissingMirrorDir is returned when a mirror read is attempted without knowing
@@ -46,7 +44,7 @@ func WithMirrorRead(mirrorDir string, fn func(repo *git.Repository) error) error
 		return errors.New("mirror read function is nil")
 	}
 
-	unlock := sourcecache.AcquireSharedPathLock(mirrorDir)
+	unlock := AcquireSharedMirrorLock(mirrorDir)
 	defer unlock()
 
 	repo, err := git.PlainOpen(mirrorDir)
