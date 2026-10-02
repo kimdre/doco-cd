@@ -87,6 +87,9 @@ type packOutput struct {
 	sum    hash.Hash
 	crc    hash.Hash32
 	offset int64
+	// zw compresses full objects. It is reused, since a zlib writer allocates
+	// several hundred KiB.
+	zw *zlib.Writer
 }
 
 func (p *packOutput) Write(b []byte) (int, error) {
@@ -102,6 +105,31 @@ func (p *packOutput) Write(b []byte) (int, error) {
 func (p *packOutput) startEntry() int64 {
 	p.crc.Reset()
 	return p.offset
+}
+
+// zlibWriter returns a zlib writer that compresses into p.
+func (p *packOutput) zlibWriter() *zlib.Writer {
+	if p.zw == nil {
+		p.zw = zlib.NewWriter(p)
+	} else {
+		p.zw.Reset(p)
+	}
+
+	return p.zw
+}
+
+// packReader reads the source packs. Its buffers are shared by all of them,
+// since a mirror due for compaction usually holds many small packs.
+type packReader struct {
+	r       *bufio.Reader
+	copyBuf []byte
+}
+
+func newPackReader() *packReader {
+	return &packReader{
+		r:       bufio.NewReaderSize(nil, packCopyBufSize),
+		copyBuf: make([]byte, packCopyBufSize),
+	}
 }
 
 // loadPackSources decodes the indexes of packs and returns them oldest first.
@@ -271,8 +299,10 @@ func concatPacks(storage *filesystem.Storage, packDir string, sources []packSour
 		return plumbing.ZeroHash, nil, err
 	}
 
+	in := newPackReader()
+
 	for i := range sources {
-		if err := copyPackEntries(storage, out, idx, sources, i, kept); err != nil {
+		if err := copyPackEntries(storage, in, out, idx, sources, i, kept); err != nil {
 			return plumbing.ZeroHash, nil, fmt.Errorf("copy pack %s: %w", sources[i].hash, err)
 		}
 
@@ -378,10 +408,10 @@ func writePackIndex(packDir string, idx *idxfile.Writer) (string, error) {
 	return f.Name(), nil
 }
 
-// copyPackEntries copies the entries of sources[i] selected in kept to out.
+// copyPackEntries copies the entries of sources[i] selected in kept from in to out.
 // Every copied entry is checked against the CRC-32 in the source pack's index,
 // so a corrupt source or a misread entry boundary aborts the compaction.
-func copyPackEntries(storage *filesystem.Storage, out *packOutput, idx *idxfile.Writer, sources []packSource, i int, kept map[plumbing.Hash]keptObject) error {
+func copyPackEntries(storage *filesystem.Storage, in *packReader, out *packOutput, idx *idxfile.Writer, sources []packSource, i int, kept map[plumbing.Hash]keptObject) error {
 	src := sources[i]
 
 	f, err := os.Open(src.path)
@@ -391,7 +421,8 @@ func copyPackEntries(storage *filesystem.Storage, out *packOutput, idx *idxfile.
 
 	defer func() { _ = f.Close() }()
 
-	r := bufio.NewReaderSize(f, packCopyBufSize)
+	r := in.r
+	r.Reset(f)
 
 	var header [packHeaderSize]byte
 	if _, err := io.ReadFull(r, header[:]); err != nil {
@@ -413,7 +444,6 @@ func copyPackEntries(storage *filesystem.Storage, out *packOutput, idx *idxfile.
 	pos := int64(packHeaderSize)
 	headerBuf := make([]byte, 0, maxEntryHeaderLen)
 	rewriteBuf := make([]byte, 0, maxEntryHeaderLen)
-	copyBuf := make([]byte, packCopyBufSize)
 
 	for j, e := range src.entries {
 		offset := int64(e.Offset) // #nosec G115 -- pack offsets fit in int64.
@@ -489,7 +519,7 @@ func copyPackEntries(storage *filesystem.Storage, out *packOutput, idx *idxfile.
 			return err
 		}
 
-		if err := copyEntryData(out, srcCRC, r, dataLen, copyBuf); err != nil {
+		if err := copyEntryData(out, srcCRC, r, dataLen, in.copyBuf); err != nil {
 			return fmt.Errorf("copy entry %s: %w", e.Hash, err)
 		}
 
@@ -641,7 +671,7 @@ func writeFullObject(out *packOutput, idx *idxfile.Writer, kept map[plumbing.Has
 		return err
 	}
 
-	zw := zlib.NewWriter(out)
+	zw := out.zlibWriter()
 
 	if _, err := io.Copy(zw, r); err != nil {
 		return err
