@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -304,6 +305,16 @@ type StageManager struct {
 	// inProgressPosted is set once the deployment's "In Progress" commit
 	// status was posted, which phase updates then refine.
 	inProgressPosted bool
+	// shortCommit memoizes the short form of the commit SHA shown in
+	// notifications, so a deployment computes it once rather than per message.
+	shortCommitMu sync.Mutex
+	shortCommit   memoizedShortSHA
+}
+
+// memoizedShortSHA pairs a full commit SHA with its shortest unique prefix.
+type memoizedShortSHA struct {
+	full  string
+	short string
 }
 
 // ResolvedOwnReference reports whether the init stage resolved the deploy
@@ -472,6 +483,10 @@ func (s *StageManager) notificationCommitSha() string {
 		return fullSHA
 	}
 
+	if shortSha, ok := s.cachedShortCommitSHA(fullSHA); ok {
+		return shortSha
+	}
+
 	commitSha, err := mirrorRead(s, func(repo *git.Repository) (string, error) {
 		if fullSHA == "" {
 			var resolveErr error
@@ -482,14 +497,7 @@ func (s *StageManager) notificationCommitSha() string {
 			}
 		}
 
-		shortSha, shortErr := gitInternal.GetShortestUniqueCommitHash(repo, fullSHA, gitInternal.DefaultShortSHALength)
-		if shortErr != nil {
-			// Shortening is cosmetic: fall back to the full SHA rather than failing
-			// the notification over it.
-			return fullSHA, nil //nolint:nilerr // intentional degradation
-		}
-
-		return shortSha, nil
+		return s.shortCommitSHA(repo, fullSHA), nil
 	})
 	if err != nil {
 		return fullSHA
@@ -498,52 +506,87 @@ func (s *StageManager) notificationCommitSha() string {
 	return commitSha
 }
 
-// NotifyFailure sends a failure notification and returns notifyErr marked as already
-// reported, so the caller does not notify about the same failure a second time.
-func (s *StageManager) NotifyFailure(notifyErr error) error {
-	commitSha := s.notificationCommitSha()
+// cachedShortCommitSHA returns the memoized short form of fullSHA, if there is one.
+func (s *StageManager) cachedShortCommitSHA(fullSHA string) (string, bool) {
+	s.shortCommitMu.Lock()
+	defer s.shortCommitMu.Unlock()
 
-	revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
+	if fullSHA == "" || s.shortCommit.full != fullSHA {
+		return "", false
+	}
 
+	return s.shortCommit.short, true
+}
+
+// shortCommitSHA returns the shortest unique prefix of fullSHA in repo, computed
+// once per deployment. Shortening is cosmetic, so it falls back to the full SHA
+// rather than failing a notification over it.
+func (s *StageManager) shortCommitSHA(repo *git.Repository, fullSHA string) string {
+	if shortSha, ok := s.cachedShortCommitSHA(fullSHA); ok {
+		return shortSha
+	}
+
+	shortSha, err := gitInternal.GetShortestUniqueCommitHash(repo, fullSHA, gitInternal.DefaultShortSHALength)
+	if err != nil {
+		return fullSHA
+	}
+
+	s.shortCommitMu.Lock()
+	s.shortCommit = memoizedShortSHA{full: fullSHA, short: shortSha}
+	s.shortCommitMu.Unlock()
+
+	return shortSha
+}
+
+// notificationMetadata returns the metadata shared by this deployment's
+// notifications, apart from the revision and duration.
+func (s *StageManager) notificationMetadata() notification.Metadata {
 	metadata := s.Metadata
 	metadata.Repository = s.Repository.Name
 	metadata.Stack = s.DeployConfig.Name
 	metadata.Context = s.DeployConfig.Context
 	metadata.Target = s.DeployConfig.Internal.ConfigTarget
-	metadata.Revision = revision
 	metadata.JobID = s.JobID
 	metadata.ChangedServices = s.DeployState.changedServiceNames()
 
-	if !s.Stages.Init.StartedAt.IsZero() {
-		metadata.Duration = time.Since(s.Stages.Init.StartedAt).Truncate(time.Millisecond)
+	return metadata
+}
+
+// NotifyFailure sends a failure notification and returns notifyErr marked as already
+// reported, so the caller does not notify about the same failure a second time.
+func (s *StageManager) NotifyFailure(notifyErr error) error {
+	if notification.WouldSend(s.Notifier, notification.Failure) {
+		metadata := s.notificationMetadata()
+		metadata.Revision = notification.GetRevision(s.DeployConfig.Reference, s.notificationCommitSha())
+
+		if !s.Stages.Init.StartedAt.IsZero() {
+			metadata.Duration = time.Since(s.Stages.Init.StartedAt).Truncate(time.Millisecond)
+		}
+
+		go func() {
+			if err := s.Notifier.Send(notification.Failure, "Deployment Failed", notifyErr.Error(), metadata); err != nil {
+				s.Log.Error("failed to send notification", logger.ErrAttr(err))
+			}
+		}()
 	}
 
-	go func() {
-		if err := s.Notifier.Send(notification.Failure, "Deployment Failed", notifyErr.Error(), metadata); err != nil {
-			s.Log.Error("failed to send notification", logger.ErrAttr(err))
-		}
-	}()
-
 	s.Log.Error("deployment failed",
-		slog.String("stack", metadata.Stack),
+		slog.String("stack", s.DeployConfig.Name),
 		logger.ErrAttr(notifyErr))
 
 	return notification.MarkNotified(notifyErr)
 }
 
+// NotifyDeploymentStarted sends the informational "Deployment started"
+// notification. Its level is below the default notify level, so the commit
+// lookup for it is skipped unless the notification is actually delivered.
 func (s *StageManager) NotifyDeploymentStarted() error {
-	commitSha := s.notificationCommitSha()
+	if !notification.WouldSend(s.Notifier, notification.Info) {
+		return nil
+	}
 
-	revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
-
-	metadata := s.Metadata
-	metadata.Repository = s.Repository.Name
-	metadata.Stack = s.DeployConfig.Name
-	metadata.Context = s.DeployConfig.Context
-	metadata.Target = s.DeployConfig.Internal.ConfigTarget
-	metadata.Revision = revision
-	metadata.JobID = s.JobID
-	metadata.ChangedServices = s.DeployState.changedServiceNames()
+	metadata := s.notificationMetadata()
+	metadata.Revision = notification.GetRevision(s.DeployConfig.Reference, s.notificationCommitSha())
 
 	return s.Notifier.Send(
 		notification.Info,
