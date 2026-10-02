@@ -89,6 +89,10 @@ The source directory is organized by source type and source name, and contains t
     ```
 
     - `mirror` is a bare Git mirror used to resolve revisions. It is never checked out directly.
+      Every fetch that brings new commits adds a packfile to the mirror. Once a mirror holds more than
+      32 packfiles, they are consolidated into a single one after the next fetch, since every pack slows
+      down reads from the mirror. Mirrors whose packfiles exceed 256 MiB in total are not consolidated
+      automatically; run `git gc` in the mirror directory while doco-cd is stopped to consolidate them instead.
       - `artifacts/<revision>` is an immutable export of a Git tree. Deployments use this directory,
         allowing multiple revisions of the same source to be deployed in parallel.
       - `mirror.lock`, `<revision>.lock`, and `<submodule-cache>.lock` coordinate access to shared

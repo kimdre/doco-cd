@@ -22,6 +22,12 @@ import (
 // It backs store.GitStore's mirror clone. This mirror never checks anything
 // out: GitStore reads tree objects directly (ExportTree) and materializes
 // submodules itself from tree objects, so the mirror only ever needs fetched objects and refs.
+//
+// After a fetch, the mirror's packfiles are consolidated once they exceed
+// mirrorCompactPackThreshold. Compaction deletes packs, so the returned handle
+// must not be read once the lock is released: a concurrent update may compact
+// the mirror underneath it. Readers that outlive this call take the mirror's
+// shared lock and open a fresh handle instead (see WithMirrorRead).
 func CloneOrUpdateBareMirror(
 	log *slog.Logger,
 	cloneURL, ref, path string,
@@ -99,15 +105,24 @@ func CloneOrUpdateBareMirror(
 
 	exists, existsErr := fetchedReferenceExistsAfterFetch(repo, ref)
 	if existsErr == nil && !exists {
-		if depth > 0 {
-			if deepenErr := deepenBareMirror(repo, cloneURL, ref, skipTLSVerify, proxyOpts, auth, depth); deepenErr != nil {
-				return nil, deepenErr
-			}
-
-			return repo, nil
+		if depth <= 0 {
+			return nil, fmt.Errorf("%w: %w: %s", ErrFetchFailed, ErrInvalidReference, ref)
 		}
 
-		return nil, fmt.Errorf("%w: %w: %s", ErrFetchFailed, ErrInvalidReference, ref)
+		if deepenErr := deepenBareMirror(repo, cloneURL, ref, skipTLSVerify, proxyOpts, auth, depth); deepenErr != nil {
+			return nil, deepenErr
+		}
+	}
+
+	if !compactBareMirrorLocked(log, repo, path, GetRepoName(cloneURL)) {
+		return repo, nil
+	}
+
+	// repo still indexes the packs compaction just replaced; hand out a handle
+	// that only sees the consolidated pack.
+	repo, err = git.PlainOpen(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reopen bare mirror at %s after compaction: %w", path, err)
 	}
 
 	return repo, nil

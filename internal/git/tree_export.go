@@ -230,6 +230,10 @@ type exportCtx struct {
 	// submodule below the root unmatched and silently exported as an empty
 	// directory.
 	submodules map[string]*gitconfig.Submodule
+	// deferredSubmodules, when set, collects submodules for the caller to
+	// export after it releases the lock on the mirror ctx.repo reads from.
+	// ctx.repo must not be read by the deferred export.
+	deferredSubmodules *[]deferredSubmodule
 }
 
 // exportTree exports every entry of tree, whose logical location within
@@ -269,6 +273,19 @@ func exportTree(ctx exportCtx, tree *object.Tree, relPath string) error {
 			}
 
 			cfg := ctx.submodules[entryRelPath]
+
+			if ctx.deferredSubmodules != nil {
+				*ctx.deferredSubmodules = append(*ctx.deferredSubmodules, deferredSubmodule{
+					ctx:     ctx,
+					target:  target,
+					relPath: entryRelPath,
+					entry:   entry,
+					cfg:     cfg,
+				})
+
+				continue
+			}
+
 			if err := exportSubmodule(ctx, target, entry, cfg); err != nil {
 				return fmt.Errorf("export submodule %s: %w", entryRelPath, err)
 			}
@@ -447,39 +464,72 @@ func exportSubmodule(ctx exportCtx, target string, entry object.TreeEntry, cfg *
 	// which GitHub App tokens cannot access) must still be fetchable
 	// anonymously from a private parent, and a private one without
 	// credentials is rejected by its remote instead.
-	subRepo, err := CloneOrUpdateBareMirror(ctx.opts.Log,
+	if _, err := CloneOrUpdateBareMirror(ctx.opts.Log,
 		resolvedURL, entry.Hash.String(), mirrorDir,
 		false, ctx.opts.SSHPrivateKey, ctx.opts.SSHPrivateKeyPassphrase, ctx.opts.AccessToken,
-		ctx.opts.SkipTLSVerify, ctx.opts.ProxyOptions, ctx.opts.Depth)
-	if err != nil {
+		ctx.opts.SkipTLSVerify, ctx.opts.ProxyOptions, ctx.opts.Depth); err != nil {
 		return fmt.Errorf("fetch submodule %s: %w", resolvedURL, err)
 	}
 
-	commitObj, err := subRepo.CommitObject(entry.Hash)
+	// The tree is read lazily while exporting, so it is read through a fresh
+	// handle under the mirror's shared lock: another repository sharing this
+	// submodule may update, and thereby compact, the mirror concurrently.
+	//
+	// Nested submodules are deferred until the lock is released, so this
+	// goroutine never holds more than one submodule mirror lock. Nesting them
+	// would deadlock on a submodule that references itself, and on submodules
+	// that reference each other while exported from two parents at once.
+	var nested []deferredSubmodule
+
+	err := WithMirrorRead(mirrorDir, func(subRepo *git.Repository) error {
+		commitObj, err := subRepo.CommitObject(entry.Hash)
+		if err != nil {
+			return fmt.Errorf("get submodule commit %s: %w", entry.Hash, err)
+		}
+
+		subTree, err := commitObj.Tree()
+		if err != nil {
+			return fmt.Errorf("get submodule tree %s: %w", entry.Hash, err)
+		}
+
+		subParentRemoteURL, err := getPrimaryRemoteURL(subRepo)
+		if err != nil {
+			return fmt.Errorf("resolve submodule remote: %w", err)
+		}
+
+		subCtx := ctx
+		subCtx.absRoot = target
+		subCtx.repo = subRepo
+		subCtx.parentRemoteURL = subParentRemoteURL
+		subCtx.depth = ctx.depth - 1
+		// A nested submodule's own .gitmodules lives at its root, not the
+		// parent's.
+		subCtx.submodules = readGitmodules(subTree)
+		subCtx.deferredSubmodules = &nested
+
+		return exportTree(subCtx, subTree, "")
+	})
 	if err != nil {
-		return fmt.Errorf("get submodule commit %s: %w", entry.Hash, err)
+		return err
 	}
 
-	subTree, err := commitObj.Tree()
-	if err != nil {
-		return fmt.Errorf("get submodule tree %s: %w", entry.Hash, err)
+	for _, sub := range nested {
+		if err := exportSubmodule(sub.ctx, sub.target, sub.entry, sub.cfg); err != nil {
+			return fmt.Errorf("export submodule %s: %w", sub.relPath, err)
+		}
 	}
 
-	subParentRemoteURL, err := getPrimaryRemoteURL(subRepo)
-	if err != nil {
-		return fmt.Errorf("resolve submodule remote: %w", err)
-	}
+	return nil
+}
 
-	subCtx := ctx
-	subCtx.absRoot = target
-	subCtx.repo = subRepo
-	subCtx.parentRemoteURL = subParentRemoteURL
-	subCtx.depth = ctx.depth - 1
-	// A nested submodule's own .gitmodules lives at its root, not the
-	// parent's.
-	subCtx.submodules = readGitmodules(subTree)
-
-	return exportTree(subCtx, subTree, "")
+// deferredSubmodule is a nested submodule found while exporting a submodule's
+// tree, exported once that submodule's mirror lock is released.
+type deferredSubmodule struct {
+	ctx     exportCtx
+	target  string
+	relPath string
+	entry   object.TreeEntry
+	cfg     *gitconfig.Submodule
 }
 
 // submoduleCacheKey returns a filesystem-safe cache directory name for a
