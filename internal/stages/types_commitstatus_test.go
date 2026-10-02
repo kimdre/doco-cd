@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -190,5 +191,53 @@ func TestSelfUpdateCommitStatusSkipsWithoutPendingStatus(t *testing.T) {
 				t.Fatalf("selfUpdateCommitStatus() = %+v, want nil", *got)
 			}
 		})
+	}
+}
+
+// TestCommitStatusUsesPublishedRevision checks that the commit status belongs to
+// the revision this deployment published, not to the branch head a later push
+// has since fetched into the shared mirror.
+func TestCommitStatusUsesPublishedRevision(t *testing.T) {
+	t.Parallel()
+
+	originPath, mirrorPath := setupOriginAndMirror(t)
+
+	sm := newMirrorStageManager(mirrorPath)
+	sm.AppConfig = &app.Config{GitCommitStatus: true}
+	sm.Repository.Source = config.SourceTypeGit
+
+	published, err := sm.latestCommitFromMirror()
+	if err != nil {
+		t.Fatalf("latestCommitFromMirror() = %v", err)
+	}
+
+	writeFile(t, filepath.Join(originPath, "README.md"), "second\n")
+	runGit(t, originPath, "add", ".")
+	runGit(t, originPath, "commit", "-m", "second commit")
+	runGitBare(t, mirrorPath, "fetch", "origin", "+refs/heads/*:refs/remotes/origin/*")
+
+	head, err := sm.latestCommitFromMirror()
+	if err != nil {
+		t.Fatalf("latestCommitFromMirror() after fetch = %v", err)
+	}
+
+	if head == published {
+		t.Fatal("mirror head did not move")
+	}
+
+	sm.Repository.Revision = published
+	if got := sm.commitStatusParams().CommitSHA; got != published {
+		t.Fatalf("commit status SHA = %s, want the published revision %s", got, published)
+	}
+
+	// Before the init stage published a revision, the reference is resolved.
+	sm.Repository.Revision = ""
+	if got := sm.commitStatusParams().CommitSHA; got != head {
+		t.Fatalf("commit status SHA without a revision = %s, want the mirror head %s", got, head)
+	}
+
+	sm.AppConfig.GitCommitStatus = false
+	if got := sm.commitStatusParams().CommitSHA; got != "" {
+		t.Fatalf("commit status SHA with commit statuses disabled = %s, want none resolved", got)
 	}
 }
