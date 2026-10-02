@@ -66,7 +66,7 @@ func writeTestPack(t *testing.T, packDir string, modTime time.Time, entries ...t
 	copy(header, packSignature)
 	binary.BigEndian.PutUint32(header[4:], 2)
 	binary.BigEndian.PutUint32(header[8:], uint32(len(entries))) // #nosec G115 -- small test packs.
-	pack.Write(header)
+	_, _ = pack.Write(header)
 
 	idx := new(idxfile.Writer)
 	_ = idx.OnHeader(uint32(len(entries))) // #nosec G115 -- small test packs.
@@ -92,12 +92,12 @@ func writeTestPack(t *testing.T, packDir string, modTime time.Time, entries ...t
 		_ = zw.Close()
 
 		raw = append(raw, compressed.Bytes()...)
-		pack.Write(raw)
+		_, _ = pack.Write(raw)
 		idx.Add(e.hash, uint64(offsets[i]), crc32.ChecksumIEEE(raw)) // #nosec G115 -- offsets are never negative.
 	}
 
 	sum := sha1.Sum(pack.Bytes()) // #nosec G401 -- the pack format mandates a SHA-1 trailer.
-	pack.Write(sum[:])
+	_, _ = pack.Write(sum[:])
 
 	checksum := plumbing.Hash(sum)
 	if err := idx.OnFooter(checksum); err != nil {
