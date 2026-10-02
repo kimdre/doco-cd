@@ -46,10 +46,14 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 				}
 			}
 
+			shortSHAStartedAt := time.Now()
+
 			shortCommit, err = git.GetShortestUniqueCommitHash(repo, latestCommit, git.DefaultShortSHALength)
 			if err != nil {
 				return fmt.Errorf("failed to get short commit SHA: %w", err)
 			}
+
+			logPostDeployOperation(stageLog, "short_commit_sha", shortSHAStartedAt)
 
 			return nil
 		})
@@ -91,6 +95,8 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 			stageLog.Warn("failed to build changelog path filter, listing all commits", logger.ErrAttr(filterErr))
 		}
 
+		changelogStartedAt := time.Now()
+
 		metadata.Commits, err = mirrorRead(s, func(repo *gogit.Repository) ([]git.CommitInfo, error) {
 			return git.GetCommitsBetween(
 				stageLog,
@@ -105,12 +111,25 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 			// changelog is best-effort, never block the notification
 			stageLog.Warn("failed to build commit changelog", logger.ErrAttr(err))
 		}
+
+		logPostDeployOperation(stageLog, "changelog", changelogStartedAt)
 	}
+
+	notifyStartedAt := time.Now()
 
 	err = s.Notifier.Send(notification.Success, "Deployment completed", "Successfully deployed stack "+s.DeployConfig.Name, metadata)
 	if err != nil {
 		stageLog.Error("failed to send notification", logger.ErrAttr(err))
 	}
 
+	logPostDeployOperation(stageLog, "notification", notifyStartedAt)
+
 	return nil
+}
+
+func logPostDeployOperation(stageLog *slog.Logger, operation string, startedAt time.Time) {
+	stageLog.Debug("completed post-deploy operation",
+		slog.String("operation", operation),
+		slog.String("elapsed_time", time.Since(startedAt).Truncate(time.Millisecond).String()),
+	)
 }

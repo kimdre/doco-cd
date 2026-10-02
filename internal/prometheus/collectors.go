@@ -1,14 +1,22 @@
 package prometheus
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+	gitInternal "github.com/kimdre/doco-cd/internal/git"
 )
 
 func init() {
 	deployConfig.SetAutoDiscoveryCacheObserver(func(repository, result string) {
 		AutoDiscoveryCacheTotal.WithLabelValues(repository, result).Inc()
+	})
+
+	gitInternal.SetMirrorLockObserver(func(mode string, waited, held time.Duration) {
+		GitMirrorLockWaitDuration.WithLabelValues(mode).Observe(waited.Seconds())
+		GitMirrorLockHeldDuration.WithLabelValues(mode).Observe(held.Seconds())
 	})
 
 	prometheus.MustRegister(
@@ -19,6 +27,7 @@ func init() {
 		DeploymentsTotal, DeploymentErrorsTotal, DeploymentDuration, DeploymentStageDuration,
 		DeploymentQueueDuration, DeploymentAdmissionDuration, PreDeployOperationDuration,
 		SourcePreparationDuration,
+		GitMirrorLockWaitDuration, GitMirrorLockHeldDuration,
 		DeploymentsActive, DeploymentsQueued, PreDeploymentsActive, PreDeploymentsQueued,
 		SyncWindowBlockedTotal,
 		ScheduledRunsTotal, ScheduledRunErrorsTotal, ScheduledRunSkippedTotal,
@@ -26,6 +35,11 @@ func init() {
 		McpRequestsTotal, McpErrorsTotal, McpRequestDuration,
 	)
 }
+
+// DurationBuckets extends prometheus.DefBuckets up to ten minutes.
+// DefBuckets end at 10s, which deployments, webhooks and source
+// preparation routinely exceed, leaving their quantiles unbounded.
+var DurationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30, 60, 120, 300, 600}
 
 var (
 	/*
@@ -52,7 +66,7 @@ var (
 		Namespace: MetricsNamespace,
 		Name:      "poll_duration_seconds",
 		Help:      "Duration of polling operations in seconds",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   DurationBuckets,
 	}, []string{"repository"})
 	AutoDiscoveryCacheTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
@@ -73,7 +87,7 @@ var (
 		Namespace: MetricsNamespace,
 		Name:      "webhook_duration_seconds",
 		Help:      "Duration of webhook processing in seconds",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   DurationBuckets,
 	}, []string{"repository"})
 	DeploymentsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
@@ -89,32 +103,44 @@ var (
 		Namespace: MetricsNamespace,
 		Name:      "deployment_duration_seconds",
 		Help:      "Duration of deployment operations in seconds",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   DurationBuckets,
 	}, []string{"repository", "deployment", "context"})
 	DeploymentStageDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployment_stage_duration_seconds",
 		Help:      "Duration of deployment stages in seconds",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   DurationBuckets,
 	}, []string{"repository", "deployment", "context", "stage", "outcome"})
 	DeploymentQueueDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployment_queue_duration_seconds",
 		Help:      "Time deployments spend waiting for admission in seconds",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   DurationBuckets,
 	}, []string{"repository", "outcome"})
 	PreDeployOperationDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "pre_deploy_operation_duration_seconds",
 		Help:      "Duration of pre-deploy sub-operations",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   DurationBuckets,
 	}, []string{"operation", "outcome"})
 	SourcePreparationDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "source_preparation_duration_seconds",
 		Help:      "Duration of deployment source preparation in seconds",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   DurationBuckets,
 	}, []string{"source", "outcome"})
+	GitMirrorLockWaitDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "git_mirror_lock_wait_seconds",
+		Help:      "Time spent waiting for a bare Git mirror lock in seconds",
+		Buckets:   DurationBuckets,
+	}, []string{"mode"})
+	GitMirrorLockHeldDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "git_mirror_lock_held_seconds",
+		Help:      "Time a bare Git mirror lock was held in seconds (shared: reads, exclusive: fetches and exports)",
+		Buckets:   DurationBuckets,
+	}, []string{"mode"})
 	DeploymentsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployments_active",
@@ -139,7 +165,7 @@ var (
 		Namespace: MetricsNamespace,
 		Name:      "deployment_admission_duration_seconds",
 		Help:      "Time deployment work spends waiting for phase admission",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   DurationBuckets,
 	}, []string{"repository", "phase", "outcome"})
 	SyncWindowBlockedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
@@ -165,7 +191,7 @@ var (
 		Namespace: MetricsNamespace,
 		Name:      "scheduled_run_duration_seconds",
 		Help:      "Duration of scheduled job runs in seconds",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   DurationBuckets,
 	}, []string{"context", "stack", "job", "mode", "execution_mode"})
 	ScheduledRunsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,

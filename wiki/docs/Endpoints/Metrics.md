@@ -19,6 +19,8 @@ See the following Source Code to find out about the currently available metrics:
 --8<-- "internal/prometheus/collectors.go:collectors"
 ```
 
+Duration histograms using `DurationBuckets` have buckets from 5ms up to 10 minutes (the Prometheus default buckets plus 20s, 30s, 60s, 120s, 300s and 600s), so long-running deployments, webhooks and source preparations still get meaningful quantiles.
+
 ## Grafana Dashboard
 
 An example for a Grafana Dashboard can be found at [Grafana Dashboard #583](https://github.com/kimdre/doco-cd/discussions/583).

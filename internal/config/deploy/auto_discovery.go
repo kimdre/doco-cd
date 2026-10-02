@@ -27,7 +27,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 // AutoDiscoveryConfig holds auto-discovery settings for a deployment.
@@ -309,7 +308,7 @@ func publishedGitDiscoveryFS(repoRoot, labelRoot, mirrorRoot string, revision pl
 		return disk, nil
 	}
 
-	unlock := sourcecache.AcquireSharedPathLock(mirrorRoot)
+	unlock := gitInternal.AcquireSharedMirrorLock(mirrorRoot)
 
 	repo, err := git.PlainOpen(mirrorRoot)
 	if err != nil {

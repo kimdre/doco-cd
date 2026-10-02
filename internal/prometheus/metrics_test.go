@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	gitInternal "github.com/kimdre/doco-cd/internal/git"
 )
 
 // TestServe tests the metrics endpoint serving functionality.
@@ -108,6 +109,72 @@ func TestMCPMetricsAreRegistered(t *testing.T) {
 	} {
 		if !slices.Contains(metricNames, expectedName) {
 			t.Errorf("expected gathered metrics to contain %q", expectedName)
+		}
+	}
+}
+
+func TestLongRunningHistogramsUseDurationBuckets(t *testing.T) {
+	t.Parallel()
+
+	if got := DurationBuckets[len(DurationBuckets)-1]; got < 300 {
+		t.Fatalf("largest duration bucket = %v, want at least 300s", got)
+	}
+
+	for _, bucket := range clientPrometheus.DefBuckets {
+		if !slices.Contains(DurationBuckets, bucket) {
+			t.Errorf("DurationBuckets is missing default bucket %v", bucket)
+		}
+	}
+
+	SourcePreparationDuration.WithLabelValues("git", "success").Observe(42)
+
+	metricFamilies, err := clientPrometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	for _, metricFamily := range metricFamilies {
+		if metricFamily.GetName() != "doco_cd_source_preparation_duration_seconds" {
+			continue
+		}
+
+		buckets := metricFamily.GetMetric()[0].GetHistogram().GetBucket()
+		if got := buckets[len(buckets)-1].GetUpperBound(); got != DurationBuckets[len(DurationBuckets)-1] {
+			t.Fatalf("source preparation largest bucket = %v, want %v", got, DurationBuckets[len(DurationBuckets)-1])
+		}
+
+		return
+	}
+
+	t.Fatal("source preparation histogram not gathered")
+}
+
+func TestGitMirrorLockMetricsAreObserved(t *testing.T) {
+	t.Parallel()
+
+	// The observer is installed by init; a mirror lock round trip feeds it.
+	gitInternal.AcquireSharedMirrorLock(t.TempDir())()
+
+	metricFamilies, err := clientPrometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	observed := map[string]bool{}
+
+	for _, metricFamily := range metricFamilies {
+		for _, metric := range metricFamily.GetMetric() {
+			for _, label := range metric.GetLabel() {
+				if label.GetName() == "mode" && label.GetValue() == gitInternal.MirrorLockShared && metric.GetHistogram().GetSampleCount() > 0 {
+					observed[metricFamily.GetName()] = true
+				}
+			}
+		}
+	}
+
+	for _, name := range []string{"doco_cd_git_mirror_lock_wait_seconds", "doco_cd_git_mirror_lock_held_seconds"} {
+		if !observed[name] {
+			t.Errorf("expected %s to have a shared-mode observation", name)
 		}
 	}
 }

@@ -13,7 +13,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git/ssh"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 // CloneOrUpdateBareMirror ensures a bare, checkout-free mirror of cloneURL
@@ -45,7 +44,7 @@ func CloneOrUpdateBareMirror(
 
 	depth = effectiveDepth(cloneURL, depth)
 
-	unlock := sourcecache.AcquireExclusivePathLock(path)
+	unlock := AcquireExclusiveMirrorLock(path)
 	defer unlock()
 
 	repo, err := git.PlainOpen(path)
