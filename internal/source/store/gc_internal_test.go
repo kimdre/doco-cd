@@ -293,3 +293,24 @@ func TestSweep_NoArtifactsDir_ReturnsEmptyResult(t *testing.T) {
 		t.Errorf("Sweep() = %+v, want empty result", result)
 	}
 }
+
+func TestSweep_RemovesDecryptRecordWithArtifact(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	now := time.Now()
+	old := touchArtifact(t, baseDir, "old", now, time.Hour)
+
+	record := old.Path + decryptRecordSuffix
+	if err := os.WriteFile(record, []byte(`{"files":{}}`), 0o600); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+
+	if _, err := Sweep(baseDir, nil, GCOptions{RetentionRecords: 0, RetentionTTL: time.Minute}, now); err != nil {
+		t.Fatalf("Sweep() error = %v", err)
+	}
+
+	if _, err := os.Stat(record); !os.IsNotExist(err) {
+		t.Errorf("Stat(record) error = %v, want not exist", err)
+	}
+}

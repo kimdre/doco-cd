@@ -401,7 +401,7 @@ func TestDecryptFilesInDirectoryTolerant_SkipsUndecryptableFiles(t *testing.T) {
 
 	var reported []string
 
-	decrypted, err := DecryptFilesInDirectoryTolerant(dir, dir, func(path string, _ error) {
+	decrypted, err := DecryptFilesInDirectoryTolerant(dir, dir, nil, func(path string, _ error) {
 		reported = append(reported, path)
 	})
 	if err != nil {

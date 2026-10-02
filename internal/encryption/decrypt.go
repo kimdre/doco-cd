@@ -52,10 +52,14 @@ func DecryptContent(content []byte, format formats.Format) ([]byte, error) {
 	return decrypt.DataWithFormat(content, format)
 }
 
+// FileDecryptor decrypts the file at path in place and reports whether it was encrypted.
+// DecryptFileInPlace is the default; callers supply their own to reuse plaintext from elsewhere.
+type FileDecryptor func(path string) (bool, error)
+
 // DecryptFilesInDirectory walks through the specified directory and decrypts all SOPS-encrypted files.
 // A file that cannot be decrypted aborts the walk.
 func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
-	return decryptFilesInDirectory(repoPath, dirPath, set.New[string](), nil)
+	return decryptFilesInDirectory(repoPath, dirPath, set.New[string](), nil, nil)
 }
 
 // DecryptFilesInDirectoryTolerant behaves like DecryptFilesInDirectory, except
@@ -67,19 +71,25 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 // encrypted for a different recipient, and those must not make the whole
 // directory unusable. Callers that know a file is required must still fail on
 // it themselves - reaching a file that is still ciphertext is an error there.
-func DecryptFilesInDirectoryTolerant(repoPath, dirPath string, onFileError func(path string, err error)) ([]string, error) {
+//
+// A nil decryptFile means DecryptFileInPlace.
+func DecryptFilesInDirectoryTolerant(repoPath, dirPath string, decryptFile FileDecryptor, onFileError func(path string, err error)) ([]string, error) {
 	if onFileError == nil {
 		onFileError = func(string, error) {}
 	}
 
-	return decryptFilesInDirectory(repoPath, dirPath, set.New[string](), onFileError)
+	return decryptFilesInDirectory(repoPath, dirPath, set.New[string](), decryptFile, onFileError)
 }
 
 // decryptFilesInDirectory is the recursive implementation of DecryptFilesInDirectory.
 // The visited set tracks already-processed real paths to prevent infinite recursion
 // caused by symlink loops (e.g. a symlink pointing to an ancestor directory).
 // onFileError, when non-nil, absorbs per-file decryption failures.
-func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string], onFileError func(path string, err error)) ([]string, error) {
+func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string], decryptFile FileDecryptor, onFileError func(path string, err error)) ([]string, error) {
+	if decryptFile == nil {
+		decryptFile = DecryptFileInPlace
+	}
+
 	if !filesystem.InBasePath(repoPath, dirPath) {
 		return nil, fmt.Errorf("%w: %s is outside the repository root %s", filesystem.ErrPathTraversal, dirPath, repoPath)
 	}
@@ -146,7 +156,7 @@ func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string], 
 			}
 
 			// Recursively walk the symlink target
-			_, err = decryptFilesInDirectory(repoPath, absTarget, visited, onFileError)
+			_, err = decryptFilesInDirectory(repoPath, absTarget, visited, decryptFile, onFileError)
 			if errors.Is(err, filesystem.ErrPathTraversal) {
 				return nil
 			}
@@ -158,7 +168,7 @@ func decryptFilesInDirectory(repoPath, dirPath string, visited set.Set[string], 
 			return nil
 		}
 
-		decrypted, err := DecryptFileInPlace(path)
+		decrypted, err := decryptFile(path)
 		if err != nil {
 			if onFileError == nil {
 				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
