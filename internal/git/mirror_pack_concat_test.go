@@ -301,6 +301,53 @@ func TestConsolidatePacks_RewritesDeltasAcrossPacks(t *testing.T) {
 	gitFsck(t, path)
 }
 
+func TestConsolidatePacks_RebuildsDeltaAgainstNewerPack(t *testing.T) {
+	t.Parallel()
+
+	path, storage, packDir := newBareTestRepo(t)
+
+	text := strings.Repeat("pack my box with five dozen liquor jugs\n", 40)
+	x := newTestBlob(text + "version x\n")
+	y := newTestBlob(text + "version y\n")
+
+	now := time.Now()
+
+	// y only exists as a delta against x, which only a newer pack holds. go-git
+	// cannot read y at all, since it never resolves a delta base from another
+	// pack, so y has to be rebuilt from its delta to be written as a full object.
+	older := writeTestPack(t, packDir, now.Add(-2*time.Hour), refDeltaEntry(y, x))
+	newer := writeTestPack(t, packDir, now.Add(-time.Hour), fullEntry(x))
+
+	changed, err := consolidatePacks(storage, packDir, []plumbing.Hash{newer, older})
+	if err != nil || !changed {
+		t.Fatalf("consolidatePacks() = %v, %v, want true, nil", changed, err)
+	}
+
+	want := map[plumbing.Hash]plumbing.ObjectType{
+		x.hash: plumbing.BlobObject,
+		y.hash: plumbing.BlobObject,
+	}
+
+	got := packEntryTypes(t, packDir)
+	if len(got) != len(want) {
+		t.Fatalf("new pack holds %d objects, want %d", len(got), len(want))
+	}
+
+	for h, typ := range want {
+		if got[h] != typ {
+			t.Errorf("object %s stored as %s, want %s", h, got[h], typ)
+		}
+	}
+
+	for _, blob := range []testBlob{x, y} {
+		if content := readBlob(t, path, blob.hash); !bytes.Equal(content, blob.content) {
+			t.Errorf("blob %s content = %q, want %q", blob.hash, content, blob.content)
+		}
+	}
+
+	gitFsck(t, path)
+}
+
 func TestConsolidatePacks_KeepsPacksWhenSourceIsCorrupt(t *testing.T) {
 	t.Parallel()
 
