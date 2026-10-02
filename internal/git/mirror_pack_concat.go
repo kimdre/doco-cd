@@ -128,8 +128,8 @@ func loadPackSources(packDir string, packs []plumbing.Hash) ([]packSource, error
 		}
 
 		sources = append(sources, dated{
-			packSource: packSource{hash: p, path: base + ".pack", size: info.Size(), entries: entries},
-			modTime:    info.ModTime().UnixNano(),
+			hash: p, path: base + ".pack", size: info.Size(), entries: entries,
+			modTime: info.ModTime().UnixNano(),
 		})
 	}
 
