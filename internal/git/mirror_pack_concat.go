@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/idxfile"
+	"github.com/go-git/go-git/v5/plumbing/format/packfile"
 	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
@@ -34,7 +35,9 @@ import (
 // REF_DELTA against its base's hash. Each object is copied from the first pack,
 // oldest first, that holds it. A delta whose base comes from a later pack is
 // written as a full object instead, so delta chains in the new pack only point
-// to the same or older source packs and cannot form a cycle.
+// to the same or older source packs and cannot form a cycle. That object is
+// rebuilt by applying the entry's own delta to its base, since go-git cannot
+// read a delta whose base is in another pack.
 
 const (
 	packSignature     = "PACK"
@@ -277,7 +280,13 @@ func concatPacks(storage *filesystem.Storage, packDir string, sources []packSour
 	}
 
 	for _, h := range looseOnly {
-		if err := writeFullObject(storage, out, idx, kept, h); err != nil {
+		// No pack holds h, so storage falls back to the loose object.
+		obj, err := storage.EncodedObject(plumbing.AnyObject, h)
+		if err != nil {
+			return plumbing.ZeroHash, nil, fmt.Errorf("read loose object %s: %w", h, err)
+		}
+
+		if err := writeFullObject(out, idx, kept, h, obj); err != nil {
 			return plumbing.ZeroHash, nil, fmt.Errorf("write loose object %s: %w", h, err)
 		}
 	}
@@ -443,21 +452,29 @@ func copyPackEntries(storage *filesystem.Storage, out *packOutput, idx *idxfile.
 			return fmt.Errorf("entry %s: invalid length %d", e.Hash, length)
 		}
 
-		rewritten, full, err := rewriteEntryHeader(rewriteBuf[:0], h, offset, src, i, out.offset, newOffsets, kept)
+		rewritten, fullBase, err := rewriteEntryHeader(rewriteBuf[:0], h, offset, src, i, out.offset, newOffsets, kept)
 		if err != nil {
 			return fmt.Errorf("entry %s: %w", e.Hash, err)
 		}
 
-		if full {
-			if _, err := io.CopyN(srcCRC, r, dataLen); err != nil {
+		if !fullBase.IsZero() {
+			compressed := make([]byte, dataLen)
+			if _, err := io.ReadFull(r, compressed); err != nil {
 				return fmt.Errorf("read entry %s: %w", e.Hash, err)
 			}
+
+			srcCRC.Write(compressed)
 
 			if srcCRC.Sum32() != e.CRC32 {
 				return fmt.Errorf("entry %s: CRC-32 mismatch", e.Hash)
 			}
 
-			if err := writeFullObject(storage, out, idx, kept, e.Hash); err != nil {
+			obj, err := resolveDeltaEntry(storage, fullBase, compressed, h.size, e.Hash)
+			if err != nil {
+				return fmt.Errorf("resolve entry %s: %w", e.Hash, err)
+			}
+
+			if err := writeFullObject(out, idx, kept, e.Hash, obj); err != nil {
 				return fmt.Errorf("write entry %s as a full object: %w", e.Hash, err)
 			}
 
@@ -514,10 +531,10 @@ func copyEntryData(out *packOutput, srcCRC hash.Hash32, r io.Reader, n int64, bu
 }
 
 // rewriteEntryHeader appends to b the header to write for an entry of
-// sources[i] at srcOffset that is about to be written at newOffset, or reports
-// full when the entry must be written as a full object to keep delta chains
-// acyclic.
-func rewriteEntryHeader(b []byte, h packEntryHeader, srcOffset int64, src packSource, i int, newOffset int64, newOffsets []int64, kept map[plumbing.Hash]keptObject) ([]byte, bool, error) {
+// sources[i] at srcOffset that is about to be written at newOffset. When the
+// entry must instead be written as a full object to keep delta chains acyclic,
+// it returns no header but the hash of the entry's delta base.
+func rewriteEntryHeader(b []byte, h packEntryHeader, srcOffset int64, src packSource, i int, newOffset int64, newOffsets []int64, kept map[plumbing.Hash]keptObject) ([]byte, plumbing.Hash, error) {
 	switch h.typ {
 	case plumbing.OFSDeltaObject:
 		baseSrcOffset := srcOffset - h.baseOffset
@@ -526,7 +543,7 @@ func rewriteEntryHeader(b []byte, h packEntryHeader, srcOffset int64, src packSo
 			return cmp.Compare(int64(e.Offset), off) // #nosec G115 -- pack offsets fit in int64.
 		})
 		if !found {
-			return nil, false, fmt.Errorf("no base object at offset %d", baseSrcOffset)
+			return nil, plumbing.ZeroHash, fmt.Errorf("no base object at offset %d", baseSrcOffset)
 		}
 
 		baseHash := src.entries[idx].Hash
@@ -535,41 +552,82 @@ func rewriteEntryHeader(b []byte, h packEntryHeader, srcOffset int64, src packSo
 		switch {
 		case base.pack == i:
 			if newOffsets[idx] < 0 {
-				return nil, false, fmt.Errorf("base %s was not written before its delta", baseHash)
+				return nil, plumbing.ZeroHash, fmt.Errorf("base %s was not written before its delta", baseHash)
 			}
 
-			return appendOfsDeltaOffset(appendEntryHeader(b, plumbing.OFSDeltaObject, h.size), newOffset-newOffsets[idx]), false, nil
+			return appendOfsDeltaOffset(appendEntryHeader(b, plumbing.OFSDeltaObject, h.size), newOffset-newOffsets[idx]), plumbing.ZeroHash, nil
 		case base.pack < i:
-			return append(appendEntryHeader(b, plumbing.REFDeltaObject, h.size), baseHash[:]...), false, nil
+			return append(appendEntryHeader(b, plumbing.REFDeltaObject, h.size), baseHash[:]...), plumbing.ZeroHash, nil
 		default:
-			return nil, true, nil
+			return nil, baseHash, nil
 		}
 	case plumbing.REFDeltaObject:
 		base, ok := kept[h.baseHash]
 		if !ok {
-			return nil, false, fmt.Errorf("base %s is not in the mirror", h.baseHash)
+			return nil, plumbing.ZeroHash, fmt.Errorf("base %s is not in the mirror", h.baseHash)
 		}
 
 		if base.pack > i {
-			return nil, true, nil
+			return nil, h.baseHash, nil
 		}
 
-		return h.raw, false, nil
+		return h.raw, plumbing.ZeroHash, nil
 	case plumbing.CommitObject, plumbing.TreeObject, plumbing.BlobObject, plumbing.TagObject:
-		return h.raw, false, nil
+		return h.raw, plumbing.ZeroHash, nil
 	default:
-		return nil, false, fmt.Errorf("unsupported object type %d", h.typ)
+		return nil, plumbing.ZeroHash, fmt.Errorf("unsupported object type %d", h.typ)
 	}
 }
 
-// writeFullObject writes the object h, resolved through storage, as a full
-// (non-delta) entry.
-func writeFullObject(storage *filesystem.Storage, out *packOutput, idx *idxfile.Writer, kept map[plumbing.Hash]keptObject, h plumbing.Hash) error {
-	obj, err := storage.EncodedObject(plumbing.AnyObject, h)
+// resolveDeltaEntry rebuilds the object want from a delta entry's compressed
+// data and its delta base, which is read through storage.
+//
+// The object itself is deliberately not read through storage: go-git reads it
+// from whichever pack holding it comes first in its unordered pack index map,
+// and cannot resolve a delta whose base lives in another pack - exactly the
+// kind of entry being rebuilt here.
+func resolveDeltaEntry(storage *filesystem.Storage, base plumbing.Hash, compressed []byte, size int64, want plumbing.Hash) (plumbing.EncodedObject, error) {
+	zr, err := zlib.NewReader(bytes.NewReader(compressed))
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("inflate delta: %w", err)
 	}
 
+	// Reading one byte past size makes zlib verify its checksum at the end of
+	// the stream and exposes a delta that is longer than its header claims.
+	delta, err := io.ReadAll(io.LimitReader(zr, size+1))
+	if closeErr := zr.Close(); err == nil {
+		err = closeErr
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("inflate delta: %w", err)
+	}
+
+	if int64(len(delta)) != size {
+		return nil, fmt.Errorf("delta is %d bytes, want %d", len(delta), size)
+	}
+
+	baseObj, err := storage.EncodedObject(plumbing.AnyObject, base)
+	if err != nil {
+		return nil, fmt.Errorf("read delta base %s: %w", base, err)
+	}
+
+	obj := &plumbing.MemoryObject{}
+	obj.SetType(baseObj.Type())
+
+	if err := packfile.ApplyDelta(obj, baseObj, delta); err != nil {
+		return nil, fmt.Errorf("apply delta: %w", err)
+	}
+
+	if got := obj.Hash(); got != want {
+		return nil, fmt.Errorf("delta resolves to object %s", got)
+	}
+
+	return obj, nil
+}
+
+// writeFullObject writes obj, the object h, as a full (non-delta) entry.
+func writeFullObject(out *packOutput, idx *idxfile.Writer, kept map[plumbing.Hash]keptObject, h plumbing.Hash, obj plumbing.EncodedObject) error {
 	r, err := obj.Reader()
 	if err != nil {
 		return err
