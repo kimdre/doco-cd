@@ -112,6 +112,28 @@ type Sender interface {
 	Send(level Level, title, message string, metadata Metadata, opts ...SendOption) error
 }
 
+// LevelEnabler is implemented by senders that can tell, before a notification is
+// built, whether a notification of a level would be delivered at all.
+type LevelEnabler interface {
+	Enabled(level Level) bool
+}
+
+// WouldSend reports whether sender delivers notifications of level. Building a
+// notification can need repository reads (short SHA, changelog), which callers
+// skip when nothing would be delivered. Senders that cannot tell are assumed to
+// deliver every level.
+func WouldSend(sender Sender, level Level) bool {
+	if sender == nil {
+		return false
+	}
+
+	if enabler, ok := sender.(LevelEnabler); ok {
+		return enabler.Enabled(level)
+	}
+
+	return true
+}
+
 // Notifier owns notification configuration and repeat-failure state.
 type Notifier struct {
 	apiURL       string
@@ -440,9 +462,21 @@ func WithoutBodyTemplate() SendOption {
 	}
 }
 
+// configured reports whether notifications are set up at all.
+func (n *Notifier) configured() bool {
+	return n != nil && n.apiURL != "" && n.notifyURLs != ""
+}
+
+// Enabled reports whether Send delivers notifications of level: notifications are
+// configured and level is at or above the configured notify level. Send may still
+// suppress an unchanged repeat of a failure that was already reported.
+func (n *Notifier) Enabled(level Level) bool {
+	return n.configured() && level >= n.notifyLevel
+}
+
 // Send sends a notification using this notifier's Apprise configuration.
 func (n *Notifier) Send(level Level, title, message string, metadata Metadata, opts ...SendOption) error {
-	if n.apiURL == "" || n.notifyURLs == "" {
+	if !n.configured() {
 		return nil
 	}
 

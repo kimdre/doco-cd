@@ -99,6 +99,85 @@ func TestNewValidatesBodyTemplate(t *testing.T) {
 	}
 }
 
+// TestNotifierEnabled pins which levels Send delivers, so callers can skip building
+// notifications that would be dropped.
+func TestNotifierEnabled(t *testing.T) {
+	t.Parallel()
+
+	levels := []Level{Info, Success, Warning, Failure}
+
+	testCases := []struct {
+		name   string
+		config Config
+		want   []bool // indexed like levels
+	}{
+		{
+			name:   "unconfigured",
+			config: Config{NotifyLevel: "info"},
+			want:   []bool{false, false, false, false},
+		},
+		{
+			name:   "missing notify URLs",
+			config: Config{APIURL: "http://apprise.test", NotifyLevel: "info"},
+			want:   []bool{false, false, false, false},
+		},
+		{
+			name:   "info level",
+			config: Config{APIURL: "http://apprise.test", NotifyURLs: "apprise://x", NotifyLevel: "info"},
+			want:   []bool{true, true, true, true},
+		},
+		{
+			name:   "success level",
+			config: Config{APIURL: "http://apprise.test", NotifyURLs: "apprise://x", NotifyLevel: "success"},
+			want:   []bool{false, true, true, true},
+		},
+		{
+			name:   "failure level",
+			config: Config{APIURL: "http://apprise.test", NotifyURLs: "apprise://x", NotifyLevel: "failure"},
+			want:   []bool{false, false, false, true},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			notifier, err := New(tc.config)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for i, level := range levels {
+				if got := notifier.Enabled(level); got != tc.want[i] {
+					t.Errorf("Enabled(%s) = %v, want %v", logLevels[level], got, tc.want[i])
+				}
+
+				if got := WouldSend(notifier, level); got != tc.want[i] {
+					t.Errorf("WouldSend(%s) = %v, want %v", logLevels[level], got, tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+type plainSender struct{}
+
+func (plainSender) Send(Level, string, string, Metadata, ...SendOption) error { return nil }
+
+// TestWouldSendWithoutLevelEnabler keeps senders that cannot tell their levels
+// receiving every notification, as they did before callers started checking.
+func TestWouldSendWithoutLevelEnabler(t *testing.T) {
+	t.Parallel()
+
+	if !WouldSend(plainSender{}, Info) {
+		t.Fatal("WouldSend() = false for a sender without Enabled, want true")
+	}
+
+	if WouldSend(nil, Failure) {
+		t.Fatal("WouldSend(nil) = true, want false")
+	}
+}
+
 func TestNotifierFailureStateIsIsolated(t *testing.T) {
 	t.Parallel()
 

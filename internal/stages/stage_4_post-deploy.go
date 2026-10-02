@@ -27,52 +27,53 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		s.Stages.PostDeploy.FinishedAt = time.Now()
 	}()
 
-	var err error
-
 	shortCommit := strings.TrimSpace(s.Repository.Revision)
 
-	var latestCommit string
+	metadata := s.notificationMetadata()
+	metadata.Duration = time.Since(s.Stages.Init.StartedAt).Truncate(time.Millisecond)
 
-	if s.Repository.Source != config.SourceTypeOCI {
-		err = s.withMirrorRead(func(repo *gogit.Repository) error {
-			// This stage reports what this run deployed. A parallel webhook may have
-			// advanced the mirror's branch already, so only resolve the moving ref for
-			// legacy callers that did not record an immutable revision.
-			latestCommit = strings.TrimSpace(s.Repository.Revision)
-			if latestCommit == "" {
-				latestCommit, err = git.GetLatestCommit(repo, s.DeployConfig.Reference)
-				if err != nil {
-					return fmt.Errorf("failed to get latest commit: %w", err)
-				}
-			}
-
-			shortSHAStartedAt := time.Now()
-
-			shortCommit, err = git.GetShortestUniqueCommitHash(repo, latestCommit, git.DefaultShortSHALength)
-			if err != nil {
-				return fmt.Errorf("failed to get short commit SHA: %w", err)
-			}
-
-			logPostDeployOperation(stageLog, "short_commit_sha", shortSHAStartedAt)
-
-			return nil
-		})
+	// The success notification is sent even below the notify level, because it also
+	// clears the stack's reported failure. Only the repository reads that decorate
+	// it are skipped when it is not delivered.
+	if s.Repository.Source != config.SourceTypeOCI && notification.WouldSend(s.Notifier, notification.Success) {
+		commitSha, commits, err := s.deployedCommitDetails(stageLog)
 		if err != nil {
-			return err
+			// The stack is already deployed and these details only decorate its
+			// notification, so a failed read must not turn it into a failed deployment.
+			stageLog.Warn("failed to read deployed commit details, notifying with the full revision", logger.ErrAttr(err))
+		} else {
+			shortCommit = commitSha
+			metadata.Commits = commits
 		}
 	}
 
-	metadata := s.Metadata
-	metadata.Repository = s.Repository.Name
-	metadata.Stack = s.DeployConfig.Name
-	metadata.Context = s.DeployConfig.Context
-	metadata.Target = s.DeployConfig.Internal.ConfigTarget
 	metadata.Revision = notification.GetRevision(s.DeployConfig.Reference, shortCommit)
-	metadata.JobID = s.JobID
-	metadata.Duration = time.Since(s.Stages.Init.StartedAt).Truncate(time.Millisecond)
-	metadata.ChangedServices = s.DeployState.changedServiceNames()
 
-	if s.DeployState.DeployedCommit != "" && latestCommit != "" {
+	notifyStartedAt := time.Now()
+
+	err := s.Notifier.Send(notification.Success, "Deployment completed", "Successfully deployed stack "+s.DeployConfig.Name, metadata)
+	if err != nil {
+		stageLog.Error("failed to send notification", logger.ErrAttr(err))
+	}
+
+	logPostDeployOperation(stageLog, "notification", notifyStartedAt)
+
+	return nil
+}
+
+// deployedCommitDetails returns the short SHA of the deployed commit and the
+// changelog since the previously deployed commit, read in a single mirror read.
+// Without a changelog to build, a memoized short SHA needs no read at all.
+func (s *StageManager) deployedCommitDetails(stageLog *slog.Logger) (string, []git.CommitInfo, error) {
+	if s.DeployState.DeployedCommit == "" {
+		if shortCommit, ok := s.cachedShortCommitSHA(strings.TrimSpace(s.Repository.Revision)); ok {
+			return shortCommit, nil, nil
+		}
+	}
+
+	var pathFilter func(string) bool
+
+	if s.DeployState.DeployedCommit != "" {
 		// Only commits that touch the files of this stack belong in its changelog, so a
 		// repository with several stacks does not report the changes of all of them.
 		// A nil filter walks the log unfiltered, which is what a project without any
@@ -86,7 +87,9 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 			extraRepoPaths = append(extraRepoPaths, rel)
 		}
 
-		pathFilter, filterErr := docker.ProjectPathFilter(
+		var filterErr error
+
+		pathFilter, filterErr = docker.ProjectPathFilter(
 			s.Repository.PathExternal,
 			s.Docker.Project,
 			extraRepoPaths...,
@@ -94,37 +97,58 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		if filterErr != nil {
 			stageLog.Warn("failed to build changelog path filter, listing all commits", logger.ErrAttr(filterErr))
 		}
+	}
+
+	var (
+		shortCommit string
+		commits     []git.CommitInfo
+	)
+
+	err := s.withMirrorRead(func(repo *gogit.Repository) error {
+		// This stage reports what this run deployed. A parallel webhook may have
+		// advanced the mirror's branch already, so only resolve the moving ref for
+		// legacy callers that did not record an immutable revision.
+		var err error
+
+		latestCommit := strings.TrimSpace(s.Repository.Revision)
+		if latestCommit == "" {
+			latestCommit, err = git.GetLatestCommit(repo, s.DeployConfig.Reference)
+			if err != nil {
+				return fmt.Errorf("failed to get latest commit: %w", err)
+			}
+		}
+
+		shortSHAStartedAt := time.Now()
+
+		shortCommit = s.shortCommitSHA(repo, latestCommit)
+
+		logPostDeployOperation(stageLog, "short_commit_sha", shortSHAStartedAt)
+
+		if s.DeployState.DeployedCommit == "" || latestCommit == "" {
+			return nil
+		}
 
 		changelogStartedAt := time.Now()
 
-		metadata.Commits, err = mirrorRead(s, func(repo *gogit.Repository) ([]git.CommitInfo, error) {
-			return git.GetCommitsBetween(
-				stageLog,
-				repo,
-				plumbing.NewHash(s.DeployState.DeployedCommit),
-				plumbing.NewHash(latestCommit),
-				maxChangelogCommits,
-				pathFilter,
-			)
-		})
+		commits, err = git.GetCommitsBetween(
+			stageLog,
+			repo,
+			plumbing.NewHash(s.DeployState.DeployedCommit),
+			plumbing.NewHash(latestCommit),
+			maxChangelogCommits,
+			pathFilter,
+		)
 		if err != nil {
 			// changelog is best-effort, never block the notification
 			stageLog.Warn("failed to build commit changelog", logger.ErrAttr(err))
 		}
 
 		logPostDeployOperation(stageLog, "changelog", changelogStartedAt)
-	}
 
-	notifyStartedAt := time.Now()
+		return nil
+	})
 
-	err = s.Notifier.Send(notification.Success, "Deployment completed", "Successfully deployed stack "+s.DeployConfig.Name, metadata)
-	if err != nil {
-		stageLog.Error("failed to send notification", logger.ErrAttr(err))
-	}
-
-	logPostDeployOperation(stageLog, "notification", notifyStartedAt)
-
-	return nil
+	return shortCommit, commits, err
 }
 
 func logPostDeployOperation(stageLog *slog.Logger, operation string, startedAt time.Time) {
