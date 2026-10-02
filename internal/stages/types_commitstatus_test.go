@@ -196,48 +196,101 @@ func TestSelfUpdateCommitStatusSkipsWithoutPendingStatus(t *testing.T) {
 
 // TestCommitStatusUsesPublishedRevision checks that the commit status belongs to
 // the revision this deployment published, not to the branch head a later push
-// has since fetched into the shared mirror.
+// has since fetched into the shared mirror, and that a request revision resolved
+// for another reference is not used for a stack before the init stage resolved
+// the stack's own reference.
 func TestCommitStatusUsesPublishedRevision(t *testing.T) {
 	t.Parallel()
 
 	originPath, mirrorPath := setupOriginAndMirror(t)
 
-	sm := newMirrorStageManager(mirrorPath)
-	sm.AppConfig = &app.Config{GitCommitStatus: true}
-	sm.Repository.Source = config.SourceTypeGit
+	resolve := func(reference string) string {
+		t.Helper()
 
-	published, err := sm.latestCommitFromMirror()
-	if err != nil {
-		t.Fatalf("latestCommitFromMirror() = %v", err)
+		sm := newMirrorStageManager(mirrorPath)
+		sm.DeployConfig.Reference = reference
+
+		sha, err := sm.latestCommitFromMirror()
+		if err != nil {
+			t.Fatalf("latestCommitFromMirror(%s) = %v", reference, err)
+		}
+
+		return sha
 	}
 
+	published := resolve("main")
+
+	runGit(t, originPath, "checkout", "-b", "release")
+	writeFile(t, filepath.Join(originPath, "README.md"), "release\n")
+	runGit(t, originPath, "add", ".")
+	runGit(t, originPath, "commit", "-m", "release commit")
+	runGit(t, originPath, "checkout", "main")
 	writeFile(t, filepath.Join(originPath, "README.md"), "second\n")
 	runGit(t, originPath, "add", ".")
 	runGit(t, originPath, "commit", "-m", "second commit")
 	runGitBare(t, mirrorPath, "fetch", "origin", "+refs/heads/*:refs/remotes/origin/*")
 
-	head, err := sm.latestCommitFromMirror()
-	if err != nil {
-		t.Fatalf("latestCommitFromMirror() after fetch = %v", err)
-	}
+	head := resolve("main")
+	release := resolve("release")
 
 	if head == published {
 		t.Fatal("mirror head did not move")
 	}
 
-	sm.Repository.Revision = published
-	if got := sm.commitStatusParams().CommitSHA; got != published {
-		t.Fatalf("commit status SHA = %s, want the published revision %s", got, published)
+	tests := []struct {
+		name                 string
+		disabled             bool
+		resolvedReference    string
+		revision             string
+		resolvedOwnReference bool
+		want                 string
+	}{
+		{
+			name:              "request revision of the stack's reference",
+			resolvedReference: "refs/heads/main",
+			revision:          published,
+			want:              published,
+		},
+		{
+			name:                 "revision the init stage resolved for the stack's own reference",
+			resolvedReference:    "refs/heads/release",
+			revision:             published,
+			resolvedOwnReference: true,
+			want:                 published,
+		},
+		{
+			// The init stage failed before resolving the stack's own reference.
+			name:              "request revision of another reference",
+			resolvedReference: "refs/heads/release",
+			revision:          release,
+			want:              head,
+		},
+		{
+			name:              "no revision",
+			resolvedReference: "refs/heads/main",
+			want:              head,
+		},
+		{
+			name:              "commit statuses disabled",
+			disabled:          true,
+			resolvedReference: "refs/heads/main",
+			revision:          published,
+			want:              "",
+		},
 	}
 
-	// Before the init stage published a revision, the reference is resolved.
-	sm.Repository.Revision = ""
-	if got := sm.commitStatusParams().CommitSHA; got != head {
-		t.Fatalf("commit status SHA without a revision = %s, want the mirror head %s", got, head)
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sm := newMirrorStageManager(mirrorPath)
+			sm.AppConfig = &app.Config{GitCommitStatus: !tc.disabled}
+			sm.Repository.Source = config.SourceTypeGit
+			sm.Repository.ResolvedReference = tc.resolvedReference
+			sm.Repository.Revision = tc.revision
+			sm.resolvedOwnReference = tc.resolvedOwnReference
 
-	sm.AppConfig.GitCommitStatus = false
-	if got := sm.commitStatusParams().CommitSHA; got != "" {
-		t.Fatalf("commit status SHA with commit statuses disabled = %s, want none resolved", got)
+			if got := sm.commitStatusParams().CommitSHA; got != tc.want {
+				t.Fatalf("commit status SHA = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

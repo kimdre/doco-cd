@@ -553,18 +553,34 @@ func (s *StageManager) NotifyDeploymentStarted() error {
 	)
 }
 
+// revisionBelongsToStack reports whether Repository.Revision is the revision of
+// this stack's own repository and reference. The request's revision is set before
+// the init stage runs, but it was resolved for the job's reference, which a stack
+// with its own reference or repository_url does not deploy until the init stage
+// replaced it with the revision resolved for that stack.
+func (s *StageManager) revisionBelongsToStack() bool {
+	if s.resolvedOwnReference {
+		return true
+	}
+
+	return s.DeployConfig.RepositoryUrl == "" &&
+		resolvedReferenceMatches(s.Repository.ResolvedReference, s.DeployConfig.Reference)
+}
+
 // resolveCommitSHA returns the full commit SHA the commit status of this
-// deployment belongs to. Once the init stage published the deployment's revision,
+// deployment belongs to. Once Repository.Revision is the stack's own revision,
 // that immutable revision is used: the mirror's branch head may already have moved
 // on with a later push, and reading it opens a mirror handle on every status.
-// Before that, the reference is resolved from the mirror, falling back to the
-// SHA carried in the webhook payload.
+// Otherwise, such as when the init stage failed before resolving the stack's own
+// reference, the reference is resolved from the mirror, falling back to the SHA
+// carried in the webhook payload and then to the request's revision.
 func (s *StageManager) resolveCommitSHA() string {
 	if s.Repository.Source == types2.SourceTypeOCI {
 		return "" // OCI digests are not git commit SHAs
 	}
 
-	if revision := strings.TrimSpace(s.Repository.Revision); revision != "" {
+	revision := strings.TrimSpace(s.Repository.Revision)
+	if revision != "" && s.revisionBelongsToStack() {
 		return revision
 	}
 
@@ -582,7 +598,7 @@ func (s *StageManager) resolveCommitSHA() string {
 		}
 	}
 
-	return ""
+	return revision
 }
 
 func (s *StageManager) resolveCommitStatusContext() string {
