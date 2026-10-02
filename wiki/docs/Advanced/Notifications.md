@@ -22,6 +22,8 @@ For that, specify the required settings in the app `environment` section and add
 | `APPRISE_NOTIFY_BODY_TEMPLATE`  | string | Optional [Go `text/template`](https://pkg.go.dev/text/template) rendering the notification body (see [Custom notification body](#custom-notification-body)). Empty uses the built-in format.                  |               |
 | `APPRISE_NOTIFY_BODY_TEMPLATE_FILE` | string | Path to a file inside the container containing the template (see `APPRISE_NOTIFY_BODY_TEMPLATE`). Mutually exclusive with `APPRISE_NOTIFY_BODY_TEMPLATE`.                                                          |               |
 
+A request to the Apprise API fails if Apprise does not answer within 30 seconds, so an unresponsive Apprise server cannot hold up deployments.
+
 ## Example `docker-compose.yml`
 
 Adjust your `docker-compose.yml` file to include the Apprise service and the necessary environment variables for the app:
