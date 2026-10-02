@@ -37,9 +37,7 @@ func init() {
 
 		GitMirrorCompactionsTotal.WithLabelValues(stats.Repository, stats.Result).Inc()
 
-		if stats.Result != gitInternal.MirrorCompactionSkippedSize {
-			GitMirrorCompactionDuration.WithLabelValues(stats.Repository).Observe(stats.Duration.Seconds())
-		}
+		GitMirrorCompactionDuration.WithLabelValues(stats.Repository).Observe(stats.Duration.Seconds())
 	})
 }
 

@@ -15,7 +15,6 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/idxfile"
-	"github.com/go-git/go-git/v5/plumbing/format/packfile"
 	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
@@ -26,15 +25,6 @@ const (
 	// on its first object read, so an unbounded pack count slows down every read.
 	mirrorCompactPackThreshold = 32
 
-	// mirrorCompactMaxPackBytes skips compaction of mirrors whose packs exceed
-	// this total size: the encoder keeps per-object metadata in memory, so very
-	// large mirrors are left to an operator-run `git gc` instead.
-	mirrorCompactMaxPackBytes int64 = 256 << 20
-
-	// mirrorCompactPackWindow matches git's default pack.window. A non-zero
-	// window also lets the encoder reuse the deltas already stored in the packs.
-	mirrorCompactPackWindow uint = 10
-
 	// mirrorCompactRetryDelay keeps a mirror whose compaction failed from
 	// repeating the attempt, and its cost, on every poll.
 	mirrorCompactRetryDelay = time.Hour
@@ -44,9 +34,8 @@ const (
 
 // Results reported in MirrorPackStats.Result when a compaction was attempted.
 const (
-	MirrorCompactionCompacted   = "compacted"
-	MirrorCompactionSkippedSize = "skipped_size"
-	MirrorCompactionFailed      = "failed"
+	MirrorCompactionCompacted = "compacted"
+	MirrorCompactionFailed    = "failed"
 )
 
 // MirrorPackStats describes a bare mirror's packfiles after a fetch and the
@@ -66,10 +55,6 @@ type MirrorPackObserver func(MirrorPackStats)
 
 var (
 	mirrorPackObserver atomic.Pointer[MirrorPackObserver]
-
-	// mirrorCompactionSizeWarned remembers the mirrors already reported as too
-	// large to compact, so polling does not repeat the warning on every fetch.
-	mirrorCompactionSizeWarned sync.Map
 
 	// mirrorCompactionFailedAt maps mirror paths to their last failed compaction.
 	mirrorCompactionFailedAt sync.Map
@@ -145,20 +130,6 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 		return false
 	}
 
-	if size > mirrorCompactMaxPackBytes {
-		stats.Result = MirrorCompactionSkippedSize
-
-		if _, warned := mirrorCompactionSizeWarned.LoadOrStore(path, struct{}{}); !warned {
-			log.Warn("bare mirror packfiles are too large to compact automatically, run `git gc` on the mirror to consolidate them",
-				slog.String("path", path),
-				slog.Int("packs", len(packs)),
-				slog.Int64("size_bytes", size),
-				slog.Int64("limit_bytes", mirrorCompactMaxPackBytes))
-		}
-
-		return false
-	}
-
 	removeTempPacks(log, packDir)
 
 	start := time.Now()
@@ -201,7 +172,7 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 	return true
 }
 
-// consolidatePacks writes every object of the mirror into one new pack, verifies
+// consolidatePacks copies every object of the mirror into one new pack, verifies
 // it and then deletes the packs and loose objects it replaces. It reports
 // whether the pack directory was modified, even when it also returns an error.
 func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumbing.Hash) (bool, error) {
@@ -214,32 +185,18 @@ func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumb
 		return false, fmt.Errorf("list loose objects: %w", err)
 	}
 
-	// HashesWithPrefix only dedupes packed objects against loose ones; the same
-	// object may still be stored in several packs.
-	all, err := storage.HashesWithPrefix(nil)
+	sources, err := loadPackSources(packDir, packs)
 	if err != nil {
-		return false, fmt.Errorf("list packed objects: %w", err)
+		return false, fmt.Errorf("read packs: %w", err)
 	}
 
-	unique := make(map[plumbing.Hash]struct{}, len(all))
-	hashes := make([]plumbing.Hash, 0, len(all))
-
-	for _, h := range all {
-		if _, ok := unique[h]; ok {
-			continue
-		}
-
-		unique[h] = struct{}{}
-		hashes = append(hashes, h)
+	newPack, hashes, err := concatPacks(storage, packDir, sources, loose)
+	if err != nil {
+		return false, err
 	}
 
 	if len(hashes) == 0 {
 		return false, nil
-	}
-
-	newPack, err := writePack(storage, hashes)
-	if err != nil {
-		return false, err
 	}
 
 	if err := verifyPack(packDir, newPack, hashes); err != nil {
@@ -263,7 +220,10 @@ func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumb
 
 		if err := storage.DeleteOldObjectPackAndIndex(p, time.Time{}); err != nil {
 			errs = append(errs, fmt.Errorf("remove pack %s: %w", p, err))
+			continue
 		}
+
+		removePackSidecars(packDir, p)
 	}
 
 	for _, h := range loose {
@@ -273,31 +233,6 @@ func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumb
 	}
 
 	return true, errors.Join(errs...)
-}
-
-// writePack encodes hashes into a new pack in the mirror's object directory and
-// returns the new pack's checksum, which is also its file name.
-func writePack(storage *filesystem.Storage, hashes []plumbing.Hash) (plumbing.Hash, error) {
-	w, err := storage.PackfileWriter()
-	if err != nil {
-		return plumbing.ZeroHash, fmt.Errorf("create pack writer: %w", err)
-	}
-
-	newPack, encodeErr := packfile.NewEncoder(w, storage, false).Encode(hashes, mirrorCompactPackWindow)
-
-	// Close parses the written pack, then writes its index and renames it into
-	// place; it must run even after a failed encode to stop the indexer.
-	closeErr := w.Close()
-
-	if encodeErr != nil {
-		return plumbing.ZeroHash, fmt.Errorf("encode pack: %w", encodeErr)
-	}
-
-	if closeErr != nil {
-		return plumbing.ZeroHash, fmt.Errorf("finalize pack: %w", closeErr)
-	}
-
-	return newPack, nil
 }
 
 // verifyPack decodes the new pack's index from disk and checks it holds every object in hashes.
@@ -335,6 +270,14 @@ func verifyPack(packDir string, pack plumbing.Hash, hashes []plumbing.Hash) erro
 	}
 
 	return nil
+}
+
+// removePackSidecars deletes the files `git` keeps next to a pack and derives
+// from it, which go-git does not remove along with the pack.
+func removePackSidecars(packDir string, pack plumbing.Hash) {
+	for _, ext := range []string{".rev", ".bitmap", ".mtimes"} {
+		_ = os.Remove(filepath.Join(packDir, "pack-"+pack.String()+ext))
+	}
 }
 
 // packfilesSize returns the combined size of the given packs' .pack files.
