@@ -221,3 +221,83 @@ func TestExportTree_SubmoduleReferencingItself(t *testing.T) {
 		}
 	}
 }
+
+// TestExportTree_ReusesCachedSubmoduleCommit exports submodule commits from
+// their cache mirror without fetching once the mirror holds them, and still
+// fetches a commit the mirror does not hold yet.
+func TestExportTree_ReusesCachedSubmoduleCommit(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+
+	subPath := filepath.Join(tmp, "sub")
+	subRepo := initLocalTestRepo(t, subPath)
+	first := commitLocalTestFile(t, subRepo, subPath, "marker.txt", "first\n", "add marker")
+
+	parentPath := filepath.Join(tmp, "parent")
+	parentRepo := initLocalTestRepo(t, parentPath)
+
+	if _, err := parentRepo.CreateRemote(&config.RemoteConfig{
+		Name: git.RemoteName,
+		URLs: []string{"file://" + parentPath},
+	}); err != nil {
+		t.Fatalf("create parent remote: %v", err)
+	}
+
+	gitmodules := writeTestBlob(t, parentRepo, fmt.Sprintf("[submodule \"sub\"]\n\tpath = sub\n\turl = file://%s\n", subPath))
+	signature := object.Signature{Name: "submodule-test", Email: "submodule-test@example.com", When: time.Now()}
+
+	parentCommit := func(subCommit plumbing.Hash, readme string) plumbing.Hash {
+		return storeTestObject(t, parentRepo, plumbing.CommitObject, func(raw plumbing.EncodedObject) error {
+			return (&object.Commit{
+				Author:    signature,
+				Committer: signature,
+				Message:   "pin submodule\n",
+				TreeHash: writeTestTree(t, parentRepo, []object.TreeEntry{
+					{Name: ".gitmodules", Mode: filemode.Regular, Hash: gitmodules},
+					{Name: "README.md", Mode: filemode.Regular, Hash: writeTestBlob(t, parentRepo, readme)},
+					{Name: "sub", Mode: filemode.Submodule, Hash: subCommit},
+				}),
+			}).Encode(raw)
+		})
+	}
+
+	opts := git.ExportOptions{SubmoduleCacheDir: filepath.Join(tmp, "submodules")}
+
+	export := func(name string, commit plumbing.Hash, want string) {
+		t.Helper()
+
+		exportDir := filepath.Join(tmp, name)
+		if err := git.ExportTree(exportDir, parentRepo, commit, opts); err != nil {
+			t.Fatalf("ExportTree(%s) error = %v", name, err)
+		}
+
+		got, err := os.ReadFile(filepath.Join(exportDir, "sub", "marker.txt"))
+		if err != nil {
+			t.Fatalf("read %s submodule marker: %v", name, err)
+		}
+
+		if string(got) != want {
+			t.Fatalf("%s submodule marker.txt = %q, want %q", name, got, want)
+		}
+	}
+
+	export("initial", parentCommit(first, "v1\n"), "first\n")
+
+	// A fetch from the moved remote fails, so this export only succeeds if it
+	// reads the cached commit without fetching.
+	movedPath := subPath + "-moved"
+	if err := os.Rename(subPath, movedPath); err != nil {
+		t.Fatalf("move submodule remote: %v", err)
+	}
+
+	export("cached", parentCommit(first, "v2\n"), "first\n")
+
+	if err := os.Rename(movedPath, subPath); err != nil {
+		t.Fatalf("restore submodule remote: %v", err)
+	}
+
+	second := commitLocalTestFile(t, subRepo, subPath, "marker.txt", "second\n", "update marker")
+
+	export("fetched", parentCommit(second, "v3\n"), "second\n")
+}
