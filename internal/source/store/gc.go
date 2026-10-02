@@ -132,6 +132,10 @@ func Sweep(baseDir string, live set.Set[Revision], opts GCOptions, now time.Time
 			errs = append(errs, fmt.Errorf("remove artifact lock file %s: %w", c.Revision, err))
 		}
 
+		if err = os.Remove(c.Path + decryptRecordSuffix); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("remove artifact decrypt record %s: %w", c.Revision, err))
+		}
+
 		result.Removed = append(result.Removed, c.Artifact)
 	}
 

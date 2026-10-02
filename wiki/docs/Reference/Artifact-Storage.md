@@ -67,6 +67,7 @@ The source directory is organized by source type and source name, and contains t
             artifacts/  # Immutable Git tree exports
               <revision>/  # Immutable export of a Git tree for a specific revision
               <revision>.lock  # Lock file for artifact access
+              <revision>.decrypted.json  # Which files were decrypted, for plaintext reuse
               ...
             mirror/  # Bare Git repository mirror
               HEAD
@@ -111,6 +112,7 @@ The source directory is organized by source type and source name, and contains t
             artifacts/  # Immutable OCI artifact exports
               sha256-<digest>/  # Extracted artifact for a specific digest
               sha256-<digest>.lock  # Lock file for artifact access
+              sha256-<digest>.decrypted.json  # Which files were decrypted, for plaintext reuse
               ...
             live/  # Mutable live files of stacks
               <context>/
