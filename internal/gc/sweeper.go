@@ -11,6 +11,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/source"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/store"
@@ -189,6 +190,14 @@ func (s *Sweeper) sweepRepoDir(repoDir string, live map[string]set.Set[store.Rev
 	result, err := s.sweepDirectory(repoDir, revisions, s.opts, s.now())
 	if err != nil {
 		repoLog.Error("gc: sweep failed", logger.ErrAttr(err))
+	}
+
+	prometheus.ArtifactGCRemovedTotal.WithLabelValues(repoName).Add(float64(len(result.Removed)))
+
+	// Sweep returns an empty result alongside an error only when it could not list
+	// the artifacts at all, which says nothing about how many are left.
+	if err == nil || len(result.Kept)+len(result.Removed) > 0 {
+		prometheus.ArtifactGCKept.WithLabelValues(repoName).Set(float64(len(result.Kept)))
 	}
 
 	if len(result.Removed) > 0 {

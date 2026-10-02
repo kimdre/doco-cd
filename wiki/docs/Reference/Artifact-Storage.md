@@ -162,6 +162,9 @@ Everything else (unreferenced, past the retention-records buffer, and older than
 is removed. The sweep runs once at startup and then every [`ARTIFACT_GC_INTERVAL`](../App-Settings.md#artifact-garbage-collection-settings); it can be disabled
 entirely with `#!yaml ARTIFACT_GC_ENABLED: false` if you prefer to manage disk usage yourself.
 
+The number of copies each sweep removes and keeps per repository/artifact is exposed in the
+`doco_cd_artifact_gc_removed_total` and `doco_cd_artifact_gc_kept` [Prometheus metrics](../Endpoints/Metrics.md).
+
 ## Git Mirror Compaction
 
 Every fetch that brings new objects (e.g. new commits, branches or tags) adds a packfile to the Git mirror of a source.
@@ -176,6 +179,6 @@ new objects; fetches without new objects do not add packfiles.
 - The old packfiles are only removed once the new one has been verified. If consolidation fails, the old
   packfiles are kept and consolidation of that mirror is retried after an hour at the earliest.
 
-The number of packfiles of each mirror and the consolidations are exposed in the
-`doco_cd_git_mirror_packs`, `doco_cd_git_mirror_compactions_total` and
+The number and combined size of the packfiles of each mirror and the consolidations are exposed in the
+`doco_cd_git_mirror_packs`, `doco_cd_git_mirror_size_bytes`, `doco_cd_git_mirror_compactions_total` and
 `doco_cd_git_mirror_compaction_duration_seconds` [Prometheus metrics](../Endpoints/Metrics.md).

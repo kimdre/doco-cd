@@ -64,11 +64,26 @@ func TestGitMirrorPacksReportedAfterFetch(t *testing.T) {
 	if got := testutil.ToFloat64(GitMirrorPacks.WithLabelValues(gitInternal.GetRepoName(cloneURL))); got != 1 {
 		t.Fatalf("git_mirror_packs = %v, want 1", got)
 	}
+
+	packs, err := filepath.Glob(filepath.Join(mirrorPath, "objects", "pack", "pack-*.pack"))
+	if err != nil || len(packs) != 1 {
+		t.Fatalf("glob packs = %v, %v, want one pack", packs, err)
+	}
+
+	info, err := os.Stat(packs[0])
+	if err != nil {
+		t.Fatalf("stat pack: %v", err)
+	}
+
+	if got := testutil.ToFloat64(GitMirrorSizeBytes.WithLabelValues(gitInternal.GetRepoName(cloneURL))); got != float64(info.Size()) {
+		t.Fatalf("git_mirror_size_bytes = %v, want %d", got, info.Size())
+	}
 }
 
-func TestGitMirrorCompactionMetricsAreRegistered(t *testing.T) {
+func TestGitMirrorMetricsAreRegistered(t *testing.T) {
 	t.Parallel()
 
+	GitMirrorSizeBytes.WithLabelValues("example.com/owner/registered").Set(1)
 	GitMirrorCompactionsTotal.WithLabelValues("example.com/owner/registered", gitInternal.MirrorCompactionCompacted).Inc()
 	GitMirrorCompactionDuration.WithLabelValues("example.com/owner/registered").Observe(0.1)
 
@@ -83,6 +98,7 @@ func TestGitMirrorCompactionMetricsAreRegistered(t *testing.T) {
 	}
 
 	for _, expectedName := range []string{
+		"doco_cd_git_mirror_size_bytes",
 		"doco_cd_git_mirror_compactions_total",
 		"doco_cd_git_mirror_compaction_duration_seconds",
 	} {

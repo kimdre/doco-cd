@@ -118,6 +118,29 @@ func countPacks(t *testing.T, mirrorPath string) int {
 	return len(matches)
 }
 
+// packsSize returns the combined size of the mirror's .pack files.
+func packsSize(t *testing.T, mirrorPath string) int64 {
+	t.Helper()
+
+	matches, err := filepath.Glob(filepath.Join(mirrorPath, "objects", "pack", "pack-*.pack"))
+	if err != nil {
+		t.Fatalf("glob packs: %v", err)
+	}
+
+	var total int64
+
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil {
+			t.Fatalf("stat pack: %v", err)
+		}
+
+		total += info.Size()
+	}
+
+	return total
+}
+
 func openMirror(t *testing.T, mirrorPath string) *gogit.Repository {
 	t.Helper()
 
@@ -240,6 +263,7 @@ func TestCompactBareMirrorLocked_ConsolidatesPacksAndLooseObjects(t *testing.T) 
 		Repository:  "example.com/owner/repo",
 		PacksBefore: mirrorCompactPackThreshold + 1,
 		PacksAfter:  1,
+		SizeBytes:   packsSize(t, mirrorPath),
 		Result:      MirrorCompactionCompacted,
 	}
 
@@ -347,6 +371,14 @@ func TestCompactBareMirrorLocked_KeepsPacksWhenCompactionFails(t *testing.T) {
 	got := stats()
 	if len(got) != 2 || got[0].Result != MirrorCompactionFailed || got[1].Result != "" {
 		t.Fatalf("observer stats = %+v, want a %q report followed by one without a compaction", got, MirrorCompactionFailed)
+	}
+
+	// The size covers the packs that were kept, both after the failure and on the skipped retry.
+	wantSize := packsSize(t, mirrorPath)
+	for i, s := range got {
+		if s.SizeBytes != wantSize {
+			t.Errorf("observer stats[%d].SizeBytes = %d, want %d", i, s.SizeBytes, wantSize)
+		}
 	}
 }
 
