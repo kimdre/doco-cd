@@ -141,14 +141,15 @@ func shouldRecoverFromMissingDeployedCommit(err error) bool {
 // relationship: any lookup or traversal failure (e.g. a shallow mirror missing one of the commits) or
 // an unrelated history (force-push, rebase) must fail open so the caller falls through to its usual change comparison.
 //
-// Ancestry walks in go-git traverse backward from the descendant until the ancestor is found or history
-// is exhausted, so cost is dominated by how many commits must be visited before a match (or none at all).
-// In the overwhelmingly common case (normal forward progress) deployedHash is a recent ancestor of
-// latestHash, so that direction is checked first: it typically resolves within a handful of hops. Only
-// when that check comes back false (diverged history, rollback, or rebase) do we fall back to the
-// expensive reverse check, which must walk deployedHash's entire reachable history to prove non-ancestry.
+// Ancestry walks traverse backward from the descendant, newest commit first, until the ancestor is found
+// or history is exhausted, so cost is dominated by how many commits must be visited before a match (or
+// none at all). In the overwhelmingly common case (normal forward progress) deployedHash is a recent
+// ancestor of latestHash, so that direction is checked first: it resolves after the commits made since
+// the deployment. Only when that check comes back false (diverged history, rollback, or rebase) do we
+// fall back to the expensive reverse check, which must walk deployedHash's entire reachable history to
+// prove non-ancestry.
 //
-// cache shares the forward walk across stacks at the same latest revision,
+// cache shares each walk across stacks with the same descendant commit,
 // even when they were last deployed at different commits. Exact pairs are
 // also deduplicated. cache may be nil, in which case each call walks alone.
 func isStaleDeployment(
@@ -175,7 +176,7 @@ func isStaleDeployment(
 	}
 
 	isStale, err := cache.isAncestor(repository, latestHash, deployedHash, func() (bool, error) {
-		return git.IsAncestorCommit(repo, latestHash, deployedHash)
+		return cache.isAncestorFromHistory(repo, repository, latestHash, deployedHash)
 	})
 	if err != nil {
 		stageLog.Debug("could not determine ancestry between latest and deployed commit, proceeding with deployment",

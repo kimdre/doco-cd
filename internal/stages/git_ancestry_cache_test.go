@@ -2,6 +2,7 @@ package stages
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -40,7 +41,7 @@ func TestGitAncestryCacheSharesHistoryAcrossDifferentDeployedCommits(t *testing.
 		}
 
 		history := cache.histories[gitHistoryKey{"repo", latest}]
-		if !history.visited.Contains(deployed) {
+		if !history.seen.Contains(deployed) {
 			t.Fatalf("history did not retain deployed commit %s", deployed)
 		}
 	}
@@ -52,8 +53,9 @@ func TestGitAncestryCacheSharesHistoryAcrossDifferentDeployedCommits(t *testing.
 		}
 	}
 
-	if got := len(cache.histories[gitHistoryKey{"repo", latest}].visited); got != len(hashes) {
-		t.Fatalf("visited %d commits, want %d (each commit walked once)", got, len(hashes))
+	// The root commit is reached as a parent and never needs its own parents read.
+	if got := cache.histories[gitHistoryKey{"repo", latest}].visited; got != len(hashes)-1 {
+		t.Fatalf("visited %d commits, want %d (each commit walked once)", got, len(hashes)-1)
 	}
 }
 
@@ -150,6 +152,135 @@ func TestGitAncestryCacheHistoryDivergenceAndMissingCommit(t *testing.T) {
 	}
 }
 
+// storeCommit writes a commit with the given parents and committer time
+// straight into the repository's object storage.
+func storeCommit(t *testing.T, repo *gogit.Repository, minute int, parents ...plumbing.Hash) plumbing.Hash {
+	t.Helper()
+
+	sig := object.Signature{
+		Name: "Jane Doe", Email: "jane@example.com",
+		When: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(minute) * time.Minute),
+	}
+	commit := &object.Commit{
+		Author:       sig,
+		Committer:    sig,
+		Message:      fmt.Sprintf("commit %d", minute),
+		TreeHash:     plumbing.NewHash("4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
+		ParentHashes: parents,
+	}
+
+	obj := repo.Storer.NewEncodedObject()
+	if err := commit.Encode(obj); err != nil {
+		t.Fatal(err)
+	}
+
+	hash, err := repo.Storer.SetEncodedObject(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return hash
+}
+
+// storeChain writes n commits on top of parent, one minute apart from start,
+// and returns them oldest first.
+func storeChain(t *testing.T, repo *gogit.Repository, parent plumbing.Hash, start, n int) []plumbing.Hash {
+	t.Helper()
+
+	hashes := make([]plumbing.Hash, 0, n)
+
+	for i := range n {
+		var parents []plumbing.Hash
+		if !parent.IsZero() {
+			parents = append(parents, parent)
+		}
+
+		parent = storeCommit(t, repo, start+i, parents...)
+		hashes = append(hashes, parent)
+	}
+
+	return hashes
+}
+
+func TestGitAncestryCacheWalksMergesNewestFirst(t *testing.T) {
+	t.Parallel()
+
+	repo, err := gogit.Init(memory.NewStorage(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A long main history, and a pull request branched off early and merged
+	// after the last deployment of the previous main commit.
+	main := storeChain(t, repo, plumbing.ZeroHash, 0, 100)
+	feature := storeChain(t, repo, main[10], 200, 30)
+	deployed := main[len(main)-1]
+	merge := storeCommit(t, repo, 300, deployed, feature[len(feature)-1])
+
+	for _, tc := range []struct {
+		name       string
+		ancestor   plumbing.Hash
+		maxVisited int
+	}{
+		// The previous main commit is the merge's first parent.
+		{name: "first parent", ancestor: deployed, maxVisited: 1},
+		// A commit of the merged branch is found after the newer branch commits,
+		// not after the main history.
+		{name: "second parent", ancestor: feature[20], maxVisited: 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cache := NewGitAncestryCache()
+
+			got, err := cache.isAncestorFromHistory(repo, "repo", tc.ancestor, merge)
+			if err != nil || !got {
+				t.Fatalf("ancestor = %t, err = %v", got, err)
+			}
+
+			if visited := cache.histories[gitHistoryKey{"repo", merge}].visited; visited > tc.maxVisited {
+				t.Fatalf("visited %d commits, want at most %d", visited, tc.maxVisited)
+			}
+		})
+	}
+
+	cache := NewGitAncestryCache()
+
+	unrelated := storeCommit(t, repo, 400)
+	if got, err := cache.isAncestorFromHistory(repo, "repo", unrelated, merge); err != nil || got {
+		t.Fatalf("unrelated commit: ancestor = %t, err = %v", got, err)
+	}
+
+	if visited, all := cache.histories[gitHistoryKey{"repo", merge}].visited, len(main)+len(feature)+1; visited != all {
+		t.Fatalf("proving non-ancestry visited %d commits, want all %d", visited, all)
+	}
+}
+
+func TestGitAncestryCacheIncompleteHistoryIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	repo, err := gogit.Init(memory.NewStorage(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Like a shallow mirror: the oldest commit's parent is not stored.
+	shallow := storeChain(t, repo, plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), 0, 5)
+	latest := shallow[len(shallow)-1]
+	cache := NewGitAncestryCache()
+
+	if got, err := cache.isAncestorFromHistory(repo, "repo", shallow[0], latest); err != nil || !got {
+		t.Fatalf("stored ancestor: ancestor = %t, err = %v", got, err)
+	}
+
+	unrelated := storeCommit(t, repo, 100)
+	if got, err := cache.isAncestorFromHistory(repo, "repo", unrelated, latest); err == nil {
+		t.Fatalf("incomplete history proved non-ancestry: ancestor = %t", got)
+	}
+
+	if got, err := cache.isAncestorFromHistory(repo, "repo", shallow[2], latest); err != nil || !got {
+		t.Fatalf("stored ancestor after incomplete walk: ancestor = %t, err = %v", got, err)
+	}
+}
+
 func TestGitAncestryCacheConcurrentDifferentDeployedCommits(t *testing.T) {
 	t.Parallel()
 
@@ -189,8 +320,8 @@ func TestGitAncestryCacheConcurrentDifferentDeployedCommits(t *testing.T) {
 		}
 	}
 
-	if got := len(cache.histories[gitHistoryKey{"repo", latest}].visited); got != len(hashes) {
-		t.Fatalf("visited %d commits, want %d", got, len(hashes))
+	if got := cache.histories[gitHistoryKey{"repo", latest}].visited; got != len(hashes)-1 {
+		t.Fatalf("visited %d commits, want %d", got, len(hashes)-1)
 	}
 }
 

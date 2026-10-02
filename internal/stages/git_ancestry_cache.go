@@ -1,11 +1,15 @@
 package stages
 
 import (
+	"container/heap"
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
@@ -40,10 +44,134 @@ type gitHistoryKey struct {
 }
 
 // gitHistory is a forward ancestry walk from one descendant commit to its ancestors.
+//
+// The walk visits the newest queued commit first, like git's merge-base search.
+// A recently deployed commit is then found after the commits made since, whichever
+// parent of a merge it was reached through, instead of after a side branch's
+// entire history.
 type gitHistory struct {
-	mu      sync.Mutex
-	visited set.Set[plumbing.Hash]
-	pending []plumbing.Hash
+	mu sync.Mutex
+	// started is set once the descendant commit was queued.
+	started bool
+	// seen holds every commit known to be reachable from the descendant: the
+	// visited commits and the parents queued or found missing.
+	seen  set.Set[plumbing.Hash]
+	queue ancestryQueue
+	seq   int
+	// visited counts the commits whose parents were read.
+	visited int
+	// incomplete is set once a parent was missing from the mirror, for example
+	// beyond a shallow clone's boundary, so the walk cannot prove non-ancestry.
+	incomplete bool
+}
+
+// ancestryEntry is one queued commit of an ancestry walk. It keeps only what the
+// walk needs: a commit object would pin the storage of the handle that read it,
+// pack indexes included, for as long as the job runs.
+type ancestryEntry struct {
+	hash    plumbing.Hash
+	parents []plumbing.Hash
+	when    time.Time
+	// seq keeps the order of commits with the same committer time stable.
+	seq int
+}
+
+// ancestryQueue is a max-heap of commits by committer time.
+type ancestryQueue []ancestryEntry
+
+func (q ancestryQueue) Len() int { return len(q) }
+
+func (q ancestryQueue) Less(i, j int) bool {
+	if !q[i].when.Equal(q[j].when) {
+		return q[i].when.After(q[j].when)
+	}
+
+	return q[i].seq < q[j].seq
+}
+
+func (q ancestryQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
+
+func (q *ancestryQueue) Push(x any) { *q = append(*q, x.(ancestryEntry)) }
+
+func (q *ancestryQueue) Pop() any {
+	old := *q
+	e := old[len(old)-1]
+	*q = old[:len(old)-1]
+
+	return e
+}
+
+// push queues commit and marks it reachable.
+func (h *gitHistory) push(commit *object.Commit) {
+	h.seen.Add(commit.Hash)
+	heap.Push(&h.queue, ancestryEntry{
+		hash:    commit.Hash,
+		parents: commit.ParentHashes,
+		when:    commit.Committer.When,
+		seq:     h.seq,
+	})
+	h.seq++
+}
+
+// walkTo continues the walk until ancestor is reached or the history is
+// exhausted. The caller must hold h.mu.
+func (h *gitHistory) walkTo(repo *gogit.Repository, ancestor, descendant plumbing.Hash) (bool, error) {
+	if !h.started {
+		commit, err := repo.CommitObject(descendant)
+		if err != nil {
+			return false, fmt.Errorf("failed to get commit %s: %w", descendant, err)
+		}
+
+		h.push(commit)
+		h.started = true
+	}
+
+	for !h.seen.Contains(ancestor) {
+		if h.queue.Len() == 0 {
+			if h.incomplete {
+				return false, fmt.Errorf("history of commit %s is incomplete in the mirror", descendant)
+			}
+
+			return false, nil
+		}
+
+		// Read the parents before dequeuing the commit, so a failed read leaves
+		// the walk where it was for the next caller.
+		next := h.queue[0]
+		parents := make([]*object.Commit, 0, len(next.parents))
+
+		var missing []plumbing.Hash
+
+		for _, hash := range next.parents {
+			if h.seen.Contains(hash) {
+				continue
+			}
+
+			parent, err := repo.CommitObject(hash)
+			if errors.Is(err, plumbing.ErrObjectNotFound) {
+				missing = append(missing, hash)
+				continue
+			} else if err != nil {
+				return false, fmt.Errorf("failed to get commit %s: %w", hash, err)
+			}
+
+			parents = append(parents, parent)
+		}
+
+		heap.Pop(&h.queue)
+		h.visited++
+
+		for _, parent := range parents {
+			h.push(parent)
+		}
+
+		for _, hash := range missing {
+			h.seen.Add(hash)
+			h.incomplete = true
+		}
+	}
+
+	return true, nil
 }
 
 // NewGitAncestryCache creates a new GitAncestryCache.
@@ -70,18 +198,15 @@ func (c *GitAncestryCache) isAncestorFromHistory(
 
 	history := c.histories[key]
 	if history == nil {
-		history = &gitHistory{
-			visited: set.New[plumbing.Hash](),
-			pending: []plumbing.Hash{descendant},
-		}
+		history = &gitHistory{seen: set.New[plumbing.Hash]()}
 		c.histories[key] = history
 	}
 	c.historyMu.Unlock()
 
-	// Visited commits were read from this mirror during the job, so they need
-	// no existence check through this stack's handle.
+	// Seen commits are reachable from the descendant in this mirror, so they
+	// need no existence check through this stack's handle.
 	history.mu.Lock()
-	found := history.visited.Contains(ancestor)
+	found := history.seen.Contains(ancestor)
 	history.mu.Unlock()
 
 	if found {
@@ -97,34 +222,7 @@ func (c *GitAncestryCache) isAncestorFromHistory(
 	history.mu.Lock()
 	defer history.mu.Unlock()
 
-	if history.visited.Contains(ancestor) {
-		return true, nil
-	}
-
-	for len(history.pending) > 0 {
-		index := len(history.pending) - 1
-
-		hash := history.pending[index]
-		if history.visited.Contains(hash) {
-			history.pending = history.pending[:index]
-			continue
-		}
-
-		commit, err := repo.CommitObject(hash)
-		if err != nil {
-			return false, fmt.Errorf("failed to get commit %s: %w", hash, err)
-		}
-
-		history.pending = history.pending[:index]
-		history.visited.Add(hash)
-		history.pending = append(history.pending, commit.ParentHashes...)
-
-		if hash == ancestor {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return history.walkTo(repo, ancestor, descendant)
 }
 
 // lookup returns the cached result for one ancestry pair, if any.
