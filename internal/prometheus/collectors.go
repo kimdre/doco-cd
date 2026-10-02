@@ -33,7 +33,20 @@ func init() {
 		ScheduledRunsTotal, ScheduledRunErrorsTotal, ScheduledRunSkippedTotal,
 		ScheduledRunDuration, ScheduledRunsActive,
 		McpRequestsTotal, McpErrorsTotal, McpRequestDuration,
+		GitMirrorPacks, GitMirrorCompactionsTotal, GitMirrorCompactionDuration,
 	)
+
+	gitInternal.SetMirrorPackObserver(func(stats gitInternal.MirrorPackStats) {
+		GitMirrorPacks.WithLabelValues(stats.Repository).Set(float64(stats.PacksAfter))
+
+		if stats.Result == "" {
+			return
+		}
+
+		GitMirrorCompactionsTotal.WithLabelValues(stats.Repository, stats.Result).Inc()
+
+		GitMirrorCompactionDuration.WithLabelValues(stats.Repository).Observe(stats.Duration.Seconds())
+	})
 }
 
 // DurationBuckets extends prometheus.DefBuckets up to ten minutes.
@@ -214,6 +227,22 @@ var (
 		Help:      "Duration of dispatched MCP tool calls in seconds",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"tool"})
+	GitMirrorPacks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "git_mirror_packs",
+		Help:      "Number of packfiles in a bare git mirror after its last fetch",
+	}, []string{"repository"})
+	GitMirrorCompactionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "git_mirror_compactions_total",
+		Help:      "Total number of bare git mirror packfile compactions by result",
+	}, []string{"repository", "result"})
+	GitMirrorCompactionDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "git_mirror_compaction_duration_seconds",
+		Help:      "Duration of bare git mirror packfile compactions in seconds",
+		Buckets:   prometheus.ExponentialBuckets(0.05, 2, 12),
+	}, []string{"repository"})
 	/* --8<-- [end:collectors]
 	Add new collectors above this comment */
 )

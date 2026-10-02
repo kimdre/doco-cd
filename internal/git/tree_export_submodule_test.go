@@ -130,3 +130,94 @@ func TestExportTree_SubmoduleBelowRepositoryRoot(t *testing.T) {
 		t.Fatalf("submodule marker.txt = %q, want %q", marker, "from submodule\n")
 	}
 }
+
+// TestExportTree_SubmoduleReferencingItself exports a submodule whose tree
+// pins an older commit of itself. Its mirror is read under a shared lock while
+// exporting, so the nested export must wait for that lock's release before
+// fetching into the same mirror, or it deadlocks.
+func TestExportTree_SubmoduleReferencingItself(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+
+	subPath := filepath.Join(tmp, "sub")
+	subRepo := initLocalTestRepo(t, subPath)
+	older := commitLocalTestFile(t, subRepo, subPath, "marker.txt", "older\n", "add marker")
+
+	signature := object.Signature{Name: "submodule-test", Email: "submodule-test@example.com", When: time.Now()}
+	subGitmodules := fmt.Sprintf("[submodule \"self\"]\n\tpath = self\n\turl = file://%s\n", subPath)
+
+	newer := storeTestObject(t, subRepo, plumbing.CommitObject, func(raw plumbing.EncodedObject) error {
+		return (&object.Commit{
+			Author:    signature,
+			Committer: signature,
+			Message:   "pin older self\n",
+			TreeHash: writeTestTree(t, subRepo, []object.TreeEntry{
+				{Name: ".gitmodules", Mode: filemode.Regular, Hash: writeTestBlob(t, subRepo, subGitmodules)},
+				{Name: "marker.txt", Mode: filemode.Regular, Hash: writeTestBlob(t, subRepo, "newer\n")},
+				{Name: "self", Mode: filemode.Submodule, Hash: older},
+			}),
+			ParentHashes: []plumbing.Hash{older},
+		}).Encode(raw)
+	})
+
+	if err := subRepo.Storer.SetReference(plumbing.NewHashReference(plumbing.NewBranchReferenceName("main"), newer)); err != nil {
+		t.Fatalf("advance submodule main: %v", err)
+	}
+
+	parentPath := filepath.Join(tmp, "parent")
+	parentRepo := initLocalTestRepo(t, parentPath)
+
+	if _, err := parentRepo.CreateRemote(&config.RemoteConfig{
+		Name: git.RemoteName,
+		URLs: []string{"file://" + parentPath},
+	}); err != nil {
+		t.Fatalf("create parent remote: %v", err)
+	}
+
+	parentGitmodules := fmt.Sprintf("[submodule \"sub\"]\n\tpath = sub\n\turl = file://%s\n", subPath)
+
+	commitHash := storeTestObject(t, parentRepo, plumbing.CommitObject, func(raw plumbing.EncodedObject) error {
+		return (&object.Commit{
+			Author:    signature,
+			Committer: signature,
+			Message:   "add submodule\n",
+			TreeHash: writeTestTree(t, parentRepo, []object.TreeEntry{
+				{Name: ".gitmodules", Mode: filemode.Regular, Hash: writeTestBlob(t, parentRepo, parentGitmodules)},
+				{Name: "sub", Mode: filemode.Submodule, Hash: newer},
+			}),
+		}).Encode(raw)
+	})
+
+	exportDir := filepath.Join(tmp, "export")
+	done := make(chan error, 1)
+
+	go func() {
+		done <- git.ExportTree(exportDir, parentRepo, commitHash, git.ExportOptions{
+			SubmoduleCacheDir: filepath.Join(tmp, "submodules"),
+		})
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("ExportTree() error = %v", err)
+		}
+	case <-time.After(time.Minute):
+		t.Fatal("ExportTree() deadlocked on a self-referencing submodule")
+	}
+
+	for rel, want := range map[string]string{
+		filepath.Join("sub", "marker.txt"):         "newer\n",
+		filepath.Join("sub", "self", "marker.txt"): "older\n",
+	} {
+		got, err := os.ReadFile(filepath.Join(exportDir, rel))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+
+		if string(got) != want {
+			t.Fatalf("%s = %q, want %q", rel, got, want)
+		}
+	}
+}

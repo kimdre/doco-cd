@@ -89,6 +89,7 @@ The source directory is organized by source type and source name, and contains t
     ```
 
     - `mirror` is a bare Git mirror used to resolve revisions. It is never checked out directly.
+      Its packfiles are [compacted](#git-mirror-compaction) automatically.
       - `artifacts/<revision>` is an immutable export of a Git tree. Deployments use this directory,
         allowing multiple revisions of the same source to be deployed in parallel.
       - `mirror.lock`, `<revision>.lock`, and `<submodule-cache>.lock` coordinate access to shared
@@ -160,3 +161,21 @@ A copy is kept if any of the following is true:
 Everything else (unreferenced, past the retention-records buffer, and older than the retention TTL)
 is removed. The sweep runs once at startup and then every [`ARTIFACT_GC_INTERVAL`](../App-Settings.md#artifact-garbage-collection-settings); it can be disabled
 entirely with `#!yaml ARTIFACT_GC_ENABLED: false` if you prefer to manage disk usage yourself.
+
+## Git Mirror Compaction
+
+Every fetch that brings new objects (e.g. new commits, branches or tags) adds a packfile to the Git mirror of a source.
+Since every packfile slows down reads from the mirror, the packfiles of a mirror are consolidated into a single one
+after a fetch once the mirror holds more than 32 of them. This happens about once every 32 fetches that bring
+new objects; fetches without new objects do not add packfiles.
+
+- Consolidation copies the already compressed objects into the new packfile without recompressing them. It is
+  bounded by disk throughput and usually takes only seconds, even for large repositories.
+- While a mirror is being consolidated, deployments from that repository wait for it to finish.
+- Consolidation temporarily needs about as much free disk space as the existing packfiles of the mirror.
+- The old packfiles are only removed once the new one has been verified. If consolidation fails, the old
+  packfiles are kept and consolidation of that mirror is retried after an hour at the earliest.
+
+The number of packfiles of each mirror and the consolidations are exposed in the
+`doco_cd_git_mirror_packs`, `doco_cd_git_mirror_compactions_total` and
+`doco_cd_git_mirror_compaction_duration_seconds` [Prometheus metrics](../Endpoints/Metrics.md).
