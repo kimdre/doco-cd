@@ -427,10 +427,11 @@ func run() error {
 	}
 
 	deployment, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
-		SourcePreparer: sourcePreparer,
-		Reconciler:     reconciliationManager,
-		Contexts:       contexts,
-		DataMountPoint: dataMountPoint,
+		SourcePreparer:    sourcePreparer,
+		Reconciler:        reconciliationManager,
+		Contexts:          contexts,
+		DataMountPoint:    dataMountPoint,
+		RepositoryRemover: gc.NewRepositoryRemover(contexts, dataMountPoint.Source, dataMountPoint.Destination),
 	})
 	if err != nil {
 		log.Critical("failed to create deployment operation", logger.ErrAttr(err))

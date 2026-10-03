@@ -13,7 +13,7 @@ type DestroyConfig struct {
 	Enabled       bool `yaml:"enabled" json:"enabled" default:"false"`              // Enabled removes the deployment and all its resources from the Docker host
 	RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)
 	RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`   // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
-	RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed
+	RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed, if no other deployment uses the repository
 }
 
 func (c *DestroyConfig) UnmarshalYAML(node *yaml.Node) error {

@@ -4,14 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/filesystem"
-	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logger) error {
@@ -61,40 +57,31 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 		}
 	}
 
-	if s.DeployConfig.Destroy.RemoveRepoDir {
-		// PathInternal names a single published artifact ("<repoDir>/artifacts/<revision>"),
-		// so removing it (or its parent, the artifacts directory) would strand the mirror and
-		// every sibling revision.
-		// destroy.remove_repo_dir means the repository's own directory, so resolve that from the source layout instead.
-		repoDir, err := filesystem.VerifyAndSanitizePath(
-			filepath.Join(s.Docker.DataMountPoint.Destination, s.Repository.Name),
-			s.Docker.DataMountPoint.Destination,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to resolve repository directory: %w", err)
-		}
-
-		// Exclude every concurrent Prepare call for this repository (which holds a shared lock on the same path)
-		// before removing it, so this can never race a deployment that is still resolving/publishing a revision into repoDir.
-		unlockRepo := sourcecache.AcquireExclusivePathLock(repoDir)
-		defer unlockRepo()
-
-		stageLog.Debug("removing repository directory", slog.String("path", s.Repository.PathExternal))
-
-		if err = os.RemoveAll(repoDir); err != nil {
-			return fmt.Errorf("failed to remove repository directory: %w", err)
-		}
-
-		// Repository names are hierarchical ("<host>/<owner>/<repo>"), so
-		// clean up the ancestors this repository was the last occupant of.
-		// Anything still in use - another repository, or the source lock file,
-		// which must outlive the directory it guards - makes the removal fail and stops the walk, which is the intent.
-		for dir := filepath.Dir(repoDir); dir != s.Docker.DataMountPoint.Destination; dir = filepath.Dir(dir) {
-			if err = os.Remove(dir); err != nil {
-				break
-			}
-		}
-	}
+	s.requestRepositoryRemoval(stageLog)
 
 	return nil
+}
+
+// requestRepositoryRemoval records that destroy.remove_dir asks to remove the repository directory.
+// It does nothing if destroy.remove_dir is false.
+//
+// The directory is not removed here. It holds the artifacts and live files of every stack that
+// deploys from the repository, and other stacks can still mount files from them. The caller of the
+// job removes the directory after the job has released its locks, and only if no deployment
+// on any Docker context still uses the repository (see internal/gc.RepositoryRemover).
+func (s *StageManager) requestRepositoryRemoval(stageLog *slog.Logger) {
+	if !s.DeployConfig.Destroy.RemoveRepoDir || s.Repository == nil || s.Repository.Name == "" {
+		return
+	}
+
+	repoLog := stageLog.With(slog.String("repository", s.Repository.Name))
+
+	if s.RepositoryRemovals == nil {
+		repoLog.Info("skipping repository directory removal, this job cannot check other deployments of the repository; the artifact garbage collector removes unused revisions")
+		return
+	}
+
+	s.RepositoryRemovals.Add(s.Repository.Name)
+
+	repoLog.Debug("requested repository directory removal, it is removed after the job if no deployment uses the repository")
 }

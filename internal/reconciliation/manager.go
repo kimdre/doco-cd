@@ -20,6 +20,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/gc"
 	"github.com/kimdre/doco-cd/internal/migration"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -101,6 +102,9 @@ type Manager struct {
 	// migration.LeftoverTracker.
 	leftoverTracker *migration.LeftoverTracker
 	projectSkips    *stages.ProjectSkipCache
+	// repositoryRemover removes the repository directories that destroy.remove_dir requested
+	// during reconciliation reruns, if no deployment still uses them.
+	repositoryRemover *gc.RepositoryRemover
 	// syncWindowNotices deduplicates reports of deployments deferred by sync windows.
 	syncWindowNotices syncWindowNotices
 }
@@ -138,6 +142,8 @@ func NewManager(dependencies Dependencies) (*Manager, error) {
 		runtimeQueries:   dependencies.RuntimeQueries,
 		leftoverTracker:  migration.NewLeftoverTracker(),
 		projectSkips:     stages.NewProjectSkipCache(),
+		repositoryRemover: gc.NewRepositoryRemover(dependencies.Contexts,
+			dependencies.DataMountPoint.Source, dependencies.DataMountPoint.Destination),
 	}, nil
 }
 
@@ -162,6 +168,9 @@ type DeployRequest struct {
 	// Origin decides how sync windows apply to the request. Empty means
 	// syncwindow.OriginAutomatic.
 	Origin syncwindow.Origin `validate:"omitempty,oneof=automatic manual reconciliation"`
+	// RepositoryRemovals collects the repository directories that destroy.remove_dir asks to remove.
+	// The caller removes them after the deployment has released its locks. Optional.
+	RepositoryRemovals *stages.RepositoryRemovals
 }
 
 type job struct {
@@ -546,6 +555,9 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 
 		return
 	}
+
+	// The removal requests belong to the request that created the job. Reruns of the job collect their own.
+	req.RepositoryRemovals = nil
 
 	old := m.jobs.jobs[req.Repository.Name]
 	info, carried, pinned := reconciliationJobInfo(req, deferred, old)

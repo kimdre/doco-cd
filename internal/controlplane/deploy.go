@@ -39,6 +39,12 @@ type DockerContextResolver interface {
 	Get(ctx context.Context, name string) (docker.ContextClient, error)
 }
 
+// RepositoryRemover removes the repository directories that destroy.remove_dir requested,
+// if no deployment still uses them. Satisfied by *gc.RepositoryRemover.
+type RepositoryRemover interface {
+	RemoveUnused(ctx context.Context, log *slog.Logger, repoNames []string)
+}
+
 // DeploymentDependencies configures the source preparer, reconciler, and data
 // mount point used by the protocol-neutral deployment operation.
 type DeploymentDependencies struct {
@@ -46,15 +52,19 @@ type DeploymentDependencies struct {
 	Reconciler     Reconciler            `validate:"required"`
 	Contexts       DockerContextResolver `validate:"required"`
 	DataMountPoint container.MountPoint  `validate:"required"`
+	// RepositoryRemover is optional. If it is nil, destroy.remove_dir removes no repository
+	// directory and the artifact GC removes the unused revisions.
+	RepositoryRemover RepositoryRemover `validate:"omitempty,nostructlevel"`
 }
 
 // Deployment is the protocol-neutral deployment operation shared by the
 // webhook and poll transports.
 type Deployment struct {
-	sourcePreparer SourcePreparer
-	reconciler     Reconciler
-	contexts       DockerContextResolver
-	dataMountPoint container.MountPoint
+	sourcePreparer    SourcePreparer
+	reconciler        Reconciler
+	contexts          DockerContextResolver
+	dataMountPoint    container.MountPoint
+	repositoryRemover RepositoryRemover
 }
 
 // NewDeployment validates dependencies and creates a Deployment operation.
@@ -64,10 +74,11 @@ func NewDeployment(dependencies DeploymentDependencies) (*Deployment, error) {
 	}
 
 	return &Deployment{
-		sourcePreparer: dependencies.SourcePreparer,
-		reconciler:     dependencies.Reconciler,
-		contexts:       dependencies.Contexts,
-		dataMountPoint: dependencies.DataMountPoint,
+		sourcePreparer:    dependencies.SourcePreparer,
+		reconciler:        dependencies.Reconciler,
+		contexts:          dependencies.Contexts,
+		dataMountPoint:    dependencies.DataMountPoint,
+		repositoryRemover: dependencies.RepositoryRemover,
 	}, nil
 }
 
@@ -233,16 +244,34 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		OCITrusted:        result.OCITrusted,
 	}
 
-	if err := d.reconciler.Deploy(ctx, reconciliation.DeployRequest{
-		Logger:        req.Logger,
-		Metadata:      req.Metadata,
-		JobTrigger:    req.JobTrigger,
-		Repository:    repoData,
-		DeployConfigs: result.DeployConfigs,
-		Payload:       &result.Payload,
-		TestName:      req.TestName,
-		Origin:        DeploymentOrigin(ctx),
-	}); err != nil {
+	var removals *stages.RepositoryRemovals
+	if d.repositoryRemover != nil {
+		removals = stages.NewRepositoryRemovals()
+	}
+
+	err = d.reconciler.Deploy(ctx, reconciliation.DeployRequest{
+		Logger:             req.Logger,
+		Metadata:           req.Metadata,
+		JobTrigger:         req.JobTrigger,
+		Repository:         repoData,
+		DeployConfigs:      result.DeployConfigs,
+		Payload:            &result.Payload,
+		TestName:           req.TestName,
+		Origin:             DeploymentOrigin(ctx),
+		RepositoryRemovals: removals,
+	})
+
+	// A destroy with destroy.remove_dir only records its request. This job holds the GC lock
+	// of the repository until Release, and the remover needs that lock to prove that no
+	// deployment still uses the repository. So release first and then remove. The requests
+	// are processed even if other stacks of the job failed, because their destroy is done.
+	result.Release()
+
+	if names := removals.Names(); len(names) > 0 {
+		d.repositoryRemover.RemoveUnused(context.WithoutCancel(ctx), req.Logger, names)
+	}
+
+	if err != nil {
 		if errors.Is(err, stages.ErrSkipDeployment) {
 			// A poll finding nothing to deploy is a normal outcome, but a
 			// deployment deferred by a sync window is reported to the caller.
