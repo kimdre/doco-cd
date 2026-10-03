@@ -211,8 +211,9 @@ type packConsolidation struct {
 }
 
 // consolidatePacks copies every object of the mirror into one new pack, verifies
-// it and then deletes the packs and loose objects it replaces. The result reports
-// whether the pack directory was modified, even when it also returns an error.
+// it, flushes it to disk and then deletes the packs and loose objects it
+// replaces. The result reports whether the pack directory was modified, even
+// when it also returns an error.
 func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumbing.Hash) (packConsolidation, error) {
 	var loose []plumbing.Hash
 
@@ -256,6 +257,13 @@ func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumb
 		return result, err
 	}
 
+	// The renames that installed the new pack must reach the disk before the
+	// removal of the packs it replaces, or a crash in between could leave the
+	// mirror with neither.
+	if err := syncPackDir(packDir); err != nil {
+		return result, err
+	}
+
 	var errs []error
 
 	for _, p := range packs {
@@ -278,6 +286,28 @@ func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumb
 	}
 
 	return result, errors.Join(errs...)
+}
+
+// syncPackDir flushes the pack directory's entries to disk; it can be overridden in tests.
+var syncPackDir = syncDir
+
+// syncDir flushes the entries of dir, such as files renamed into it, to disk.
+func syncDir(dir string) error {
+	d, err := os.Open(dir) // #nosec G304 -- dir is a mirror's pack directory.
+	if err != nil {
+		return fmt.Errorf("open pack directory: %w", err)
+	}
+
+	err = d.Sync()
+	if closeErr := d.Close(); err == nil {
+		err = closeErr
+	}
+
+	if err != nil {
+		return fmt.Errorf("sync pack directory: %w", err)
+	}
+
+	return nil
 }
 
 // verifyPack decodes the new pack's index from disk and checks it holds every object in hashes.
