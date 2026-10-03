@@ -1,0 +1,6 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    volumes:
+      - ./a.conf:/etc/a.conf:ro

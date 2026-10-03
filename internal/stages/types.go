@@ -297,7 +297,11 @@ type StageManager struct {
 	// leftovers, so the cleanup stage can skip redundant checks for them. A nil value disables
 	// the short-circuit (every run is checked from scratch).
 	LeftoverTracker *migration.LeftoverTracker
-	releaseGCLock   func()
+	// RepositoryRemovals collects the repository directories that destroy.remove_dir asks to remove.
+	// The caller of the job removes them after the job has released its locks.
+	// A nil value means that no removal is done and the artifact GC cleans up unused revisions.
+	RepositoryRemovals *RepositoryRemovals
+	releaseGCLock      func()
 	// resolvedOwnReference is set by the init stage if it resolved the deploy
 	// config's own reference instead of reusing the revision of the request.
 	resolvedOwnReference bool
@@ -360,6 +364,8 @@ type RunInput struct {
 	GitChanges   *GitChangeCache
 	GitAncestry  *GitAncestryCache
 	ProjectSkips *ProjectSkipCache
+	// RepositoryRemovals is optional. See StageManager.RepositoryRemovals.
+	RepositoryRemovals *RepositoryRemovals
 }
 
 // NewStageManager validates dependencies and run, then creates and initializes a new
@@ -374,24 +380,25 @@ func NewStageManager(dependencies Dependencies, run RunInput) (*StageManager, er
 	}
 
 	return &StageManager{
-		Log:             run.Log.With(),
-		JobID:           run.JobID,
-		JobTrigger:      run.JobTrigger,
-		AppConfig:       dependencies.AppConfig,
-		DeployConfig:    run.DeployConfig,
-		DeployState:     &DeploymentState{},
-		Docker:          run.Docker,
-		Payload:         run.Payload,
-		Repository:      run.Repository,
-		GitChanges:      run.GitChanges,
-		GitAncestry:     run.GitAncestry,
-		ProjectSkips:    run.ProjectSkips,
-		SecretProvider:  dependencies.SecretProvider,
-		Notifier:        dependencies.Notifier,
-		SchedulerHolds:  dependencies.SchedulerHolds,
-		Metadata:        run.Metadata,
-		Contexts:        dependencies.Contexts,
-		LeftoverTracker: dependencies.LeftoverTracker,
+		Log:                run.Log.With(),
+		JobID:              run.JobID,
+		JobTrigger:         run.JobTrigger,
+		AppConfig:          dependencies.AppConfig,
+		DeployConfig:       run.DeployConfig,
+		DeployState:        &DeploymentState{},
+		Docker:             run.Docker,
+		Payload:            run.Payload,
+		Repository:         run.Repository,
+		GitChanges:         run.GitChanges,
+		GitAncestry:        run.GitAncestry,
+		ProjectSkips:       run.ProjectSkips,
+		SecretProvider:     dependencies.SecretProvider,
+		Notifier:           dependencies.Notifier,
+		SchedulerHolds:     dependencies.SchedulerHolds,
+		Metadata:           run.Metadata,
+		Contexts:           dependencies.Contexts,
+		LeftoverTracker:    dependencies.LeftoverTracker,
+		RepositoryRemovals: run.RepositoryRemovals,
 		Stages: &Stages{
 			Init: &InitStageData{
 				MetaData: NewMetaData(StageInit),

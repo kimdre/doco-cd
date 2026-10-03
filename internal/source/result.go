@@ -36,3 +36,11 @@ func (r Result) Release() {
 		r.release()
 	}
 }
+
+// WithRelease returns a copy of r whose Release calls release.
+// Prepare sets the release function itself. This is for callers that build a Result
+// without Prepare, for example test doubles of a source preparer.
+func (r Result) WithRelease(release func()) Result {
+	r.release = release
+	return r
+}

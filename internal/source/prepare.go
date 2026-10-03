@@ -88,8 +88,8 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 	// Shared, not exclusive: GitStore/OCIStore each lock their own mutation
 	// (mirror fetch, artifact publish) internally, so any number of Prepare
 	// calls for this repository - at the same or different revisions - may run concurrently here.
-	// This only needs to exclude a concurrent destroy of the repository directory itself,
-	// via AcquireExclusivePathLock (see stage_3_destroy.go).
+	// This only needs to exclude a concurrent removal of the repository directory itself,
+	// via AcquireExclusivePathLock (see internal/gc.RepositoryRemover).
 	unlockSource := sourcecache.AcquireSharedPathLock(internalRepoPath)
 	defer unlockSource()
 

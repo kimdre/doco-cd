@@ -12,6 +12,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/gc"
 	"github.com/kimdre/doco-cd/internal/logger"
 
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -203,10 +204,11 @@ func runSelfBootstrap(ctx context.Context, log *logger.Logger, c *app.Config, do
 	}
 
 	deployment, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
-		SourcePreparer: sourcePreparer,
-		Reconciler:     reconciliationManager,
-		Contexts:       contexts,
-		DataMountPoint: dataMountPoint,
+		SourcePreparer:    sourcePreparer,
+		Reconciler:        reconciliationManager,
+		Contexts:          contexts,
+		DataMountPoint:    dataMountPoint,
+		RepositoryRemover: gc.NewRepositoryRemover(contexts, dataMountPoint.Source, dataMountPoint.Destination),
 	})
 	if err != nil {
 		return fmt.Errorf("create the deployment operation: %w", err)

@@ -42,6 +42,36 @@ import (
 
 const allRevisions store.Revision = "*"
 
+// UsageKind tells why a deployment keeps a revision of a repository.
+type UsageKind string
+
+const (
+	// UsageTarget is the revision the deployment was deployed from.
+	UsageTarget UsageKind = "target"
+	// UsagePinned is the revision of an older artifact that an unchanged service still mounts.
+	UsagePinned UsageKind = "pinned"
+	// UsageConfig is the revision of the repository that holds the deploy config of the deployment.
+	UsageConfig UsageKind = "config"
+)
+
+// Usage is one reference from a deployed container or Swarm service to a revision of a repository.
+type Usage struct {
+	// Context is the display name of the Docker context that runs the deployment.
+	Context string
+	// Stack is the name of the deployment (cd.doco.deployment.name).
+	// It falls back to the container or service name if the label is missing.
+	Stack string
+	// Revision is the referenced revision. It is "*" if the deployment has no config
+	// revision metadata and so can use any revision of its config repository.
+	Revision store.Revision
+	Kind     UsageKind
+}
+
+// String returns a short description of the usage for log messages.
+func (u Usage) String() string {
+	return fmt.Sprintf("%s/%s@%s (%s)", u.Context, u.Stack, u.Revision, u.Kind)
+}
+
 // LiveRevisions discovers, across every configured Docker context, the set
 // of source revisions currently referenced by a deployed stack or service,
 // keyed by normalized repository/artifact name (docker.NormalizeRepositoryLabel).
@@ -62,10 +92,30 @@ func LiveRevisions(
 	dataMountSource string,
 	dataMountDestination string,
 ) (map[string]set.Set[store.Revision], error) {
-	live := make(map[string]set.Set[store.Revision])
+	usages, err := LiveUsages(ctx, contexts, log, dataMountSource, dataMountDestination)
+	if err != nil {
+		return nil, err
+	}
+
+	return revisionsFromUsages(usages), nil
+}
+
+// LiveUsages discovers the same references as LiveRevisions, but also keeps who uses each
+// revision: the Docker context, the stack and the kind of reference. The result is keyed
+// by normalized repository/artifact name, the same as LiveRevisions.
+//
+// Discovery fails closed in the same way as LiveRevisions.
+func LiveUsages(
+	ctx context.Context,
+	contexts *docker.ContextRegistry,
+	log *slog.Logger,
+	dataMountSource string,
+	dataMountDestination string,
+) (map[string][]Usage, error) {
+	usages := make(map[string][]Usage)
 
 	if contexts == nil {
-		return live, nil
+		return usages, nil
 	}
 
 	results, err := contexts.List(ctx)
@@ -90,35 +140,53 @@ func LiveRevisions(
 		}
 
 		for _, swarmMode := range modes {
-			if err := addLiveRevisions(ctx, result, swarmMode, live, log, dataMountSource, dataMountDestination); err != nil {
+			if err := addLiveUsages(ctx, result, swarmMode, usages, log, dataMountSource, dataMountDestination); err != nil {
 				return nil, err
 			}
 		}
 	}
 
-	return live, nil
+	return usages, nil
 }
 
-// addLiveRevisions lists every doco-cd-managed container or service (any value of the source-name label)
-// in one Docker context/mode and folds its (repository, revision) pair into live.
-func addLiveRevisions(
+// revisionsFromUsages folds usages into the revision sets that LiveRevisions returns.
+func revisionsFromUsages(usages map[string][]Usage) map[string]set.Set[store.Revision] {
+	live := make(map[string]set.Set[store.Revision], len(usages))
+
+	for repoName, repoUsages := range usages {
+		if live[repoName] == nil {
+			live[repoName] = make(set.Set[store.Revision])
+		}
+
+		for _, usage := range repoUsages {
+			live[repoName].Add(usage.Revision)
+		}
+	}
+
+	return live
+}
+
+// addLiveUsages lists every doco-cd-managed container or service (any value of the source-name label)
+// in one Docker context/mode and adds its (repository, revision) references to usages.
+func addLiveUsages(
 	ctx context.Context,
 	result docker.ContextClientResult,
 	swarmMode bool,
-	live map[string]set.Set[store.Revision],
+	usages map[string][]Usage,
 	log *slog.Logger,
 	dataMountSource string,
 	dataMountDestination string,
 ) error {
-	contextLog := log.With(slog.String("context", result.DisplayName()), slog.Bool("swarm_mode", swarmMode))
+	contextName := result.DisplayName()
+	contextLog := log.With(slog.String("context", contextName), slog.Bool("swarm_mode", swarmMode))
 
 	services, err := docker.GetServicesWithLabelKey(ctx, result.Cli.Client(), swarmMode, docker.DocoCDLabels.Source.Name)
 	if err != nil {
 		contextLog.Error("gc: failed to list deployed sources", logger.ErrAttr(err))
-		return fmt.Errorf("list deployed sources in context %s: %w", result.DisplayName(), err)
+		return fmt.Errorf("list deployed sources in context %s: %w", contextName, err)
 	}
 
-	for _, labels := range services {
+	for serviceName, labels := range services {
 		get := docker.Labels(labels).Get
 
 		repoName, ok := get(docker.DocoCDLabels.Source.Name)
@@ -145,27 +213,28 @@ func addLiveRevisions(
 			continue
 		}
 
-		if live[normalized] == nil {
-			live[normalized] = make(set.Set[store.Revision])
+		stack := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.Name])
+		if stack == "" {
+			stack = strings.TrimPrefix(string(serviceName), "/")
 		}
 
-		live[normalized].Add(store.Revision(revision))
+		add := func(repo string, revision store.Revision, kind UsageKind) {
+			usages[repo] = append(usages[repo], Usage{Context: contextName, Stack: stack, Revision: revision, Kind: kind})
+		}
+
+		add(normalized, store.Revision(revision), UsageTarget)
 
 		// Services whose repository files were unchanged by later deployments keep mounting the
 		// artifact of the revision they were created from, see docker.DocoCDLabels.Deployment.PinnedRevisions.
 		for _, pinned := range docker.ParsePinnedRevisions(labels[docker.DocoCDLabels.Deployment.PinnedRevisions]) {
-			live[normalized].Add(store.Revision(pinned))
+			add(normalized, store.Revision(pinned), UsagePinned)
 		}
 
 		configRevision, ok := get(docker.DocoCDLabels.Source.ConfigRevision)
 		if !ok || configRevision == "" {
 			configRepo := repositoryFromSourceLabels(labels)
 			if configRepo != "" && configRepo != normalized {
-				if live[configRepo] == nil {
-					live[configRepo] = make(set.Set[store.Revision])
-				}
-
-				live[configRepo].Add(allRevisions)
+				add(configRepo, allRevisions, UsageConfig)
 			}
 
 			continue
@@ -181,11 +250,7 @@ func addLiveRevisions(
 			continue
 		}
 
-		if live[configRepo] == nil {
-			live[configRepo] = make(set.Set[store.Revision])
-		}
-
-		live[configRepo].Add(store.Revision(configRevision))
+		add(configRepo, store.Revision(configRevision), UsageConfig)
 	}
 
 	return nil

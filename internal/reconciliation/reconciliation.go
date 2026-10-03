@@ -632,6 +632,10 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 		actorKind = "service"
 	}
 
+	// A destroy with destroy.remove_dir only records its request. The directory is removed
+	// after all groups are done, because then this rerun holds no repository locks.
+	removals := stages.NewRepositoryRemovals()
+
 	// Stacks carried over from a previous job are restored from the request
 	// of the revision that is actually deployed, see reconciliationJobInfo.
 	for _, group := range j.groupByRequest(dcs) {
@@ -649,6 +653,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 		// even when there are no Git/compose changes.
 		req.DeployConfigs = cloneDeployConfigsWithForcedRecreate(group.configs)
 		req.Origin = syncwindow.OriginReconciliation
+		req.RepositoryRemovals = removals
 
 		err := j.manager.handleDeploy(ctx, req)
 		if errors.Is(err, stages.ErrSyncWindowBlocked) {
@@ -660,6 +665,8 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 			jobLog.Error("failed to deploy", logger.ErrAttr(err))
 		}
 	}
+
+	j.manager.repositoryRemover.RemoveUnused(ctx, jobLog, removals.Names())
 }
 
 // requestGroup is a set of deploy configs deployed with the same request.

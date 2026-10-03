@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/docker/cli/cli/command"
@@ -44,6 +45,34 @@ func (c *liveTestClient) ServiceList(context.Context, client.ServiceListOptions)
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
+}
+
+// addLiveRevisions runs addLiveUsages and folds the usages into live, the same way LiveRevisions does.
+func addLiveRevisions(
+	ctx context.Context,
+	result docker.ContextClientResult,
+	swarmMode bool,
+	live map[string]set.Set[store.Revision],
+	log *slog.Logger,
+	dataMountSource string,
+	dataMountDestination string,
+) error {
+	usages := make(map[string][]Usage)
+	if err := addLiveUsages(ctx, result, swarmMode, usages, log, dataMountSource, dataMountDestination); err != nil {
+		return err
+	}
+
+	for repoName, revisions := range revisionsFromUsages(usages) {
+		if live[repoName] == nil {
+			live[repoName] = make(set.Set[store.Revision])
+		}
+
+		for revision := range revisions {
+			live[repoName].Add(revision)
+		}
+	}
+
+	return nil
 }
 
 func TestAddLiveRevisions_ComposeContainers(t *testing.T) {
@@ -247,5 +276,80 @@ func TestAddLiveRevisions_PreservesLegacyMixedConfigStore(t *testing.T) {
 
 	if !live["ghcr.io/owner/config"].Contains(allRevisions) {
 		t.Fatalf("legacy mixed config store was not protected: %+v", live)
+	}
+}
+
+func TestAddLiveUsages_RecordsContextStackAndKind(t *testing.T) {
+	t.Parallel()
+
+	const revision = "new123"
+
+	dataMount := "/data"
+	workingDir := filepath.Join(dataMount, "git.example.com", "owner", "repo",
+		store.ArtifactsSubdir, store.ArtifactDirName(revision))
+	configWorkingDir := filepath.Join(dataMount, "git.example.com", "owner", "config",
+		store.ArtifactsSubdir, store.ArtifactDirName("cfg123"))
+
+	fakeClient := &liveTestClient{
+		containers: []container.Summary{
+			{
+				Names: []string{"/web-app-1"},
+				Labels: map[string]string{
+					docker.DocoCDLabels.Deployment.Name:            "web",
+					docker.DocoCDLabels.Source.Name:                "owner/config",
+					docker.DocoCDLabels.Deployment.CommitSHA:       revision,
+					docker.DocoCDLabels.Deployment.WorkingDir:      workingDir,
+					docker.DocoCDLabels.Deployment.PinnedRevisions: "old123",
+					docker.DocoCDLabels.Source.ConfigRevision:      "cfg123",
+					docker.DocoCDLabels.Source.ConfigWorkingDir:    configWorkingDir,
+				},
+			},
+			// No deployment name label: the container name is used instead.
+			{
+				Names: []string{"/legacy-1"},
+				Labels: map[string]string{
+					docker.DocoCDLabels.Source.Name:          "owner/legacy",
+					docker.DocoCDLabels.Deployment.CommitSHA: "abc",
+				},
+			},
+		},
+	}
+
+	result := docker.ContextClientResult{Name: "remote", Cli: liveTestCli{apiClient: fakeClient}}
+	usages := make(map[string][]Usage)
+
+	if err := addLiveUsages(t.Context(), result, false, usages, testLogger(), dataMount, dataMount); err != nil {
+		t.Fatalf("addLiveUsages() error = %v", err)
+	}
+
+	contextName := result.DisplayName()
+	want := map[string][]Usage{
+		"git.example.com/owner/repo": {
+			{Context: contextName, Stack: "web", Revision: revision, Kind: UsageTarget},
+			{Context: contextName, Stack: "web", Revision: "old123", Kind: UsagePinned},
+		},
+		"git.example.com/owner/config": {
+			{Context: contextName, Stack: "web", Revision: "cfg123", Kind: UsageConfig},
+		},
+		"owner/legacy": {
+			{Context: contextName, Stack: "legacy-1", Revision: "abc", Kind: UsageTarget},
+		},
+	}
+
+	if !reflect.DeepEqual(usages, want) {
+		t.Fatalf("addLiveUsages() = %+v, want %+v", usages, want)
+	}
+}
+
+func TestLiveUsages_NilContextsReturnsEmpty(t *testing.T) {
+	t.Parallel()
+
+	usages, err := LiveUsages(t.Context(), nil, testLogger(), "", "")
+	if err != nil {
+		t.Fatalf("LiveUsages(nil) error = %v", err)
+	}
+
+	if len(usages) != 0 {
+		t.Fatalf("LiveUsages(nil) = %+v, want empty", usages)
 	}
 }

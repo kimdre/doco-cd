@@ -1,0 +1,9 @@
+name: e2e-destroy-shared-repository-a
+working_dir: a
+swarm:
+  enabled: false
+---
+name: e2e-destroy-shared-repository-b
+working_dir: b
+swarm:
+  enabled: false

@@ -166,6 +166,12 @@ Everything else (unreferenced, past the retention-records buffer, and older than
 is removed. The sweep runs once at startup and then every [`ARTIFACT_GC_INTERVAL`](../App-Settings.md#artifact-garbage-collection-settings); it can be disabled
 entirely with `#!yaml ARTIFACT_GC_ENABLED: false` if you prefer to manage disk usage yourself.
 
+When a stack is destroyed with [`destroy.remove_dir`](../Deploy-Settings.md#destroy-settings), the whole
+repository/artifact directory is removed after the deployment job, but only if no deployment on any
+Docker context still uses the repository and no deployment from it is in progress. Other stacks often
+deploy from the same repository and mount files from its copies. In that case the directory is kept,
+doco-cd logs which deployments still use it, and the sweep removes the copies that are no longer needed.
+
 The number of copies each sweep removes and keeps per repository/artifact is exposed in the
 `doco_cd_artifact_gc_removed_total` and `doco_cd_artifact_gc_kept` [Prometheus metrics](../Endpoints/Metrics.md).
 Both stop being reported for a repository once its directory has been removed, e.g. by
