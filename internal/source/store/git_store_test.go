@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -307,6 +308,67 @@ func TestGitStore_PublishConcurrent_SameRevision(t *testing.T) {
 		if a.Path != results[0].Path {
 			t.Fatalf("concurrent Publish() paths differ: %q vs %q", a.Path, results[0].Path)
 		}
+	}
+}
+
+// TestGitStore_PublishReusesArtifactPublishedWhileWaiting publishes a revision
+// whose artifact appears while Publish waits for the mirror lock, as it does
+// when another job publishes the same revision first. The mirror does not hold
+// the revision, so Publish only succeeds if it looks the artifact up again
+// instead of exporting the tree.
+func TestGitStore_PublishReusesArtifactPublishedWhileWaiting(t *testing.T) {
+	t.Parallel()
+
+	srcPath := filepath.Join(t.TempDir(), "src")
+	initLocalTestRepo(t, srcPath)
+
+	baseDir := t.TempDir()
+
+	s, err := store.NewGitStore(store.GitStoreOptions{CloneURL: "file://" + srcPath, BaseDir: baseDir})
+	if err != nil {
+		t.Fatalf("NewGitStore() error = %v", err)
+	}
+
+	if _, err := s.Resolve(t.Context(), git.MainBranch); err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+
+	revision := store.Revision(strings.Repeat("ab", 20))
+
+	unlock := git.AcquireExclusiveMirrorLock(s.MirrorDir())
+
+	type result struct {
+		artifact store.Artifact
+		err      error
+	}
+
+	done := make(chan result, 1)
+
+	go func() {
+		artifact, err := s.Publish(t.Context(), revision)
+		done <- result{artifact: artifact, err: err}
+	}()
+
+	// Give Publish time to miss the artifact and block on the lock. Should it
+	// not get that far, it finds the artifact before locking and the test
+	// passes without exercising the second lookup, but it never fails spuriously.
+	time.Sleep(100 * time.Millisecond)
+
+	artifactDir := filepath.Join(baseDir, store.ArtifactsSubdir, store.ArtifactDirName(revision))
+	if err := os.MkdirAll(artifactDir, filesystem.PermDir); err != nil {
+		unlock()
+		t.Fatalf("create artifact: %v", err)
+	}
+
+	unlock()
+
+	res := <-done
+	if res.err != nil {
+		t.Fatalf("Publish() error = %v", res.err)
+	}
+
+	if res.artifact.Path != artifactDir {
+		t.Fatalf("Publish() path = %q, want %q", res.artifact.Path, artifactDir)
 	}
 }
 
