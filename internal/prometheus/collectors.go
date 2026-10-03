@@ -41,7 +41,7 @@ func init() {
 		GitMirrorPacks.WithLabelValues(stats.Repository).Set(float64(stats.PacksAfter))
 
 		if stats.SizeBytes >= 0 {
-			GitMirrorSizeBytes.WithLabelValues(stats.Repository).Set(float64(stats.SizeBytes))
+			gitMirrorSizes.observe(stats.Repository, stats.Path, stats.SizeBytes)
 		}
 
 		if stats.Result == "" {
@@ -240,7 +240,7 @@ var (
 	GitMirrorSizeBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,
 		Name:      "git_mirror_size_bytes",
-		Help:      "Combined size of the packfiles in a bare git mirror after its last fetch in bytes",
+		Help:      "Combined size of the packfiles in all bare git mirrors of a repository after their last fetch in bytes",
 	}, []string{"repository"})
 	GitMirrorCompactionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,

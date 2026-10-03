@@ -164,6 +164,8 @@ entirely with `#!yaml ARTIFACT_GC_ENABLED: false` if you prefer to manage disk u
 
 The number of copies each sweep removes and keeps per repository/artifact is exposed in the
 `doco_cd_artifact_gc_removed_total` and `doco_cd_artifact_gc_kept` [Prometheus metrics](../Endpoints/Metrics.md).
+Both stop being reported for a repository once its directory has been removed, e.g. by
+[`destroy.remove_dir`](../Deploy-Settings.md#destroy-settings).
 
 ## Git Mirror Compaction
 
@@ -182,3 +184,6 @@ new objects; fetches without new objects do not add packfiles.
 The number and combined size of the packfiles of each mirror and the consolidations are exposed in the
 `doco_cd_git_mirror_packs`, `doco_cd_git_mirror_size_bytes`, `doco_cd_git_mirror_compactions_total` and
 `doco_cd_git_mirror_compaction_duration_seconds` [Prometheus metrics](../Endpoints/Metrics.md).
+A repository can have several mirrors, e.g. when it is deployed, included in a Compose file and used as a
+submodule; `doco_cd_git_mirror_size_bytes` reports the combined size of all of them and stops being reported
+for a repository once none of its mirrors exist anymore.

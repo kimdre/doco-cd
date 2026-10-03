@@ -261,6 +261,7 @@ func TestCompactBareMirrorLocked_ConsolidatesPacksAndLooseObjects(t *testing.T) 
 
 	want := MirrorPackStats{
 		Repository:  "example.com/owner/repo",
+		Path:        mirrorPath,
 		PacksBefore: mirrorCompactPackThreshold + 1,
 		PacksAfter:  1,
 		SizeBytes:   packsSize(t, mirrorPath),

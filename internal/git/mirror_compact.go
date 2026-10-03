@@ -42,7 +42,11 @@ const (
 // compaction it triggered, if any.
 type MirrorPackStats struct {
 	// Repository is the mirrored repository in "<host>/<owner>/<repo>" form.
-	Repository  string
+	// Several mirrors can report the same repository, e.g. a deployed
+	// repository that is also included or used as a submodule elsewhere.
+	Repository string
+	// Path is the mirror's directory, which tells such mirrors apart.
+	Path        string
 	PacksBefore int
 	PacksAfter  int
 	// SizeBytes is the combined size of the packfiles left after any compaction,
@@ -107,6 +111,7 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 
 	stats := MirrorPackStats{
 		Repository:  repository,
+		Path:        path,
 		PacksBefore: len(packs),
 		PacksAfter:  len(packs),
 		SizeBytes:   -1,
