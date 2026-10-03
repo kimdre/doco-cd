@@ -33,11 +33,16 @@ func init() {
 		ScheduledRunsTotal, ScheduledRunErrorsTotal, ScheduledRunSkippedTotal,
 		ScheduledRunDuration, ScheduledRunsActive,
 		McpRequestsTotal, McpErrorsTotal, McpRequestDuration,
-		GitMirrorPacks, GitMirrorCompactionsTotal, GitMirrorCompactionDuration,
+		GitMirrorPacks, GitMirrorSizeBytes, GitMirrorCompactionsTotal, GitMirrorCompactionDuration,
+		ArtifactGCRemovedTotal, ArtifactGCKept,
 	)
 
 	gitInternal.SetMirrorPackObserver(func(stats gitInternal.MirrorPackStats) {
 		GitMirrorPacks.WithLabelValues(stats.Repository).Set(float64(stats.PacksAfter))
+
+		if stats.SizeBytes >= 0 {
+			gitMirrorSizes.observe(stats.Repository, stats.Path, stats.SizeBytes)
+		}
 
 		if stats.Result == "" {
 			return
@@ -232,6 +237,11 @@ var (
 		Name:      "git_mirror_packs",
 		Help:      "Number of packfiles in a bare git mirror after its last fetch",
 	}, []string{"repository"})
+	GitMirrorSizeBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "git_mirror_size_bytes",
+		Help:      "Combined size of the packfiles in all bare git mirrors of a repository after their last fetch in bytes",
+	}, []string{"repository"})
 	GitMirrorCompactionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "git_mirror_compactions_total",
@@ -242,6 +252,16 @@ var (
 		Name:      "git_mirror_compaction_duration_seconds",
 		Help:      "Duration of bare git mirror packfile compactions in seconds",
 		Buckets:   prometheus.ExponentialBuckets(0.05, 2, 12),
+	}, []string{"repository"})
+	ArtifactGCRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "artifact_gc_removed_total",
+		Help:      "Total number of source artifacts removed by the artifact garbage collector",
+	}, []string{"repository"})
+	ArtifactGCKept = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "artifact_gc_kept",
+		Help:      "Number of source artifacts kept by the last artifact garbage collector sweep",
 	}, []string{"repository"})
 	/* --8<-- [end:collectors]
 	Add new collectors above this comment */

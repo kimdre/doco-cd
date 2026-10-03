@@ -11,6 +11,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/source"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/store"
@@ -37,6 +38,10 @@ type Sweeper struct {
 	listRepos      func(dataMountPoint string) ([]string, error)
 	liveRevisions  func(ctx context.Context, contexts *docker.ContextRegistry, log *slog.Logger, dataMountSource, dataMountDestination string) (map[string]set.Set[store.Revision], error)
 	sweepDirectory func(baseDir string, live set.Set[store.Revision], opts store.GCOptions, now time.Time) (store.GCResult, error)
+
+	// reported holds the repositories whose GC metrics a sweep has set, so their
+	// series can be deleted once the repository directory is gone.
+	reported set.Set[string]
 }
 
 // New creates a Sweeper. dataMountPoint is the (in-container) destination
@@ -104,6 +109,8 @@ func (s *Sweeper) sweep(ctx context.Context) {
 		return
 	}
 
+	s.forgetRemovedRepositories(repoDirs)
+
 	for _, repoDir := range repoDirs {
 		select {
 		case <-ctx.Done():
@@ -144,22 +151,56 @@ func (s *Sweeper) sweep(ctx context.Context) {
 	}
 }
 
+// forgetRemovedRepositories deletes the GC metrics of every repository an earlier
+// sweep reported whose directory is no longer among repoDirs, e.g. after
+// destroy.remove_dir. Their last values would otherwise be exported until
+// doco-cd restarts.
+func (s *Sweeper) forgetRemovedRepositories(repoDirs []string) {
+	current := make(set.Set[string], len(repoDirs))
+
+	for _, repoDir := range repoDirs {
+		if repoName, err := s.repositoryName(repoDir); err == nil {
+			current.Add(repoName)
+		}
+	}
+
+	for repoName := range s.reported {
+		if current.Contains(repoName) {
+			continue
+		}
+
+		prometheus.ArtifactGCRemovedTotal.DeleteLabelValues(repoName)
+		prometheus.ArtifactGCKept.DeleteLabelValues(repoName)
+		s.reported.Remove(repoName)
+	}
+}
+
+// repositoryName returns the name of the repository stored at repoDir.
+//
+// The store's base directory is "<dataMountPoint>/<repoName>", where repoName
+// is the multi-segment "<host>/<owner>/<repo>" that Prepare derives
+// (internal/source/prepare.go) and marks in flight under, so the name is the
+// path relative to the mount point - not its base name, which is only the
+// last segment.
+func (s *Sweeper) repositoryName(repoDir string) (string, error) {
+	repoName, err := filepath.Rel(s.dataMountPoint, repoDir)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.ToSlash(repoName), nil
+}
+
 // sweepRepoDir sweeps one repository/artifact directory, merging its
 // label-derived live revisions with any revision currently in flight for it
 // (see internal/source.IsInFlight) before delegating to store.Sweep.
 func (s *Sweeper) sweepRepoDir(repoDir string, live map[string]set.Set[store.Revision]) {
-	// The store's base directory is "<dataMountPoint>/<repoName>", where
-	// repoName is the multi-segment "<host>/<owner>/<repo>" that Prepare
-	// derives (internal/source/prepare.go) and marks in flight under, so the
-	// key here has to be the path relative to the mount point - not its base
-	// name, which is only the last segment.
-	repoName, err := filepath.Rel(s.dataMountPoint, repoDir)
+	repoName, err := s.repositoryName(repoDir)
 	if err != nil {
 		s.log.Error("gc: failed to derive repository name", slog.String("dir", repoDir), logger.ErrAttr(err))
 		return
 	}
 
-	repoName = filepath.ToSlash(repoName)
 	repoLog := s.log.With(slog.String("repository", repoName))
 
 	revisions := liveRevisionsFor(live, repoName)
@@ -190,6 +231,20 @@ func (s *Sweeper) sweepRepoDir(repoDir string, live map[string]set.Set[store.Rev
 	if err != nil {
 		repoLog.Error("gc: sweep failed", logger.ErrAttr(err))
 	}
+
+	prometheus.ArtifactGCRemovedTotal.WithLabelValues(repoName).Add(float64(len(result.Removed)))
+
+	// Sweep returns an empty result alongside an error only when it could not list
+	// the artifacts at all, which says nothing about how many are left.
+	if err == nil || len(result.Kept)+len(result.Removed) > 0 {
+		prometheus.ArtifactGCKept.WithLabelValues(repoName).Set(float64(len(result.Kept)))
+	}
+
+	if s.reported == nil {
+		s.reported = make(set.Set[string])
+	}
+
+	s.reported.Add(repoName)
 
 	if len(result.Removed) > 0 {
 		removed := make([]string, 0, len(result.Removed))

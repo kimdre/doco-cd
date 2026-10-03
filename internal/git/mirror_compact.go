@@ -42,9 +42,16 @@ const (
 // compaction it triggered, if any.
 type MirrorPackStats struct {
 	// Repository is the mirrored repository in "<host>/<owner>/<repo>" form.
-	Repository  string
+	// Several mirrors can report the same repository, e.g. a deployed
+	// repository that is also included or used as a submodule elsewhere.
+	Repository string
+	// Path is the mirror's directory, which tells such mirrors apart.
+	Path        string
 	PacksBefore int
 	PacksAfter  int
+	// SizeBytes is the combined size of the packfiles left after any compaction,
+	// or -1 if it could not be measured.
+	SizeBytes int64
 	// Result is empty when the pack count stayed within the compaction threshold.
 	Result   string
 	Duration time.Duration
@@ -100,13 +107,26 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 		return false
 	}
 
+	packDir := filepath.Join(path, "objects", "pack")
+
 	stats := MirrorPackStats{
 		Repository:  repository,
+		Path:        path,
 		PacksBefore: len(packs),
 		PacksAfter:  len(packs),
+		SizeBytes:   -1,
 	}
 
-	defer func() { notifyMirrorPackObserver(stats) }()
+	// remaining lists the packs left after any compaction.
+	remaining := packs
+
+	defer func() {
+		if size, err := packfilesSize(packDir, remaining); err == nil {
+			stats.SizeBytes = size
+		}
+
+		notifyMirrorPackObserver(stats)
+	}()
 
 	if len(packs) <= mirrorCompactPackThreshold {
 		return false
@@ -115,8 +135,6 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 	if failedAt, ok := mirrorCompactionFailedAt.Load(path); ok && time.Since(failedAt.(time.Time)) < mirrorCompactRetryDelay {
 		return false
 	}
-
-	packDir := filepath.Join(path, "objects", "pack")
 
 	sizeBefore, err := packfilesSize(packDir, packs)
 	if err != nil {
@@ -140,8 +158,9 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 	result, err := consolidatePacks(storage, packDir, packs)
 	stats.Duration = time.Since(start)
 
-	if remaining, listErr := storage.ObjectPacks(); listErr == nil {
-		stats.PacksAfter = len(remaining)
+	if listed, listErr := storage.ObjectPacks(); listErr == nil {
+		remaining = listed
+		stats.PacksAfter = len(listed)
 	}
 
 	elapsed := slog.String("elapsed_time", stats.Duration.Truncate(time.Millisecond).String())

@@ -9,8 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/source"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
@@ -120,6 +123,103 @@ func TestSweeper_SweepRepoDir_KeepsInFlightArtifactEvenWithoutLabel(t *testing.T
 
 	if _, err := os.Stat(artifactPath); err != nil {
 		t.Fatalf("in-flight artifact was removed unexpectedly, stat err = %v", err)
+	}
+}
+
+func TestSweeper_SweepRepoDir_ReportsMetrics(t *testing.T) {
+	t.Parallel()
+
+	s, dataMountPoint := newTestSweeper(t)
+
+	// Metrics are process-global, so the repository name is unique to this test.
+	const repoName = "github.com/owner/metrics-repo"
+
+	repoDir := filepath.Join(dataMountPoint, filepath.FromSlash(repoName))
+	expiredPath := makeArtifactDir(t, repoDir, "expired")
+	makeArtifactDir(t, repoDir, "fresh")
+
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(expiredPath, old, old); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	// The counter survives repeated runs of this test (go test -count=N), so only its increase is checked.
+	removedBefore := testutil.ToFloat64(prometheus.ArtifactGCRemovedTotal.WithLabelValues(repoName))
+
+	s.sweepRepoDir(repoDir, nil)
+
+	if got := testutil.ToFloat64(prometheus.ArtifactGCRemovedTotal.WithLabelValues(repoName)) - removedBefore; got != 1 {
+		t.Errorf("artifact_gc_removed_total increased by %v, want 1", got)
+	}
+
+	if got := testutil.ToFloat64(prometheus.ArtifactGCKept.WithLabelValues(repoName)); got != 1 {
+		t.Errorf("artifact_gc_kept = %v, want 1", got)
+	}
+}
+
+func TestSweeper_Sweep_DropsMetricsOfRemovedRepositories(t *testing.T) {
+	t.Parallel()
+
+	s, dataMountPoint := newTestSweeper(t)
+
+	// Metrics are process-global, so the repository names are unique to this test.
+	const (
+		removedRepo   = "github.com/owner/gc-metrics-removed-repo"
+		remainingRepo = "github.com/owner/gc-metrics-remaining-repo"
+	)
+
+	for _, repoName := range []string{removedRepo, remainingRepo} {
+		makeArtifactDir(t, filepath.Join(dataMountPoint, filepath.FromSlash(repoName)), "fresh")
+	}
+
+	s.sweep(context.Background())
+
+	if err := os.RemoveAll(filepath.Join(dataMountPoint, filepath.FromSlash(removedRepo))); err != nil {
+		t.Fatalf("remove repository dir: %v", err)
+	}
+
+	s.sweep(context.Background())
+
+	// DeleteLabelValues reports whether the series existed, which makes it the
+	// presence check here; deleting is harmless since the test ends with it.
+	if prometheus.ArtifactGCKept.DeleteLabelValues(removedRepo) {
+		t.Error("artifact_gc_kept still reports the removed repository")
+	}
+
+	if prometheus.ArtifactGCRemovedTotal.DeleteLabelValues(removedRepo) {
+		t.Error("artifact_gc_removed_total still reports the removed repository")
+	}
+
+	if !prometheus.ArtifactGCKept.DeleteLabelValues(remainingRepo) {
+		t.Error("artifact_gc_kept no longer reports the remaining repository")
+	}
+
+	if !prometheus.ArtifactGCRemovedTotal.DeleteLabelValues(remainingRepo) {
+		t.Error("artifact_gc_removed_total no longer reports the remaining repository")
+	}
+}
+
+func TestSweeper_SweepRepoDir_LeavesKeptMetricWhenSweepCannotList(t *testing.T) {
+	t.Parallel()
+
+	s, dataMountPoint := newTestSweeper(t)
+
+	// Metrics are process-global, so the repository name is unique to this test.
+	const repoName = "github.com/owner/unlistable-repo"
+
+	repoDir := filepath.Join(dataMountPoint, filepath.FromSlash(repoName))
+	makeArtifactDir(t, repoDir, "kept")
+
+	prometheus.ArtifactGCKept.WithLabelValues(repoName).Set(3)
+
+	s.sweepDirectory = func(string, set.Set[store.Revision], store.GCOptions, time.Time) (store.GCResult, error) {
+		return store.GCResult{}, errors.New("list artifacts: permission denied")
+	}
+
+	s.sweepRepoDir(repoDir, nil)
+
+	if got := testutil.ToFloat64(prometheus.ArtifactGCKept.WithLabelValues(repoName)); got != 3 {
+		t.Errorf("artifact_gc_kept = %v, want the previous value 3", got)
 	}
 }
 
