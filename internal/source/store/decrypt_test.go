@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/getsops/sops/v3/age"
 
@@ -105,6 +106,104 @@ func TestGitStore_PublishKeepsUndecryptableFileAsCiphertext(t *testing.T) {
 
 	if _, err := os.ReadFile(filepath.Join(artifact.Path, "compose.yaml")); err != nil {
 		t.Fatalf("read unrelated published file: %v", err)
+	}
+}
+
+// publishRevision resolves and publishes ref with s, failing the test on error.
+func publishRevision(t *testing.T, s store.Store, ref string) store.Artifact {
+	t.Helper()
+
+	rev, err := s.Resolve(t.Context(), ref)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+
+	artifact, err := s.Publish(t.Context(), rev)
+	if err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+
+	return artifact
+}
+
+// readArtifactFile returns the content of rel inside artifact.
+func readArtifactFile(t *testing.T, artifact store.Artifact, rel string) string {
+	t.Helper()
+
+	content, err := os.ReadFile(filepath.Join(artifact.Path, rel)) // #nosec G304 -- test path
+	if err != nil {
+		t.Fatalf("read %s: %v", rel, err)
+	}
+
+	return string(content)
+}
+
+// TestGitStore_PublishReusesPlaintextOfUnchangedCiphertext publishes a second
+// revision without any SOPS key and expects the unchanged secret decrypted,
+// which proves the plaintext came from the first artifact and not from a key service.
+func TestGitStore_PublishReusesPlaintextOfUnchangedCiphertext(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
+	const want = "this.is.encrypted: \"yes\"\n"
+
+	fixture := readEncryptionFixture(t, "encrypted.yaml")
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+	commitTestFile(t, repo, repoPath, "secret.yaml", fixture, "add encrypted file")
+
+	baseDir := t.TempDir()
+
+	newStore := func() *store.GitStore {
+		s, err := store.NewGitStore(store.GitStoreOptions{CloneURL: "file://" + repoPath, BaseDir: baseDir})
+		if err != nil {
+			t.Fatalf("NewGitStore() error = %v", err)
+		}
+
+		return s
+	}
+
+	first := publishRevision(t, newStore(), "main")
+
+	if got := readArtifactFile(t, first, "secret.yaml"); got != want {
+		t.Fatalf("first artifact = %q, want %q", got, want)
+	}
+
+	if _, err := os.Stat(first.Path + ".decrypted.json"); err != nil {
+		t.Fatalf("decrypt record: %v", err)
+	}
+
+	commitTestFile(t, repo, repoPath, "compose.yaml", "services: {}\n", "unrelated change")
+	t.Setenv(age.SopsAgeKeyEnv, "")
+	t.Setenv(age.SopsAgeKeyFileEnv, "")
+
+	second := publishRevision(t, newStore(), "main")
+
+	if got := readArtifactFile(t, second, "secret.yaml"); got != want {
+		t.Fatalf("second artifact = %q, want reused plaintext %q", got, want)
+	}
+
+	// A plaintext that changed after it was recorded must not be reused.
+	tampered := filepath.Join(second.Path, "secret.yaml")
+	if err := os.WriteFile(tampered, []byte("tampered\n"), 0o600); err != nil {
+		t.Fatalf("tamper: %v", err)
+	}
+
+	future := time.Now().Add(time.Hour)
+	if err := os.Chtimes(tampered, future, future); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	if err := os.Remove(first.Path + ".decrypted.json"); err != nil {
+		t.Fatalf("remove first record: %v", err)
+	}
+
+	commitTestFile(t, repo, repoPath, "compose.yaml", "services: {} # v2\n", "another unrelated change")
+
+	third := publishRevision(t, newStore(), "main")
+
+	if got := readArtifactFile(t, third, "secret.yaml"); got != fixture {
+		t.Fatalf("third artifact = %q, want ciphertext (no key, no trusted plaintext)", got)
 	}
 }
 
