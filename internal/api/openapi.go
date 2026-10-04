@@ -240,7 +240,7 @@ func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*ope
 		}
 	}
 
-	for _, tag := range []string{"Health", "Runs", "Scheduled jobs", "Projects", "Stacks", "Polling", "Storage", "Webhooks"} {
+	for _, tag := range []string{"Health", "Runs", "Scheduled jobs", "Projects", "Stacks", "Polling", "Storage", "Sync windows", "Webhooks"} {
 		if referencedTags.Contains(tag) {
 			document.Tags = append(document.Tags, &openapi3.Tag{
 				Name:        tag,
@@ -348,6 +348,8 @@ func tagDescription(tag string) string {
 		return "Repository polling operations"
 	case "Storage":
 		return "Git mirror and artifact storage maintenance"
+	case "Sync windows":
+		return "Sync windows that allow or defer deployments"
 	case "Webhooks":
 		return "Webhook receivers for Git providers and container registries"
 	default:

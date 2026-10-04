@@ -75,6 +75,12 @@ func TestOpenAPIDocumentMatchesRouteCatalog(t *testing.T) {
 			}
 
 			operationIDs[got.OperationID] = true
+
+			for _, name := range got.Tags {
+				if tag := loaded.Tags.Get(name); tag == nil || tag.Description == "" {
+					t.Errorf("tag %q of operation %q is not declared with a description", name, got.OperationID)
+				}
+			}
 		}
 	}
 
