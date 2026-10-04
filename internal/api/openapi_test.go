@@ -75,6 +75,12 @@ func TestOpenAPIDocumentMatchesRouteCatalog(t *testing.T) {
 			}
 
 			operationIDs[got.OperationID] = true
+
+			for _, name := range got.Tags {
+				if tag := loaded.Tags.Get(name); tag == nil || tag.Description == "" {
+					t.Errorf("tag %q of operation %q is not declared with a description", name, got.OperationID)
+				}
+			}
 		}
 	}
 
@@ -147,6 +153,21 @@ func TestOpenAPIDocumentDescribesSecurityParametersAndSchemas(t *testing.T) {
 	pollOperation := document.Paths.Find(APIPath + "/poll/run").Post
 	if pollOperation.RequestBody == nil || pollOperation.RequestBody.Value == nil || pollOperation.Responses.Status(http.StatusRequestEntityTooLarge) == nil {
 		t.Fatal("poll operation is missing its request body or payload-too-large response")
+	}
+
+	compactOperation := document.Paths.Find(APIPath + "/storage/compact").Post
+	if compactOperation == nil || compactOperation.Responses.Status(http.StatusConflict) == nil {
+		t.Fatal("storage compaction operation is missing or has no conflict response")
+	}
+
+	for _, name := range []string{"repository", "mode", "max_size", "wait"} {
+		if parameterByName(compactOperation.Parameters, name) == nil {
+			t.Errorf("storage compaction operation is missing parameter %q", name)
+		}
+	}
+
+	if document.Tags.Get("Storage") == nil {
+		t.Fatal("Storage tag is not declared")
 	}
 
 	targetedWebhook := document.Paths.Find(WebhookPath + "/{customTarget}").Post

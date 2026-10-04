@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,11 +18,26 @@ import (
 func TestScheduledRunMetrics_ContextLabel(t *testing.T) {
 	t.Parallel()
 
-	ScheduledRunsTotal.WithLabelValues("remote", "test-context-stack", "backup", "container", "one_off").Inc()
-	ScheduledRunErrorsTotal.WithLabelValues("remote", "test-context-stack", "backup", "container", "one_off").Inc()
-	ScheduledRunSkippedTotal.WithLabelValues("remote", "test-context-stack", "backup", "container", "one_off", "still_running").Inc()
-	ScheduledRunDuration.WithLabelValues("remote", "test-context-stack", "backup", "container", "one_off").Observe(1)
-	ScheduledRunsActive.WithLabelValues("remote", "test-context-stack", "backup", "container", "one_off").Inc()
+	labels := []string{"remote", "test-context-stack", "backup", "container", "one_off"}
+	skippedLabels := append(slices.Clone(labels), "still_running")
+
+	// The metrics are process-global; start from fresh series so repeated runs (-count) see 1.
+	resetSeries := func() {
+		ScheduledRunsTotal.DeleteLabelValues(labels...)
+		ScheduledRunErrorsTotal.DeleteLabelValues(labels...)
+		ScheduledRunSkippedTotal.DeleteLabelValues(skippedLabels...)
+		ScheduledRunDuration.DeleteLabelValues(labels...)
+		ScheduledRunsActive.DeleteLabelValues(labels...)
+	}
+
+	resetSeries()
+	t.Cleanup(resetSeries)
+
+	ScheduledRunsTotal.WithLabelValues(labels...).Inc()
+	ScheduledRunErrorsTotal.WithLabelValues(labels...).Inc()
+	ScheduledRunSkippedTotal.WithLabelValues(skippedLabels...).Inc()
+	ScheduledRunDuration.WithLabelValues(labels...).Observe(1)
+	ScheduledRunsActive.WithLabelValues(labels...).Inc()
 
 	req, err := http.NewRequest(http.MethodGet, MetricsPath, nil)
 	if err != nil {

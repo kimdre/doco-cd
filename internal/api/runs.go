@@ -48,7 +48,7 @@ func (h *Handler) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Reques
 
 	trigger, err := controlplane.NormalizeRunTrigger(r.URL.Query().Get("trigger"))
 	if err != nil {
-		restapi.JSONError(w, err.Error(), "valid trigger values: webhook, poll, scheduled_job", jobID, http.StatusBadRequest)
+		restapi.JSONError(w, err.Error(), "valid trigger values: webhook, poll, scheduled_job, mirror_compaction", jobID, http.StatusBadRequest)
 		return
 	}
 

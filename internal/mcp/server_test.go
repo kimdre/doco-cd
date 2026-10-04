@@ -202,8 +202,8 @@ func TestMCPServerListsTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(result.Tools) != 15 {
-		t.Fatalf("expected exactly fifteen MCP tools, got %#v", result.Tools)
+	if len(result.Tools) != 16 {
+		t.Fatalf("expected exactly sixteen MCP tools, got %#v", result.Tools)
 	}
 
 	wantTools := map[string]bool{
@@ -222,6 +222,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"remove_stack":          false,
 		"trigger_scheduled_job": false,
 		"trigger_poll":          false,
+		"compact_mirrors":       false,
 	}
 	wantInputProperties := map[string][]string{
 		"list_deployment_runs":  {"limit", "status", "trigger"},
@@ -238,6 +239,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"remove_stack":          {"stack_name", "context"},
 		"trigger_scheduled_job": {"job_name", "stack", "wait", "context"},
 		"trigger_poll":          {"configs", "wait"},
+		"compact_mirrors":       {"repository", "mode", "max_size", "wait"},
 	}
 	wantRequiredProperties := map[string][]string{
 		"control_project":       {"project_name", "action"},
@@ -258,7 +260,7 @@ func TestMCPServerListsTools(t *testing.T) {
 			t.Fatalf("%s must have annotations", tool.Name)
 		}
 
-		if tool.Name != "control_project" && tool.Name != "destroy_project" && tool.Name != "control_stack" && tool.Name != "remove_stack" && tool.Name != "trigger_scheduled_job" && tool.Name != "trigger_poll" && !tool.Annotations.ReadOnlyHint {
+		if tool.Name != "control_project" && tool.Name != "destroy_project" && tool.Name != "control_stack" && tool.Name != "remove_stack" && tool.Name != "trigger_scheduled_job" && tool.Name != "trigger_poll" && tool.Name != "compact_mirrors" && !tool.Annotations.ReadOnlyHint {
 			t.Fatalf("%s must have readOnlyHint=true: %#v", tool.Name, tool.Annotations)
 		}
 
@@ -324,6 +326,20 @@ func TestMCPServerListsTools(t *testing.T) {
 
 			if !strings.Contains(tool.Description, "trigger operation") || !strings.Contains(tool.Description, "does not guarantee workload completion") {
 				t.Fatalf("trigger_scheduled_job description overstates completion semantics: %q", tool.Description)
+			}
+		}
+
+		if tool.Name == "compact_mirrors" {
+			assertMCPProjectToolAnnotations(t, tool, false, true)
+
+			modeSchema := toolSchemaProperty(t, tool.InputSchema, "mode")
+			if !slices.Equal(modeSchema["enum"].([]any), []any{"repack", "copy"}) {
+				t.Fatalf("compact_mirrors mode enum = %#v", modeSchema["enum"])
+			}
+
+			maxSizeSchema := toolSchemaProperty(t, tool.InputSchema, "max_size")
+			if maxSizeSchema["minimum"] != float64(0) {
+				t.Fatalf("compact_mirrors max_size minimum = %#v, want 0", maxSizeSchema["minimum"])
 			}
 		}
 

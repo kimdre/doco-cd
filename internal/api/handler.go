@@ -26,6 +26,7 @@ type RunOperations interface {
 	ListScheduledJobs(ctx context.Context, contextName, stackName string) ([]scheduler.JobInfo, error)
 	TriggerScheduledJob(ctx context.Context, jobID, contextName, jobName, stackName string, wait bool) (string, error)
 	TriggerPoll(ctx context.Context, configs []poll.Config, wait bool, log *slog.Logger) (string, error)
+	TriggerMirrorCompaction(ctx context.Context, jobID string, req controlplane.MirrorCompactionRequest, wait bool) (string, error)
 }
 
 // HealthFailureReporter preserves application-level health failure reporting

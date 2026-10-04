@@ -36,29 +36,47 @@ const (
 const (
 	MirrorCompactionCompacted = "compacted"
 	MirrorCompactionFailed    = "failed"
+	// MirrorCompactionCancelled reports a CompactMirror call whose context was
+	// cancelled before the new pack was installed; the mirror keeps its packs.
+	MirrorCompactionCancelled = "cancelled"
+	// MirrorCompactionSkippedBusy reports a CompactMirror call that left the
+	// mirror alone because another operation held its lock.
+	MirrorCompactionSkippedBusy = "skipped_busy"
+	// MirrorCompactionSkippedSize reports a repack skipped because the mirror's
+	// packfiles exceed MirrorCompactOptions.MaxSizeBytes.
+	MirrorCompactionSkippedSize = "skipped_size"
+	// MirrorCompactionSkippedSinglePack reports a CompactMirror call that found
+	// nothing to consolidate: a single pack and no loose objects in copy mode,
+	// or no objects at all.
+	MirrorCompactionSkippedSinglePack = "skipped_single_pack"
 )
 
-// MirrorPackStats describes a bare mirror's packfiles after a clone, fetch or
-// read, and the compaction it triggered, if any.
+// MirrorPackStats describes a bare mirror's packfiles after a clone, fetch,
+// read or CompactMirror call, and the compaction attempted, if any.
 type MirrorPackStats struct {
 	// Repository is the mirrored repository in "<host>/<owner>/<repo>" form.
 	// Several mirrors can report the same repository, e.g. a deployed
 	// repository that is also included or used as a submodule elsewhere.
 	Repository string
 	// Path is the mirror's directory, which tells such mirrors apart.
-	Path        string
+	Path string
+	// PacksBefore and PacksAfter are -1 if the packfiles could not be listed,
+	// e.g. because the mirror was in use.
 	PacksBefore int
 	PacksAfter  int
 	// SizeBytes is the combined size of the packfiles left after any compaction,
 	// or -1 if it could not be measured.
 	SizeBytes int64
-	// Result is empty when the pack count stayed within the compaction threshold.
+	// Mode is the compaction mode. It is empty when Result is.
+	Mode MirrorCompactionMode
+	// Result is empty when a fetch left the pack count within the compaction threshold.
 	Result   string
 	Duration time.Duration
 }
 
 // MirrorPackObserver receives MirrorPackStats after every bare mirror clone or
-// fetch, and after every read of a submodule mirror that skipped its fetch.
+// fetch, every read of a submodule mirror that skipped its fetch, and every
+// CompactMirror call.
 type MirrorPackObserver func(MirrorPackStats)
 
 var (
@@ -159,6 +177,10 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 			stats.SizeBytes = size
 		}
 
+		if stats.Result != "" {
+			stats.Mode = MirrorCompactionCopy
+		}
+
 		notifyMirrorPackObserver(stats)
 	}()
 
@@ -189,7 +211,7 @@ func compactBareMirrorLocked(log *slog.Logger, repo *git.Repository, path, repos
 	removeTempPacks(log, packDir)
 
 	start := time.Now()
-	result, err := consolidatePacks(storage, packDir, packs)
+	result, err := consolidatePacks(storage, packDir, packs, copyPacks)
 	stats.Duration = time.Since(start)
 
 	if listed, listErr := storage.ObjectPacks(); listErr == nil {
@@ -263,11 +285,26 @@ type packConsolidation struct {
 	looseObjects int
 }
 
-// consolidatePacks copies every object of the mirror into one new pack, verifies
-// it, flushes it to disk and then deletes the packs and loose objects it
-// replaces. The result reports whether the pack directory was modified, even
-// when it also returns an error.
-func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumbing.Hash) (packConsolidation, error) {
+// packWriter writes every object of the mirror, held in packs or as loose
+// objects, into one new pack in packDir and returns the new pack's checksum and
+// the objects it holds. It returns no objects when there is nothing to write.
+type packWriter func(storage *filesystem.Storage, packDir string, packs, loose []plumbing.Hash) (plumbing.Hash, []plumbing.Hash, error)
+
+// copyPacks is the packWriter that concatenates the packs' entries, see concatPacks.
+func copyPacks(storage *filesystem.Storage, packDir string, packs, loose []plumbing.Hash) (plumbing.Hash, []plumbing.Hash, error) {
+	sources, err := loadPackSources(packDir, packs)
+	if err != nil {
+		return plumbing.ZeroHash, nil, fmt.Errorf("read packs: %w", err)
+	}
+
+	return concatPacks(storage, packDir, sources, loose)
+}
+
+// consolidatePacks writes every object of the mirror into one new pack with
+// write, verifies it, flushes it to disk and then deletes the packs and loose
+// objects it replaces. The result reports whether the pack directory was
+// modified, even when it also returns an error.
+func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumbing.Hash, write packWriter) (packConsolidation, error) {
 	var loose []plumbing.Hash
 
 	if err := storage.ForEachObjectHash(func(h plumbing.Hash) error {
@@ -277,12 +314,7 @@ func consolidatePacks(storage *filesystem.Storage, packDir string, packs []plumb
 		return packConsolidation{}, fmt.Errorf("list loose objects: %w", err)
 	}
 
-	sources, err := loadPackSources(packDir, packs)
-	if err != nil {
-		return packConsolidation{}, fmt.Errorf("read packs: %w", err)
-	}
-
-	newPack, hashes, err := concatPacks(storage, packDir, sources, loose)
+	newPack, hashes, err := write(storage, packDir, packs, loose)
 	if err != nil {
 		return packConsolidation{}, err
 	}

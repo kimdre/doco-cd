@@ -204,9 +204,61 @@ new objects; fetches without new objects do not add packfiles. The mirrors of su
 The number and combined size of the packfiles of each mirror and the consolidations are exposed in the
 `doco_cd_git_mirror_packs`, `doco_cd_git_mirror_size_bytes`, `doco_cd_git_mirror_compactions_total` and
 `doco_cd_git_mirror_compaction_duration_seconds` [Prometheus metrics](../Endpoints/Metrics.md).
-Mirrors are reported after every clone and fetch, submodule mirrors also whenever their fetch is skipped because they
-already hold the pinned commit.
+Mirrors are reported after every clone, fetch and [on-demand compaction](#on-demand-compaction), submodule mirrors
+also whenever their fetch is skipped because they already hold the pinned commit.
 A repository can have several mirrors, e.g. when it is deployed, included in a Compose file and used as a
 submodule; `doco_cd_git_mirror_packs` reports the highest number of packfiles among them,
 `doco_cd_git_mirror_size_bytes` the combined size of all of them. Both stop being reported for a repository once none
 of its mirrors exist anymore.
+
+### On-demand compaction
+
+Since consolidation only copies the packfiles, objects that arrived in different fetches are never compressed
+against each other, and a mirror that has seen many fetches stays larger than necessary. The Git mirrors can be
+compacted on demand with the [REST API](../Endpoints/REST-API.md#storage) (`POST /v1/api/storage/compact`) or the
+`compact_mirrors` [MCP tool](../Endpoints/MCP-Server.md#available-tools), either all of them or only the mirrors
+of one repository. Two modes are available:
+
+| Mode               | What it does                                                                                               | Cost                                                                                    |
+|--------------------|------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
+| `repack` (default) | Reads every object of the mirror and writes them into a new packfile with fresh delta compression.        | Bound by CPU and memory. Takes seconds to minutes, depending on the size of the mirror. |
+| `copy`             | Consolidates the packfiles the same way as after a fetch, without recompressing the objects.              | Bound by disk throughput, needs little memory.                                          |
+
+With `repack`, the packfiles of a mirror usually end up about a third to half smaller than with `copy`. For example,
+a mirror with 201 packfiles and 20.5 MB shrank to 11.0 MB in 7.4 seconds, while `copy` only reached 20.4 MB.
+
+`repack` needs about eight times the size of a mirror's packfiles in memory (172 MB for the example above), so it
+skips mirrors whose packfiles are larger than `max_size` (256 MiB by default). Raise the limit, or set it to `0` to
+disable it, if doco-cd has enough memory available. `copy` ignores the limit.
+
+- The mirrors are compacted one after another, and only one compaction runs at a time. A second request is
+  rejected and points to the run in progress.
+- While a mirror is being compacted, deployments from that repository wait for it to finish. A mirror that a
+  deployment is currently using is skipped instead of waited for.
+- Compaction temporarily needs about as much free disk space as the existing packfiles of the mirror. The old
+  packfiles are only removed once the new one has been verified.
+- Shutting down doco-cd, or handing over to a new version during a [self-update](../Advanced/Self-Updating.md),
+  cancels the compaction. So does closing a request that waits for the compaction to finish. A `repack` stops
+  right away and keeps the old packfiles; a `copy` that has started finishes the current mirror first. The
+  remaining mirrors are not compacted.
+
+The compaction is tracked as a run with the trigger `mirror_compaction` and can be inspected with the
+[run endpoints](../Endpoints/REST-API.md#deployment-runs). Its status is `succeeded` if at least one mirror was
+compacted, `skipped` if none was, and `failed` if a mirror failed or the compaction was cancelled. Its message
+summarizes the result of every mirror, for example:
+
+```
+repack of 3 mirrors: 2 compacted, 1 skipped_busy; packfiles 22.2 MiB -> 12.1 MiB
+```
+
+| Result                | Meaning                                                                                                                                         |
+|-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `compacted`           | The mirror now has a single packfile.                                                                                                           |
+| `skipped_single_pack` | The mirror is already compact: it has a single packfile and no loose objects. A `repack` only replaces that packfile if the new one is smaller. |
+| `skipped_size`        | `repack` only: the packfiles of the mirror are larger than `max_size`.                                                                          |
+| `skipped_busy`        | A deployment or another operation is using the mirror.                                                                                          |
+| `failed`              | The compaction of the mirror failed. The old packfiles are kept.                                                                                |
+| `cancelled`           | The compaction was cancelled before it finished. The old packfiles are kept.                                                                    |
+
+The compactions are counted in `doco_cd_git_mirror_compactions_total` with the `mode` label set to `repack` or
+`copy`. The consolidation after a fetch is counted with `mode="copy"` as well.

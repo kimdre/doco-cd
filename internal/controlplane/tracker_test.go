@@ -244,6 +244,11 @@ func TestNormalizeDeploymentRunParams(t *testing.T) {
 		t.Fatalf("unexpected trigger normalization: %q (%v)", trigger, err)
 	}
 
+	trigger, err = NormalizeRunTrigger("mirror_compaction")
+	if err != nil || trigger != string(RunTriggerMirrorCompaction) {
+		t.Fatalf("unexpected trigger normalization: %q (%v)", trigger, err)
+	}
+
 	status, err := NormalizeRunStatus("  RUNNING ")
 	if err != nil || status != "running" {
 		t.Fatalf("unexpected status normalization: %q (%v)", status, err)
