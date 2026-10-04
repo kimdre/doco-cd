@@ -1,7 +1,9 @@
 package gc
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"os"
@@ -15,6 +17,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/source"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
@@ -297,6 +300,58 @@ func TestSweeper_Sweep_SkipsAllRepositoriesWhenLiveDiscoveryFails(t *testing.T) 
 
 	if _, err := os.Stat(artifactPath); err != nil {
 		t.Fatalf("artifact should not be removed after incomplete live discovery, stat err = %v", err)
+	}
+}
+
+func TestSweeper_Sweep_LogsAndSkipsRepositoryInUse(t *testing.T) {
+	t.Parallel()
+
+	s, dataMountPoint := newTestSweeper(t)
+
+	logs := &bytes.Buffer{}
+	s.log = slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	repoDir := filepath.Join(dataMountPoint, "github.com", "owner", "busy-repo")
+	artifactPath := makeArtifactDir(t, repoDir, "expired")
+
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(artifactPath, old, old); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	// A deployment of the repository holds its shared GC lock.
+	unlock, err := sourcecache.AcquireSharedGCPathLock(repoDir)
+	if err != nil {
+		t.Fatalf("AcquireSharedGCPathLock: %v", err)
+	}
+
+	defer unlock()
+
+	s.sweep(context.Background())
+
+	if _, err := os.Stat(artifactPath); err != nil {
+		t.Fatalf("artifact of a repository in use was removed, stat err = %v", err)
+	}
+
+	var record map[string]any
+
+	for line := range bytes.Lines(logs.Bytes()) {
+		var r map[string]any
+		if err := json.Unmarshal(line, &r); err != nil {
+			t.Fatalf("decode log record %q: %v", line, err)
+		}
+
+		if r["msg"] == "gc: repository is in use by a deployment or scheduled run; skipping it until the next sweep" {
+			record = r
+		}
+	}
+
+	if record == nil {
+		t.Fatalf("log records = %s, want one for the repository in use", logs.String())
+	}
+
+	if record["level"] != "DEBUG" || record["repository"] != repoDir || record["next_sweep_in"] != "1h0m0s" {
+		t.Fatalf("log record = %v, want level DEBUG, repository %s and next_sweep_in 1h0m0s", record, repoDir)
 	}
 }
 

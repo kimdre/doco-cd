@@ -131,6 +131,10 @@ func (s *Sweeper) sweep(ctx context.Context) {
 			}
 
 			if !acquired {
+				s.log.Debug("gc: repository is in use by a deployment or scheduled run; skipping it until the next sweep",
+					slog.String("repository", repoDir),
+					slog.String("next_sweep_in", s.interval.String()))
+
 				return false
 			}
 
