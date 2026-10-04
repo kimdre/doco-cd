@@ -100,7 +100,7 @@ type Mirror struct {
 
 // ListMirrors returns the bare Git mirrors of every store beneath dataDir,
 // sorted by repository and path: each store's mirror of its own repository and
-// the mirrors of the submodules its revisions use.
+// the mirrors of its Compose Git includes and submodules.
 func ListMirrors(dataDir string) ([]Mirror, error) {
 	roots, err := ListRepositoryDirs(dataDir)
 	if err != nil {
@@ -109,16 +109,36 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 
 	var mirrors []Mirror
 
-	for _, root := range roots {
+	for i := 0; i < len(roots); i++ {
+		root := roots[i]
+
+		// Compose places include stores next to the published revision. Only
+		// inspect that cache, never descend into arbitrary artifact contents.
+		cacheDir := filepath.Join(root, ArtifactsSubdir, ComposeGitCacheSubdir)
+
+		includes, err := os.ReadDir(cacheDir)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("list compose git mirrors: %w", err)
+		}
+
+		for _, entry := range includes {
+			if dir := filepath.Join(cacheDir, entry.Name()); entry.IsDir() && isRepoRoot(dir) {
+				roots = append(roots, dir)
+			}
+		}
+
 		if mirrorDir := filepath.Join(root, MirrorSubdir); isBareRepository(mirrorDir) {
-			// A store's base directory is its repository's name below the data
-			// directory, the name git.GetRepoName derives from the clone URL.
-			rel, err := filepath.Rel(dataDir, root)
+			// Include stores are keyed by a hash, not the repository's name.
+			// Read the remote for every mirror so repository filters and metrics
+			// identify all mirrors of a repository consistently.
+			repository, err := mirrorRepository(mirrorDir)
 			if err != nil {
-				return nil, fmt.Errorf("locate mirror %s: %w", mirrorDir, err)
+				return nil, err
 			}
 
-			mirrors = append(mirrors, Mirror{Repository: filepath.ToSlash(rel), Path: mirrorDir})
+			if repository != "" {
+				mirrors = append(mirrors, Mirror{Repository: repository, Path: mirrorDir})
+			}
 		}
 
 		submodules := filepath.Join(root, SubmodulesSubdir)
@@ -139,7 +159,12 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 			}
 
 			// A mirror without a remote is still being cloned.
-			if repository := mirrorRepository(dir); repository != "" {
+			repository, err := mirrorRepository(dir)
+			if err != nil {
+				return nil, err
+			}
+
+			if repository != "" {
 				mirrors = append(mirrors, Mirror{Repository: repository, Path: dir})
 			}
 		}
@@ -170,25 +195,29 @@ func isBareRepository(dir string) bool {
 // mirrorRepository returns the repository the mirror at dir was cloned from,
 // or "" if its configuration names none.
 //
-// It reads the configuration without the mirror's lock. Submodule mirrors are
-// named after their URL, so their remote never changes once written.
-func mirrorRepository(dir string) string {
+// It reads only configuration, without opening or caching object storage. A
+// mirror without a configured remote is still being cloned and is omitted.
+func mirrorRepository(dir string) (string, error) {
 	f, err := os.Open(filepath.Join(dir, "config")) // #nosec G304 -- dir is a mirror below the data directory.
 	if err != nil {
-		return ""
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", nil
+		}
+
+		return "", fmt.Errorf("read mirror configuration %s: %w", dir, err)
 	}
 
 	defer func() { _ = f.Close() }()
 
 	cfg, err := config.ReadConfig(f)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("parse mirror configuration %s: %w", dir, err)
 	}
 
 	remote, ok := cfg.Remotes[git.RemoteName]
 	if !ok || len(remote.URLs) == 0 {
-		return ""
+		return "", nil
 	}
 
-	return git.GetRepoName(remote.URLs[0])
+	return git.GetRepoName(remote.URLs[0]), nil
 }

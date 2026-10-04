@@ -1,10 +1,12 @@
 package git
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,8 +14,11 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/format/packfile"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
@@ -458,5 +463,158 @@ func TestCompactMirror_FailsOnMissingMirror(t *testing.T) {
 
 	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("CompactMirror() created %s: %v", path, statErr)
+	}
+}
+
+func TestCompactMirror_RepackOppositeStoredDeltas(t *testing.T) {
+	t.Parallel()
+
+	path, storage, packDir := newBareTestRepo(t)
+	a := newTestBlob(strings.Repeat("base content\n", 256) + "version a\n")
+	b := newTestBlob(strings.Repeat("base content\n", 256) + "version b\n")
+
+	// Both packs are valid, but independently picking their stored deltas
+	// could select A -> B and B -> A and recurse forever in go-git's encoder.
+	writeTestPack(t, packDir, time.Now(), fullEntry(a), refDeltaEntry(b, a))
+	writeTestPack(t, packDir, time.Now(), fullEntry(b), refDeltaEntry(a, b))
+
+	var objects storer.EncodedObjectStorer = contextObjectStorer{EncodedObjectStorer: storage, ctx: t.Context()}
+	if _, ok := objects.(storer.DeltaObjectStorer); ok {
+		t.Fatal("repack storer exposes stored deltas")
+	}
+
+	result, err := CompactMirror(t.Context(), discardLog, path, MirrorCompactOptions{Mode: MirrorCompactionRepack})
+	if err != nil || result.Result != MirrorCompactionCompacted || result.Objects != 2 || result.PacksAfter != 1 {
+		t.Fatalf("CompactMirror() = %+v, %v, want 2 objects in 1 pack", result, err)
+	}
+
+	for _, blob := range []testBlob{a, b} {
+		if got := readBlob(t, path, blob.hash); !bytes.Equal(got, blob.content) {
+			t.Fatalf("blob %s changed after repack", blob.hash)
+		}
+	}
+
+	assertNoTempPacks(t, path)
+	gitFsck(t, path)
+}
+
+func TestContextObjectStorer_CancelsLoadedObjectReaders(t *testing.T) {
+	t.Parallel()
+
+	path, storage, _ := newBareTestRepo(t)
+	hash := storeLooseBlob(t, path, "object content\n")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	objects := contextObjectStorer{EncodedObjectStorer: storage, ctx: ctx}
+
+	obj, err := objects.EncodedObject(plumbing.BlobObject, hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if obj.Hash() != hash || obj.Type() != plumbing.BlobObject || obj.Size() != int64(len("object content\n")) {
+		t.Fatalf("wrapped object lost its metadata: %s, %s, %d", obj.Hash(), obj.Type(), obj.Size())
+	}
+
+	r, err := obj.Reader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+
+	cancel()
+
+	if _, err := r.Read(make([]byte, 1)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("loaded object Read() error = %v, want context.Canceled", err)
+	}
+
+	if _, err := obj.Reader(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("loaded object Reader() error = %v, want context.Canceled", err)
+	}
+}
+
+type cancelOnObjectReadStorer struct {
+	storer.EncodedObjectStorer
+
+	cancel context.CancelFunc
+}
+
+func (s cancelOnObjectReadStorer) EncodedObject(typ plumbing.ObjectType, hash plumbing.Hash) (plumbing.EncodedObject, error) {
+	obj, err := s.EncodedObjectStorer.EncodedObject(typ, hash)
+	if err != nil {
+		return nil, err
+	}
+
+	return cancelOnObjectRead{EncodedObject: obj, cancel: s.cancel}, nil
+}
+
+type cancelOnObjectRead struct {
+	plumbing.EncodedObject
+
+	cancel context.CancelFunc
+}
+
+func (o cancelOnObjectRead) Reader() (io.ReadCloser, error) {
+	o.cancel()
+	return o.EncodedObject.Reader()
+}
+
+func TestContextObjectStorer_CancelsDuringDeltaSearch(t *testing.T) {
+	t.Parallel()
+
+	path, storage, _ := newBareTestRepo(t)
+	hashes := []plumbing.Hash{
+		storeLooseBlob(t, path, strings.Repeat("common content\n", 256)+"version a\n"),
+		storeLooseBlob(t, path, strings.Repeat("common content\n", 256)+"version b\n"),
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	// Initial lookups succeed. Opening the first content reader cancels the
+	// context inside the delta search, before any pack write can notice it.
+	objects := contextObjectStorer{
+		EncodedObjectStorer: cancelOnObjectReadStorer{EncodedObjectStorer: storage, cancel: cancel},
+		ctx:                 ctx,
+	}
+
+	_, err := packfile.NewEncoder(io.Discard, objects, false).Encode(hashes, mirrorRepackWindow)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Encode() error = %v, want cancellation during delta search", err)
+	}
+}
+
+// Not parallel: overrides the process-global pack and lock observers.
+func TestCompactMirror_ReportsBeforeUnlock(t *testing.T) {
+	originPath, mirrorPath, _ := setupMirrorWithPacks(t, 3)
+	stats := captureMirrorPackStats(t)
+
+	var fetched atomic.Bool
+
+	SetMirrorLockObserver(func(mode string, _, _ time.Duration) {
+		if mode != MirrorLockExclusive || fetched.Swap(true) {
+			return
+		}
+
+		// This callback runs after the underlying unlock, deterministically
+		// simulating a waiting fetch that reports before CompactMirror returns.
+		fetchNewCommitIntoMirror(t, originPath, mirrorPath, "new content\n", "new commit")
+
+		unlock := AcquireExclusiveMirrorLock(mirrorPath)
+		reportMirrorPacksLocked(openMirror(t, mirrorPath), mirrorPath, "")
+		unlock()
+	})
+	t.Cleanup(func() { SetMirrorLockObserver(nil) })
+
+	result, err := CompactMirror(t.Context(), discardLog, mirrorPath, MirrorCompactOptions{Mode: MirrorCompactionCopy})
+	if err != nil || result.Result != MirrorCompactionCompacted {
+		t.Fatalf("CompactMirror() = %+v, %v, want compacted", result, err)
+	}
+
+	got := stats()
+	if len(got) != 2 || got[0] != result.MirrorPackStats || got[1].PacksAfter != 2 || got[1].SizeBytes != packsSize(t, mirrorPath) {
+		t.Fatalf("observer stats = %+v, want compaction followed by the newer fetch", got)
 	}
 }

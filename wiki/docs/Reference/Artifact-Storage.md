@@ -217,7 +217,8 @@ Since consolidation only copies the packfiles, objects that arrived in different
 against each other, and a mirror that has seen many fetches stays larger than necessary. The Git mirrors can be
 compacted on demand with the [REST API](../Endpoints/REST-API.md#storage) (`POST /v1/api/storage/compact`) or the
 `compact_mirrors` [MCP tool](../Endpoints/MCP-Server.md#available-tools), either all of them or only the mirrors
-of one repository. Two modes are available:
+of one repository. This includes cached Compose Git includes and submodule mirrors; the repository filter
+matches their clone URL, not their cache directory name. Two modes are available:
 
 | Mode               | What it does                                                                                               | Cost                                                                                    |
 |--------------------|------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
@@ -227,9 +228,10 @@ of one repository. Two modes are available:
 With `repack`, the packfiles of a mirror usually end up about a third to half smaller than with `copy`. For example,
 a mirror with 201 packfiles and 20.5 MB shrank to 11.0 MB in 7.4 seconds, while `copy` only reached 20.4 MB.
 
-`repack` needs about eight times the size of a mirror's packfiles in memory (172 MB for the example above), so it
-skips mirrors whose packfiles are larger than `max_size` (256 MiB by default). Raise the limit, or set it to `0` to
-disable it, if doco-cd has enough memory available. `copy` ignores the limit.
+The example above used 172 MB of memory. Actual `repack` memory usage depends on the expanded objects and their
+history, not just the packfile size, so budget conservatively. `repack` skips mirrors whose packfiles are larger
+than `max_size` (256 MiB by default). Raise the limit, or set it to `0` to disable it, if doco-cd has enough memory
+available. `copy` ignores the limit.
 
 - The mirrors are compacted one after another, and only one compaction runs at a time. A second request is
   rejected and points to the run in progress.

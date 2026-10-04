@@ -115,18 +115,28 @@ func CompactMirror(ctx context.Context, log *slog.Logger, path string, opts Mirr
 			slog.Any("error", err))
 	}
 
-	notifyMirrorPackObserver(result.MirrorPackStats)
-
 	return result, err
 }
 
 func compactMirror(ctx context.Context, log *slog.Logger, path string, opts MirrorCompactOptions, result *MirrorCompaction) error {
+	var unlock func()
+
+	defer func() {
+		if unlock != nil {
+			defer unlock()
+		}
+
+		// Report before unlocking, so a waiting fetch cannot publish newer
+		// statistics only to have this snapshot overwrite them.
+		notifyMirrorPackObserver(result.MirrorPackStats)
+	}()
+
 	if err := ctx.Err(); err != nil {
 		result.Result = MirrorCompactionCancelled
 		return err
 	}
 
-	unlock, acquired, err := tryAcquireExclusiveMirrorLock(path)
+	release, acquired, err := tryAcquireExclusiveMirrorLock(path)
 	if err != nil {
 		result.Result = MirrorCompactionFailed
 		return fmt.Errorf("lock mirror: %w", err)
@@ -140,7 +150,7 @@ func compactMirror(ctx context.Context, log *slog.Logger, path string, opts Mirr
 		return nil
 	}
 
-	defer unlock()
+	unlock = release
 
 	repo, err := git.PlainOpen(path)
 	if err != nil {
@@ -380,7 +390,7 @@ func repackObjects(ctx context.Context, storage *filesystem.Storage, packDir str
 
 	w := bufio.NewWriterSize(contextWriter{ctx: ctx, w: tmpPack}, packCopyBufSize)
 
-	checksum, err := packfile.NewEncoder(w, contextObjectStorer{Storage: storage, ctx: ctx}, false).
+	checksum, err := packfile.NewEncoder(w, contextObjectStorer{EncodedObjectStorer: storage, ctx: ctx}, false).
 		Encode(hashes, mirrorRepackWindow)
 	if err != nil {
 		return plumbing.ZeroHash, nil, fmt.Errorf("encode pack: %w", err)
@@ -479,11 +489,11 @@ func (r contextReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	return r.r.Seek(offset, whence)
 }
 
-// contextObjectStorer fails object reads once ctx is done. The encoder reads
-// every object during its delta search, before it writes anything, so a
-// failing writer alone would only stop it after the most expensive part.
+// contextObjectStorer resolves objects and makes their readers cancellable.
+// It deliberately does not expose DeltaObjectStorer: reusing deltas from
+// different packs can create cycles even when each original pack is valid.
 type contextObjectStorer struct {
-	*filesystem.Storage
+	storer.EncodedObjectStorer
 
 	ctx context.Context //nolint:containedctx // the encoder's storer cannot take a context.
 }
@@ -493,15 +503,45 @@ func (s contextObjectStorer) EncodedObject(t plumbing.ObjectType, h plumbing.Has
 		return nil, err
 	}
 
-	return s.Storage.EncodedObject(t, h)
-}
-
-// DeltaObject keeps the storage's storer.DeltaObjectStorer implementation
-// visible to the encoder, which reuses existing deltas through it.
-func (s contextObjectStorer) DeltaObject(t plumbing.ObjectType, h plumbing.Hash) (plumbing.EncodedObject, error) {
-	if err := s.ctx.Err(); err != nil {
+	obj, err := s.EncodedObjectStorer.EncodedObject(t, h)
+	if err != nil {
 		return nil, err
 	}
 
-	return s.Storage.DeltaObject(t, h)
+	return contextEncodedObject{EncodedObject: obj, ctx: s.ctx}, nil
+}
+
+// contextEncodedObject also checks cancellation when the delta search reads
+// objects it loaded earlier; checking only storer lookups misses that phase.
+type contextEncodedObject struct {
+	plumbing.EncodedObject
+
+	ctx context.Context //nolint:containedctx // the object's Reader cannot take a context.
+}
+
+func (o contextEncodedObject) Reader() (io.ReadCloser, error) {
+	if err := o.ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	r, err := o.EncodedObject.Reader()
+	if err != nil {
+		return nil, err
+	}
+
+	return contextReadCloser{ReadCloser: r, ctx: o.ctx}, nil
+}
+
+type contextReadCloser struct {
+	io.ReadCloser
+
+	ctx context.Context //nolint:containedctx // the object's reader cannot take a context.
+}
+
+func (r contextReadCloser) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	return r.ReadCloser.Read(p)
 }
