@@ -63,7 +63,7 @@ func TestAutoDiscoveryCleanup(t *testing.T) {
 	h.RepoPush("remove two discovered stacks")
 
 	h.WaitForLogLineAfter(mark, 2*time.Minute, removedMsg, `"stack":"`+goneStack+`"`)
-	h.WaitForContainerRemoval(goneStack, service, time.Minute)
+	h.WaitForComposeContainerRemoval(goneStack, service, time.Minute)
 	h.WaitForLogLineAfter(mark, 2*time.Minute, keptMsg, `"stack":"`+keptStack+`"`)
 
 	h.AssertStays(5*time.Second, "stack the delete-disabled config scans is kept", keptID, containerID(keptStack))
@@ -75,11 +75,11 @@ func TestAutoDiscoveryCleanup(t *testing.T) {
 	h.RepoPush("enable delete for static apps")
 
 	h.WaitForLogLineAfter(mark, 2*time.Minute, removedMsg, `"stack":"`+keptStack+`"`)
-	h.WaitForContainerRemoval(keptStack, service, time.Minute)
+	h.WaitForComposeContainerRemoval(keptStack, service, time.Minute)
 
 	// The auto-discovery settings are stored in a label, so the remaining
 	// stack of the changed config is recreated rather than removed.
-	h.WaitForContainerRecreate(staticStack, service, staticID, 2*time.Minute)
+	h.WaitForComposeContainerRecreate(staticStack, service, staticID, 2*time.Minute)
 
 	if got := containerID(keepStack)(); got != keepID {
 		t.Fatalf("%s container = %q, want %q", keepStack, got, keepID)
