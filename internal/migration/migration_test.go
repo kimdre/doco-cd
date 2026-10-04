@@ -1,10 +1,14 @@
 package migration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/docker/cli/cli/command"
@@ -446,6 +450,7 @@ func TestReferencedOnContext_SwarmProtectsLegacyPathUsedByActiveOldTask(t *testi
 			},
 		}},
 		tasks: []swarmTypes.Task{{
+			ID:     "old-task",
 			Status: swarmTypes.TaskStatus{State: swarmTypes.TaskStateRunning},
 			Spec: swarmTypes.TaskSpec{
 				ContainerSpec: &swarmTypes.ContainerSpec{
@@ -457,13 +462,13 @@ func TestReferencedOnContext_SwarmProtectsLegacyPathUsedByActiveOldTask(t *testi
 		}},
 	}
 
-	referenced, err := referencedOnContext(t.Context(), apiClient, true, []string{repoDir}, storeLayoutEntries())
+	usedBy, err := referencedOnContext(t.Context(), apiClient, docker.DefaultContextName, true, []string{repoDir}, storeLayoutEntries())
 	if err != nil {
 		t.Fatalf("referencedOnContext() error = %v", err)
 	}
 
-	if !referenced {
-		t.Fatal("active old-spec Swarm task using the legacy path was not detected")
+	if want := []string{"task old-task"}; !slices.Equal(usedBy, want) {
+		t.Fatalf("referencedOnContext() = %v, want %v (active old-spec Swarm task using the legacy path)", usedBy, want)
 	}
 }
 
@@ -485,13 +490,13 @@ func TestReferencedOnContext_SwarmIgnoresTerminalOldTask(t *testing.T) {
 		}},
 	}
 
-	referenced, err := referencedOnContext(t.Context(), apiClient, true, []string{repoDir}, storeLayoutEntries())
+	usedBy, err := referencedOnContext(t.Context(), apiClient, docker.DefaultContextName, true, []string{repoDir}, storeLayoutEntries())
 	if err != nil {
 		t.Fatalf("referencedOnContext() error = %v", err)
 	}
 
-	if referenced {
-		t.Fatal("terminal old-spec Swarm task must not keep legacy files alive")
+	if len(usedBy) != 0 {
+		t.Fatalf("terminal old-spec Swarm task must not keep legacy files alive, got %v", usedBy)
 	}
 }
 
@@ -811,9 +816,9 @@ func TestCleanupRepoLeftovers_NotMigratedIsANoOp(t *testing.T) {
 	}
 
 	called := false
-	isReferenced := func(context.Context, string, []string) (bool, error) {
+	isReferenced := func(context.Context, string, []string) ([]string, error) {
 		called = true
-		return false, nil
+		return nil, nil
 	}
 
 	tracker := NewLeftoverTracker()
@@ -841,9 +846,9 @@ func TestCleanupRepoLeftovers_NoLeftoversDoesNotCheckReferences(t *testing.T) {
 	initMigratedStore(t, repoDir)
 
 	called := false
-	isReferenced := func(context.Context, string, []string) (bool, error) {
+	isReferenced := func(context.Context, string, []string) ([]string, error) {
 		called = true
-		return false, nil
+		return nil, nil
 	}
 
 	tracker := NewLeftoverTracker()
@@ -875,8 +880,8 @@ func TestCleanupRepoLeftovers_RemovesUnreferencedLeftoversAndMarksClean(t *testi
 		t.Fatalf("write legacy leftover: %v", err)
 	}
 
-	isReferenced := func(context.Context, string, []string) (bool, error) {
-		return false, nil
+	isReferenced := func(context.Context, string, []string) ([]string, error) {
+		return nil, nil
 	}
 
 	tracker := NewLeftoverTracker()
@@ -909,9 +914,9 @@ func TestCleanupRepoLeftovers_KeepsReferencedLeftoversAndDoesNotMarkClean(t *tes
 	}
 
 	callCount := 0
-	isReferenced := func(context.Context, string, []string) (bool, error) {
+	isReferenced := func(context.Context, string, []string) ([]string, error) {
 		callCount++
-		return true, nil
+		return []string{"web-1"}, nil
 	}
 
 	tracker := NewLeftoverTracker()
@@ -947,9 +952,9 @@ func TestCleanupRepoLeftovers_SkipsAlreadyCleanRepoWithoutAnyIO(t *testing.T) {
 
 	// repoDir does not even exist on disk; a real check would fail trying to inspect it.
 	called := false
-	isReferenced := func(context.Context, string, []string) (bool, error) {
+	isReferenced := func(context.Context, string, []string) ([]string, error) {
 		called = true
-		return false, nil
+		return nil, nil
 	}
 
 	if err := cleanupRepoLeftovers(t.Context(), nil, tracker, repoDir, isReferenced); err != nil {
@@ -958,5 +963,217 @@ func TestCleanupRepoLeftovers_SkipsAlreadyCleanRepoWithoutAnyIO(t *testing.T) {
 
 	if called {
 		t.Error("isReferenced must not be called for a repoDir already marked clean")
+	}
+}
+
+// keptLeftoversRecord is a decoded legacyLeftoversKeptMessage log record.
+type keptLeftoversRecord struct {
+	Level   string   `json:"level"`
+	RepoDir string   `json:"repo_dir"`
+	UsedBy  []string `json:"used_by"`
+}
+
+func newJSONTestLogger(logs *bytes.Buffer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+// keptLeftoversRecords returns every legacyLeftoversKeptMessage record written to logs.
+func keptLeftoversRecords(t *testing.T, logs *bytes.Buffer) []keptLeftoversRecord {
+	t.Helper()
+
+	var records []keptLeftoversRecord
+
+	decoder := json.NewDecoder(logs)
+
+	for decoder.More() {
+		var record struct {
+			keptLeftoversRecord
+
+			Msg string `json:"msg"`
+		}
+
+		if err := decoder.Decode(&record); err != nil {
+			t.Fatalf("decode log record: %v", err)
+		}
+
+		if record.Msg == legacyLeftoversKeptMessage {
+			records = append(records, record.keptLeftoversRecord)
+		}
+	}
+
+	return records
+}
+
+// TestRun_LogsContainersStillUsingLegacyFiles covers the startup pass: legacy files that are
+// kept because a container still uses them must be reported at info level together with that
+// container, since they are otherwise kept silently for as long as its deployment is unchanged.
+func TestRun_LogsContainersStillUsingLegacyFiles(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initLegacyCheckout(t, repoDir)
+
+	apiClient := &migrationTestClient{
+		containers: []container.Summary{
+			{
+				Names: []string{"/web-app-1"},
+				Labels: map[string]string{
+					docker.DocoCDLabels.Deployment.Name:       "web",
+					docker.DocoCDLabels.Deployment.WorkingDir: filepath.Join(repoDir, "web"),
+				},
+			},
+			{
+				Names: []string{"/api-app-1"},
+				Labels: map[string]string{
+					docker.DocoCDLabels.Deployment.Name:       "api",
+					docker.DocoCDLabels.Deployment.WorkingDir: filepath.Join(repoDir, store.ArtifactsSubdir, "rev", "api"),
+				},
+			},
+		},
+	}
+
+	logs := &bytes.Buffer{}
+
+	if err := Run(t.Context(), newJSONTestLogger(logs), apiClient, dataDir); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	records := keptLeftoversRecords(t, logs)
+	if len(records) != 1 {
+		t.Fatalf("got %d kept leftovers records, want 1", len(records))
+	}
+
+	if records[0].Level != slog.LevelInfo.String() {
+		t.Errorf("level = %s, want %s", records[0].Level, slog.LevelInfo)
+	}
+
+	if records[0].RepoDir != repoDir {
+		t.Errorf("repo_dir = %q, want %q", records[0].RepoDir, repoDir)
+	}
+
+	if want := []string{"web-app-1 (deployment web)"}; !slices.Equal(records[0].UsedBy, want) {
+		t.Errorf("used_by = %v, want %v", records[0].UsedBy, want)
+	}
+}
+
+// TestCleanupRepoLeftovers_LogsChangedUsersAtInfoLevel covers the retry after every deployment:
+// the containers that still use legacy leftovers are logged at info level, but an unchanged list
+// is only repeated at debug level, so a deployment that is never redeployed does not log the same
+// info line after every deployment of the repository.
+func TestCleanupRepoLeftovers_LogsChangedUsersAtInfoLevel(t *testing.T) {
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+
+	initMigratedStore(t, repoDir)
+
+	if err := os.WriteFile(filepath.Join(repoDir, "docker-compose.yml"), []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatalf("write legacy leftover: %v", err)
+	}
+
+	legacyContainer := func(name, deployment string) container.Summary {
+		return container.Summary{
+			Names: []string{"/" + name},
+			Labels: map[string]string{
+				docker.DocoCDLabels.Deployment.Name:       deployment,
+				docker.DocoCDLabels.Deployment.WorkingDir: repoDir,
+			},
+		}
+	}
+
+	apiClient := &migrationTestClient{containers: []container.Summary{legacyContainer("web-app-1", "web")}}
+	contexts := docker.NewContextRegistry(migrationTestCli{apiClient: apiClient}, docker.ContextRegistryOptions{})
+	tracker := NewLeftoverTracker()
+	logs := &bytes.Buffer{}
+
+	cleanup := func() {
+		t.Helper()
+
+		if err := CleanupRepoLeftovers(t.Context(), newJSONTestLogger(logs), tracker, contexts, dataDir, dataDir, repoDir); err != nil {
+			t.Fatalf("CleanupRepoLeftovers() error = %v", err)
+		}
+	}
+
+	cleanup()
+	cleanup()
+
+	apiClient.containers = append(apiClient.containers, legacyContainer("db-app-1", "db"))
+
+	cleanup()
+
+	records := keptLeftoversRecords(t, logs)
+
+	want := []keptLeftoversRecord{
+		{Level: slog.LevelInfo.String(), RepoDir: repoDir, UsedBy: []string{"web-app-1 (deployment web)"}},
+		{Level: slog.LevelDebug.String(), RepoDir: repoDir, UsedBy: []string{"web-app-1 (deployment web)"}},
+		{Level: slog.LevelInfo.String(), RepoDir: repoDir, UsedBy: []string{"db-app-1 (deployment db)", "web-app-1 (deployment web)"}},
+	}
+
+	if len(records) != len(want) {
+		t.Fatalf("got %d kept leftovers records, want %d: %+v", len(records), len(want), records)
+	}
+
+	for i := range want {
+		if records[i].Level != want[i].Level || records[i].RepoDir != want[i].RepoDir || !slices.Equal(records[i].UsedBy, want[i].UsedBy) {
+			t.Errorf("record %d = %+v, want %+v", i, records[i], want[i])
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(repoDir, "docker-compose.yml")); err != nil {
+		t.Fatalf("expected referenced legacy leftover to survive: %v", err)
+	}
+}
+
+func TestDescribeLegacyReference(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		contextName string
+		refName     string
+		labels      map[string]string
+		want        string
+	}{
+		{
+			name:        "container with deployment",
+			contextName: docker.DefaultContextName,
+			refName:     "/web-app-1",
+			labels:      map[string]string{docker.DocoCDLabels.Deployment.Name: "web"},
+			want:        "web-app-1 (deployment web)",
+		},
+		{
+			name:        "service named like its deployment",
+			contextName: docker.DefaultContextName,
+			refName:     "web",
+			labels:      map[string]string{docker.DocoCDLabels.Deployment.Name: "web"},
+			want:        "web",
+		},
+		{
+			name:        "container without deployment",
+			contextName: docker.DefaultContextName,
+			refName:     "/legacy-1",
+			want:        "legacy-1",
+		},
+		{
+			name:        "container in another context",
+			contextName: "remote",
+			refName:     "/web-app-1",
+			labels:      map[string]string{docker.DocoCDLabels.Deployment.Name: "web"},
+			want:        "remote: web-app-1 (deployment web)",
+		},
+		{
+			name:        "unnamed container",
+			contextName: docker.DefaultContextName,
+			want:        "unnamed container",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := describeLegacyReference(tt.contextName, tt.refName, tt.labels); got != tt.want {
+				t.Errorf("describeLegacyReference() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
