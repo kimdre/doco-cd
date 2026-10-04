@@ -314,26 +314,28 @@ const orphanedTempMaxAge = time.Hour
 // existing artifact is returned - this is what makes concurrent Publish
 // calls for the same revision safe. A directory at the destination that is
 // not the published artifact (see publishedSuffix) is moved aside first.
-func publishDir(baseDir string, revision Revision, write func(dir string) error) (Artifact, error) {
+// The boolean reports whether this call published the artifact, so only the
+// winner acts on what it wrote.
+func publishDir(baseDir string, revision Revision, write func(dir string) error) (Artifact, bool, error) {
 	finalPath, err := artifactPath(baseDir, revision)
 	if err != nil {
-		return Artifact{}, err
+		return Artifact{}, false, err
 	}
 
 	artifactsDir := filepath.Join(baseDir, ArtifactsSubdir)
 	if err := os.MkdirAll(artifactsDir, filesystem.PermDir); err != nil {
-		return Artifact{}, fmt.Errorf("create artifacts directory: %w", err)
+		return Artifact{}, false, fmt.Errorf("create artifacts directory: %w", err)
 	}
 
 	tmpDir, err := os.MkdirTemp(artifactsDir, tempArtifactPrefix+"*")
 	if err != nil {
-		return Artifact{}, fmt.Errorf("create temporary artifact directory: %w", err)
+		return Artifact{}, false, fmt.Errorf("create temporary artifact directory: %w", err)
 	}
 
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	if err := write(tmpDir); err != nil {
-		return Artifact{}, err
+		return Artifact{}, false, err
 	}
 
 	// os.MkdirTemp always creates tmpDir with mode 0700, regardless of
@@ -341,29 +343,29 @@ func publishDir(baseDir string, revision Revision, write func(dir string) error)
 	// mounted directly into deployed containers - is unreadable by any
 	// user other than its owner.
 	if err := os.Chmod(tmpDir, filesystem.PermDir); err != nil {
-		return Artifact{}, fmt.Errorf("set permissions on artifact directory: %w", err)
+		return Artifact{}, false, fmt.Errorf("set permissions on artifact directory: %w", err)
 	}
 
 	// Under this lock, a directory at finalPath that is not accepted as the published artifact was not just renamed
 	// there by a concurrent publish, but e.g. re-created by Docker, and can be moved aside.
 	unlock, err := sourcecache.AcquireRequiredExclusivePathLock(finalPath + publishLockSuffix)
 	if err != nil {
-		return Artifact{}, fmt.Errorf("lock publish of artifact %s: %w", revision, err)
+		return Artifact{}, false, fmt.Errorf("lock publish of artifact %s: %w", revision, err)
 	}
 	defer unlock()
 
 	if existing, ok, err := lookupArtifact(baseDir, revision); err != nil {
-		return Artifact{}, err
+		return Artifact{}, false, err
 	} else if ok {
-		return existing, nil
+		return existing, false, nil
 	}
 
 	if err := recordArtifactPublication(finalPath); err != nil {
-		return Artifact{}, fmt.Errorf("record publication of artifact %s: %w", revision, err)
+		return Artifact{}, false, fmt.Errorf("record publication of artifact %s: %w", revision, err)
 	}
 
 	if err := setAsideUnpublished(artifactsDir, finalPath); err != nil {
-		return Artifact{}, fmt.Errorf("set aside unpublished directory of artifact %s: %w", revision, err)
+		return Artifact{}, false, fmt.Errorf("set aside unpublished directory of artifact %s: %w", revision, err)
 	}
 
 	if err := os.Rename(tmpDir, finalPath); err != nil {
@@ -371,17 +373,17 @@ func publishDir(baseDir string, revision Revision, write func(dir string) error)
 		// its content is identical (revisions are immutable), so prefer it
 		// over failing.
 		if existing, ok, lookupErr := lookupArtifact(baseDir, revision); lookupErr == nil && ok {
-			return existing, nil
+			return existing, false, nil
 		}
 
-		return Artifact{}, fmt.Errorf("publish artifact %s: %w", revision, err)
+		return Artifact{}, false, fmt.Errorf("publish artifact %s: %w", revision, err)
 	}
 
 	if err := recordPublished(finalPath); err != nil {
-		return Artifact{}, fmt.Errorf("record published artifact %s: %w", revision, err)
+		return Artifact{}, false, fmt.Errorf("record published artifact %s: %w", revision, err)
 	}
 
-	return Artifact{Revision: revision, Path: finalPath}, nil
+	return Artifact{Revision: revision, Path: finalPath}, true, nil
 }
 
 // sweepOrphanedTemp removes temporary artifact directories and files left

@@ -92,7 +92,7 @@ func (s *OCIStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 
 	var record decryptRecord
 
-	artifact, err := publishDir(s.opts.BaseDir, revision, func(dir string) (err error) {
+	artifact, published, err := publishDir(s.opts.BaseDir, revision, func(dir string) (err error) {
 		pinnedRef := oci.RepositoryNameFromArtifact(s.opts.ArtifactRef) + "@" + string(revision)
 		if _, err = oci.PullAndExtract(ctx,
 			pinnedRef, string(revision), config.OciArtifactLayoutV1,
@@ -108,7 +108,10 @@ func (s *OCIStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 		return Artifact{}, err
 	}
 
-	writeDecryptRecord(s.opts.Log, artifact, record)
+	// The loser's record would describe files that were just discarded.
+	if published {
+		writeDecryptRecord(s.opts.Log, artifact, record)
+	}
 
 	return artifact, nil
 }

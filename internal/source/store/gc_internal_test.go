@@ -15,7 +15,7 @@ import (
 func touchArtifact(t *testing.T, baseDir string, revision Revision, now time.Time, age time.Duration) Artifact {
 	t.Helper()
 
-	artifact, err := publishDir(baseDir, revision, func(_ string) error { return nil })
+	artifact, _, err := publishDir(baseDir, revision, func(_ string) error { return nil })
 	if err != nil {
 		t.Fatalf("publishDir(%s) error = %v", revision, err)
 	}

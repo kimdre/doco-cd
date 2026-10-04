@@ -175,7 +175,7 @@ func (s *GitStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 
 	var record decryptRecord
 
-	artifact, err := publishDir(s.opts.BaseDir, revision, func(dir string) (err error) {
+	artifact, published, err := publishDir(s.opts.BaseDir, revision, func(dir string) (err error) {
 		if err = git.ExportTree(dir, repo, hash, exportOpts); err != nil {
 			return err
 		}
@@ -188,7 +188,10 @@ func (s *GitStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 		return Artifact{}, err
 	}
 
-	writeDecryptRecord(s.opts.Log, artifact, record)
+	// The loser's record would describe files that were just discarded.
+	if published {
+		writeDecryptRecord(s.opts.Log, artifact, record)
+	}
 
 	return artifact, nil
 }
