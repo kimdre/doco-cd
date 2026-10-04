@@ -67,7 +67,13 @@ func TestServe(t *testing.T) {
 func TestDeploymentMetricsIncludeContextLabel(t *testing.T) {
 	t.Parallel()
 
-	DeploymentsTotal.WithLabelValues("github.com/example/repo", "test-stack", "remote").Inc()
+	labels := []string{"github.com/example/repo", "test-stack", "remote"}
+
+	// The metric is process-global; start from a fresh series so repeated runs (-count) see 1.
+	DeploymentsTotal.DeleteLabelValues(labels...)
+	t.Cleanup(func() { DeploymentsTotal.DeleteLabelValues(labels...) })
+
+	DeploymentsTotal.WithLabelValues(labels...).Inc()
 
 	req, err := http.NewRequest("GET", MetricsPath, nil)
 	if err != nil {
