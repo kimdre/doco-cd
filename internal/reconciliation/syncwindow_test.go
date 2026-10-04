@@ -15,7 +15,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
@@ -747,14 +746,10 @@ func TestCleanupObsoleteAutoDiscoveredContainers_KeepsStacksRejectedByPredicate(
 	// The fake client only lists containers, so removing the stack would panic.
 	apiClient := &cleanupTestClient{
 		containers: []container.Summary{
-			{
-				Names: []string{"/web-old-app"},
-				Labels: map[string]string{
-					docker.DocoCDLabels.Deployment.Name:          "web-old",
-					docker.DocoCDLabels.Deployment.AutoDiscovery: "true",
-					docker.DocoCDLabels.Source.URL:               "https://example.com/organization/repository.git",
-				},
-			},
+			cleanupTestStack("web-old", "web-old", map[string]string{
+				docker.DocoCDLabels.Deployment.AutoDiscoveryConfig: docker.MarshalAutoDiscoveryConfig(
+					deployConfig.AutoDiscoveryConfig{Enabled: true, Delete: true}),
+			}),
 		},
 	}
 
@@ -766,9 +761,8 @@ func TestCleanupObsoleteAutoDiscoveredContainers_KeepsStacksRejectedByPredicate(
 		cleanupTestCLI{apiClient: apiClient},
 		false,
 		"",
-		"https://example.com/organization/repository.git",
+		cleanupTestRequest(),
 		nil,
-		notification.Metadata{},
 		nil,
 		func(_ *slog.Logger, stackName string) bool {
 			checked = append(checked, stackName)

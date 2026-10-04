@@ -204,6 +204,28 @@ func GetLabeledServices(ctx context.Context, cli client.APIClient, swarmMode boo
 	return result, nil
 }
 
+// GetDeploymentServices returns the labels of every swarm service or container of the deployment stackName,
+// including stopped containers.
+func GetDeploymentServices(ctx context.Context, cli client.APIClient, swarmMode bool, stackName string) (map[Service]map[string]string, error) {
+	if swarmMode {
+		return GetLabeledServices(ctx, cli, true, DocoCDLabels.Deployment.Name, stackName)
+	}
+
+	containers, err := GetLabeledContainers(ctx, cli, DocoCDLabels.Deployment.Name, stackName, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get containers of deployment %s: %w", stackName, err)
+	}
+
+	result := make(map[Service]map[string]string, len(containers))
+	for _, cont := range containers {
+		if len(cont.Names) > 0 {
+			result[Service(cont.Names[0])] = cont.Labels
+		}
+	}
+
+	return result, nil
+}
+
 // GetServicesWithLabelKey retrieves every container or swarm service that
 // carries labelKey, regardless of its value, along with its labels. Like
 // getContainersWithLabelKey/swarm.GetServicesByLabelKey, this is for
@@ -388,21 +410,12 @@ func MarshalAutoDiscoveryConfig(cfg deployConfig.AutoDiscoveryConfig) string {
 }
 
 // ParseAutoDiscoveryConfig deserializes an AutoDiscoveryConfig from a YAML container label value.
-// If the label is empty or invalid it returns a default config with Delete=true, RemoveVolumes=false, RemoveImages=true.
+// An empty or invalid label returns a config that deletes and removes nothing: the label decides whether
+// a stack may be removed, so a label that cannot be read must not allow it.
 func ParseAutoDiscoveryConfig(labelValue string) deployConfig.AutoDiscoveryConfig {
-	defaults := deployConfig.AutoDiscoveryConfig{
-		Delete:        true,
-		RemoveVolumes: false,
-		RemoveImages:  true,
-	}
-
-	if labelValue == "" {
-		return defaults
-	}
-
 	var cfg deployConfig.AutoDiscoveryConfig
-	if err := yaml.Unmarshal([]byte(labelValue), &cfg); err != nil {
-		return defaults
+	if labelValue == "" || yaml.Unmarshal([]byte(labelValue), &cfg) != nil {
+		return deployConfig.AutoDiscoveryConfig{}
 	}
 
 	return cfg

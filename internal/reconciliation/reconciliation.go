@@ -620,9 +620,8 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	removalGate := j.manager.newSyncWindowGate(removalReq, time.Now())
 
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-		contextCLI, swarmMode, contextName, j.info.Repository.SourceUrl,
-		contextDCs,
-		j.info.Metadata, j.manager.notifier, removalGate.removalPredicate(contextName)); err != nil {
+		contextCLI, swarmMode, contextName, j.info,
+		contextDCs, j.manager.notifier, removalGate.removalPredicate(contextName)); err != nil {
 		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))
 	}
 

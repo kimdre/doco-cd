@@ -2677,6 +2677,23 @@ func BenchmarkAutoDiscoverDeployments_ManyStacksAcrossRevisions(b *testing.B) {
 	b.ReportMetric(float64(reads)/float64(b.N), "dir_reads/op")
 }
 
+// revisionKeyForRepoRoot returns the current HEAD commit hash for repoRoot,
+// or "" if repoRoot is not a git repository. A disk scan never uses Git tree
+// hashes for subtree caching: materialized contents may differ from HEAD.
+func revisionKeyForRepoRoot(repoRoot string) string {
+	repo, err := git.PlainOpen(repoRoot)
+	if err != nil {
+		return ""
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return ""
+	}
+
+	return head.Hash().String()
+}
+
 func commitAll(t testing.TB, repo *git.Repository, message string) error {
 	t.Helper()
 

@@ -556,7 +556,8 @@ func loadComposeScheduledDeployConfig(
 		gitMirrorRoot = filepath.Join(sourceRepoPath, "mirror")
 	}
 
-	configs, err := deploy.GetConfigs(ctx, configRepoPath, opts.DeployConfigBaseDir, ref.ConfigTarget, ref.Reference, gitMirrorRoot, primaryRevision, nil)
+	configs, err := deploy.GetConfigs(ctx, configRepoPath, opts.DeployConfigBaseDir, ref.ConfigTarget, ref.Reference,
+		gitMirrorRoot, primaryRevision, scheduledDiscoveryGitOptions(ref, opts.ComposeLoad))
 	if err != nil {
 		return nil, "", fmt.Errorf("load deploy config for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
 	}
@@ -605,6 +606,29 @@ func loadComposeScheduledDeployConfig(
 	}
 
 	return deployConfig, deploymentRepoPath, nil
+}
+
+// scheduledDiscoveryGitOptions returns the Git options auto-discovery uses while reloading a scheduled
+// service's deploy config. They match the options of the job that deployed it, so discovery reuses the
+// job's stores and credentials.
+func scheduledDiscoveryGitOptions(ref composeScheduledServiceRef, load ComposeLoadOptions) *deploy.GitOptions {
+	sourceURL := ""
+	// RepositoryURL falls back to the short "owner/repo" source name, which cannot be fetched.
+	if strings.Contains(ref.RepositoryURL, "://") || git.IsSSH(ref.RepositoryURL) {
+		sourceURL = ref.RepositoryURL
+	}
+
+	return &deploy.GitOptions{
+		SSHPrivateKey:           load.SSHPrivateKey,
+		SSHPrivateKeyPassphrase: load.SSHPrivateKeyPassphrase,
+		GitAccessToken:          load.GitAccessToken,
+		SkipTLSVerification:     load.SkipTLSVerify,
+		HttpProxy:               load.HttpProxy,
+		GitCloneSubmodules:      load.GitCloneSubmodules,
+		GitCloneDepth:           load.GitCloneDepth,
+		SourceURL:               sourceURL,
+		SourceBaseDir:           load.DataMountPath,
+	}
 }
 
 // resolveScheduledSourceRepo finds the prepared Git or OCI source directory.

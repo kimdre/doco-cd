@@ -87,9 +87,8 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest, gate *syncWindo
 
 		for swarmMode, modeConfigs := range groupDeployConfigsByMode(groupedConfigs, entry.swarmMode) {
 			if err := cleanupObsoleteAutoDiscoveredContainers(ctx, req.Logger,
-				entry.cli, swarmMode, contextName, req.Repository.SourceUrl,
-				modeConfigs,
-				req.Metadata, m.notifier, gate.removalPredicate(contextName)); err != nil {
+				entry.cli, swarmMode, contextName, req,
+				modeConfigs, m.notifier, gate.removalPredicate(contextName)); err != nil {
 				req.Logger.Error("failed to clean up obsolete auto-discovered containers for context",
 					slog.String("context", docker.DisplayContextName(contextName)),
 					slog.Bool("swarm_mode", swarmMode),

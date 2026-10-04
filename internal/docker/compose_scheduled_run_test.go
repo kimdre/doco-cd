@@ -1389,3 +1389,44 @@ func TestPrepareComposeProjectForOneOffRun(t *testing.T) {
 		}
 	})
 }
+
+func TestScheduledDiscoveryGitOptions(t *testing.T) {
+	t.Parallel()
+
+	load := ComposeLoadOptions{
+		SkipTLSVerify:           true,
+		GitCloneSubmodules:      true,
+		GitCloneDepth:           5,
+		SSHPrivateKey:           "key",
+		SSHPrivateKeyPassphrase: "passphrase",
+		GitAccessToken:          "token",
+		DataMountPath:           "/data",
+	}
+
+	got := scheduledDiscoveryGitOptions(composeScheduledServiceRef{RepositoryURL: "https://example.com/owner/repo.git"}, load)
+
+	want := deploy.GitOptions{
+		SSHPrivateKey:           "key",
+		SSHPrivateKeyPassphrase: "passphrase",
+		GitAccessToken:          "token",
+		SkipTLSVerification:     true,
+		GitCloneSubmodules:      true,
+		GitCloneDepth:           5,
+		SourceURL:               "https://example.com/owner/repo.git",
+		SourceBaseDir:           "/data",
+	}
+	if *got != want {
+		t.Fatalf("scheduledDiscoveryGitOptions() = %+v, want %+v", *got, want)
+	}
+
+	for _, repositoryURL := range []string{"git@example.com:owner/repo.git", "ssh://git@example.com/owner/repo.git"} {
+		if got := scheduledDiscoveryGitOptions(composeScheduledServiceRef{RepositoryURL: repositoryURL}, load); got.SourceURL != repositoryURL {
+			t.Errorf("SourceURL = %q, want %q", got.SourceURL, repositoryURL)
+		}
+	}
+
+	// The short source name label cannot be fetched.
+	if got := scheduledDiscoveryGitOptions(composeScheduledServiceRef{RepositoryURL: "owner/repo"}, load); got.SourceURL != "" {
+		t.Errorf("SourceURL = %q for a short source name, want empty", got.SourceURL)
+	}
+}

@@ -7,7 +7,6 @@ import (
 	"maps"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -393,26 +392,30 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 }
 
 // resolvedReferenceMatches treats a webhook's fully qualified branch reference
-// as equivalent to the short branch name accepted by deployment configs.
-// Keep the normalization asymmetric: a short configured tag can be ambiguous
-// with a same-named branch, while refs/heads/<name> unambiguously identifies
-// the branch Prepare resolved.
+// as equivalent to the short branch name accepted by deployment configs, see
+// git.ReferenceMatches.
 func resolvedReferenceMatches(resolvedReference, configuredReference string) bool {
-	if resolvedReference == configuredReference {
-		return true
-	}
-
-	branch, ok := strings.CutPrefix(resolvedReference, git.BranchPrefix)
-
-	return ok && branch == configuredReference
+	return git.ReferenceMatches(resolvedReference, configuredReference)
 }
 
 // MatchesWebhookEventFilter reports whether this run should proceed based on
 // its trigger, configured webhook filter, and payload reference.
 func (s *StageManager) MatchesWebhookEventFilter() bool {
-	if s.JobTrigger != JobTriggerWebhook || s.DeployConfig.WebhookEventFilter == "" {
+	return WebhookEventFilterMatches(s.JobTrigger, s.DeployConfig.WebhookEventFilter, s.Payload)
+}
+
+// WebhookEventFilterMatches reports whether a job with trigger and payload passes the webhook event filter.
+// Only webhook jobs are filtered. An invalid filter matches nothing; deploy config validation rejects it.
+func WebhookEventFilterMatches(trigger JobTrigger, filter string, payload *webhook.ParsedPayload) bool {
+	if trigger != JobTriggerWebhook || filter == "" {
 		return true
 	}
 
-	return s.Payload != nil && regexp.MustCompile(s.DeployConfig.WebhookEventFilter).MatchString(s.Payload.Ref)
+	if payload == nil {
+		return false
+	}
+
+	re, err := regexp.Compile(filter)
+
+	return err == nil && re.MatchString(payload.Ref)
 }

@@ -20,6 +20,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/migration"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -538,13 +539,42 @@ func (r *deploymentTracker) isInProgress(repository, context, stack string) bool
 
 // addJob replaces the reconciliation job of the request's repository with one
 // watching the stacks of req. Stacks in deferred were not deployed because a
-// sync window blocked them; see reconciliationJobInfo.
+// sync window blocked them; see reconciliationJobInfo. Stacks the webhook event
+// filter skipped were not deployed either and are handled the same way.
+//
+// A request whose revision predates the one of the current job does not replace
+// it: the deployments of the newer revision won, see stages.IsStaleRevision.
 func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*deployConfig.Config]struct{}) {
-	m.jobs.mu.Lock()
-	if m.jobs.closed {
+	deferred = withWebhookFilteredConfigs(req, deferred)
+
+	var checked *job
+
+	for {
+		m.jobs.mu.Lock()
+		if m.jobs.closed {
+			m.jobs.mu.Unlock()
+
+			return
+		}
+
+		old := m.jobs.jobs[req.Repository.Name]
+		if old == nil || old == checked {
+			break
+		}
+
 		m.jobs.mu.Unlock()
 
-		return
+		// Reading the mirror can take a while, so it happens without the lock and
+		// the job is checked again afterwards.
+		if predatesJob(req, old.info) {
+			req.Logger.Info("keeping the reconciliation job of a newer revision",
+				slog.String("revision", req.Repository.Revision),
+				slog.String("job_revision", old.info.Repository.Revision))
+
+			return
+		}
+
+		checked = old
 	}
 
 	old := m.jobs.jobs[req.Repository.Name]
@@ -582,6 +612,42 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 
 		newJob.run(jobCtx)
 	}()
+}
+
+// withWebhookFilteredConfigs returns deferred extended by the deploy configs of
+// req the webhook event filter skipped.
+func withWebhookFilteredConfigs(req DeployRequest, deferred map[*deployConfig.Config]struct{}) map[*deployConfig.Config]struct{} {
+	for _, dc := range req.DeployConfigs {
+		if stages.WebhookEventFilterMatches(req.JobTrigger, dc.WebhookEventFilter, req.Payload) {
+			continue
+		}
+
+		if deferred == nil {
+			deferred = make(map[*deployConfig.Config]struct{})
+		}
+
+		deferred[dc] = struct{}{}
+	}
+
+	return deferred
+}
+
+// predatesJob reports whether the revision of req is proven to predate the one
+// of the request a reconciliation job was created for, both resolved for the
+// same reference.
+func predatesJob(req, job DeployRequest) bool {
+	mirrorDir := req.Repository.MirrorDir
+	if mirrorDir == "" || mirrorDir != job.Repository.MirrorDir {
+		return false
+	}
+
+	reference, jobReference := req.Repository.ResolvedReference, job.Repository.ResolvedReference
+	if !git.ReferenceMatches(reference, jobReference) && !git.ReferenceMatches(jobReference, reference) {
+		return false
+	}
+
+	return stages.IsStaleRevision(mirrorDir, req.Repository.Revision, job.Repository.Revision, nil,
+		slog.New(slog.DiscardHandler))
 }
 
 // reconciliationJobInfo returns the request a new reconciliation job for req

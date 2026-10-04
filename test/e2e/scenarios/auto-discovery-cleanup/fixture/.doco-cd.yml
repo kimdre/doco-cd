@@ -1,0 +1,14 @@
+name: e2e-ad-cleanup-apps
+working_dir: apps
+auto_discovery:
+  enabled: true
+  delete: true
+swarm:
+  enabled: false
+---
+name: e2e-ad-cleanup-static-apps
+working_dir: static
+auto_discovery:
+  enabled: true
+swarm:
+  enabled: false
