@@ -13,6 +13,7 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+	"github.com/opencontainers/go-digest"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 
@@ -60,6 +61,13 @@ func normalizeRepositoryForLabelMatch(repository string) string {
 	repository = strings.TrimSpace(repository)
 	if repository == "" {
 		return ""
+	}
+
+	// Strip an OCI digest suffix (repo@sha256:...) first, since GetRepoName reads it as an scp-like Git URL (user@host:path).
+	if idx := strings.LastIndex(repository, "@"); idx > 0 {
+		if _, err := digest.Parse(repository[idx+1:]); err == nil {
+			repository = repository[:idx]
+		}
 	}
 
 	// Normalize scheme/scp-like urls to host/owner/repo when possible.
