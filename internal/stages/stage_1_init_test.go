@@ -1,10 +1,17 @@
 package stages
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/docker/cli/cli/command"
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -184,6 +191,95 @@ func TestServicesBelongToRepository(t *testing.T) {
 
 			if got := servicesBelongToRepository(tt.services, tt.repository); got != tt.want {
 				t.Fatalf("servicesBelongToRepository() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// destroyOwnershipTestClient serves the containers of a Compose stack. Any other call panics via the nil embedded
+// interface.
+type destroyOwnershipTestClient struct {
+	client.APIClient
+
+	containers []container.Summary
+	err        error
+	options    client.ContainerListOptions
+}
+
+func (c *destroyOwnershipTestClient) ContainerList(_ context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+	c.options = options
+	return client.ContainerListResult{Items: c.containers}, c.err
+}
+
+type destroyOwnershipTestCli struct {
+	command.Cli
+
+	apiClient client.APIClient
+}
+
+func (c destroyOwnershipTestCli) Client() client.APIClient { return c.apiClient }
+
+func TestCheckDestroyOwnership(t *testing.T) {
+	t.Parallel()
+
+	repository := &RepositoryData{
+		Source:          config.SourceTypeGit,
+		Name:            "github.com/owner/config",
+		SourceUrl:       "https://github.com/owner/config.git",
+		ConfigSourceUrl: "https://github.com/owner/config.git",
+	}
+
+	stackContainer := func(sourceName string) container.Summary {
+		return container.Summary{
+			Names:  []string{"/app-web-1"},
+			Labels: map[string]string{api.ProjectLabel: "app", docker.DocoCDLabels.Source.Name: sourceName},
+		}
+	}
+
+	listErr := errors.New("daemon unavailable")
+
+	tests := []struct {
+		name       string
+		destroy    bool
+		containers []container.Summary
+		listErr    error
+		wantErr    error
+		wantList   bool
+	}{
+		// Docker is not queried at all if the deploy config does not destroy the stack.
+		{name: "destroy disabled", destroy: false, containers: []container.Summary{stackContainer("owner/other")}},
+		{name: "stack not deployed", destroy: true, wantList: true},
+		{name: "stack deployed from repository", destroy: true, containers: []container.Summary{stackContainer("owner/config")}, wantList: true},
+		{name: "stack deployed from other repository", destroy: true, containers: []container.Summary{stackContainer("owner/other")}, wantErr: ErrDeploymentConflict, wantList: true},
+		{name: "list error", destroy: true, listErr: listErr, wantErr: listErr, wantList: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			apiClient := &destroyOwnershipTestClient{containers: tt.containers, err: tt.listErr}
+
+			deployConfig := deploy.New("app", "main")
+			deployConfig.Destroy.Enabled = tt.destroy
+
+			s := &StageManager{
+				DeployConfig: deployConfig,
+				Docker:       &Docker{Cmd: destroyOwnershipTestCli{apiClient: apiClient}},
+				Repository:   repository,
+			}
+
+			err := s.checkDestroyOwnership(t.Context())
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("checkDestroyOwnership() error = %v, want nil", err)
+			}
+
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Fatalf("checkDestroyOwnership() error = %v, want %v", err, tt.wantErr)
+			}
+
+			if listed := apiClient.options.Filters != nil; listed != tt.wantList {
+				t.Fatalf("listed containers = %v, want %v", listed, tt.wantList)
 			}
 		})
 	}
