@@ -748,8 +748,20 @@ func (h *Harness) containerFilters(swarmMode bool, project, service string) clie
 // exists and has an ID different from oldID.
 func (h *Harness) WaitForContainerRecreate(project, service, oldID string, timeout time.Duration) {
 	h.t.Helper()
+	h.waitForContainerRecreate(h.isSwarmMode(), project, service, oldID, timeout)
+}
+
+// WaitForComposeContainerRecreate is WaitForContainerRecreate for a deployment
+// that explicitly selected Compose mode on a Swarm-capable Docker daemon.
+func (h *Harness) WaitForComposeContainerRecreate(project, service, oldID string, timeout time.Duration) {
+	h.t.Helper()
+	h.waitForContainerRecreate(false, project, service, oldID, timeout)
+}
+
+func (h *Harness) waitForContainerRecreate(swarmMode bool, project, service, oldID string, timeout time.Duration) {
+	h.t.Helper()
 	h.WaitFor(timeout, project+"/"+service+" recreated", func() bool {
-		id := h.ContainerID(project, service)
+		id := h.containerID(h.docker, swarmMode, project, service)
 		return id != "" && id != oldID
 	})
 }
@@ -806,8 +818,20 @@ func (h *Harness) ExecOutput(containerID string, cmd ...string) string {
 
 func (h *Harness) WaitForContainerRemoval(project, service string, timeout time.Duration) {
 	h.t.Helper()
+	h.waitForContainerRemoval(h.isSwarmMode(), project, service, timeout)
+}
+
+// WaitForComposeContainerRemoval is WaitForContainerRemoval for a deployment
+// that explicitly selected Compose mode on a Swarm-capable Docker daemon.
+func (h *Harness) WaitForComposeContainerRemoval(project, service string, timeout time.Duration) {
+	h.t.Helper()
+	h.waitForContainerRemoval(false, project, service, timeout)
+}
+
+func (h *Harness) waitForContainerRemoval(swarmMode bool, project, service string, timeout time.Duration) {
+	h.t.Helper()
 	h.WaitFor(timeout, project+"/"+service+" removed", func() bool {
-		filters := h.containerFilters(h.isSwarmMode(), project, service)
+		filters := h.containerFilters(swarmMode, project, service)
 
 		containers, err := h.docker.ContainerList(h.ctx, client.ContainerListOptions{All: true, Filters: filters})
 		if err != nil {

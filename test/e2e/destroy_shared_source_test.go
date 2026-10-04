@@ -50,7 +50,7 @@ func TestDestroySharedSource(t *testing.T) {
 	h.RepoPush("destroy one stack")
 
 	h.WaitForLogAfter("destroy.remove_dir is deprecated and ignored", mark, 2*time.Minute)
-	h.WaitForContainerRemoval(goneStack, service, 2*time.Minute)
+	h.WaitForComposeContainerRemoval(goneStack, service, 2*time.Minute)
 
 	h.AssertStays(5*time.Second, "stack sharing the source keeps its container", keepID, containerID(keepStack))
 
@@ -70,7 +70,7 @@ echo "$dirs"`)
 	h.logf("removed artifacts: %s", strings.Join(strings.Fields(removed), ", "))
 
 	h.WaitForLogAfter("artifact of deployed service is missing or was replaced since it was deployed", mark, 2*time.Minute)
-	h.WaitForContainerRecreate(keepStack, service, keepID, 2*time.Minute)
+	h.WaitForComposeContainerRecreate(keepStack, service, keepID, 2*time.Minute)
 
 	if got := h.ExecOutput(containerID(keepStack)(), "cat", "/data/message.txt"); got != message {
 		t.Fatalf("bind-mounted file after recreating from a republished artifact = %q, want %q", got, message)
