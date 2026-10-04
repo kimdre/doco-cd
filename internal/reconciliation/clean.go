@@ -182,6 +182,7 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	// stages.sourceURLForLabels. OCI storage identity is repository-based, but cleanup
 	// ownership also requires the stable reference below.
 	cloneURL := c.req.Repository.SourceUrl
+
 	labelURL := labels[docker.DocoCDLabels.Source.URL]
 	if c.req.Repository.Source == config.SourceTypeOCI &&
 		(strings.TrimSpace(cloneURL) == "" || config.OciUrl(cloneURL).Validate() != nil ||
