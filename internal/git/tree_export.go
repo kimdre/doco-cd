@@ -232,7 +232,7 @@ type exportCtx struct {
 	submodules map[string]*gitconfig.Submodule
 	// deferredSubmodules, when set, collects submodules for the caller to
 	// export after it releases the lock on the mirror ctx.repo reads from.
-	// ctx.repo must not be read by the deferred export.
+	// Their ctx drops repo, since the deferred export must not read it.
 	deferredSubmodules *[]deferredSubmodule
 }
 
@@ -275,8 +275,15 @@ func exportTree(ctx exportCtx, tree *object.Tree, relPath string) error {
 			cfg := ctx.submodules[entryRelPath]
 
 			if ctx.deferredSubmodules != nil {
+				// Dropping the handle lets the mirror's storage and pack indexes
+				// be freed while the deferred exports run, and turns an
+				// accidental read after the lock is released into a panic.
+				deferredCtx := ctx
+				deferredCtx.repo = nil
+				deferredCtx.deferredSubmodules = nil
+
 				*ctx.deferredSubmodules = append(*ctx.deferredSubmodules, deferredSubmodule{
-					ctx:     ctx,
+					ctx:     deferredCtx,
 					target:  target,
 					relPath: entryRelPath,
 					entry:   entry,
