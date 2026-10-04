@@ -264,7 +264,8 @@ auto_discovery:
 
 #### Removing obsolete stacks
 
-Before deploying, doco-cd looks for stacks it auto-discovered from the same repository and [deployment target](#multiple-deployment-targets)
+Before deploying, doco-cd looks for stacks it auto-discovered from the same repository (for OCI artifacts, the same artifact
+repository regardless of its tag or digest) and [deployment target](#multiple-deployment-targets)
 that no deployment config of the run has anymore, neither a discovered nor an explicit one. Stopped stacks are included.
 
 The `delete`, `remove_volumes` and `remove_images` settings of an obsolete stack are taken from the current auto-discovery
@@ -398,6 +399,10 @@ Specify all build-settings in a nested `build` object in the deployment configur
 The following settings can be used to configure how the deployed compose stack/project will be removed.
 
 `destroy` accepts either a boolean or a nested object in the deployment configuration file. Use `destroy: true` to enable destructive removal with default options, or use the object form below to customize which resources are removed.
+
+doco-cd only destroys a stack that it deployed from the same source: the repository containing the deployment configuration file,
+the repository set in [`repository_url`](#available-settings), or, for [OCI artifacts](Advanced/OCI/Artifact-Usage.md), the same artifact repository
+regardless of its tag or digest. Otherwise, the deployment is skipped and reported as a conflict.
 
 | Key              | Type    | Description                                                                                                                                                                                                                                                                                                | Default value |
 |------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|

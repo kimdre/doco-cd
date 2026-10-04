@@ -18,8 +18,10 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
+	"github.com/kimdre/doco-cd/internal/config"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -335,6 +337,25 @@ func TestCleanupObsoleteAutoDiscoveredContainers_RemovalDecision(t *testing.T) {
 		return req
 	}
 
+	const ociTestDigest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+	ociRequest := func(artifact string) DeployRequest {
+		req := cleanupTestRequest()
+		req.Repository = stages.RepositoryData{Source: config.SourceTypeOCI, SourceUrl: artifact}
+
+		return req
+	}
+
+	// ociStack returns a stack deployed from services/web-old of the OCI artifact.
+	ociStack := func(artifact string) container.Summary {
+		return cleanupTestStack("web-old", "", map[string]string{
+			docker.DocoCDLabels.Deployment.WorkingDir: "/var/lib/doco-cd/" + oci.RepositoryNameFromArtifact(artifact) +
+				"/artifacts/sha256-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/services/web-old",
+			docker.DocoCDLabels.Source.URL:  artifact,
+			docker.DocoCDLabels.Source.Type: "oci",
+		})
+	}
+
 	tests := []struct {
 		name       string
 		req        DeployRequest
@@ -461,6 +482,26 @@ func TestCleanupObsoleteAutoDiscoveredContainers_RemovalDecision(t *testing.T) {
 			},
 			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
 			want:    []string{"web-old"},
+		},
+		{
+			name:       "oci stack deployed from another tag is removed",
+			req:        ociRequest("ghcr.io/org/app:v2"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:v1")},
+			configs:    []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+			want:       []string{"web-old"},
+		},
+		{
+			name:       "oci stack deployed from a digest is removed",
+			req:        ociRequest("ghcr.io/org/app:v2"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app@" + ociTestDigest)},
+			configs:    []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+			want:       []string{"web-old"},
+		},
+		{
+			name:       "oci stack of another repository is kept",
+			req:        ociRequest("ghcr.io/org/app:v2"),
+			containers: []container.Summary{ociStack("ghcr.io/org/other:v2")},
+			configs:    []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
 		},
 	}
 

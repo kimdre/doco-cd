@@ -130,3 +130,41 @@ func TestOCIComposeInclude(t *testing.T) {
 		return h.ContainerID(stack, remoteService) != ""
 	})
 }
+
+// TestOCISourceDestroy checks that a stack deployed from an OCI artifact is
+// destroyed once a new version of the artifact enables destroy, i.e. that the
+// destroy ownership check matches the stack's OCI source label.
+func TestOCISourceDestroy(t *testing.T) {
+	t.Parallel()
+
+	const (
+		stack   = "e2e-oci-destroy"
+		service = "app"
+		tag     = "app"
+	)
+
+	compose := "services:\n  " + service + ":\n    image: alpine:3.22\n    command: [\"sleep\", \"600\"]\n"
+
+	h := NewHarness(t, "oci-destroy")
+	h.TrackStack(stack)
+
+	ref := h.PushOCIArtifact(tag, map[string]string{
+		".doco-cd.yaml": "name: " + stack + "\n",
+		"compose.yaml":  compose,
+	})
+	h.SetPollDocument("- source: oci\n  url: " + ref + "\n  interval: 10s\n")
+	h.Start()
+
+	h.WaitFor(3*time.Minute, "container deployed from the OCI artifact", func() bool {
+		return h.ContainerID(stack, service) != ""
+	})
+
+	h.PushOCIArtifact(tag, map[string]string{
+		".doco-cd.yaml": "name: " + stack + "\ndestroy: true\n",
+		"compose.yaml":  compose,
+	})
+
+	h.WaitFor(2*time.Minute, "stack destroyed by the new OCI artifact", func() bool {
+		return h.ContainerID(stack, service) == ""
+	})
+}

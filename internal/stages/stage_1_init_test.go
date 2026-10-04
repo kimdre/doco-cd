@@ -1,12 +1,14 @@
 package stages
 
 import (
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/docker"
 )
 
 func TestMergeDeploymentEnvironment(t *testing.T) {
@@ -115,5 +117,74 @@ func TestLoadConfigSourceFilesReusesPreviouslyLoadedValues(t *testing.T) {
 
 	if got := deployConfig.Internal.Environment["FROM_CONFIG_SOURCE"]; got != "preserved" {
 		t.Fatalf("loaded environment value = %q, want preserved", got)
+	}
+}
+
+func TestServicesBelongToRepository(t *testing.T) {
+	t.Parallel()
+
+	gitRepository := &RepositoryData{
+		Source:          config.SourceTypeGit,
+		Name:            "github.com/owner/config",
+		SourceUrl:       "https://github.com/owner/config.git",
+		ConfigSourceUrl: "https://github.com/owner/config.git",
+	}
+	// A deploy config with a repository_url is deployed from another repository than it was read from.
+	remoteRepository := &RepositoryData{
+		Source:          config.SourceTypeGit,
+		Name:            "github.com/owner/app",
+		SourceUrl:       "https://github.com/owner/app.git",
+		ConfigSourceUrl: "https://github.com/owner/config.git",
+	}
+	ociRepository := &RepositoryData{
+		Source:          config.SourceTypeOCI,
+		Name:            "ghcr.io/org/app",
+		SourceUrl:       "ghcr.io/org/app:v2",
+		ConfigSourceUrl: "ghcr.io/org/app:v2",
+	}
+	ociDigestRepository := &RepositoryData{
+		Source:          config.SourceTypeOCI,
+		Name:            "ghcr.io/org/app",
+		SourceUrl:       "ghcr.io/org/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		ConfigSourceUrl: "ghcr.io/org/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	}
+
+	labeled := func(names ...string) map[docker.Service]docker.Labels {
+		services := make(map[docker.Service]docker.Labels, len(names))
+		for i, name := range names {
+			services[docker.Service(fmt.Sprintf("service-%d", i))] = docker.Labels{docker.DocoCDLabels.Source.Name: name}
+		}
+
+		return services
+	}
+
+	tests := []struct {
+		name       string
+		services   map[docker.Service]docker.Labels
+		repository *RepositoryData
+		want       bool
+	}{
+		{name: "no services", services: labeled(), repository: gitRepository, want: true},
+		{name: "git webhook label", services: labeled("owner/config"), repository: gitRepository, want: true},
+		{name: "git repository name label", services: labeled("github.com/owner/config"), repository: gitRepository, want: true},
+		{name: "other git repository", services: labeled("owner/other"), repository: gitRepository, want: false},
+		{name: "missing label", services: map[docker.Service]docker.Labels{"app": {}}, repository: gitRepository, want: false},
+		{name: "one service of another repository", services: labeled("owner/config", "owner/other"), repository: gitRepository, want: false},
+		{name: "repository_url deployed by webhook", services: labeled("owner/config"), repository: remoteRepository, want: true},
+		{name: "repository_url deployed by poll", services: labeled("owner/app"), repository: remoteRepository, want: true},
+		{name: "oci deployed by poll with another tag", services: labeled("ghcr.io/org/app"), repository: ociRepository, want: true},
+		{name: "oci deployed by webhook", services: labeled("org/app"), repository: ociRepository, want: true},
+		{name: "oci digest reference", services: labeled("ghcr.io/org/app"), repository: ociDigestRepository, want: true},
+		{name: "other oci repository", services: labeled("ghcr.io/org/other"), repository: ociRepository, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := servicesBelongToRepository(tt.services, tt.repository); got != tt.want {
+				t.Fatalf("servicesBelongToRepository() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

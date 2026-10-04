@@ -95,6 +95,24 @@ func NormalizeRepositoryLabel(repository string) string {
 	return normalizeRepositoryForLabelMatch(repository)
 }
 
+// RepositoryLabelMatches reports whether label, a cd.doco.source.name label value, names one of
+// repositories, matched like GetLatestDeployStatus matches it. A repository can be a repository name or
+// URL, or an OCI artifact reference whose tag or digest is ignored.
+func RepositoryLabelMatches(label string, repositories ...string) bool {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return false
+	}
+
+	for _, repository := range repositories {
+		if strings.TrimSpace(repository) != "" && buildRepositoryLabelCandidates(repository).Contains(label) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // buildRepositoryLabelCandidates generates a set of candidate repository label values
 // for matching by normalizing the input repository string.
 func buildRepositoryLabelCandidates(repository string) set.Set[string] {

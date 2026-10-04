@@ -186,6 +186,10 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		mergeDeploymentEnvironment(s.DeployConfig)
 		deploy.MergeExternalSecretsFromFiles(s.DeployConfig)
 
+		if err := s.checkDestroyOwnership(ctx); err != nil {
+			return err
+		}
+
 		s.Log = s.Log.With(
 			slog.String("stack", s.DeployConfig.Name),
 			slog.String("repository", s.Repository.Name),
@@ -324,28 +328,8 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	mergeDeploymentEnvironment(s.DeployConfig)
 	deploy.MergeExternalSecretsFromFiles(s.DeployConfig)
 
-	if s.DeployConfig.Destroy.Enabled {
-		// Skip deployment if another project with the same name already exists
-		// Check if containers do not belong to this repository or if doco-cd does not manage the stack
-		correctRepo := true
-
-		serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.DeployConfig.Name)
-		if err != nil {
-			return fmt.Errorf("failed to retrieve service labels: %w", err)
-		}
-
-		for _, labels := range serviceLabels {
-			name, ok := labels[docker.DocoCDLabels.Source.Name]
-
-			if !ok || name != git.GetFullName(s.Repository.SourceUrl) {
-				correctRepo = false
-				break
-			}
-		}
-
-		if !correctRepo {
-			return fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, s.DeployConfig.Name)
-		}
+	if err := s.checkDestroyOwnership(ctx); err != nil {
+		return err
 	}
 
 	if s.JobTrigger == JobTriggerPoll {
@@ -396,6 +380,39 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 // git.ReferenceMatches.
 func resolvedReferenceMatches(resolvedReference, configuredReference string) bool {
 	return git.ReferenceMatches(resolvedReference, configuredReference)
+}
+
+// checkDestroyOwnership returns ErrDeploymentConflict if the deploy config destroys a stack with services
+// that doco-cd did not deploy from the repository of the job.
+func (s *StageManager) checkDestroyOwnership(ctx context.Context) error {
+	if !s.DeployConfig.Destroy.Enabled {
+		return nil
+	}
+
+	serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.DeployConfig.Name)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve service labels: %w", err)
+	}
+
+	if !servicesBelongToRepository(serviceLabels, s.Repository) {
+		return fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, s.DeployConfig.Name)
+	}
+
+	return nil
+}
+
+// servicesBelongToRepository reports whether all services with serviceLabels were deployed from repository.
+// A stack is labeled with the repository its deploy config was read from, or, with a repository_url, with
+// the repository it is deployed from, depending on the trigger. An OCI source matches regardless of its tag.
+func servicesBelongToRepository(serviceLabels map[docker.Service]docker.Labels, repository *RepositoryData) bool {
+	for _, labels := range serviceLabels {
+		name, ok := labels[docker.DocoCDLabels.Source.Name]
+		if !ok || !docker.RepositoryLabelMatches(name, repository.Name, repository.SourceUrl, repository.ConfigSourceUrl) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // MatchesWebhookEventFilter reports whether this run should proceed based on

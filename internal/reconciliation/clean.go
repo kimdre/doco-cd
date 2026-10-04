@@ -176,11 +176,13 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	}
 
 	// The URLs may differ in format (e.g., "https://github.com/kimdre/doco-cd.git" vs.
-	// "https://github.com/kimdre/doco-cd") or protocol (e.g., "ssh://git@github.com/kimdre/doco-cd.git").
+	// "https://github.com/kimdre/doco-cd") or protocol (e.g., "ssh://git@github.com/kimdre/doco-cd.git"), and
+	// OCI references in their tag or digest. The label holds the URL of the job's source, see
+	// stages.sourceURLForLabels, so both URLs are of the job's source type.
 	cloneURL := c.req.Repository.SourceUrl
 	labelURL := labels[docker.DocoCDLabels.Source.URL]
-	cloneURLRepoName := git.GetRepoName(cloneURL)
-	labelURLRepoName := git.GetRepoName(labelURL)
+	cloneURLRepoName := c.sourceRepoName(cloneURL)
+	labelURLRepoName := c.sourceRepoName(labelURL)
 	match := cloneURLRepoName == labelURLRepoName
 
 	stackLog.Debug("checking auto-discovered stack for repository match",
@@ -267,11 +269,17 @@ func (c *obsoleteStackCleanup) storeName(origin deployConfig.AutoDiscoveryOrigin
 		return git.GetRepoName(origin.RepositoryURL)
 	}
 
+	return c.sourceRepoName(c.req.Repository.SourceUrl)
+}
+
+// sourceRepoName returns the repository name of url, a URL of the job's source, without the tag or digest
+// of an OCI artifact reference.
+func (c *obsoleteStackCleanup) sourceRepoName(url string) string {
 	if c.req.Repository.Source == config.SourceTypeOCI {
-		return oci.RepositoryNameFromArtifact(c.req.Repository.SourceUrl)
+		return oci.RepositoryNameFromArtifact(url)
 	}
 
-	return git.GetRepoName(c.req.Repository.SourceUrl)
+	return git.GetRepoName(url)
 }
 
 // artifactRelativeDir returns workingDir relative to the root of the artifact it lies in, if that artifact
