@@ -25,7 +25,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
-const gitIncludeCacheDirectory = "compose-git-cache"
+const gitIncludeCacheDirectory = store.ComposeGitCacheSubdir
 
 var gitIncludeLocks sync.Map
 

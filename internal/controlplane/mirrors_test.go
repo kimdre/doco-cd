@@ -378,6 +378,53 @@ func TestTriggerMirrorCompactionReleasesRejectedRun(t *testing.T) {
 	}
 }
 
+func TestTriggerMirrorCompactionReportsUninspectableMirrors(t *testing.T) {
+	t.Parallel()
+
+	errConfig := errors.New("parse mirror configuration")
+	mirrors := []store.Mirror{
+		{Path: "/data/github.com/owner/a/submodules/broken", Err: errConfig},
+		{Repository: "github.com/owner/a", Path: "/data/github.com/owner/a/mirror"},
+		{Repository: "github.com/owner/b", Path: "/data/github.com/owner/b/mirror", Err: errConfig},
+	}
+
+	compactor := &recordingCompactor{}
+	tracker := newDeploymentRunTracker(nil)
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		tracker:       tracker,
+		storageDir:    "/data",
+		listMirrors:   func(string) ([]store.Mirror, error) { return slices.Clone(mirrors), nil },
+		compactMirror: compactor.compact,
+	})
+
+	// A broken mirror fails on its own instead of blocking the others.
+	jobID, err := runs.TriggerMirrorCompaction(t.Context(), "", MirrorCompactionRequest{}, true)
+
+	var failed *MirrorCompactionsFailedError
+	if !errors.As(err, &failed) || failed.Failed != 2 || failed.Total != 3 || !errors.Is(err, errConfig) {
+		t.Fatalf("TriggerMirrorCompaction() error = %v, want 2/3 failed with the configuration error", err)
+	}
+
+	if len(compactor.calls) != 1 || compactor.calls[0].path != mirrors[1].Path {
+		t.Fatalf("compacted %+v, want only %s", compactor.calls, mirrors[1].Path)
+	}
+
+	run, _ := tracker.Get(jobID)
+	if want := "repack of 3 mirrors: 1 compacted, 2 failed; packfiles 300 B -> 100 B"; run.Status != RunStatusFailed || run.Message != want {
+		t.Fatalf("run = %#v, want failed run with message %q", run, want)
+	}
+
+	// A broken mirror still matches the repository its store is named after.
+	_, err = runs.TriggerMirrorCompaction(t.Context(), "", MirrorCompactionRequest{Repository: "github.com/owner/b"}, true)
+	if !errors.As(err, &failed) || failed.Failed != 1 || failed.Total != 1 || !errors.Is(err, errConfig) {
+		t.Fatalf("TriggerMirrorCompaction(github.com/owner/b) error = %v, want 1/1 failed with the configuration error", err)
+	}
+
+	if len(compactor.calls) != 1 {
+		t.Fatalf("compacted %+v, want no further calls", compactor.calls)
+	}
+}
+
 func TestTriggerMirrorCompactionWithoutMirrors(t *testing.T) {
 	t.Parallel()
 

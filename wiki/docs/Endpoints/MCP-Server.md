@@ -134,8 +134,11 @@ Swarm tools are always advertised. Calls fail if Docker Swarm features are unava
 
 `trigger_scheduled_job` and `trigger_poll` accept a `wait` argument that defaults to `true`. `compact_mirrors` accepts a `wait` argument that defaults to `false`.
 
-- **`#!yaml wait: true`**: the tool blocks until the operation completes and returns the final status. Application shutdown cancels active runs after a 10-second grace period. Client disconnects do **not** cancel the running operation.
+- **`#!yaml wait: true`**: the tool blocks until the operation completes and returns the final status. Application shutdown cancels active runs after a 10-second grace period. Client disconnects or request cancellation cancel the running operation.
 - **`#!yaml wait: false`**: the tool returns an `accepted` status and `job_id` immediately. The job continues under the application lifecycle; neither client disconnects nor request cancellation can stop it, but application shutdown does.
+
+Mirror compaction is also cancelled during a self-update handover. A `repack` stops and keeps the old
+packfiles; a `copy` finishes the current mirror before stopping.
 
 To poll progress with `#!yaml wait: false`:
 

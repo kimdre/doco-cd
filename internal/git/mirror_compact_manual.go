@@ -115,18 +115,28 @@ func CompactMirror(ctx context.Context, log *slog.Logger, path string, opts Mirr
 			slog.Any("error", err))
 	}
 
-	notifyMirrorPackObserver(result.MirrorPackStats)
-
 	return result, err
 }
 
 func compactMirror(ctx context.Context, log *slog.Logger, path string, opts MirrorCompactOptions, result *MirrorCompaction) error {
+	var unlock func()
+
+	defer func() {
+		if unlock != nil {
+			defer unlock()
+		}
+
+		// Report before unlocking, so a waiting fetch cannot publish newer
+		// statistics only to have this snapshot overwrite them.
+		notifyMirrorPackObserver(result.MirrorPackStats)
+	}()
+
 	if err := ctx.Err(); err != nil {
 		result.Result = MirrorCompactionCancelled
 		return err
 	}
 
-	unlock, acquired, err := tryAcquireExclusiveMirrorLock(path)
+	release, acquired, err := tryAcquireExclusiveMirrorLock(path)
 	if err != nil {
 		result.Result = MirrorCompactionFailed
 		return fmt.Errorf("lock mirror: %w", err)
@@ -140,7 +150,7 @@ func compactMirror(ctx context.Context, log *slog.Logger, path string, opts Mirr
 		return nil
 	}
 
-	defer unlock()
+	unlock = release
 
 	repo, err := git.PlainOpen(path)
 	if err != nil {
@@ -343,23 +353,9 @@ func (e *repackNotSmallerError) Error() string {
 // through storage.PackfileWriter, whose Close leaves the temporary file and
 // its descriptors behind when the encoder fails or is cancelled.
 func repackObjects(ctx context.Context, storage *filesystem.Storage, packDir string, keepBelow int64) (plumbing.Hash, []plumbing.Hash, error) {
-	// HashesWithPrefix lists loose objects as well, but only dedupes packed
-	// objects against them; the same object may still be stored in several packs.
-	all, err := storage.HashesWithPrefix(nil)
+	objects, hashes, err := newRepackObjectStorer(ctx, storage)
 	if err != nil {
-		return plumbing.ZeroHash, nil, fmt.Errorf("list objects: %w", err)
-	}
-
-	seen := make(map[plumbing.Hash]struct{}, len(all))
-	hashes := make([]plumbing.Hash, 0, len(all))
-
-	for _, h := range all {
-		if _, ok := seen[h]; ok {
-			continue
-		}
-
-		seen[h] = struct{}{}
-		hashes = append(hashes, h)
+		return plumbing.ZeroHash, nil, err
 	}
 
 	if len(hashes) == 0 {
@@ -380,8 +376,7 @@ func repackObjects(ctx context.Context, storage *filesystem.Storage, packDir str
 
 	w := bufio.NewWriterSize(contextWriter{ctx: ctx, w: tmpPack}, packCopyBufSize)
 
-	checksum, err := packfile.NewEncoder(w, contextObjectStorer{Storage: storage, ctx: ctx}, false).
-		Encode(hashes, mirrorRepackWindow)
+	checksum, err := packfile.NewEncoder(w, objects, false).Encode(hashes, mirrorRepackWindow)
 	if err != nil {
 		return plumbing.ZeroHash, nil, fmt.Errorf("encode pack: %w", err)
 	}
@@ -479,11 +474,85 @@ func (r contextReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	return r.r.Seek(offset, whence)
 }
 
-// contextObjectStorer fails object reads once ctx is done. The encoder reads
-// every object during its delta search, before it writes anything, so a
-// failing writer alone would only stop it after the most expensive part.
+// newRepackObjectStorer returns the storer a repack reads the mirror's objects
+// through, and every object of the mirror once.
+func newRepackObjectStorer(ctx context.Context, storage *filesystem.Storage) (repackObjectStorer, []plumbing.Hash, error) {
+	// HashesWithPrefix lists loose objects as well, but only dedupes packed
+	// objects against them; an object stored in several packs is listed once
+	// for each.
+	all, err := storage.HashesWithPrefix(nil)
+	if err != nil {
+		return repackObjectStorer{}, nil, fmt.Errorf("list objects: %w", err)
+	}
+
+	seen := make(map[plumbing.Hash]struct{}, len(all))
+	hashes := make([]plumbing.Hash, 0, len(all))
+	duplicates := make(map[plumbing.Hash]struct{})
+
+	for _, h := range all {
+		if _, ok := seen[h]; ok {
+			duplicates[h] = struct{}{}
+
+			continue
+		}
+
+		seen[h] = struct{}{}
+		hashes = append(hashes, h)
+	}
+
+	objects := repackObjectStorer{
+		contextObjectStorer: contextObjectStorer{EncodedObjectStorer: storage, ctx: ctx},
+		deltas:              storage,
+		duplicates:          duplicates,
+	}
+
+	return objects, hashes, nil
+}
+
+// repackObjectStorer exposes the deltas stored in the mirror's packs, so the
+// encoder reuses them instead of expanding and delta-compressing every object
+// again, which makes a repack slower, larger and more memory-hungry.
+type repackObjectStorer struct {
+	contextObjectStorer
+
+	deltas storer.DeltaObjectStorer
+	// duplicates are the objects stored in more than one pack.
+	duplicates map[plumbing.Hash]struct{}
+}
+
+// DeltaObject returns the object as it is stored, as a delta if its pack
+// stores it as one. It resolves objects stored in several packs instead: each
+// pack may store them as a delta against a different base, and go-git's
+// encoder recurses forever if the deltas it picks form a cycle, such as A -> B
+// from one pack and B -> A from another. Objects stored once are safe: every
+// read of them follows the same deltas, so a cycle would have left them
+// unreadable already.
+func (s repackObjectStorer) DeltaObject(t plumbing.ObjectType, h plumbing.Hash) (plumbing.EncodedObject, error) {
+	if _, ok := s.duplicates[h]; ok {
+		return s.EncodedObject(t, h)
+	}
+
+	if err := s.ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.deltas.DeltaObject(t, h)
+	if err != nil {
+		return nil, err
+	}
+
+	// The encoder only reuses a delta whose base it can look up through the
+	// plumbing.DeltaObject interface, so the wrapper must keep it.
+	if delta, ok := obj.(plumbing.DeltaObject); ok {
+		return contextDeltaObject{DeltaObject: delta, ctx: s.ctx}, nil
+	}
+
+	return contextEncodedObject{EncodedObject: obj, ctx: s.ctx}, nil
+}
+
+// contextObjectStorer resolves objects and makes their readers cancellable.
 type contextObjectStorer struct {
-	*filesystem.Storage
+	storer.EncodedObjectStorer
 
 	ctx context.Context //nolint:containedctx // the encoder's storer cannot take a context.
 }
@@ -493,15 +562,80 @@ func (s contextObjectStorer) EncodedObject(t plumbing.ObjectType, h plumbing.Has
 		return nil, err
 	}
 
-	return s.Storage.EncodedObject(t, h)
-}
-
-// DeltaObject keeps the storage's storer.DeltaObjectStorer implementation
-// visible to the encoder, which reuses existing deltas through it.
-func (s contextObjectStorer) DeltaObject(t plumbing.ObjectType, h plumbing.Hash) (plumbing.EncodedObject, error) {
-	if err := s.ctx.Err(); err != nil {
+	obj, err := s.EncodedObjectStorer.EncodedObject(t, h)
+	if err != nil {
 		return nil, err
 	}
 
-	return s.Storage.DeltaObject(t, h)
+	return contextEncodedObject{EncodedObject: obj, ctx: s.ctx}, nil
+}
+
+// contextEncodedObject also checks cancellation when the delta search reads
+// objects it loaded earlier; checking only storer lookups misses that phase.
+type contextEncodedObject struct {
+	plumbing.EncodedObject
+
+	ctx context.Context //nolint:containedctx // the object's Reader cannot take a context.
+}
+
+func (o contextEncodedObject) Reader() (io.ReadCloser, error) {
+	if err := o.ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	r, err := o.EncodedObject.Reader()
+	if err != nil {
+		return nil, err
+	}
+
+	cr := contextReadCloser{ReadCloser: r, ctx: o.ctx}
+
+	// Without its WriterTo, the encoder's io.Copy allocates a buffer for each
+	// object it writes from memory.
+	if wt, ok := r.(io.WriterTo); ok {
+		return contextWriterToReadCloser{contextReadCloser: cr, writerTo: wt}, nil
+	}
+
+	return cr, nil
+}
+
+// contextDeltaObject makes the reader of a stored delta cancellable.
+type contextDeltaObject struct {
+	plumbing.DeltaObject
+
+	ctx context.Context //nolint:containedctx // the object's Reader cannot take a context.
+}
+
+func (o contextDeltaObject) Reader() (io.ReadCloser, error) {
+	return contextEncodedObject{EncodedObject: o.DeltaObject, ctx: o.ctx}.Reader()
+}
+
+type contextReadCloser struct {
+	io.ReadCloser
+
+	ctx context.Context //nolint:containedctx // the object's reader cannot take a context.
+}
+
+func (r contextReadCloser) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	return r.ReadCloser.Read(p)
+}
+
+type contextWriterToReadCloser struct {
+	contextReadCloser
+
+	writerTo io.WriterTo
+}
+
+// WriteTo checks cancellation only before it starts; the repack's writer
+// fails once ctx is done.
+func (r contextWriterToReadCloser) WriteTo(w io.Writer) (int64, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	return r.writerTo.WriteTo(w)
 }

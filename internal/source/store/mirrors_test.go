@@ -1,9 +1,12 @@
 package store_test
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/source/store"
@@ -151,5 +154,142 @@ func TestListMirrors(t *testing.T) {
 	mirrors, err = store.ListMirrors(filepath.Join(dataDir, "does-not-exist"))
 	if err != nil || len(mirrors) != 0 {
 		t.Fatalf("ListMirrors(missing) = %v, %v, want none", mirrors, err)
+	}
+}
+
+func TestListMirrors_ComposeIncludes(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "app")
+	makeBareMirror(t, filepath.Join(repoDir, store.MirrorSubdir), "https://github.com/owner/app.git")
+
+	// Compose puts its include cache next to the published revision, not at
+	// the data directory's top level. The store walk stops before this cache.
+	include := filepath.Join(repoDir, store.ArtifactsSubdir, store.ComposeGitCacheSubdir, "aaa")
+	makeBareMirror(t, filepath.Join(include, store.MirrorSubdir), "https://github.com/owner/lib.git")
+	makeBareMirror(t, filepath.Join(include, store.SubmodulesSubdir, "bbb"), "https://github.com/owner/tool.git")
+
+	// Older/fallback include caches can also live directly below dataDir.
+	fallbackInclude := filepath.Join(dataDir, store.ComposeGitCacheSubdir, "ccc")
+	makeBareMirror(t, filepath.Join(fallbackInclude, store.MirrorSubdir), "https://github.com/owner/lib.git")
+
+	// Neither arbitrary artifact contents nor incomplete clones are mirrors.
+	makeBareMirror(t, filepath.Join(repoDir, store.ArtifactsSubdir, "rev", "mirror"), "https://github.com/owner/not-a-cache.git")
+	makeBareMirror(t, filepath.Join(repoDir, store.ArtifactsSubdir, store.ComposeGitCacheSubdir, "ddd", store.MirrorSubdir), "")
+
+	mirrors, err := store.ListMirrors(dataDir)
+	if err != nil {
+		t.Fatalf("ListMirrors() error = %v", err)
+	}
+
+	want := []store.Mirror{
+		{Repository: "github.com/owner/app", Path: filepath.Join(repoDir, store.MirrorSubdir)},
+		{Repository: "github.com/owner/lib", Path: filepath.Join(fallbackInclude, store.MirrorSubdir)},
+		{Repository: "github.com/owner/lib", Path: filepath.Join(include, store.MirrorSubdir)},
+		{Repository: "github.com/owner/tool", Path: filepath.Join(include, store.SubmodulesSubdir, "bbb")},
+	}
+	if !slices.Equal(mirrors, want) {
+		t.Fatalf("ListMirrors() =\n%v\nwant\n%v", mirrors, want)
+	}
+}
+
+func TestListMirrors_InvalidConfiguration(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		subdir string
+		// repository is the name a broken mirror is still listed under.
+		repository string
+	}{
+		{name: "mirror", subdir: store.MirrorSubdir, repository: "github.com/owner/app"},
+		{name: "submodule", subdir: filepath.Join(store.SubmodulesSubdir, "aaa")},
+		{name: "include", subdir: filepath.Join(store.ArtifactsSubdir, store.ComposeGitCacheSubdir, "aaa", store.MirrorSubdir)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dataDir := t.TempDir()
+			repoDir := filepath.Join(dataDir, "github.com", "owner", "app")
+			mkdirAll(t, filepath.Join(repoDir, store.ArtifactsSubdir))
+
+			// A broken mirror must not hide the others.
+			other := filepath.Join(dataDir, "github.com", "owner", "other", store.MirrorSubdir)
+			makeBareMirror(t, other, "https://github.com/owner/other.git")
+
+			mirrorDir := filepath.Join(repoDir, tc.subdir)
+			makeBareMirror(t, mirrorDir, "")
+
+			configPath := filepath.Join(mirrorDir, "config")
+			if err := os.WriteFile(configPath, []byte("[invalid\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			mirrors, err := store.ListMirrors(dataDir)
+			if err != nil {
+				t.Fatalf("ListMirrors() error = %v", err)
+			}
+
+			want := []store.Mirror{
+				{Repository: tc.repository, Path: mirrorDir},
+				{Repository: "github.com/owner/other", Path: other},
+			}
+			slices.SortFunc(want, func(a, b store.Mirror) int { return strings.Compare(a.Repository, b.Repository) })
+
+			if len(mirrors) != len(want) {
+				t.Fatalf("ListMirrors() = %v, want %v", mirrors, want)
+			}
+
+			for i, mirror := range mirrors {
+				broken := mirror.Path == mirrorDir
+				if mirror.Repository != want[i].Repository || mirror.Path != want[i].Path ||
+					broken != (mirror.Err != nil) || broken && !strings.Contains(mirror.Err.Error(), "parse mirror configuration") {
+					t.Fatalf("ListMirrors()[%d] = %+v, want %+v with a configuration error only for %s", i, mirror, want[i], mirrorDir)
+				}
+			}
+
+			// A clone that has not written its configuration yet is omitted.
+			if err := os.Remove(configPath); err != nil {
+				t.Fatal(err)
+			}
+
+			mirrors, err = store.ListMirrors(dataDir)
+			if want := []store.Mirror{{Repository: "github.com/owner/other", Path: other}}; err != nil || !slices.Equal(mirrors, want) {
+				t.Fatalf("ListMirrors(incomplete clone) = %v, %v, want %v", mirrors, err, want)
+			}
+		})
+	}
+}
+
+func TestListMirrors_UnreadableDirectory(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() == 0 {
+		t.Skip("root can read any directory")
+	}
+
+	dataDir := t.TempDir()
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "app")
+	makeBareMirror(t, filepath.Join(repoDir, store.MirrorSubdir), "https://github.com/owner/app.git")
+
+	submodules := filepath.Join(repoDir, store.SubmodulesSubdir)
+	mkdirAll(t, submodules)
+
+	if err := os.Chmod(submodules, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = os.Chmod(submodules, 0o700) })
+
+	mirrors, err := store.ListMirrors(dataDir)
+	if err != nil {
+		t.Fatalf("ListMirrors() error = %v", err)
+	}
+
+	if len(mirrors) != 2 ||
+		mirrors[0].Path != submodules || mirrors[0].Repository != "" || !errors.Is(mirrors[0].Err, fs.ErrPermission) ||
+		mirrors[1] != (store.Mirror{Repository: "github.com/owner/app", Path: filepath.Join(repoDir, store.MirrorSubdir)}) {
+		t.Fatalf("ListMirrors() = %+v, want the unreadable submodule directory and the readable mirror", mirrors)
 	}
 }

@@ -126,6 +126,7 @@ func newControlPlaneStorage(dir string) *controlPlaneStorage {
 }
 
 // mirrors returns the mirrors of repository, or all mirrors if it is empty.
+// A mirror that could not be inspected matches only if its repository is known.
 func (s *controlPlaneStorage) mirrors(repository string) ([]store.Mirror, error) {
 	if s.dir == "" {
 		return nil, nil
@@ -265,6 +266,32 @@ func (c *Runs) compactMirrors(ctx context.Context, log *slog.Logger, mirrors []s
 		}
 
 		opts.Repository = mirror.Repository
+
+		if mirror.Err != nil {
+			log.Warn("failed to inspect git mirror",
+				slog.String("repository", mirror.Repository),
+				slog.String("path", mirror.Path),
+				slog.Any("error", mirror.Err))
+
+			summary.add(git.MirrorCompaction{
+				MirrorPackStats: git.MirrorPackStats{
+					Repository:  mirror.Repository,
+					Path:        mirror.Path,
+					PacksBefore: -1,
+					PacksAfter:  -1,
+					SizeBytes:   -1,
+					Mode:        opts.Mode,
+					Result:      git.MirrorCompactionFailed,
+				},
+				SizeBytesBefore: -1,
+			})
+
+			if cause == nil {
+				cause = mirror.Err
+			}
+
+			continue
+		}
 
 		result, err := c.storage.compact(ctx, log, mirror.Path, opts)
 		if err != nil && result.Result == "" {
