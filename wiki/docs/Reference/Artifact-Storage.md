@@ -191,5 +191,6 @@ The number and combined size of the packfiles of each mirror and the consolidati
 Mirrors are reported after every clone and fetch, submodule mirrors also whenever their fetch is skipped because they
 already hold the pinned commit.
 A repository can have several mirrors, e.g. when it is deployed, included in a Compose file and used as a
-submodule; `doco_cd_git_mirror_size_bytes` reports the combined size of all of them and stops being reported
-for a repository once none of its mirrors exist anymore.
+submodule; `doco_cd_git_mirror_packs` reports the highest number of packfiles among them,
+`doco_cd_git_mirror_size_bytes` the combined size of all of them. Both stop being reported for a repository once none
+of its mirrors exist anymore.
