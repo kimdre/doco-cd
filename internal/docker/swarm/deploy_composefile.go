@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -90,7 +91,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 	// count) so only the scheduler runs them on their schedule.
 	applyScheduledJobDeployReplicas(services)
 
-	deployedServices, err := deployServices(ctx, dockerCli, services, namespace, opts.SendRegistryAuth, opts.ResolveImage, opts.Logger)
+	deployedServices, err := deployServices(ctx, dockerCli, services, namespace, opts)
 	if err != nil {
 		return err
 	}
@@ -337,9 +338,10 @@ func applyScheduledJobDeployReplicas(services map[string]swarmTypes.ServiceSpec)
 	}
 }
 
-func deployServices(ctx context.Context, dockerCLI command.Cli, services map[string]swarmTypes.ServiceSpec, namespace convert.Namespace, sendAuth bool, resolveImage string, log *slog.Logger) ([]deployedService, error) {
+func deployServices(ctx context.Context, dockerCLI command.Cli, services map[string]swarmTypes.ServiceSpec, namespace convert.Namespace, opts *options.Deploy) ([]deployedService, error) {
 	apiClient := dockerCLI.Client()
 	out := dockerCLI.Out()
+	log := opts.Logger
 
 	existingServices, err := GetStackServices(ctx, apiClient, namespace.Name())
 	if err != nil {
@@ -363,7 +365,7 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 		isJob := serviceSpec.Mode.ReplicatedJob != nil || serviceSpec.Mode.GlobalJob != nil
 		isScheduled := isScheduledServiceSpec(serviceSpec)
 
-		if sendAuth {
+		if opts.SendRegistryAuth {
 			// Retrieve encoded auth token from the image reference
 			encodedAuth, err = command.RetrieveAuthTokenFromImage(dockerCLI.ConfigFile(), image)
 			if err != nil {
@@ -383,7 +385,7 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 				EncodedRegistryAuth: encodedAuth,
 			}
 
-			switch resolveImage {
+			switch opts.ResolveImage {
 			case ResolveImageAlways:
 				// image should be updated by the server using QueryRegistry
 				updateOpts.QueryRegistry = true
@@ -408,9 +410,12 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 				}
 			}
 
-			// Stack deploy does not have a `--force` option. Preserve existing
-			// ForceUpdate value so that tasks are not re-deployed if not updated.
 			serviceSpec.TaskTemplate.ForceUpdate = service.Spec.TaskTemplate.ForceUpdate
+			// Recover stale mounts in the same update as deployment metadata, so a failed
+			// restart cannot erase the timestamp-based recovery signal.
+			if !isJob && slices.Contains(opts.ForceUpdateServices, internalName) {
+				serviceSpec.TaskTemplate.ForceUpdate++
+			}
 
 			updateOpts.Spec = serviceSpec
 
@@ -433,7 +438,7 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 			}
 
 			// query registry if flag disabling it was not set
-			if resolveImage == ResolveImageAlways || resolveImage == ResolveImageChanged {
+			if opts.ResolveImage == ResolveImageAlways || opts.ResolveImage == ResolveImageChanged {
 				createOpts.QueryRegistry = true
 			}
 
