@@ -73,6 +73,10 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 
 	// Hold the GC gate through deployment so another process cannot scan this
 	// store between publication and the deployment labels becoming visible.
+	// The gate is shared: GitStore/OCIStore each lock their own mutation (mirror fetch, artifact publish)
+	// internally, so any number of Prepare calls for this repository - at the same or different revisions -
+	// may run concurrently. Only the garbage collector takes it exclusively, before it removes artifacts or
+	// the whole store (see internal/gc).
 	unlockGC, err := sourcecache.AcquireSharedGCPathLock(internalRepoPath)
 	if err != nil {
 		return Result{}, wrapPrepareError(ErrPrepare, fmt.Errorf("acquire artifact GC lock: %w", err))
@@ -84,14 +88,6 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 			unlockGC()
 		}
 	}()
-
-	// Shared, not exclusive: GitStore/OCIStore each lock their own mutation
-	// (mirror fetch, artifact publish) internally, so any number of Prepare
-	// calls for this repository - at the same or different revisions - may run concurrently here.
-	// This only needs to exclude a concurrent destroy of the repository directory itself,
-	// via AcquireExclusivePathLock (see stage_3_destroy.go).
-	unlockSource := sourcecache.AcquireSharedPathLock(internalRepoPath)
-	defer unlockSource()
 
 	payload := req.Payload
 	resolvedRevision := strings.TrimSpace(payload.Digest)

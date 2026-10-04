@@ -67,6 +67,8 @@ The source directory is organized by source type and source name, and contains t
             artifacts/  # Immutable Git tree exports
               <revision>/  # Immutable export of a Git tree for a specific revision
               <revision>.lock  # Lock file for artifact access
+              <revision>.publish.lock  # Lock file for publishing the artifact
+              <revision>.published  # Identity of the published artifact directory
               ...
             mirror/  # Bare Git repository mirror
               HEAD
@@ -85,6 +87,7 @@ The source directory is organized by source type and source name, and contains t
                   root/  # Live copies of the files excluded from recreation
                   manifest.json  # Files copied from the source
             example.gc-use.lock  # Lock file for the garbage collector while the source is in use
+            example.last-used  # Time the source was last used
             example.lock  # Lock file for source-level operations
     ```
 
@@ -92,8 +95,9 @@ The source directory is organized by source type and source name, and contains t
       Its packfiles are [compacted](#git-mirror-compaction) automatically.
     - `artifacts/<revision>` is an immutable export of a Git tree. Deployments use this directory,
       allowing multiple revisions of the same source to be deployed in parallel.
-    - `mirror.lock`, `<revision>.lock`, and `submodules/<url-hash>.lock` coordinate access to shared
-      source data to prevent race conditions when multiple deployments are running in parallel.
+    - `mirror.lock`, `<revision>.lock`, `<revision>.publish.lock` and `submodules/<url-hash>.lock` coordinate access
+      to shared source data to prevent race conditions when multiple deployments are running in parallel.
+    - `<revision>.published` identifies the directory published as `artifacts/<revision>`, see [Removed artifacts](#removed-artifacts).
     - `submodules/<url-hash>` is a bare Git mirror of a submodule, named after the SHA-256 hash of its URL,
       when [`GIT_CLONE_SUBMODULES`](../Git-Settings.md#general) is enabled. Each submodule URL, including those of
       nested submodules, has one mirror that is shared by all revisions of the source. The files of a submodule
@@ -116,6 +120,8 @@ The source directory is organized by source type and source name, and contains t
             artifacts/  # Immutable OCI artifact exports
               sha256-<digest>/  # Extracted artifact for a specific digest
               sha256-<digest>.lock  # Lock file for artifact access
+              sha256-<digest>.publish.lock  # Lock file for publishing the artifact
+              sha256-<digest>.published  # Identity of the published artifact directory
               ...
             live/  # Mutable live files of stacks
               <context>/
@@ -123,14 +129,16 @@ The source directory is organized by source type and source name, and contains t
                   root/  # Live copies of the files excluded from recreation
                   manifest.json  # Files copied from the source
             example.gc-use.lock  # Lock file for the garbage collector while the source is in use
+            example.last-used  # Time the source was last used
             example.lock  # Lock file for source-level operations
     ```
 
     - `artifacts/<digest>` is an immutable extraction of the OCI artifact for a
       content digest. The digest is encoded in the directory name because `:`
       is not safe in Docker bind-mount source paths.
-    - `<digest>.lock` coordinates access while an artifact is being published
+    - `<digest>.lock` and `<digest>.publish.lock` coordinate access while an artifact is being published
       or used by a deployment.
+    - `<digest>.published` identifies the directory published as `artifacts/<digest>`, see [Removed artifacts](#removed-artifacts).
     - `live/<context>/<stack>` contains the [live files](#live-files) of a stack.
 
 ### Upgrading from v0.119.x or earlier
@@ -184,8 +192,42 @@ entirely with `#!yaml ARTIFACT_GC_ENABLED: false` if you prefer to manage disk u
 
 The number of copies each sweep removes and keeps per repository/artifact is exposed in the
 `doco_cd_artifact_gc_removed_total` and `doco_cd_artifact_gc_kept` [Prometheus metrics](../Endpoints/Metrics.md).
-Both stop being reported for a repository once its directory has been removed, e.g. by
-[`destroy.remove_dir`](../Deploy-Settings.md#destroy-settings).
+Both stop being reported for a repository once its source directory has been removed (see [Unused sources](#unused-sources)).
+
+### Unused sources
+
+All stacks deployed from a repository/artifact share its source directory, so destroying a stack never removes it
+(the former `destroy.remove_dir` deploy setting is deprecated and ignored).
+Instead, the garbage collector removes the whole source directory (Git mirror, artifacts, submodule mirrors and live files)
+once it has not been used for [`ARTIFACT_GC_SOURCE_TTL`](../App-Settings.md#artifact-garbage-collection-settings) (7 days by default).
+A source directory is kept as long as any of the following is true:
+
+- A container or Swarm service in any Docker context was deployed from it, regardless of whether it is running or
+  merely stopped, or its working directory or deploy config is still within it (e.g. a deployment from before the
+  artifact storage was introduced).
+- A deployment from it is in progress.
+- A deployment, poll or scheduled job used it within `ARTIFACT_GC_SOURCE_TTL`.
+- It contains the source directory of another source, e.g. the OCI artifact `ghcr.io/org/example/config` is stored
+  inside the source directory of `ghcr.io/org/example`.
+
+The time a source was last used is recorded as the modification time of the `<source>.last-used` file next to its directory.
+A source directory without this file (e.g. one created by an older version of doco-cd) is kept for `ARTIFACT_GC_SOURCE_TTL`
+after the first sweep. The lock files next to the directory (`<source>.lock` and `<source>.gc-use.lock`) are never removed.
+Set `#!yaml ARTIFACT_GC_SOURCE_TTL: 0` to keep unused source directories.
+
+### Removed artifacts
+
+If an artifact a deployed service uses was removed (e.g. manually or by `destroy.remove_dir` in an older version of doco-cd,
+see [#1962](https://github.com/kimdre/doco-cd/issues/1962)), the service is recreated on the next deployment of its stack,
+even if nothing changed. Its containers would otherwise keep using the removed directory, which appears empty to them.
+On file systems that record the creation time of files (e.g. ext4, XFS or Btrfs), this also applies if the artifact was
+published again since the containers were created.
+
+When a container restarts while its bind-mounted directory is missing, Docker re-creates the directory empty, and with it
+the directory of the artifact. To tell such a directory apart from the published artifact, the identity (inode and
+creation time) of every published artifact directory is recorded in `<revision>.published` next to it.
+An artifact directory that does not match its record is moved aside and published again. An artifact directory without
+a record (e.g. one published by an older version of doco-cd) is only used if it contains any files.
 
 ## Git Mirror Compaction
 

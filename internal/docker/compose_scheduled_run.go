@@ -639,15 +639,13 @@ func resolveScheduledSourceRepo(ref composeScheduledServiceRef, dataMountPath st
 	return preferredPath, labeled, nil
 }
 
-// lockScheduledSource protects a scheduled compose reload with a repository lock and, when available, an exclusive
-// lock on the published artifact. Legacy layouts use only the repository lock.
+// lockScheduledSource protects a scheduled compose reload with the repository's GC gate and, when available, an
+// exclusive lock on the published artifact. Legacy layouts use only the GC gate.
 func lockScheduledSource(ref composeScheduledServiceRef, dataMountPath, sourceRepoPath string) (func(), error) {
 	unlockGC, err := sourcecache.AcquireSharedGCPathLock(sourceRepoPath)
 	if err != nil {
 		return nil, err
 	}
-
-	unlockRepo := sourcecache.AcquireSharedPathLock(sourceRepoPath)
 
 	artifactRoot, deploymentStore, found := artifactAndStoreFromWorkingDir(ref.WorkingDir, dataMountPath)
 
@@ -655,7 +653,6 @@ func lockScheduledSource(ref composeScheduledServiceRef, dataMountPath, sourceRe
 	if found && filepath.Clean(deploymentStore) != filepath.Clean(sourceRepoPath) {
 		unlockDeploymentGC, err = sourcecache.AcquireSharedGCPathLock(deploymentStore)
 		if err != nil {
-			unlockRepo()
 			unlockGC()
 
 			return nil, err
@@ -676,7 +673,6 @@ func lockScheduledSource(ref composeScheduledServiceRef, dataMountPath, sourceRe
 			unlockDeploymentGC()
 		}
 
-		unlockRepo()
 		unlockGC()
 	}, nil
 }

@@ -73,6 +73,9 @@ const gcLockSuffix = ".gc-use"
 
 // AcquireSharedGCPathLock marks a source store as actively preparing or deploying without sharing a lock namespace with
 // source mutation locks. Unlike ordinary source locks, it fails rather than silently dropping cross-process protection.
+//
+// Every user of a store takes this lock, so it also records the store as used now (see TouchLastUsed). The artifact
+// garbage collector only removes a whole store once that record is old enough.
 func AcquireSharedGCPathLock(path string) (func(), error) {
 	key := canonicalLockKey(path + gcLockSuffix)
 
@@ -84,6 +87,12 @@ func AcquireSharedGCPathLock(path string) (func(), error) {
 	if err != nil {
 		mutex.RUnlock()
 		return nil, err
+	}
+
+	// A failed update leaves an older record behind. That can only make the garbage collector remove a store no
+	// deployment references sooner - never one held through this lock - so it is not fatal.
+	if err = TouchLastUsed(path); err != nil {
+		slog.Warn("failed to record source store use", slog.String("path", path), slog.Any("error", err))
 	}
 
 	var once sync.Once

@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 
 	"github.com/kimdre/doco-cd/internal/git"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 // maxRepoSearchDepth bounds how deep below the data directory a store base
@@ -59,6 +60,11 @@ func ListRepositoryDirs(dataDir string) ([]string, error) {
 			return nil
 		}
 
+		// A store being removed is not a store of its own.
+		if strings.HasSuffix(d.Name(), EvictingSuffix) {
+			return filepath.SkipDir
+		}
+
 		if isRepoRoot(path) {
 			dirs = append(dirs, path)
 			return filepath.SkipDir
@@ -77,6 +83,62 @@ func ListRepositoryDirs(dataDir string) ([]string, error) {
 
 	return dirs, nil
 }
+
+// EvictingSuffix marks a store base directory that is being removed as a whole: it is renamed to its path followed by
+// EvictingSuffix first, so it disappears in a single step.
+const EvictingSuffix = ".evicting"
+
+// ContainsNestedStore reports whether another store lives inside the store base directory repoDir, outside of the
+// store's own entries. Store names only have to be distinct, not disjoint: e.g. the OCI artifact
+// "registry/group/app/config" is stored inside the store of "registry/group/app". A nested store is recognized by its
+// layout or by the files its use leaves next to it, which remain after a failed or partial removal of the store itself.
+func ContainsNestedStore(repoDir string) (bool, error) {
+	found := false
+
+	err := filepath.WalkDir(repoDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if path == repoDir {
+			return nil
+		}
+
+		if !d.IsDir() {
+			if sourcecache.IsStoreUseFile(d.Name()) {
+				found = true
+				return filepath.SkipAll
+			}
+
+			return nil
+		}
+
+		rel, err := filepath.Rel(repoDir, path)
+		if err != nil {
+			return err
+		}
+
+		if slices.Contains(storeEntries, rel) {
+			return filepath.SkipDir
+		}
+
+		if isRepoRoot(path) {
+			found = true
+			return filepath.SkipAll
+		}
+
+		if strings.Count(filepath.ToSlash(rel), "/")+1 >= maxRepoSearchDepth {
+			return filepath.SkipDir
+		}
+
+		return nil
+	})
+
+	return found, err
+}
+
+// storeEntries are the directories of a store base directory that belong to the store itself.
+var storeEntries = []string{MirrorSubdir, ArtifactsSubdir, SubmodulesSubdir, LiveSubdir}
 
 // isRepoRoot reports whether dir is a store base directory.
 func isRepoRoot(dir string) bool {

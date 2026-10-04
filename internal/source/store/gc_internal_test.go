@@ -151,8 +151,12 @@ func TestSweep_RemovesArtifactLockFileAlongsideExpiredArtifact(t *testing.T) {
 	artifact := touchArtifact(t, baseDir, "expired", now, 2*time.Hour)
 
 	lockPath := artifact.Path + ".lock"
-	if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
-		t.Fatalf("create artifact lock file: %v", err)
+	publishLockPath := artifact.Path + publishLockSuffix + ".lock"
+
+	for _, path := range []string{lockPath, publishLockPath} {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatalf("create artifact lock file: %v", err)
+		}
 	}
 
 	result, err := Sweep(baseDir, nil, GCOptions{RetentionRecords: 0, RetentionTTL: time.Minute}, now)
@@ -164,8 +168,10 @@ func TestSweep_RemovesArtifactLockFileAlongsideExpiredArtifact(t *testing.T) {
 		t.Fatalf("Sweep() removed = %v, want to include %q", result.Removed, "expired")
 	}
 
-	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
-		t.Errorf("artifact lock file still exists on disk, stat err = %v", err)
+	for _, path := range []string{lockPath, publishLockPath, artifact.Path + publishedSuffix} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s still exists on disk, stat err = %v", filepath.Base(path), err)
+		}
 	}
 }
 
@@ -197,6 +203,10 @@ func TestSweep_KeepsLockFileOfLiveOrRetainedArtifact(t *testing.T) {
 
 	if _, err := os.Stat(lockPath); err != nil {
 		t.Errorf("live artifact's lock file was removed: %v", err)
+	}
+
+	if _, found, err := lookupArtifact(baseDir, "live"); err != nil || !found {
+		t.Errorf("lookupArtifact(live) after Sweep() = (found=%v, err=%v), want (true, nil)", found, err)
 	}
 }
 

@@ -351,12 +351,12 @@ The following settings can be used to configure how the deployed compose stack/p
 
 `destroy` accepts either a boolean or a nested object in the deployment configuration file. Use `destroy: true` to enable destructive removal with default options, or use the object form below to customize which resources are removed.
 
-| Key              | Type    | Description                                                                                                                                                                                                                                                                       | Default value |
-|------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `enabled`        | boolean | Enable destructive removal of the deployment and its resources.                                                                                                                                                                                                                   | `false`       |
-| `remove_volumes` | boolean | Remove all volumes used by the deployment (always `true` in docker swarm mode)                                                                                                                                                                                                    | `true`        |
-| `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                                                                                                                           | `true`        |
-| `remove_dir`     | boolean | Remove the cloned repository in the data directory after the deployment is removed (Setting this to `false` is useful e.g. when you use bind mounts with relative paths and want to keep the data or if you have multiple services in the same repo and only wish to destroy one) | `true`        |
+| Key              | Type    | Description                                                                                                                                                                                                                                                                                                | Default value |
+|------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`        | boolean | Enable destructive removal of the deployment and its resources.                                                                                                                                                                                                                                            | `false`       |
+| `remove_volumes` | boolean | Remove all volumes used by the deployment (always `true` in docker swarm mode)                                                                                                                                                                                                                             | `true`        |
+| `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                                                                                                                                                    | `true`        |
+| `remove_dir`     | boolean | **Deprecated** and ignored. All stacks deployed from a repository share its source directory in the data directory, so destroying a stack no longer removes it. Source directories that are no longer used are removed by the [artifact garbage collection](Reference/Artifact-Storage.md#unused-sources). | `false`       |
 
 !!! example
 
@@ -367,7 +367,7 @@ The following settings can be used to configure how the deployed compose stack/p
         destroy: true
         ```
     
-        This shorthand enables destruction with the default options (`remove_volumes: true`, `remove_images: true`, `remove_dir: true`).
+        This shorthand enables destruction with the default options (`remove_volumes: true`, `remove_images: true`).
 
     === "Object with custom options"
 
@@ -377,7 +377,6 @@ The following settings can be used to configure how the deployed compose stack/p
           enabled: true
           remove_volumes: true
           remove_images: false
-          remove_dir: false
         ```
 
 ### Reconciliation Settings

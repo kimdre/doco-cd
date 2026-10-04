@@ -2,8 +2,11 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+
+	"github.com/docker/cli/cli/compose/convert"
 )
 
 // deploySwarmRuntime deploys a swarm stack using the provided request parameters.
@@ -45,6 +48,16 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) error {
 		req.recordError()
 
 		return fmt.Errorf("failed to deploy swarm stack %s: %w", deployConfig.Name, err)
+	}
+
+	// Updating a service whose spec is unchanged keeps its tasks, which still mount the removed artifact.
+	namespace := convert.NewNamespace(deployConfig.Name)
+	for _, service := range staleArtifactServices(req.request.DetectedChanges) {
+		if err = RestartService(ctx, req.request.DockerCLI.Client(), namespace.Scope(service)); err != nil &&
+			!errors.Is(err, ErrJobServiceRestartNotSupported) {
+			req.stackLog.Warn("failed to restart service whose artifact was replaced",
+				slog.String("service", service), slog.Any("error", err))
+		}
 	}
 
 	if configRetention >= 0 {

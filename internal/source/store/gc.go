@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -56,7 +57,8 @@ type GCResult struct {
 // cache, and any in-progress temporary publish directory are never listed
 // as candidates in the first place, so they can never be removed here. Once
 // a candidate is actually removed, its "<path>.lock" sibling - left behind
-// by DeployStack's per-artifact cross-process lock - is removed alongside it.
+// by DeployStack's per-artifact cross-process lock - is removed alongside it,
+// as are its publish record and publish lock file.
 //
 // A single artifact that fails to stat or remove is recorded as kept and
 // does not stop the sweep of the others; all such errors are joined and
@@ -130,6 +132,14 @@ func Sweep(baseDir string, live set.Set[Revision], opts GCOptions, now time.Time
 		// reported, since Removed must still reflect the artifact itself.
 		if err = os.Remove(c.Path + ".lock"); err != nil && !os.IsNotExist(err) {
 			errs = append(errs, fmt.Errorf("remove artifact lock file %s: %w", c.Revision, err))
+		}
+
+		// The publish record and lock (see publishedSuffix and publishLockSuffix) belong to the removed directory
+		// as well. A publish of the same revision later on writes a new record either way.
+		for _, sibling := range []string{c.Path + publishedSuffix, c.Path + publishLockSuffix + ".lock"} {
+			if err = os.Remove(sibling); err != nil && !os.IsNotExist(err) {
+				errs = append(errs, fmt.Errorf("remove artifact file %s: %w", filepath.Base(sibling), err))
+			}
 		}
 
 		result.Removed = append(result.Removed, c.Artifact)

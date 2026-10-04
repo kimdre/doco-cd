@@ -442,3 +442,51 @@ func parseLockEvents(t *testing.T, logPath string) []lockEvent {
 
 	return events
 }
+
+func TestAcquireSharedGCPathLock_RecordsUse(t *testing.T) {
+	t.Parallel()
+
+	repoDir := filepath.Join(t.TempDir(), "github.com", "owner", "repo")
+
+	if _, ok, err := sourcecache.LastUsed(repoDir); err != nil || ok {
+		t.Fatalf("LastUsed() before first use = %v, %v; want no record", ok, err)
+	}
+
+	old := time.Now().Add(-24 * time.Hour)
+
+	if err := sourcecache.TouchLastUsed(repoDir); err != nil {
+		t.Fatalf("TouchLastUsed: %v", err)
+	}
+
+	if err := os.Chtimes(repoDir+".last-used", old, old); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	unlock, err := sourcecache.AcquireSharedGCPathLock(repoDir)
+	if err != nil {
+		t.Fatalf("AcquireSharedGCPathLock: %v", err)
+	}
+
+	unlock()
+
+	lastUsed, ok, err := sourcecache.LastUsed(repoDir)
+	if err != nil || !ok {
+		t.Fatalf("LastUsed() = %v, %v, %v; want a record", lastUsed, ok, err)
+	}
+
+	if !lastUsed.After(old) {
+		t.Fatalf("LastUsed() = %s, want it refreshed after %s", lastUsed, old)
+	}
+
+	if err = sourcecache.RemoveLastUsed(repoDir); err != nil {
+		t.Fatalf("RemoveLastUsed: %v", err)
+	}
+
+	if _, ok, err = sourcecache.LastUsed(repoDir); err != nil || ok {
+		t.Fatalf("LastUsed() after removal = %v, %v; want no record", ok, err)
+	}
+
+	if err = sourcecache.RemoveLastUsed(repoDir); err != nil {
+		t.Fatalf("RemoveLastUsed of a missing record: %v", err)
+	}
+}

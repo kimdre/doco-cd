@@ -31,8 +31,12 @@ destroy: true
 			t.Fatal("expected destroy.enabled to be true")
 		}
 
-		if !configs[0].Destroy.RemoveVolumes || !configs[0].Destroy.RemoveImages || !configs[0].Destroy.RemoveRepoDir {
+		if !configs[0].Destroy.RemoveVolumes || !configs[0].Destroy.RemoveImages {
 			t.Fatalf("expected destroy defaults to stay true, got %+v", configs[0].Destroy)
+		}
+
+		if configs[0].Destroy.RemoveRepoDir {
+			t.Fatalf("expected deprecated destroy.remove_dir to default to false, got %+v", configs[0].Destroy)
 		}
 	})
 
@@ -106,8 +110,12 @@ destroy: true
 			t.Fatal("expected destroy.enabled to be true")
 		}
 
-		if !cfg.Destroy.RemoveVolumes || !cfg.Destroy.RemoveImages || !cfg.Destroy.RemoveRepoDir {
+		if !cfg.Destroy.RemoveVolumes || !cfg.Destroy.RemoveImages {
 			t.Fatalf("expected destroy defaults to stay true, got %+v", cfg.Destroy)
+		}
+
+		if cfg.Destroy.RemoveRepoDir {
+			t.Fatalf("expected deprecated destroy.remove_dir to default to false, got %+v", cfg.Destroy)
 		}
 	})
 }

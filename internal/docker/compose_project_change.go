@@ -232,6 +232,10 @@ func HasChangedBuildFiles(repoPathExternal string, paths []string, project *type
 	return slice.Unique(changedServices), nil
 }
 
+// ChangeTypeStaleArtifact marks services whose containers no longer see the artifact directory they were created
+// from, because it was removed or published again since.
+const ChangeTypeStaleArtifact = "stale_artifact"
+
 type Change struct {
 	Type     string
 	Services []string
@@ -253,6 +257,19 @@ func forcedRecreateServices(detectedChanges []Change) set.Set[string] {
 	}
 
 	return forced
+}
+
+// staleArtifactServices returns the services of the ChangeTypeStaleArtifact changes.
+func staleArtifactServices(detectedChanges []Change) []string {
+	var services []string
+
+	for _, change := range detectedChanges {
+		if change.Type == ChangeTypeStaleArtifact {
+			services = append(services, change.Services...)
+		}
+	}
+
+	return slice.Unique(services)
 }
 
 // sortChanges sorts the changes first by type and then by service name within each change.

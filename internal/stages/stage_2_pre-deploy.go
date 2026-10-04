@@ -336,6 +336,17 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	// project would touch nothing. Force recreate so the retry re-runs it all.
 	retryForceRecreate := retryAfterFailure && lastFailure.Stage == string(StageDeploy)
 
+	// Services whose artifact was removed must be recreated even if nothing changed, see staleArtifactServices.
+	staleArtifacts := staleArtifactServices(deployedState.DeployedStatus,
+		s.Docker.DataMountPoint.Source, s.Docker.DataMountPoint.Destination, stageLog)
+	for _, stale := range staleArtifacts {
+		stageLog.Warn("artifact of deployed service is missing or was replaced since it was deployed, recreating service",
+			slog.String("service", stale.Service),
+			slog.String("artifact", stale.Artifact),
+			slog.String("reason", stale.Reason),
+		)
+	}
+
 	autoDiscoveryDriftServices, deployedAutoDiscoveryLabel := autoDiscoveryConfigLabelDriftServices(
 		deployedState.DeployedStatus,
 		s.DeployConfig.AutoDiscovery,
@@ -354,7 +365,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 	cachedSkip := false
 
-	if shouldTryCachedProjectSkip(s.DeployConfig.AutoDiscovery.Enabled, retryAfterFailure,
+	if len(staleArtifacts) == 0 && shouldTryCachedProjectSkip(s.DeployConfig.AutoDiscovery.Enabled, retryAfterFailure,
 		s.DeployState.modeMigrationNeeded, autoDiscoveryConfigChanged) {
 		startedAt := time.Now()
 		cachedSkip = s.skipFromCachedProject(stageLog, deployedState.GetDeploymentCommitSHA(),
@@ -390,7 +401,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		if !s.DeployState.modeMigrationNeeded &&
 			shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest, deployedProjectHash, resolvedProjectHash) &&
 			!autoDiscoveryConfigChanged &&
-			!retryAfterFailure {
+			!retryAfterFailure &&
+			len(staleArtifacts) == 0 {
 			stageLog.Debug("OCI artifact digest and compose project unchanged, skipping deployment",
 				slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
 				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
@@ -422,6 +434,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			s.DeployState.changedServices = append(s.DeployState.changedServices, docker.Change{
 				Type: docker.ChangeTypeFailedDeployRetry,
 			})
+		}
+
+		if len(staleArtifacts) > 0 {
+			s.DeployState.changedServices = append(s.DeployState.changedServices, staleArtifactChange(staleArtifacts))
 		}
 
 		return nil
@@ -593,6 +609,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			changedServices = append(changedServices, docker.Change{
 				Type: docker.ChangeTypeFailedDeployRetry,
 			})
+		}
+
+		if len(staleArtifacts) > 0 {
+			changedServices = append(changedServices, staleArtifactChange(staleArtifacts))
 		}
 
 		mismatchServices := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus, s.Docker.Project.Services)

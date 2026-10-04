@@ -147,8 +147,8 @@ type DeployRequest struct {
 	ExternalRepoPath string       `validate:"required"`
 	// InternalRepoPath is the repository's container-internal path.
 	// For a prepared deployment this is the published artifact directory for the deployed revision (Result.PathInternal),
-	// not the repository's top-level directory that Prepare itself locks (with a shared lock,
-	// see sourcecache.AcquireSharedPathLock). DeployStack takes an exclusive lock on this path while loading
+	// not the repository's top-level directory whose GC gate Prepare holds
+	// (see sourcecache.AcquireSharedGCPathLock). DeployStack takes an exclusive lock on this path while loading
 	// the Compose project (which decrypts files in place), so two deployments landing on the exact same
 	// revision never race on the same in-place decryption. Optional: falls back to ExternalRepoPath when empty.
 	InternalRepoPath string

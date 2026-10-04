@@ -1193,6 +1193,10 @@ func TestGetConfig_ArtifactGCDefaults(t *testing.T) {
 	if cfg.ArtifactGCInterval != 10*time.Minute {
 		t.Fatalf("expected ArtifactGCInterval default to be 10m, got %s", cfg.ArtifactGCInterval)
 	}
+
+	if cfg.ArtifactGCSourceTTL != 7*24*time.Hour {
+		t.Fatalf("expected ArtifactGCSourceTTL default to be 168h, got %s", cfg.ArtifactGCSourceTTL)
+	}
 }
 
 func TestGetConfig_ArtifactGCDisabled(t *testing.T) {

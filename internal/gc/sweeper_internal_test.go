@@ -70,7 +70,7 @@ func TestSweeper_SweepRepoDir_RemovesUnreferencedExpiredArtifact(t *testing.T) {
 		t.Fatalf("Chtimes: %v", err)
 	}
 
-	s.sweepRepoDir(repoDir, nil)
+	s.sweepRepoDir(context.Background(), repoDir, nil)
 
 	if _, err := os.Stat(artifactPath); !os.IsNotExist(err) {
 		t.Fatalf("expired artifact still exists, stat err = %v", err)
@@ -97,7 +97,7 @@ func TestSweeper_SweepRepoDir_KeepsLiveArtifact(t *testing.T) {
 		"owner/example-repo": set.New[store.Revision]("live"),
 	}
 
-	s.sweepRepoDir(repoDir, live)
+	s.sweepRepoDir(context.Background(), repoDir, live)
 
 	if _, err := os.Stat(artifactPath); err != nil {
 		t.Fatalf("live artifact was removed unexpectedly, stat err = %v", err)
@@ -122,7 +122,7 @@ func TestSweeper_SweepRepoDir_KeepsInFlightArtifactEvenWithoutLabel(t *testing.T
 	release := source.MarkInFlight("github.com/owner/example-repo", "inflight")
 	defer release()
 
-	s.sweepRepoDir(repoDir, nil)
+	s.sweepRepoDir(context.Background(), repoDir, nil)
 
 	if _, err := os.Stat(artifactPath); err != nil {
 		t.Fatalf("in-flight artifact was removed unexpectedly, stat err = %v", err)
@@ -149,7 +149,7 @@ func TestSweeper_SweepRepoDir_ReportsMetrics(t *testing.T) {
 	// The counter survives repeated runs of this test (go test -count=N), so only its increase is checked.
 	removedBefore := testutil.ToFloat64(prometheus.ArtifactGCRemovedTotal.WithLabelValues(repoName))
 
-	s.sweepRepoDir(repoDir, nil)
+	s.sweepRepoDir(context.Background(), repoDir, nil)
 
 	if got := testutil.ToFloat64(prometheus.ArtifactGCRemovedTotal.WithLabelValues(repoName)) - removedBefore; got != 1 {
 		t.Errorf("artifact_gc_removed_total increased by %v, want 1", got)
@@ -219,7 +219,7 @@ func TestSweeper_SweepRepoDir_LeavesKeptMetricWhenSweepCannotList(t *testing.T) 
 		return store.GCResult{}, errors.New("list artifacts: permission denied")
 	}
 
-	s.sweepRepoDir(repoDir, nil)
+	s.sweepRepoDir(context.Background(), repoDir, nil)
 
 	if got := testutil.ToFloat64(prometheus.ArtifactGCKept.WithLabelValues(repoName)); got != 3 {
 		t.Errorf("artifact_gc_kept = %v, want the previous value 3", got)
@@ -384,6 +384,264 @@ func TestRepositoryKeyMatches(t *testing.T) {
 	for _, tc := range tests {
 		if got := repositoryKeyMatches(tc.repoName, tc.liveKey); got != tc.want {
 			t.Errorf("repositoryKeyMatches(%q, %q) = %v, want %v", tc.repoName, tc.liveKey, got, tc.want)
+		}
+	}
+}
+
+// newEvictionTestSource creates a complete, unused source store - mirror, artifact and live files - whose last use was
+// recorded lastUsedAgo ago, and returns its directory.
+func newEvictionTestSource(t *testing.T, dataMountPoint, repoName string, lastUsedAgo time.Duration) string {
+	t.Helper()
+
+	repoDir := filepath.Join(dataMountPoint, filepath.FromSlash(repoName))
+	makeArtifactDir(t, repoDir, "rev")
+
+	for _, dir := range []string{store.MirrorSubdir, filepath.Join(store.LiveSubdir, "default", "stack", "root")} {
+		if err := os.MkdirAll(filepath.Join(repoDir, dir), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	if err := sourcecache.TouchLastUsed(repoDir); err != nil {
+		t.Fatalf("TouchLastUsed: %v", err)
+	}
+
+	lastUsed := time.Now().Add(-lastUsedAgo)
+	if err := os.Chtimes(repoDir+".last-used", lastUsed, lastUsed); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	return repoDir
+}
+
+func newEvictionTestSweeper(t *testing.T) (*Sweeper, string, *[]string) {
+	t.Helper()
+
+	s, dataMountPoint := newTestSweeper(t)
+	s.sourceTTL = time.Hour
+
+	var checked []string
+
+	s.referencedBy = func(_ context.Context, repoDir string) ([]string, error) {
+		checked = append(checked, repoDir)
+		return nil, nil
+	}
+
+	return s, dataMountPoint, &checked
+}
+
+func TestSweeper_Sweep_EvictsUnusedSource(t *testing.T) {
+	t.Parallel()
+
+	s, dataMountPoint, checked := newEvictionTestSweeper(t)
+	repoDir := newEvictionTestSource(t, dataMountPoint, "github.com/owner/evict-unused", 2*time.Hour)
+
+	s.sweep(context.Background())
+
+	if _, err := os.Stat(repoDir); !os.IsNotExist(err) {
+		t.Fatalf("unused source still exists, stat err = %v", err)
+	}
+
+	for _, path := range []string{repoDir + store.EvictingSuffix, repoDir + ".last-used"} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s still exists after eviction, stat err = %v", path, err)
+		}
+	}
+
+	// The GC gate's lock file must outlive the store it guards.
+	if _, err := os.Stat(repoDir + ".gc-use.lock"); err != nil {
+		t.Errorf("GC lock file was removed with the source, stat err = %v", err)
+	}
+
+	if len(*checked) != 1 || (*checked)[0] != repoDir {
+		t.Errorf("reference check ran for %v, want exactly [%s]", *checked, repoDir)
+	}
+}
+
+func TestSweeper_Sweep_KeepsSource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		lastUsedAgo time.Duration
+		// prepare adjusts the sweeper or the environment and returns a cleanup function.
+		prepare func(t *testing.T, s *Sweeper, repoName string) func()
+	}{
+		{
+			name:        "used recently",
+			lastUsedAgo: 10 * time.Minute,
+		},
+		{
+			name:        "source removal disabled",
+			lastUsedAgo: 2 * time.Hour,
+			prepare: func(_ *testing.T, s *Sweeper, _ string) func() {
+				s.sourceTTL = 0
+				return func() {}
+			},
+		},
+		{
+			name:        "revision deployed",
+			lastUsedAgo: 2 * time.Hour,
+			prepare: func(_ *testing.T, s *Sweeper, repoName string) func() {
+				s.liveRevisions = func(context.Context, *docker.ContextRegistry, *slog.Logger, string, string) (map[string]set.Set[store.Revision], error) {
+					return map[string]set.Set[store.Revision]{repoName: set.New[store.Revision]("other-rev")}, nil
+				}
+
+				return func() {}
+			},
+		},
+		{
+			name:        "deployment in progress",
+			lastUsedAgo: 2 * time.Hour,
+			prepare: func(_ *testing.T, _ *Sweeper, repoName string) func() {
+				return source.MarkInFlight(repoName, "not-yet-published")
+			},
+		},
+		{
+			name:        "working directory referenced",
+			lastUsedAgo: 2 * time.Hour,
+			prepare: func(_ *testing.T, s *Sweeper, _ string) func() {
+				s.referencedBy = func(context.Context, string) ([]string, error) {
+					return []string{"legacy-container"}, nil
+				}
+
+				return func() {}
+			},
+		},
+		{
+			name:        "reference check failed",
+			lastUsedAgo: 2 * time.Hour,
+			prepare: func(_ *testing.T, s *Sweeper, _ string) func() {
+				s.referencedBy = func(context.Context, string) ([]string, error) {
+					return nil, errors.New("context unavailable")
+				}
+
+				return func() {}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			s, dataMountPoint, _ := newEvictionTestSweeper(t)
+
+			// In-flight records are process-global, so every case uses its own repository name.
+			repoName := "github.com/owner/keep-" + filepath.Base(t.Name())
+			repoDir := newEvictionTestSource(t, dataMountPoint, repoName, tc.lastUsedAgo)
+
+			if tc.prepare != nil {
+				defer tc.prepare(t, s, repoName)()
+			}
+
+			s.sweep(context.Background())
+
+			if _, err := os.Stat(filepath.Join(repoDir, store.MirrorSubdir)); err != nil {
+				t.Fatalf("source was removed, stat err = %v", err)
+			}
+		})
+	}
+}
+
+// OCI store names can nest, e.g. "registry/group/app/config" inside the store of "registry/group/app".
+func TestSweeper_Sweep_KeepsSourceContainingNestedStore(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		dirs  []string
+		files []string
+	}{
+		"nested store":                      {dirs: []string{filepath.Join("config", store.ArtifactsSubdir, "rev")}},
+		"deeper nested store":               {dirs: []string{filepath.Join("group", "config", store.MirrorSubdir)}},
+		"GC gate of a removed nested store": {files: []string{"config.gc-use.lock"}},
+		"use record of a nested store":      {dirs: []string{"group"}, files: []string{filepath.Join("group", "config.last-used")}},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s, dataMountPoint, _ := newEvictionTestSweeper(t)
+			repoDir := newEvictionTestSource(t, dataMountPoint, "registry.example.com/group/app", 2*time.Hour)
+
+			for _, dir := range tc.dirs {
+				if err := os.MkdirAll(filepath.Join(repoDir, dir), 0o755); err != nil {
+					t.Fatalf("mkdir %s: %v", dir, err)
+				}
+			}
+
+			for _, file := range tc.files {
+				if err := os.WriteFile(filepath.Join(repoDir, file), nil, 0o600); err != nil {
+					t.Fatalf("write %s: %v", file, err)
+				}
+			}
+
+			s.sweep(context.Background())
+
+			if _, err := os.Stat(filepath.Join(repoDir, store.MirrorSubdir)); err != nil {
+				t.Fatalf("source containing another source was removed, stat err = %v", err)
+			}
+		})
+	}
+}
+
+func TestSweeper_Sweep_StartsCountingForSourceWithoutUseRecord(t *testing.T) {
+	t.Parallel()
+
+	s, dataMountPoint, checked := newEvictionTestSweeper(t)
+	repoDir := newEvictionTestSource(t, dataMountPoint, "github.com/owner/no-record", 2*time.Hour)
+
+	if err := sourcecache.RemoveLastUsed(repoDir); err != nil {
+		t.Fatalf("RemoveLastUsed: %v", err)
+	}
+
+	s.sweep(context.Background())
+
+	if _, err := os.Stat(filepath.Join(repoDir, store.MirrorSubdir)); err != nil {
+		t.Fatalf("source without a use record was removed, stat err = %v", err)
+	}
+
+	lastUsed, ok, err := sourcecache.LastUsed(repoDir)
+	if err != nil || !ok {
+		t.Fatalf("LastUsed() = %v, %v, %v; want a fresh record", lastUsed, ok, err)
+	}
+
+	if time.Since(lastUsed) > time.Minute {
+		t.Errorf("use record is %s old, want it started now", time.Since(lastUsed))
+	}
+
+	if len(*checked) != 0 {
+		t.Errorf("reference check ran for %v, want none", *checked)
+	}
+}
+
+func TestSweeper_Sweep_RetriesFailedEviction(t *testing.T) {
+	t.Parallel()
+
+	s, dataMountPoint, _ := newEvictionTestSweeper(t)
+	repoDir := newEvictionTestSource(t, dataMountPoint, "github.com/owner/retry-evict", 2*time.Hour)
+
+	// A store an earlier eviction moved aside but failed to delete.
+	staleTrash := filepath.Join(repoDir+store.EvictingSuffix, store.ArtifactsSubdir, "old")
+	if err := os.MkdirAll(staleTrash, 0o755); err != nil {
+		t.Fatalf("mkdir stale trash: %v", err)
+	}
+
+	dirs, err := store.ListRepositoryDirs(dataMountPoint)
+	if err != nil {
+		t.Fatalf("ListRepositoryDirs() error = %v", err)
+	}
+
+	if len(dirs) != 1 || dirs[0] != repoDir {
+		t.Fatalf("ListRepositoryDirs() = %v, want only %s", dirs, repoDir)
+	}
+
+	s.sweep(context.Background())
+
+	for _, path := range []string{repoDir, repoDir + store.EvictingSuffix} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s still exists after eviction, stat err = %v", path, err)
 		}
 	}
 }

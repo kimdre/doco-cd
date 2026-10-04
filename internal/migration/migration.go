@@ -67,6 +67,19 @@ func contextsReferenceChecker(contexts *docker.ContextRegistry, dataMountSource,
 	}
 }
 
+// ReferencedAcrossContexts returns every container, Swarm service or Swarm task on any configured Docker context whose
+// working directory lies inside repoDir, the in-container path of a source store below dataMountDestination. It fails
+// closed: an error is returned when a context could not be inspected and no reference was found elsewhere.
+func ReferencedAcrossContexts(
+	ctx context.Context,
+	contexts *docker.ContextRegistry,
+	dataMountSource string,
+	dataMountDestination string,
+	repoDir string,
+) ([]string, error) {
+	return contextsReferenceChecker(contexts, dataMountSource, dataMountDestination)(ctx, repoDir, nil)
+}
+
 // LeftoverTracker remembers, for the lifetime of the process, which repository directories are
 // already known to be free of legacy leftovers, so CleanupRepoLeftovers can skip redundant
 // checks for them. A repository can never regain a legacy on-disk layout once migrated, so a
@@ -969,8 +982,19 @@ func isActiveSwarmTask(task swarmTypes.Task) bool {
 	}
 }
 
+// labelsReferenceLegacyPath reports whether the deployment or config working directory recorded in labels lies inside
+// one of repoDirs, outside of its keep entries.
 func labelsReferenceLegacyPath(labels map[string]string, repoDirs []string, keep []string) bool {
-	workingDir := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.WorkingDir])
+	for _, key := range []string{docker.DocoCDLabels.Deployment.WorkingDir, docker.DocoCDLabels.Source.ConfigWorkingDir} {
+		if workingDirReferencesPath(strings.TrimSpace(labels[key]), repoDirs, keep) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func workingDirReferencesPath(workingDir string, repoDirs []string, keep []string) bool {
 	if workingDir == "" {
 		return false
 	}
