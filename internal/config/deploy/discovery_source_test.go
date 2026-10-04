@@ -352,6 +352,92 @@ destroy:
 	}
 }
 
+func TestGetConfigs_NestedYAMLMergePrecedence(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		nested string
+		want   DestroyConfig
+	}{
+		{
+			name:   "explicit false replaces merged mapping",
+			nested: "base: &base\n  destroy: {remove_volumes: true}\n<<: *base\ndestroy: false\n",
+			want:   DestroyConfig{RemoveVolumes: true, RemoveImages: true},
+		},
+		{
+			name:   "explicit false wins before merge key",
+			nested: "base: &base\n  destroy: {remove_volumes: true}\ndestroy: false\n<<: *base\n",
+			want:   DestroyConfig{RemoveVolumes: true, RemoveImages: true},
+		},
+		{
+			name:   "explicit null discards merged mapping and inherits",
+			nested: "base: &base\n  destroy: {enabled: false, remove_volumes: false}\n<<: *base\ndestroy: null\n",
+			want:   DestroyConfig{Enabled: true, RemoveVolumes: true, RemoveImages: true},
+		},
+		{
+			name:   "explicit mapping replaces merged children",
+			nested: "base: &base\n  destroy: {enabled: false, remove_volumes: false}\n<<: *base\ndestroy: {remove_images: false}\n",
+			want:   DestroyConfig{Enabled: true, RemoveVolumes: true},
+		},
+		{
+			name:   "merge sequence first scalar wins",
+			nested: "first: &first\n  destroy: false\nsecond: &second\n  destroy: {remove_volumes: false}\n<<: [*first, *second]\n",
+			want:   DestroyConfig{RemoveVolumes: true, RemoveImages: true},
+		},
+		{
+			name:   "merge sequence first mapping replaces later children",
+			nested: "first: &first\n  destroy: {remove_images: false}\nsecond: &second\n  destroy: {enabled: false, remove_volumes: false}\n<<: [*first, *second]\n",
+			want:   DestroyConfig{Enabled: true, RemoveVolumes: true},
+		},
+		{
+			name:   "merge sequence first null shadows later mapping",
+			nested: "first: &first\n  destroy: null\nsecond: &second\n  destroy: {enabled: false, remove_volumes: false}\n<<: [*first, *second]\n",
+			want:   DestroyConfig{Enabled: true, RemoveVolumes: true, RemoveImages: true},
+		},
+		{
+			name:   "explicit null child shadows merged child and inherits",
+			nested: "base: &base\n  enabled: false\n  remove_volumes: false\ndestroy:\n  <<: *base\n  remove_volumes: null\n",
+			want:   DestroyConfig{RemoveVolumes: true, RemoveImages: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			for name, contents := range map[string]string{
+				".doco-cd.yaml":       "auto_discovery: true\ndestroy: {enabled: true, remove_volumes: true, remove_images: true}\n",
+				"alpha/compose.yaml":  "services: {}\n",
+				"alpha/.doco-cd.yaml": tt.nested,
+			} {
+				target := filepath.Join(dir, filepath.FromSlash(name))
+				if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
+					t.Fatal(err)
+				}
+
+				if err := createTestFile(t, target, contents); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			configs, err := GetConfigs(t.Context(), dir, ".", "", DefaultReference, "", "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(configs) != 1 {
+				t.Fatalf("discovered %d configs, want one", len(configs))
+			}
+
+			if configs[0].Destroy != tt.want {
+				t.Fatalf("nested destroy = %+v, want %+v", configs[0].Destroy, tt.want)
+			}
+		})
+	}
+}
+
 func TestYAMLKeysOf(t *testing.T) {
 	t.Parallel()
 

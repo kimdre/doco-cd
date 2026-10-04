@@ -47,44 +47,22 @@ func yamlKeysOf(contents []byte) (*yamlKeys, error) {
 
 // addMapping adds the keys set by node to k, if node is a mapping.
 func (w *yamlKeyWalker) addMapping(k *yamlKeys, node *yaml.Node) error {
-	node = resolveYAMLAlias(node)
-	if node == nil || node.Kind != yaml.MappingNode {
-		return nil
+	values, err := w.mappingValues(node)
+	if err != nil {
+		return err
 	}
 
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if w.visits++; w.visits > maxYAMLKeyVisits {
-			return errTooManyYAMLKeys
-		}
-
-		key, value := node.Content[i], resolveYAMLAlias(node.Content[i+1])
-		if value == nil {
+	for name, value := range values {
+		value = resolveYAMLAlias(value)
+		if value == nil || value.ShortTag() == "!!null" {
 			continue
 		}
 
-		if key.Kind == yaml.ScalarNode && key.Value == "<<" && key.ShortTag() == "!!merge" {
-			if err := w.addMerged(k, value); err != nil {
-				return err
-			}
-
-			continue
-		}
-
-		if value.ShortTag() == "!!null" {
-			continue
-		}
-
-		child, ok := k.children[key.Value]
-		if !ok {
-			child = &yamlKeys{}
-			k.children[key.Value] = child
-		}
+		child := &yamlKeys{}
+		k.children[name] = child
 
 		if value.Kind == yaml.MappingNode {
-			if child.children == nil {
-				child.children = map[string]*yamlKeys{}
-			}
-
+			child.children = map[string]*yamlKeys{}
 			if err := w.addMapping(child, value); err != nil {
 				return err
 			}
@@ -94,14 +72,71 @@ func (w *yamlKeyWalker) addMapping(k *yamlKeys, node *yaml.Node) error {
 	return nil
 }
 
-// addMerged adds the keys of a merge key value, a mapping or a sequence of mappings, to k.
-func (w *yamlKeyWalker) addMerged(k *yamlKeys, value *yaml.Node) error {
+// mappingValues resolves YAML's shallow merge precedence before walking children.
+// Null values still shadow merged keys, although they do not count as set.
+func (w *yamlKeyWalker) mappingValues(node *yaml.Node) (map[string]*yaml.Node, error) {
+	node = resolveYAMLAlias(node)
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil, nil
+	}
+
+	values := make(map[string]*yaml.Node)
+
+	var merges []*yaml.Node
+
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if w.visits++; w.visits > maxYAMLKeyVisits {
+			return nil, errTooManyYAMLKeys
+		}
+
+		key, value := node.Content[i], node.Content[i+1]
+
+		if key.Kind == yaml.ScalarNode && key.Value == "<<" && key.ShortTag() == "!!merge" {
+			merges = append(merges, value)
+			continue
+		}
+
+		values[key.Value] = value
+	}
+
+	for _, merge := range merges {
+		if err := w.addMerged(values, merge); err != nil {
+			return nil, err
+		}
+	}
+
+	return values, nil
+}
+
+// addMerged fills missing keys only: explicit keys and earlier sequence entries win.
+func (w *yamlKeyWalker) addMerged(values map[string]*yaml.Node, value *yaml.Node) error {
+	value = resolveYAMLAlias(value)
+	if value == nil {
+		return nil
+	}
+
 	if value.Kind != yaml.SequenceNode {
-		return w.addMapping(k, value)
+		merged, err := w.mappingValues(value)
+		if err != nil {
+			return err
+		}
+
+		for name, node := range merged {
+			if _, exists := values[name]; !exists {
+				values[name] = node
+			}
+		}
+
+		return nil
 	}
 
 	for _, item := range value.Content {
-		if err := w.addMapping(k, item); err != nil {
+		item = resolveYAMLAlias(item)
+		if item == nil || item.Kind != yaml.MappingNode {
+			continue
+		}
+
+		if err := w.addMerged(values, item); err != nil {
 			return err
 		}
 	}
