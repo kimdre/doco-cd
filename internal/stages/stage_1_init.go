@@ -7,6 +7,7 @@ import (
 	"maps"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -403,16 +404,94 @@ func (s *StageManager) checkDestroyOwnership(ctx context.Context) error {
 
 // servicesBelongToRepository reports whether all services with serviceLabels were deployed from repository.
 // A stack is labeled with the repository its deploy config was read from, or, with a repository_url, with
-// the repository it is deployed from, depending on the trigger. An OCI source matches regardless of its tag.
+// the repository it is deployed from, depending on the trigger. URLs prove ownership including source
+// type and host; name aliases alone are insufficient. Explicit destroy accepts OCI revisions of the
+// same repository, while auto-discovery cleanup remains scoped to a stable source reference.
 func servicesBelongToRepository(serviceLabels map[docker.Service]docker.Labels, repository *RepositoryData) bool {
+	if len(serviceLabels) == 0 {
+		return true
+	}
+
+	if repository == nil {
+		return false
+	}
+
+	sourceType, sourceName := destroySourceIdentity(repository.SourceUrl)
+
+	configType, configName := destroySourceIdentity(sourceURLForLabels(repository))
+	if sourceName == "" || configName == "" || sourceType != config.NormalizeSourceType(repository.Source) {
+		return false
+	}
+
 	for _, labels := range serviceLabels {
 		name, ok := labels[docker.DocoCDLabels.Source.Name]
 		if !ok || !docker.RepositoryLabelMatches(name, repository.Name, repository.SourceUrl, repository.ConfigSourceUrl) {
 			return false
 		}
+
+		labelType := config.SourceType(strings.TrimSpace(labels[docker.DocoCDLabels.Source.Type]))
+		if labelType != "" && labelType != sourceType && labelType != configType {
+			return false
+		}
+
+		labelURL := strings.TrimSpace(labels[docker.DocoCDLabels.Source.URL])
+		if labelURL == "" {
+			// Legacy services without URLs must carry both a source type and the full,
+			// host-qualified repository name. A hostless webhook name is ambiguous.
+			qualifiedName := strings.TrimSpace(name)
+
+			matchesSource := labelType == sourceType && qualifiedName == sourceName
+
+			matchesConfig := labelType == configType && qualifiedName == configName
+			if !matchesSource && !matchesConfig {
+				return false
+			}
+
+			continue
+		}
+
+		urlType, urlName := destroySourceIdentity(labelURL)
+
+		matchesSource := urlType == sourceType && urlName == sourceName
+
+		matchesConfig := urlType == configType && urlName == configName
+		if urlName == "" || !matchesSource && !matchesConfig {
+			return false
+		}
+
+		if labelType != "" && labelType != urlType {
+			// An OCI config's repository_url poll labels the Git deployment payload,
+			// while Source.URL still identifies the OCI config. This is the known
+			// cross-type relationship; other conflicting URL/type pairs fail closed.
+			if sourceType != config.SourceTypeGit || configType != config.SourceTypeOCI ||
+				labelType != sourceType || urlType != configType || urlName != configName ||
+				!docker.RepositoryLabelMatches(name, repository.SourceUrl) {
+				return false
+			}
+		}
 	}
 
 	return true
+}
+
+// destroySourceIdentity validates rather than applying cache/name aliases, which deliberately
+// erase distinctions that matter when authorizing destruction. Parse OCI first so valid digest
+// references cannot be mistaken for scp-style Git URLs.
+func destroySourceIdentity(sourceURL string) (config.SourceType, string) {
+	sourceURL = strings.TrimSpace(sourceURL)
+	if sourceURL == "" {
+		return "", ""
+	}
+
+	if config.OciUrl(sourceURL).Validate() == nil {
+		return config.SourceTypeOCI, oci.RepositoryNameFromArtifact(sourceURL)
+	}
+
+	if config.GitUrl(sourceURL).Validate() == nil {
+		return config.SourceTypeGit, git.GetRepoName(config.NormalizeGitURL(sourceURL))
+	}
+
+	return "", ""
 }
 
 // MatchesWebhookEventFilter reports whether this run should proceed based on

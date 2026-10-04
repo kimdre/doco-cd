@@ -264,9 +264,12 @@ auto_discovery:
 
 #### Removing obsolete stacks
 
-Before deploying, doco-cd looks for stacks it auto-discovered from the same repository (for OCI artifacts, the same artifact
-repository regardless of its tag or digest) and [deployment target](#multiple-deployment-targets)
+Before deploying, doco-cd looks for stacks it auto-discovered from the same repository (for OCI artifacts, the same
+registry/repository and stable source tag) and [deployment target](#multiple-deployment-targets)
 that no deployment config of the run has anymore, neither a discovered nor an explicit one. Stopped stacks are included.
+An OCI tag moving to a new digest keeps its ownership, but independently polled tags cannot remove each other's stacks.
+Missing or ambiguous stable-reference ownership preserves the stack; see
+[OCI cleanup ownership](Advanced/OCI/Polling.md#auto-discovery-cleanup-ownership).
 
 The `delete`, `remove_volumes` and `remove_images` settings of an obsolete stack are taken from the current auto-discovery
 config whose `working_dir` and `depth` cover the stack's directory. If several do, all of them must allow the removal.
@@ -402,7 +405,9 @@ The following settings can be used to configure how the deployed compose stack/p
 
 doco-cd only destroys a stack that it deployed from the same source: the repository containing the deployment configuration file,
 the repository set in [`repository_url`](#available-settings), or, for [OCI artifacts](Advanced/OCI/Artifact-Usage.md), the same artifact repository
-regardless of its tag or digest. Otherwise, the deployment is skipped and reported as a conflict.
+regardless of its tag or digest. The ownership check includes the canonical source URL, registry/host, and source type.
+Legacy labels without a source URL must include both a source type and the full host-qualified repository name;
+hostless names alone are ambiguous. Missing, conflicting, or ambiguous ownership skips destruction and is reported as a conflict.
 
 | Key              | Type    | Description                                                                                                                                                                                                                                                                                                | Default value |
 |------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|

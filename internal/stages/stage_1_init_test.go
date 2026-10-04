@@ -155,6 +155,12 @@ func TestServicesBelongToRepository(t *testing.T) {
 		SourceUrl:       "ghcr.io/org/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		ConfigSourceUrl: "ghcr.io/org/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}
+	ociRemoteRepository := &RepositoryData{
+		Source:          config.SourceTypeGit,
+		Name:            "github.com/owner/app",
+		SourceUrl:       "https://github.com/owner/app.git",
+		ConfigSourceUrl: "ghcr.io/org/config:latest",
+	}
 
 	labeled := func(names ...string) map[docker.Service]docker.Labels {
 		services := make(map[docker.Service]docker.Labels, len(names))
@@ -165,6 +171,23 @@ func TestServicesBelongToRepository(t *testing.T) {
 		return services
 	}
 
+	withSource := func(sourceURL, sourceType string, names ...string) map[docker.Service]docker.Labels {
+		services := labeled(names...)
+		for _, labels := range services {
+			labels[docker.DocoCDLabels.Source.URL] = sourceURL
+			labels[docker.DocoCDLabels.Source.Type] = sourceType
+		}
+
+		return services
+	}
+
+	gitLabeled := func(names ...string) map[docker.Service]docker.Labels {
+		return withSource("https://github.com/owner/config.git", "git", names...)
+	}
+	ociLabeled := func(names ...string) map[docker.Service]docker.Labels {
+		return withSource("ghcr.io/org/app:old", "oci", names...)
+	}
+
 	tests := []struct {
 		name       string
 		services   map[docker.Service]docker.Labels
@@ -172,17 +195,45 @@ func TestServicesBelongToRepository(t *testing.T) {
 		want       bool
 	}{
 		{name: "no services", services: labeled(), repository: gitRepository, want: true},
-		{name: "git webhook label", services: labeled("owner/config"), repository: gitRepository, want: true},
-		{name: "git repository name label", services: labeled("github.com/owner/config"), repository: gitRepository, want: true},
-		{name: "other git repository", services: labeled("owner/other"), repository: gitRepository, want: false},
+		{name: "git webhook label", services: gitLabeled("owner/config"), repository: gitRepository, want: true},
+		{name: "git repository name label", services: gitLabeled("github.com/owner/config"), repository: gitRepository, want: true},
+		{name: "git SSH URL spelling", services: withSource("git@github.com:owner/config.git", "git", "owner/config"), repository: gitRepository, want: true},
+		{name: "other git repository", services: gitLabeled("owner/other"), repository: gitRepository, want: false},
 		{name: "missing label", services: map[docker.Service]docker.Labels{"app": {}}, repository: gitRepository, want: false},
-		{name: "one service of another repository", services: labeled("owner/config", "owner/other"), repository: gitRepository, want: false},
-		{name: "repository_url deployed by webhook", services: labeled("owner/config"), repository: remoteRepository, want: true},
-		{name: "repository_url deployed by poll", services: labeled("owner/app"), repository: remoteRepository, want: true},
-		{name: "oci deployed by poll with another tag", services: labeled("ghcr.io/org/app"), repository: ociRepository, want: true},
-		{name: "oci deployed by webhook", services: labeled("org/app"), repository: ociRepository, want: true},
-		{name: "oci digest reference", services: labeled("ghcr.io/org/app"), repository: ociDigestRepository, want: true},
+		{name: "one service of another repository", services: gitLabeled("owner/config", "owner/other"), repository: gitRepository, want: false},
+		{name: "repository_url deployed by webhook", services: gitLabeled("owner/config"), repository: remoteRepository, want: true},
+		{name: "repository_url deployed by poll", services: gitLabeled("owner/app"), repository: remoteRepository, want: true},
+		{name: "legacy repository_url deployment URL", services: withSource("https://github.com/owner/app.git", "git", "owner/app"), repository: remoteRepository, want: true},
+		{name: "oci deployed by poll with another tag", services: ociLabeled("ghcr.io/org/app"), repository: ociRepository, want: true},
+		{name: "oci deployed by webhook", services: ociLabeled("org/app"), repository: ociRepository, want: true},
+		{name: "oci digest reference", services: ociLabeled("ghcr.io/org/app"), repository: ociDigestRepository, want: true},
+		{name: "oci digest URL against tagged request", services: withSource(ociDigestRepository.SourceUrl, "oci", "org/app"), repository: ociRepository, want: true},
+		{name: "foreign registry with same webhook name", services: withSource("registry.example.com/org/app:latest", "oci", "org/app"), repository: ociRepository, want: false},
+		{name: "foreign Git source with same webhook name", services: withSource("https://github.com/org/app.git", "git", "org/app"), repository: ociRepository, want: false},
+		{name: "Git source on same registry host is not OCI", services: withSource("https://ghcr.io/org/app.git", "oci", "org/app"), repository: ociRepository, want: false},
+		{name: "foreign Git host with same webhook name", services: withSource("https://foreign.example.com/owner/config.git", "git", "owner/config"), repository: gitRepository, want: false},
+		{name: "wrong source type", services: withSource("ghcr.io/org/app:latest", "git", "org/app"), repository: ociRepository, want: false},
+		{name: "legacy OCI URL without type", services: withSource("ghcr.io/org/app:latest", "", "org/app"), repository: ociRepository, want: true},
+		{name: "legacy Git URL without type", services: withSource("https://github.com/owner/config", "", "owner/config"), repository: gitRepository, want: true},
+		{name: "legacy qualified Git name with type", services: withSource("", "git", "github.com/owner/config"), repository: gitRepository, want: true},
+		{name: "legacy qualified OCI name with type", services: withSource("", "oci", "ghcr.io/org/app"), repository: ociRepository, want: true},
+		{name: "hostless legacy Git name is ambiguous", services: labeled("owner/config"), repository: gitRepository, want: false},
+		{name: "hostless legacy OCI name is ambiguous", services: withSource("", "oci", "org/app"), repository: ociRepository, want: false},
+		{name: "qualified name without URL or type is ambiguous", services: labeled("ghcr.io/org/app"), repository: ociRepository, want: false},
+		{name: "invalid URL cannot fall back to matching name", services: withSource("invalid://org/app", "oci", "ghcr.io/org/app"), repository: ociRepository, want: false},
+		{name: "unknown type cannot fall back to matching URL", services: withSource("ghcr.io/org/app:latest", "unknown", "org/app"), repository: ociRepository, want: false},
+		{name: "OCI config repository_url webhook", services: withSource("ghcr.io/org/config:older", "oci", "org/config"), repository: ociRemoteRepository, want: true},
+		{name: "OCI config repository_url poll", services: withSource("ghcr.io/org/config:older", "git", "owner/app"), repository: ociRemoteRepository, want: true},
+		{name: "OCI config repository_url poll with qualified deployment name", services: withSource("ghcr.io/org/config:older", "git", "github.com/owner/app"), repository: ociRemoteRepository, want: true},
+		{name: "OCI config Git type with config name is not a deployment poll", services: withSource("ghcr.io/org/config:older", "git", "org/config"), repository: ociRemoteRepository, want: false},
+		{name: "OCI config with legacy Git deployment URL", services: withSource("https://github.com/owner/app.git", "git", "owner/app"), repository: ociRemoteRepository, want: true},
+		{name: "OCI config type cannot authorize a Git deployment URL through a short name", services: withSource("https://github.com/owner/app.git", "oci", "owner/app"), repository: ociRemoteRepository, want: false},
+		{name: "OCI config type cannot authorize a Git deployment URL through its config name", services: withSource("https://github.com/owner/app.git", "oci", "org/config"), repository: ociRemoteRepository, want: false},
+		{name: "OCI repository_url foreign config registry", services: withSource("registry.example.com/org/config:latest", "oci", "org/config"), repository: ociRemoteRepository, want: false},
+		{name: "OCI repository_url poll type cannot authorize a foreign registry", services: withSource("registry.example.com/org/config:latest", "git", "owner/app"), repository: ociRemoteRepository, want: false},
 		{name: "other oci repository", services: labeled("ghcr.io/org/other"), repository: ociRepository, want: false},
+		{name: "missing request source metadata", services: ociLabeled("org/app"), repository: &RepositoryData{Source: config.SourceTypeOCI, Name: "ghcr.io/org/app"}, want: false},
+		{name: "nil request repository", services: ociLabeled("org/app"), want: false},
 	}
 
 	for _, tt := range tests {
@@ -231,9 +282,28 @@ func TestCheckDestroyOwnership(t *testing.T) {
 
 	stackContainer := func(sourceName string) container.Summary {
 		return container.Summary{
-			Names:  []string{"/app-web-1"},
-			Labels: map[string]string{api.ProjectLabel: "app", docker.DocoCDLabels.Source.Name: sourceName},
+			Names: []string{"/app-web-1"},
+			Labels: map[string]string{
+				api.ProjectLabel:                "app",
+				docker.DocoCDLabels.Source.Name: sourceName,
+				docker.DocoCDLabels.Source.URL:  repository.SourceUrl,
+				docker.DocoCDLabels.Source.Type: "git",
+			},
 		}
+	}
+
+	ociRepository := &RepositoryData{
+		Source:          config.SourceTypeOCI,
+		Name:            "ghcr.io/org/app",
+		SourceUrl:       "ghcr.io/org/app:latest",
+		ConfigSourceUrl: "ghcr.io/org/app:latest",
+	}
+	ociContainer := func(sourceURL, sourceType string) container.Summary {
+		c := stackContainer("org/app")
+		c.Labels[docker.DocoCDLabels.Source.URL] = sourceURL
+		c.Labels[docker.DocoCDLabels.Source.Type] = sourceType
+
+		return c
 	}
 
 	listErr := errors.New("daemon unavailable")
@@ -242,6 +312,7 @@ func TestCheckDestroyOwnership(t *testing.T) {
 		name       string
 		destroy    bool
 		containers []container.Summary
+		repository *RepositoryData
 		listErr    error
 		wantErr    error
 		wantList   bool
@@ -251,6 +322,11 @@ func TestCheckDestroyOwnership(t *testing.T) {
 		{name: "stack not deployed", destroy: true, wantList: true},
 		{name: "stack deployed from repository", destroy: true, containers: []container.Summary{stackContainer("owner/config")}, wantList: true},
 		{name: "stack deployed from other repository", destroy: true, containers: []container.Summary{stackContainer("owner/other")}, wantErr: ErrDeploymentConflict, wantList: true},
+		{name: "OCI same repository different tag", destroy: true, repository: ociRepository, containers: []container.Summary{ociContainer("ghcr.io/org/app:production", "oci")}, wantList: true},
+		{name: "OCI foreign registry same name", destroy: true, repository: ociRepository, containers: []container.Summary{ociContainer("registry.example.com/org/app:latest", "oci")}, wantErr: ErrDeploymentConflict, wantList: true},
+		{name: "OCI foreign Git source same name", destroy: true, repository: ociRepository, containers: []container.Summary{ociContainer("https://github.com/org/app.git", "git")}, wantErr: ErrDeploymentConflict, wantList: true},
+		{name: "OCI mixed ownership services", destroy: true, repository: ociRepository, containers: []container.Summary{ociContainer("ghcr.io/org/app:old", "oci"), ociContainer("registry.example.com/org/app:latest", "oci")}, wantErr: ErrDeploymentConflict, wantList: true},
+		{name: "OCI missing URL and hostless name", destroy: true, repository: ociRepository, containers: []container.Summary{ociContainer("", "oci")}, wantErr: ErrDeploymentConflict, wantList: true},
 		{name: "list error", destroy: true, listErr: listErr, wantErr: listErr, wantList: true},
 	}
 
@@ -263,10 +339,15 @@ func TestCheckDestroyOwnership(t *testing.T) {
 			deployConfig := deploy.New("app", "main")
 			deployConfig.Destroy.Enabled = tt.destroy
 
+			requestRepository := tt.repository
+			if requestRepository == nil {
+				requestRepository = repository
+			}
+
 			s := &StageManager{
 				DeployConfig: deployConfig,
 				Docker:       &Docker{Cmd: destroyOwnershipTestCli{apiClient: apiClient}},
-				Repository:   repository,
+				Repository:   requestRepository,
 			}
 
 			err := s.checkDestroyOwnership(t.Context())
