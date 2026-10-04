@@ -222,7 +222,7 @@ matches their clone URL, not their cache directory name. Two modes are available
 
 | Mode               | What it does                                                                                               | Cost                                                                                    |
 |--------------------|------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
-| `repack` (default) | Reads every object of the mirror and writes them into a new packfile with fresh delta compression.        | Bound by CPU and memory. Takes seconds to minutes, depending on the size of the mirror. |
+| `repack` (default) | Rewrites all objects into a new packfile, reusing stored deltas and compressing the rest together.        | Bound by CPU and memory. Takes seconds to minutes, depending on the size of the mirror. |
 | `copy`             | Consolidates the packfiles the same way as after a fetch, without recompressing the objects.              | Bound by disk throughput, needs little memory.                                          |
 
 With `repack`, the packfiles of a mirror usually end up about a third to half smaller than with `copy`. For example,
@@ -259,7 +259,7 @@ repack of 3 mirrors: 2 compacted, 1 skipped_busy; packfiles 22.2 MiB -> 12.1 MiB
 | `skipped_single_pack` | The mirror is already compact: it has a single packfile and no loose objects. A `repack` only replaces that packfile if the new one is smaller. |
 | `skipped_size`        | `repack` only: the packfiles of the mirror are larger than `max_size`.                                                                          |
 | `skipped_busy`        | A deployment or another operation is using the mirror.                                                                                          |
-| `failed`              | The compaction of the mirror failed. The old packfiles are kept.                                                                                |
+| `failed`              | The compaction of the mirror failed, or the mirror could not be read. The old packfiles are kept.                                               |
 | `cancelled`           | The compaction was cancelled before it finished. The old packfiles are kept.                                                                    |
 
 The compactions are counted in `doco_cd_git_mirror_compactions_total` with the `mode` label set to `repack` or

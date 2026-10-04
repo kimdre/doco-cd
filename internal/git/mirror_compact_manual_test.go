@@ -478,9 +478,20 @@ func TestCompactMirror_RepackOppositeStoredDeltas(t *testing.T) {
 	writeTestPack(t, packDir, time.Now(), fullEntry(a), refDeltaEntry(b, a))
 	writeTestPack(t, packDir, time.Now(), fullEntry(b), refDeltaEntry(a, b))
 
-	var objects storer.EncodedObjectStorer = contextObjectStorer{EncodedObjectStorer: storage, ctx: t.Context()}
-	if _, ok := objects.(storer.DeltaObjectStorer); ok {
-		t.Fatal("repack storer exposes stored deltas")
+	objects, hashes, err := newRepackObjectStorer(t.Context(), storage)
+	if err != nil || len(hashes) != 2 {
+		t.Fatalf("newRepackObjectStorer() = %v, %v, want 2 objects", hashes, err)
+	}
+
+	for _, blob := range []testBlob{a, b} {
+		obj, err := objects.DeltaObject(plumbing.AnyObject, blob.hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, ok := obj.(plumbing.DeltaObject); ok {
+			t.Fatalf("DeltaObject(%s) reused a delta of an object stored in both packs", blob.hash)
+		}
 	}
 
 	result, err := CompactMirror(t.Context(), discardLog, path, MirrorCompactOptions{Mode: MirrorCompactionRepack})
@@ -489,6 +500,68 @@ func TestCompactMirror_RepackOppositeStoredDeltas(t *testing.T) {
 	}
 
 	for _, blob := range []testBlob{a, b} {
+		if got := readBlob(t, path, blob.hash); !bytes.Equal(got, blob.content) {
+			t.Fatalf("blob %s changed after repack", blob.hash)
+		}
+	}
+
+	assertNoTempPacks(t, path)
+	gitFsck(t, path)
+}
+
+func TestRepackObjectStorer_ReusesDeltasOfObjectsStoredOnce(t *testing.T) {
+	t.Parallel()
+
+	path, storage, packDir := newBareTestRepo(t)
+	a := newTestBlob(strings.Repeat("base content\n", 256) + "version a\n")
+	b := newTestBlob(strings.Repeat("base content\n", 256) + "version b\n")
+	c := newTestBlob(strings.Repeat("base content\n", 256) + "version c\n")
+
+	// B is stored in both packs, A and C only in one.
+	writeTestPack(t, packDir, time.Now(), fullEntry(a), refDeltaEntry(b, a))
+	writeTestPack(t, packDir, time.Now(), fullEntry(b), refDeltaEntry(c, b))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	objects, hashes, err := newRepackObjectStorer(ctx, storage)
+	if err != nil || len(hashes) != 3 {
+		t.Fatalf("newRepackObjectStorer() = %v, %v, want 3 objects", hashes, err)
+	}
+
+	obj, err := objects.DeltaObject(plumbing.AnyObject, c.hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	delta, ok := obj.(plumbing.DeltaObject)
+	if !ok || delta.BaseHash() != b.hash {
+		t.Fatalf("DeltaObject(C) = %T, want its stored delta against B", obj)
+	}
+
+	for _, blob := range []testBlob{a, b} {
+		obj, err := objects.DeltaObject(plumbing.AnyObject, blob.hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, ok := obj.(plumbing.DeltaObject); ok || obj.Size() != int64(len(blob.content)) {
+			t.Fatalf("DeltaObject(%s) = %T of %d bytes, want the full object", blob.hash, obj, obj.Size())
+		}
+	}
+
+	cancel()
+
+	if _, err := delta.Reader(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("stored delta Reader() error = %v, want context.Canceled", err)
+	}
+
+	result, err := CompactMirror(t.Context(), discardLog, path, MirrorCompactOptions{Mode: MirrorCompactionRepack})
+	if err != nil || result.Result != MirrorCompactionCompacted || result.Objects != 3 || result.PacksAfter != 1 {
+		t.Fatalf("CompactMirror() = %+v, %v, want 3 objects in 1 pack", result, err)
+	}
+
+	for _, blob := range []testBlob{a, b, c} {
 		if got := readBlob(t, path, blob.hash); !bytes.Equal(got, blob.content) {
 			t.Fatalf("blob %s changed after repack", blob.hash)
 		}
@@ -532,6 +605,50 @@ func TestContextObjectStorer_CancelsLoadedObjectReaders(t *testing.T) {
 
 	if _, err := obj.Reader(); !errors.Is(err, context.Canceled) {
 		t.Fatalf("loaded object Reader() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestContextEncodedObject_KeepsWriterTo(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	mem := &plumbing.MemoryObject{}
+	mem.SetType(plumbing.BlobObject)
+
+	if _, err := mem.Write([]byte("object content\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	obj := contextEncodedObject{EncodedObject: mem, ctx: ctx}
+
+	r, err := obj.Reader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+
+	wt, ok := r.(io.WriterTo)
+	if !ok {
+		t.Fatalf("reader %T of an in-memory object lost io.WriterTo", r)
+	}
+
+	var buf bytes.Buffer
+	if _, err := wt.WriteTo(&buf); err != nil || buf.String() != "object content\n" {
+		t.Fatalf("WriteTo() = %q, %v", buf.String(), err)
+	}
+
+	r2, err := obj.Reader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r2.Close() }()
+
+	cancel()
+
+	if _, err := r2.(io.WriterTo).WriteTo(io.Discard); !errors.Is(err, context.Canceled) {
+		t.Fatalf("WriteTo() error = %v, want context.Canceled", err)
 	}
 }
 

@@ -93,14 +93,22 @@ func isRepoRoot(dir string) bool {
 type Mirror struct {
 	// Repository is the mirrored repository in "<host>/<owner>/<repo>" form.
 	// A repository used as a submodule by several stores has a mirror in each.
+	// It is empty if Err is set and the repository is unknown.
 	Repository string
-	// Path is the mirror's directory.
+	// Path is the mirror's directory, or the directory that could not be
+	// listed if Err is set.
 	Path string
+	// Err reports why the mirror could not be inspected, e.g. an unreadable
+	// configuration.
+	Err error
 }
 
 // ListMirrors returns the bare Git mirrors of every store beneath dataDir,
 // sorted by repository and path: each store's mirror of its own repository and
 // the mirrors of its Compose Git includes and submodules.
+//
+// A mirror or directory that cannot be inspected is listed with Err set, so
+// that one broken store neither hides its mirrors nor blocks the others.
 func ListMirrors(dataDir string) ([]Mirror, error) {
 	roots, err := ListRepositoryDirs(dataDir)
 	if err != nil {
@@ -118,7 +126,7 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 
 		includes, err := os.ReadDir(cacheDir)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("list compose git mirrors: %w", err)
+			mirrors = append(mirrors, Mirror{Path: cacheDir, Err: fmt.Errorf("list compose git mirrors: %w", err)})
 		}
 
 		for _, entry := range includes {
@@ -132,11 +140,21 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 			// Read the remote for every mirror so repository filters and metrics
 			// identify all mirrors of a repository consistently.
 			repository, err := mirrorRepository(mirrorDir)
-			if err != nil {
-				return nil, err
-			}
 
-			if repository != "" {
+			switch {
+			case err != nil:
+				mirror := Mirror{Path: mirrorDir, Err: err}
+
+				// Other stores' base directories are their repository's name below
+				// the data directory, which still lets a filter select the mirror.
+				if filepath.Base(filepath.Dir(root)) != ComposeGitCacheSubdir {
+					if rel, relErr := filepath.Rel(dataDir, root); relErr == nil {
+						mirror.Repository = filepath.ToSlash(rel)
+					}
+				}
+
+				mirrors = append(mirrors, mirror)
+			case repository != "":
 				mirrors = append(mirrors, Mirror{Repository: repository, Path: mirrorDir})
 			}
 		}
@@ -145,11 +163,11 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 
 		entries, err := os.ReadDir(submodules)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
+			if !errors.Is(err, fs.ErrNotExist) {
+				mirrors = append(mirrors, Mirror{Path: submodules, Err: fmt.Errorf("list submodule mirrors: %w", err)})
 			}
 
-			return nil, fmt.Errorf("list submodule mirrors: %w", err)
+			continue
 		}
 
 		for _, entry := range entries {
@@ -160,11 +178,11 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 
 			// A mirror without a remote is still being cloned.
 			repository, err := mirrorRepository(dir)
-			if err != nil {
-				return nil, err
-			}
 
-			if repository != "" {
+			switch {
+			case err != nil:
+				mirrors = append(mirrors, Mirror{Path: dir, Err: err})
+			case repository != "":
 				mirrors = append(mirrors, Mirror{Repository: repository, Path: dir})
 			}
 		}
