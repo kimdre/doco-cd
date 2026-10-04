@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -300,4 +301,79 @@ func TestExportTree_ReusesCachedSubmoduleCommit(t *testing.T) {
 	second := commitLocalTestFile(t, subRepo, subPath, "marker.txt", "second\n", "update marker")
 
 	export("fetched", parentCommit(second, "v3\n"), "second\n")
+}
+
+// TestExportTree_ReportsSubmoduleMirrorPacks reports a submodule mirror's
+// packfiles when it is cloned and when its fetch is skipped, since a mirror
+// that is never fetched again would otherwise not be reported after a restart.
+//
+// Not parallel: the pack observer is process-global.
+func TestExportTree_ReportsSubmoduleMirrorPacks(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		reports []git.MirrorPackStats
+	)
+
+	git.SetMirrorPackObserver(func(s git.MirrorPackStats) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		reports = append(reports, s)
+	})
+	t.Cleanup(func() { git.SetMirrorPackObserver(nil) })
+
+	tmp := t.TempDir()
+
+	subPath := filepath.Join(tmp, "sub")
+	subRepo := initLocalTestRepo(t, subPath)
+	subCommit := commitLocalTestFile(t, subRepo, subPath, "marker.txt", "marker\n", "add marker")
+	subURL := "file://" + subPath
+
+	parentPath := filepath.Join(tmp, "parent")
+	parentRepo := initLocalTestRepo(t, parentPath)
+
+	if _, err := parentRepo.CreateRemote(&config.RemoteConfig{
+		Name: git.RemoteName,
+		URLs: []string{"file://" + parentPath},
+	}); err != nil {
+		t.Fatalf("create parent remote: %v", err)
+	}
+
+	signature := object.Signature{Name: "submodule-test", Email: "submodule-test@example.com", When: time.Now()}
+	parentCommit := storeTestObject(t, parentRepo, plumbing.CommitObject, func(raw plumbing.EncodedObject) error {
+		return (&object.Commit{
+			Author:    signature,
+			Committer: signature,
+			Message:   "add submodule\n",
+			TreeHash: writeTestTree(t, parentRepo, []object.TreeEntry{
+				{Name: ".gitmodules", Mode: filemode.Regular, Hash: writeTestBlob(t, parentRepo, fmt.Sprintf("[submodule \"sub\"]\n\tpath = sub\n\turl = %s\n", subURL))},
+				{Name: "sub", Mode: filemode.Submodule, Hash: subCommit},
+			}),
+		}).Encode(raw)
+	})
+
+	opts := git.ExportOptions{SubmoduleCacheDir: filepath.Join(tmp, "submodules")}
+
+	for _, name := range []string{"cloned", "cached"} {
+		mu.Lock()
+		reports = nil
+		mu.Unlock()
+
+		if err := git.ExportTree(filepath.Join(tmp, name), parentRepo, parentCommit, opts); err != nil {
+			t.Fatalf("ExportTree(%s) error = %v", name, err)
+		}
+
+		mu.Lock()
+		got := reports
+		mu.Unlock()
+
+		if len(got) != 1 {
+			t.Fatalf("%s: observer received %d reports, want 1: %+v", name, len(got), got)
+		}
+
+		if got[0].Repository != git.GetRepoName(subURL) || filepath.Dir(got[0].Path) != opts.SubmoduleCacheDir ||
+			got[0].PacksAfter != 1 || got[0].SizeBytes <= 0 || got[0].Result != "" {
+			t.Fatalf("%s: observer stats = %+v, want one pack of the submodule mirror", name, got[0])
+		}
+	}
 }

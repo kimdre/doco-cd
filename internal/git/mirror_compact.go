@@ -38,8 +38,8 @@ const (
 	MirrorCompactionFailed    = "failed"
 )
 
-// MirrorPackStats describes a bare mirror's packfiles after a fetch and the
-// compaction it triggered, if any.
+// MirrorPackStats describes a bare mirror's packfiles after a clone, fetch or
+// read, and the compaction it triggered, if any.
 type MirrorPackStats struct {
 	// Repository is the mirrored repository in "<host>/<owner>/<repo>" form.
 	// Several mirrors can report the same repository, e.g. a deployed
@@ -57,7 +57,8 @@ type MirrorPackStats struct {
 	Duration time.Duration
 }
 
-// MirrorPackObserver receives MirrorPackStats after every bare mirror fetch.
+// MirrorPackObserver receives MirrorPackStats after every bare mirror clone or
+// fetch, and after every read of a submodule mirror that skipped its fetch.
 type MirrorPackObserver func(MirrorPackStats)
 
 var (
@@ -82,6 +83,39 @@ func notifyMirrorPackObserver(stats MirrorPackStats) {
 	if observer := mirrorPackObserver.Load(); observer != nil {
 		(*observer)(stats)
 	}
+}
+
+// reportMirrorPacksLocked reports the mirror's packfiles to the observer
+// without compacting them. The caller must hold the mirror's shared or
+// exclusive lock.
+func reportMirrorPacksLocked(repo *git.Repository, path, repository string) {
+	if mirrorPackObserver.Load() == nil {
+		return
+	}
+
+	storage, ok := repo.Storer.(*filesystem.Storage)
+	if !ok {
+		return
+	}
+
+	packs, err := storage.ObjectPacks()
+	if err != nil {
+		return
+	}
+
+	stats := MirrorPackStats{
+		Repository:  repository,
+		Path:        path,
+		PacksBefore: len(packs),
+		PacksAfter:  len(packs),
+		SizeBytes:   -1,
+	}
+
+	if size, err := packfilesSize(filepath.Join(path, "objects", "pack"), packs); err == nil {
+		stats.SizeBytes = size
+	}
+
+	notifyMirrorPackObserver(stats)
 }
 
 // compactBareMirrorLocked consolidates the mirror's packfiles into a single pack

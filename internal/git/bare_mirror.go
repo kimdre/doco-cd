@@ -22,7 +22,8 @@ import (
 // out: GitStore reads tree objects directly (ExportTree) and materializes
 // submodules itself from tree objects, so the mirror only ever needs fetched objects and refs.
 //
-// After a fetch, the mirror's packfiles are consolidated once they exceed
+// After a clone or fetch, the mirror's packfiles are reported to the
+// MirrorPackObserver and consolidated once they exceed
 // mirrorCompactPackThreshold. Compaction deletes packs, so the returned handle
 // must not be read once the lock is released: a concurrent update may compact
 // the mirror underneath it. Readers that outlive this call take the mirror's
@@ -53,6 +54,35 @@ func CloneOrUpdateBareMirror(
 	unlock := AcquireExclusiveMirrorLock(path)
 	defer unlock()
 
+	repo, err := cloneOrFetchBareMirrorLocked(log, cloneURL, ref, path, skipTLSVerify, proxyOpts, auth, depth)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fresh clones are reported as well: a mirror that is rarely fetched
+	// afterwards, such as a submodule's, would otherwise never be.
+	if !compactBareMirrorLocked(log, repo, path, GetRepoName(cloneURL)) {
+		return repo, nil
+	}
+
+	// repo still indexes the packs compaction just replaced; hand out a handle
+	// that only sees the consolidated pack.
+	repo, err = git.PlainOpen(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reopen bare mirror at %s after compaction: %w", path, err)
+	}
+
+	return repo, nil
+}
+
+// cloneOrFetchBareMirrorLocked clones the bare mirror at path, or fetches ref
+// into it if it already exists, while the caller holds path's exclusive lock.
+func cloneOrFetchBareMirrorLocked(
+	log *slog.Logger,
+	cloneURL, ref, path string,
+	skipTLSVerify bool, proxyOpts transport.ProxyOptions,
+	auth transport.AuthMethod, depth int,
+) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 
 	switch {
@@ -111,17 +141,6 @@ func CloneOrUpdateBareMirror(
 		if deepenErr := deepenBareMirror(repo, cloneURL, ref, skipTLSVerify, proxyOpts, auth, depth); deepenErr != nil {
 			return nil, deepenErr
 		}
-	}
-
-	if !compactBareMirrorLocked(log, repo, path, GetRepoName(cloneURL)) {
-		return repo, nil
-	}
-
-	// repo still indexes the packs compaction just replaced; hand out a handle
-	// that only sees the consolidated pack.
-	repo, err = git.PlainOpen(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to reopen bare mirror at %s after compaction: %w", path, err)
 	}
 
 	return repo, nil

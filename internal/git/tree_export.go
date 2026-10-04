@@ -232,7 +232,7 @@ type exportCtx struct {
 	submodules map[string]*gitconfig.Submodule
 	// deferredSubmodules, when set, collects submodules for the caller to
 	// export after it releases the lock on the mirror ctx.repo reads from.
-	// ctx.repo must not be read by the deferred export.
+	// Their ctx drops repo, since the deferred export must not read it.
 	deferredSubmodules *[]deferredSubmodule
 }
 
@@ -275,8 +275,15 @@ func exportTree(ctx exportCtx, tree *object.Tree, relPath string) error {
 			cfg := ctx.submodules[entryRelPath]
 
 			if ctx.deferredSubmodules != nil {
+				// Dropping the handle lets the mirror's storage and pack indexes
+				// be freed while the deferred exports run, and turns an
+				// accidental read after the lock is released into a panic.
+				deferredCtx := ctx
+				deferredCtx.repo = nil
+				deferredCtx.deferredSubmodules = nil
+
 				*ctx.deferredSubmodules = append(*ctx.deferredSubmodules, deferredSubmodule{
-					ctx:     ctx,
+					ctx:     deferredCtx,
 					target:  target,
 					relPath: entryRelPath,
 					entry:   entry,
@@ -459,7 +466,7 @@ func exportSubmodule(ctx exportCtx, target string, entry object.TreeEntry, cfg *
 	// to the submodule's remote for every new revision of the parent. Only when
 	// the export fails before writing anything, e.g. because the mirror or the
 	// commit is missing, is the mirror fetched and the export retried.
-	nested, started, err := exportSubmoduleTree(ctx, mirrorDir, target, entry)
+	nested, started, err := exportSubmoduleTree(ctx, mirrorDir, target, entry, GetRepoName(resolvedURL))
 	if err != nil && !started {
 		// A bare mirror is all this needs: the submodule's tree is read from
 		// its object database (subRepo.CommitObject(...).Tree()) and exported
@@ -478,7 +485,8 @@ func exportSubmodule(ctx exportCtx, target string, entry object.TreeEntry, cfg *
 			return fmt.Errorf("fetch submodule %s: %w", resolvedURL, fetchErr)
 		}
 
-		nested, _, err = exportSubmoduleTree(ctx, mirrorDir, target, entry)
+		// The fetch already reported the mirror's packfiles.
+		nested, _, err = exportSubmoduleTree(ctx, mirrorDir, target, entry, "")
 	} else if err == nil {
 		ctx.opts.Log.Debug("submodule commit already in mirror, skipped fetch",
 			slog.String("url", resolvedURL),
@@ -500,7 +508,10 @@ func exportSubmodule(ctx exportCtx, target string, entry object.TreeEntry, cfg *
 
 // exportSubmoduleTree exports the submodule commit entry.Hash from the mirror at
 // mirrorDir into target and returns the nested submodules it deferred. started
-// reports whether the export got as far as writing into target.
+// reports whether the export got as far as writing into target. Unless
+// repository is empty, the mirror's packfiles are reported under it once the
+// export succeeded, since a mirror whose fetch is skipped would otherwise not
+// be reported again after a restart.
 //
 // The tree is read lazily while exporting, so it is read through a fresh handle
 // under the mirror's shared lock: another repository sharing this submodule may
@@ -510,7 +521,7 @@ func exportSubmodule(ctx exportCtx, target string, entry object.TreeEntry, cfg *
 // never holds more than one submodule mirror lock. Nesting them would deadlock
 // on a submodule that references itself, and on submodules that reference each
 // other while exported from two parents at once.
-func exportSubmoduleTree(ctx exportCtx, mirrorDir, target string, entry object.TreeEntry) ([]deferredSubmodule, bool, error) {
+func exportSubmoduleTree(ctx exportCtx, mirrorDir, target string, entry object.TreeEntry, repository string) ([]deferredSubmodule, bool, error) {
 	var (
 		nested  []deferredSubmodule
 		started bool
@@ -544,7 +555,15 @@ func exportSubmoduleTree(ctx exportCtx, mirrorDir, target string, entry object.T
 
 		started = true
 
-		return exportTree(subCtx, subTree, "")
+		if err := exportTree(subCtx, subTree, ""); err != nil {
+			return err
+		}
+
+		if repository != "" {
+			reportMirrorPacksLocked(subRepo, mirrorDir, repository)
+		}
+
+		return nil
 	})
 
 	return nested, started, err
