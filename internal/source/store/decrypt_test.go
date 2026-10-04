@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/getsops/sops/v3/age"
 
@@ -184,14 +183,21 @@ func TestGitStore_PublishReusesPlaintextOfUnchangedCiphertext(t *testing.T) {
 		t.Fatalf("second artifact = %q, want reused plaintext %q", got, want)
 	}
 
-	// A plaintext that changed after it was recorded must not be reused.
+	// A plaintext that changed after it was recorded must not be reused,
+	// even with the original size and timestamps.
 	tampered := filepath.Join(second.Path, "secret.yaml")
-	if err := os.WriteFile(tampered, []byte("tampered\n"), 0o600); err != nil {
+
+	info, err := os.Stat(tampered)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	forged := []byte(strings.Repeat("x", int(info.Size())))
+	if err = os.WriteFile(tampered, forged, 0o600); err != nil {
 		t.Fatalf("tamper: %v", err)
 	}
 
-	future := time.Now().Add(time.Hour)
-	if err := os.Chtimes(tampered, future, future); err != nil {
+	if err = os.Chtimes(tampered, info.ModTime(), info.ModTime()); err != nil {
 		t.Fatalf("Chtimes: %v", err)
 	}
 

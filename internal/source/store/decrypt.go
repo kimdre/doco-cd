@@ -19,7 +19,7 @@ import (
 // the files decrypted in it, keyed by ciphertext. GC removes it with the artifact.
 const decryptRecordSuffix = ".decrypted.json"
 
-var errPlaintextStale = errors.New("plaintext changed since it was recorded")
+var errPlaintextStale = errors.New("plaintext does not match its record")
 
 // decryptRecord lists the SOPS files decrypted in one artifact, keyed by their
 // slash-separated path relative to the artifact root.
@@ -28,14 +28,13 @@ type decryptRecord struct {
 }
 
 // decryptedFile identifies a decrypted file by its ciphertext and pins the
-// plaintext as written, so a later publish can tell a tampered copy apart.
+// plaintext as written, so a later publish can tell a modified copy apart.
 // The format is part of the identity: it comes from the file extension, so the
 // same ciphertext under another name decrypts to different plaintext.
 type decryptedFile struct {
 	Format     string `json:"format"`     // SOPS format name the file was decrypted with
 	Ciphertext string `json:"ciphertext"` // sha256 of the encrypted content
-	Size       int64  `json:"size"`
-	ModTime    int64  `json:"mod_time"` // unix nanoseconds
+	Plaintext  string `json:"plaintext"`  // sha256 of the decrypted content as written
 }
 
 // key identifies the plaintext this file decrypts to.
@@ -45,9 +44,8 @@ func (f decryptedFile) key() string {
 
 // plaintextSource is a decrypted file of an already published artifact.
 type plaintextSource struct {
-	path    string
-	size    int64
-	modTime int64
+	path      string
+	plaintext string // expected sha256 of the content
 }
 
 // decryptArtifact walks dir - a freshly materialized, not-yet-published
@@ -71,8 +69,9 @@ type plaintextSource struct {
 // A file whose ciphertext is identical to one decrypted in an earlier artifact
 // under baseDir takes that artifact's plaintext instead of a key service call.
 // Most revisions change no secret, so this keeps the per-revision cost of a
-// cloud KMS near zero. The plaintext is only reused when its size and mtime
-// still match the record, anything else is decrypted again.
+// cloud KMS near zero. The plaintext is only reused when its content still
+// hashes to the recorded value, so a copy modified through a bind mount is
+// decrypted again instead of carried forward.
 //
 // Files a compose project reaches through a bind mount outside the artifact
 // tree (an arbitrary host path) are outside this scope; they were never
@@ -99,8 +98,7 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 			return false, fmt.Errorf("failed to resolve %s relative to %s: %w", path, dir, err)
 		}
 
-		sum := sha256.Sum256(content)
-		entry := decryptedFile{Format: encryption.FormatName(format), Ciphertext: hex.EncodeToString(sum[:])}
+		entry := decryptedFile{Format: encryption.FormatName(format), Ciphertext: sha256Hex(content)}
 
 		copied := false
 
@@ -123,12 +121,12 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 			decrypted++
 		}
 
-		info, err := os.Stat(path)
+		plaintext, err := os.ReadFile(path) // #nosec G304 -- same path as read above
 		if err != nil {
-			return false, fmt.Errorf("failed to stat decrypted file %s: %w", path, err)
+			return false, fmt.Errorf("failed to read decrypted file %s: %w", path, err)
 		}
 
-		entry.Size, entry.ModTime = info.Size(), info.ModTime().UnixNano()
+		entry.Plaintext = sha256Hex(plaintext)
 		record.Files[filepath.ToSlash(rel)] = entry
 
 		return true, nil
@@ -191,7 +189,7 @@ func loadPlaintextSources(log *slog.Logger, baseDir string) map[string]plaintext
 
 	for _, r := range records {
 		for rel, f := range r.record.Files {
-			sources[f.key()] = plaintextSource{path: filepath.Join(r.Path, filepath.FromSlash(rel)), size: f.Size, modTime: f.ModTime}
+			sources[f.key()] = plaintextSource{path: filepath.Join(r.Path, filepath.FromSlash(rel)), plaintext: f.Plaintext}
 		}
 	}
 
@@ -200,22 +198,23 @@ func loadPlaintextSources(log *slog.Logger, baseDir string) map[string]plaintext
 
 // copyPlaintext writes src's content to dst, unless src no longer matches its record.
 func copyPlaintext(src plaintextSource, dst string) error {
-	info, err := os.Stat(src.path)
-	if err != nil {
-		return err
-	}
-
-	if info.Size() != src.size || info.ModTime().UnixNano() != src.modTime {
-		return fmt.Errorf("%w: %s", errPlaintextStale, src.path)
-	}
-
 	content, err := os.ReadFile(src.path) // #nosec G304 -- path comes from the store's own decrypt record
 	if err != nil {
 		return err
 	}
 
+	if sha256Hex(content) != src.plaintext {
+		return fmt.Errorf("%w: %s", errPlaintextStale, src.path)
+	}
+
 	// #nosec G703 -- dst is a file inside the artifact directory being published.
 	return os.WriteFile(dst, content, filesystem.PermOwner)
+}
+
+func sha256Hex(content []byte) string {
+	sum := sha256.Sum256(content)
+
+	return hex.EncodeToString(sum[:])
 }
 
 // writeDecryptRecord stores record next to the published artifact. A failure
