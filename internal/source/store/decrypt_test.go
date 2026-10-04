@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,6 +205,46 @@ func TestGitStore_PublishReusesPlaintextOfUnchangedCiphertext(t *testing.T) {
 
 	if got := readArtifactFile(t, third, "secret.yaml"); got != fixture {
 		t.Fatalf("third artifact = %q, want ciphertext (no key, no trusted plaintext)", got)
+	}
+}
+
+// TestGitStore_PublishDoesNotReusePlaintextAcrossFormats renames identical
+// ciphertext from a binary file to a JSON file. The format comes from the
+// extension, so the plaintext differs and must not be reused.
+func TestGitStore_PublishDoesNotReusePlaintextAcrossFormats(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
+	fixture := readEncryptionFixture(t, "encrypted")
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+	commitTestFile(t, repo, repoPath, "secret", fixture, "add binary secret")
+
+	baseDir := t.TempDir()
+
+	newStore := func() *store.GitStore {
+		s, err := store.NewGitStore(store.GitStoreOptions{CloneURL: "file://" + repoPath, BaseDir: baseDir})
+		if err != nil {
+			t.Fatalf("NewGitStore() error = %v", err)
+		}
+
+		return s
+	}
+
+	first := publishRevision(t, newStore(), "main")
+	binary := readArtifactFile(t, first, "secret")
+
+	commitTestFile(t, repo, repoPath, "secret.json", fixture, "same ciphertext as json")
+
+	second := publishRevision(t, newStore(), "main")
+	asJSON := readArtifactFile(t, second, "secret.json")
+
+	if asJSON == binary || asJSON == fixture {
+		t.Fatalf("secret.json = %q, want a fresh JSON decryption, binary plaintext is %q", asJSON, binary)
+	}
+
+	if !strings.HasPrefix(asJSON, "{") {
+		t.Fatalf("secret.json = %q, want JSON plaintext", asJSON)
 	}
 }
 

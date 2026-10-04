@@ -223,9 +223,9 @@ func DetectFormat(content []byte, path string) (formats.Format, bool) {
 	return formats.Binary, false
 }
 
-// formatName returns the SOPS name of a format, such as "yaml" or "binary".
-// formats.Format is an unnamed integer enum, so it is unusable in messages as is.
-func formatName(format formats.Format) string {
+// FormatName returns the SOPS name of a format, such as "yaml" or "binary".
+// formats.Format is an unnamed integer enum, so it is unusable in messages or on disk as is.
+func FormatName(format formats.Format) string {
 	return common.StoreForFormat(format, config.NewStoresConfig()).Name()
 }
 

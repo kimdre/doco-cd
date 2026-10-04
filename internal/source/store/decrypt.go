@@ -29,10 +29,18 @@ type decryptRecord struct {
 
 // decryptedFile identifies a decrypted file by its ciphertext and pins the
 // plaintext as written, so a later publish can tell a tampered copy apart.
+// The format is part of the identity: it comes from the file extension, so the
+// same ciphertext under another name decrypts to different plaintext.
 type decryptedFile struct {
+	Format     string `json:"format"`     // SOPS format name the file was decrypted with
 	Ciphertext string `json:"ciphertext"` // sha256 of the encrypted content
 	Size       int64  `json:"size"`
 	ModTime    int64  `json:"mod_time"` // unix nanoseconds
+}
+
+// key identifies the plaintext this file decrypts to.
+func (f decryptedFile) key() string {
+	return f.Format + ":" + f.Ciphertext
 }
 
 // plaintextSource is a decrypted file of an already published artifact.
@@ -81,7 +89,8 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 			return false, fmt.Errorf("failed to read file %s: %w", path, err)
 		}
 
-		if _, isEncrypted := encryption.DetectFormat(content, path); !isEncrypted {
+		format, isEncrypted := encryption.DetectFormat(content, path)
+		if !isEncrypted {
 			return false, nil
 		}
 
@@ -91,11 +100,11 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 		}
 
 		sum := sha256.Sum256(content)
-		ciphertext := hex.EncodeToString(sum[:])
+		entry := decryptedFile{Format: encryption.FormatName(format), Ciphertext: hex.EncodeToString(sum[:])}
 
 		copied := false
 
-		if src, ok := sources[ciphertext]; ok {
+		if src, ok := sources[entry.key()]; ok {
 			if err = copyPlaintext(src, path); err == nil {
 				copied = true
 			} else {
@@ -119,7 +128,8 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 			return false, fmt.Errorf("failed to stat decrypted file %s: %w", path, err)
 		}
 
-		record.Files[filepath.ToSlash(rel)] = decryptedFile{Ciphertext: ciphertext, Size: info.Size(), ModTime: info.ModTime().UnixNano()}
+		entry.Size, entry.ModTime = info.Size(), info.ModTime().UnixNano()
+		record.Files[filepath.ToSlash(rel)] = entry
 
 		return true, nil
 	}
@@ -137,7 +147,7 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 }
 
 // loadPlaintextSources indexes the decrypted files of every published artifact
-// under baseDir by ciphertext. The newest artifact wins on identical ciphertext.
+// under baseDir by format and ciphertext. The newest artifact wins on identical keys.
 func loadPlaintextSources(log *slog.Logger, baseDir string) map[string]plaintextSource {
 	sources := map[string]plaintextSource{}
 
@@ -181,7 +191,7 @@ func loadPlaintextSources(log *slog.Logger, baseDir string) map[string]plaintext
 
 	for _, r := range records {
 		for rel, f := range r.record.Files {
-			sources[f.Ciphertext] = plaintextSource{path: filepath.Join(r.Path, filepath.FromSlash(rel)), size: f.Size, modTime: f.ModTime}
+			sources[f.key()] = plaintextSource{path: filepath.Join(r.Path, filepath.FromSlash(rel)), size: f.Size, modTime: f.ModTime}
 		}
 	}
 
