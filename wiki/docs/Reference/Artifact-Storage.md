@@ -188,6 +188,8 @@ new objects; fetches without new objects do not add packfiles. The mirrors of su
 The number and combined size of the packfiles of each mirror and the consolidations are exposed in the
 `doco_cd_git_mirror_packs`, `doco_cd_git_mirror_size_bytes`, `doco_cd_git_mirror_compactions_total` and
 `doco_cd_git_mirror_compaction_duration_seconds` [Prometheus metrics](../Endpoints/Metrics.md).
+Mirrors are reported after every clone and fetch, submodule mirrors also whenever their fetch is skipped because they
+already hold the pinned commit.
 A repository can have several mirrors, e.g. when it is deployed, included in a Compose file and used as a
 submodule; `doco_cd_git_mirror_size_bytes` reports the combined size of all of them and stops being reported
 for a repository once none of its mirrors exist anymore.

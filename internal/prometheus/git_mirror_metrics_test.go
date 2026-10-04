@@ -17,7 +17,7 @@ import (
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 )
 
-func TestGitMirrorPacksReportedAfterFetch(t *testing.T) {
+func TestGitMirrorPacksReportedAfterCloneAndFetch(t *testing.T) {
 	t.Parallel()
 
 	originPath := filepath.Join(t.TempDir(), "origin")
@@ -53,30 +53,34 @@ func TestGitMirrorPacksReportedAfterFetch(t *testing.T) {
 	cloneURL := "file://" + originPath
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
-	// The first call clones; only the second one fetches into the mirror.
-	for range 2 {
+	// The first call clones and the second one fetches into the mirror; both report it.
+	for _, operation := range []string{"clone", "fetch"} {
+		// Reset the gauges, so the fetch cannot pass on the values the clone reported.
+		GitMirrorPacks.DeleteLabelValues(gitInternal.GetRepoName(cloneURL))
+		GitMirrorSizeBytes.DeleteLabelValues(gitInternal.GetRepoName(cloneURL))
+
 		if _, err := gitInternal.CloneOrUpdateBareMirror(nil, cloneURL, gitInternal.MainBranch, mirrorPath,
 			false, "", "", "", false, transport.ProxyOptions{}, 0); err != nil {
-			t.Fatalf("CloneOrUpdateBareMirror() error = %v", err)
+			t.Fatalf("%s: CloneOrUpdateBareMirror() error = %v", operation, err)
 		}
-	}
 
-	if got := testutil.ToFloat64(GitMirrorPacks.WithLabelValues(gitInternal.GetRepoName(cloneURL))); got != 1 {
-		t.Fatalf("git_mirror_packs = %v, want 1", got)
-	}
+		if got := testutil.ToFloat64(GitMirrorPacks.WithLabelValues(gitInternal.GetRepoName(cloneURL))); got != 1 {
+			t.Fatalf("%s: git_mirror_packs = %v, want 1", operation, got)
+		}
 
-	packs, err := filepath.Glob(filepath.Join(mirrorPath, "objects", "pack", "pack-*.pack"))
-	if err != nil || len(packs) != 1 {
-		t.Fatalf("glob packs = %v, %v, want one pack", packs, err)
-	}
+		packs, err := filepath.Glob(filepath.Join(mirrorPath, "objects", "pack", "pack-*.pack"))
+		if err != nil || len(packs) != 1 {
+			t.Fatalf("%s: glob packs = %v, %v, want one pack", operation, packs, err)
+		}
 
-	info, err := os.Stat(packs[0])
-	if err != nil {
-		t.Fatalf("stat pack: %v", err)
-	}
+		info, err := os.Stat(packs[0])
+		if err != nil {
+			t.Fatalf("%s: stat pack: %v", operation, err)
+		}
 
-	if got := testutil.ToFloat64(GitMirrorSizeBytes.WithLabelValues(gitInternal.GetRepoName(cloneURL))); got != float64(info.Size()) {
-		t.Fatalf("git_mirror_size_bytes = %v, want %d", got, info.Size())
+		if got := testutil.ToFloat64(GitMirrorSizeBytes.WithLabelValues(gitInternal.GetRepoName(cloneURL))); got != float64(info.Size()) {
+			t.Fatalf("%s: git_mirror_size_bytes = %v, want %d", operation, got, info.Size())
+		}
 	}
 }
 
