@@ -15,6 +15,51 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
+func mustArtifactPath(t *testing.T, baseDir string, revision Revision) string {
+	t.Helper()
+
+	path, err := artifactPath(baseDir, revision)
+	if err != nil {
+		t.Fatalf("artifactPath(%q) error = %v", revision, err)
+	}
+
+	return path
+}
+
+func TestArtifactPath_RejectsRevisionsOutsideArtifactsDir(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+
+	for _, revision := range []Revision{"", ".", "..", "../rev1", "rev1/../..", "sha256:../../etc", "/abs", `rev\1`, "rev/1"} {
+		if path, err := artifactPath(baseDir, revision); !errors.Is(err, ErrInvalidRevision) {
+			t.Errorf("artifactPath(%q) = %q, %v, want %v", revision, path, err, ErrInvalidRevision)
+		}
+
+		if _, _, err := lookupArtifact(baseDir, revision); !errors.Is(err, ErrInvalidRevision) {
+			t.Errorf("lookupArtifact(%q) error = %v, want %v", revision, err, ErrInvalidRevision)
+		}
+
+		_, err := publishDir(baseDir, revision, func(string) error {
+			t.Errorf("publishDir(%q) wrote an artifact for an invalid revision", revision)
+			return nil
+		})
+		if !errors.Is(err, ErrInvalidRevision) {
+			t.Errorf("publishDir(%q) error = %v, want %v", revision, err, ErrInvalidRevision)
+		}
+	}
+
+	for _, revision := range []Revision{
+		"0123456789abcdef0123456789abcdef01234567",
+		"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	} {
+		want := filepath.Join(baseDir, ArtifactsSubdir, artifactDirName(revision))
+		if got := mustArtifactPath(t, baseDir, revision); got != want {
+			t.Errorf("artifactPath(%q) = %q, want %q", revision, got, want)
+		}
+	}
+}
+
 func TestPublishDir_CreatesReadableArtifact(t *testing.T) {
 	t.Parallel()
 
@@ -27,7 +72,7 @@ func TestPublishDir_CreatesReadableArtifact(t *testing.T) {
 		t.Fatalf("publishDir() error = %v", err)
 	}
 
-	wantPath := artifactPath(baseDir, "rev1")
+	wantPath := mustArtifactPath(t, baseDir, "rev1")
 	if artifact.Path != wantPath {
 		t.Fatalf("artifact.Path = %q, want %q", artifact.Path, wantPath)
 	}
@@ -123,7 +168,7 @@ func TestPublishDir_ConcurrentDifferentRevisions_BothSucceedIndependently(t *tes
 	}
 
 	for _, rev := range revisions {
-		content, err := os.ReadFile(filepath.Join(artifactPath(baseDir, rev), "marker.txt"))
+		content, err := os.ReadFile(filepath.Join(mustArtifactPath(t, baseDir, rev), "marker.txt"))
 		if err != nil {
 			t.Fatalf("read published file for %s: %v", rev, err)
 		}
@@ -176,7 +221,7 @@ func TestPublishDir_ConcurrentSameRevision_IsIdempotent(t *testing.T) {
 		t.Fatalf("got %d successful results, want %d", len(results), attempts)
 	}
 
-	want := artifactPath(baseDir, "rev1")
+	want := mustArtifactPath(t, baseDir, "rev1")
 	for _, artifact := range results {
 		if artifact.Path != want {
 			t.Errorf("artifact.Path = %q, want %q (every concurrent publish of the same revision must agree on one path)", artifact.Path, want)
@@ -429,7 +474,7 @@ func TestLookupArtifact_UnrecordedDirectory(t *testing.T) {
 			t.Parallel()
 
 			baseDir := t.TempDir()
-			path := artifactPath(baseDir, "rev1")
+			path := mustArtifactPath(t, baseDir, "rev1")
 
 			if err := os.MkdirAll(filepath.Join(path, "data"), filesystem.PermDir); err != nil {
 				t.Fatalf("create artifact directory: %v", err)

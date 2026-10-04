@@ -13,6 +13,11 @@ import (
 // first, which fetches exactly what is needed to reach it.
 var ErrRevisionNotFound = errors.New("source store: revision not found")
 
+// ErrInvalidRevision is returned for a Revision that cannot name an artifact directory, e.g. one containing a
+// path separator or "..". Revisions can originate from webhook payloads and must never address a path outside
+// the store's artifacts directory.
+var ErrInvalidRevision = errors.New("source store: invalid revision")
+
 // Revision is an immutable identifier for one version of a source: a Git
 // commit SHA, or an OCI manifest digest. Unlike a reference (a branch, tag,
 // or "latest"), resolving the same Revision twice always yields the same content.

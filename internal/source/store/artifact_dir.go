@@ -36,8 +36,17 @@ const ComposeGitCacheSubdir = "compose-git-cache"
 const LiveSubdir = "live"
 
 // artifactPath returns the final directory a revision is published to, e.g. "<baseDir>/artifacts/<revision>".
-func artifactPath(baseDir string, revision Revision) string {
-	return filepath.Join(baseDir, ArtifactsSubdir, artifactDirName(revision))
+func artifactPath(baseDir string, revision Revision) (string, error) {
+	name := artifactDirName(revision)
+	if !filepath.IsLocal(name) {
+		return "", fmt.Errorf("%w: %q", ErrInvalidRevision, revision)
+	}
+
+	if name == "." || strings.ContainsAny(name, `/\`) {
+		return "", fmt.Errorf("%w: %q", ErrInvalidRevision, revision)
+	}
+
+	return filepath.Join(baseDir, ArtifactsSubdir, name), nil
 }
 
 // artifactDirName encodes revisions for use in Docker bind-mount paths. OCI digests use ":", which Docker treats as a
@@ -87,7 +96,10 @@ func ArtifactRoot(baseDir, path string) (root string, revision Revision, ok bool
 // lookupArtifact reports whether a revision has already been published
 // under baseDir, without materializing anything.
 func lookupArtifact(baseDir string, revision Revision) (Artifact, bool, error) {
-	path := artifactPath(baseDir, revision)
+	path, err := artifactPath(baseDir, revision)
+	if err != nil {
+		return Artifact{}, false, err
+	}
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -289,6 +301,11 @@ const orphanedTempMaxAge = time.Hour
 // calls for the same revision safe. A directory at the destination that is
 // not the published artifact (see publishedSuffix) is moved aside first.
 func publishDir(baseDir string, revision Revision, write func(dir string) error) (Artifact, error) {
+	finalPath, err := artifactPath(baseDir, revision)
+	if err != nil {
+		return Artifact{}, err
+	}
+
 	artifactsDir := filepath.Join(baseDir, ArtifactsSubdir)
 	if err := os.MkdirAll(artifactsDir, filesystem.PermDir); err != nil {
 		return Artifact{}, fmt.Errorf("create artifacts directory: %w", err)
@@ -312,8 +329,6 @@ func publishDir(baseDir string, revision Revision, write func(dir string) error)
 	if err := os.Chmod(tmpDir, filesystem.PermDir); err != nil {
 		return Artifact{}, fmt.Errorf("set permissions on artifact directory: %w", err)
 	}
-
-	finalPath := artifactPath(baseDir, revision)
 
 	// Under this lock, a directory at finalPath that is not accepted as the published artifact was not just renamed
 	// there by a concurrent publish, but e.g. re-created by Docker, and can be moved aside.
