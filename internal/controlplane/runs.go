@@ -53,19 +53,27 @@ type RunFunc func(context.Context) (RunResult, error)
 type Runs struct {
 	applicationCtx    context.Context
 	cancelApplication context.CancelFunc
+	// maintenanceCtx cancels maintenance runs, which are safe to abort, when
+	// the runs are drained.
+	maintenanceCtx    context.Context
+	cancelMaintenance context.CancelFunc
 	background        *backgroundWork
 	tracker           *deploymentRunTracker
 	log               *slog.Logger
 	scheduledJobs     *controlPlaneJobs
 	poll              *controlPlanePoll
+	storage           *controlPlaneStorage
 }
 
 // Dependencies contains the operations and limits used by the run coordinator.
 type Dependencies struct {
-	MaxRunsPerTrigger map[RunTrigger]int     `validate:"omitempty,dive,keys,oneof=webhook poll scheduled_job,endkeys,min=1"`
+	MaxRunsPerTrigger map[RunTrigger]int     `validate:"omitempty,dive,keys,oneof=webhook poll scheduled_job mirror_compaction,endkeys,min=1"`
 	ScheduledJobs     ScheduledJobOperations `validate:"required,nostructlevel"`
 	SecretProvider    secretprovider.SecretProvider
 	Poll              PollDependencies
+	// StorageDir is the data directory holding the source stores whose Git
+	// mirrors TriggerMirrorCompaction compacts.
+	StorageDir string
 }
 
 // NewRuns validates dependencies and constructs a control-plane run coordinator.
@@ -88,6 +96,7 @@ func NewRuns(applicationCtx context.Context, log *slog.Logger, dependencies Depe
 			dependencies.SecretProvider,
 			dependencies.Poll.Runner,
 		),
+		newControlPlaneStorage(dependencies.StorageDir),
 	)
 }
 
@@ -98,6 +107,7 @@ func newRuns(
 	log *slog.Logger,
 	scheduledJobs *controlPlaneJobs,
 	poll *controlPlanePoll,
+	storage *controlPlaneStorage,
 ) *Runs {
 	if applicationCtx == nil {
 		panic("control plane runs application context is required")
@@ -123,16 +133,24 @@ func newRuns(
 		panic("control plane poll operations are required")
 	}
 
+	if storage == nil {
+		panic("control plane storage operations are required")
+	}
+
 	runCtx, cancel := context.WithCancel(applicationCtx)
+	maintenanceCtx, cancelMaintenance := context.WithCancel(runCtx)
 
 	return &Runs{
 		applicationCtx:    runCtx,
 		cancelApplication: cancel,
+		maintenanceCtx:    maintenanceCtx,
+		cancelMaintenance: cancelMaintenance,
 		background:        background,
 		tracker:           tracker,
 		log:               log,
 		scheduledJobs:     scheduledJobs,
 		poll:              poll,
+		storage:           storage,
 	}
 }
 
@@ -295,9 +313,12 @@ func (c *Runs) CloseAndWait() {
 // Drain rejects new work and waits for the runs already in flight to finish.
 // Unlike CloseAndWait it does not cancel them: a self-update handover must not
 // abort a deploy of another stack halfway through its recreate, which would
-// leave that stack without containers.
+// leave that stack without containers. Only maintenance runs, such as a mirror
+// compaction, are cancelled, since they are safe to abort and could otherwise
+// hold up the handover for minutes.
 func (c *Runs) Drain() {
 	c.background.Close()
+	c.cancelMaintenance()
 	c.background.Wait()
 }
 

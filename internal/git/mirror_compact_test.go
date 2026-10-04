@@ -265,6 +265,7 @@ func TestCompactBareMirrorLocked_ConsolidatesPacksAndLooseObjects(t *testing.T) 
 		PacksBefore: mirrorCompactPackThreshold + 1,
 		PacksAfter:  1,
 		SizeBytes:   packsSize(t, mirrorPath),
+		Mode:        MirrorCompactionCopy,
 		Result:      MirrorCompactionCompacted,
 	}
 
@@ -372,6 +373,10 @@ func TestCompactBareMirrorLocked_KeepsPacksWhenCompactionFails(t *testing.T) {
 	got := stats()
 	if len(got) != 2 || got[0].Result != MirrorCompactionFailed || got[1].Result != "" {
 		t.Fatalf("observer stats = %+v, want a %q report followed by one without a compaction", got, MirrorCompactionFailed)
+	}
+
+	if got[0].Mode != MirrorCompactionCopy || got[1].Mode != "" {
+		t.Fatalf("observer modes = %q, %q, want %q and none", got[0].Mode, got[1].Mode, MirrorCompactionCopy)
 	}
 
 	// The size covers the packs that were kept, both after the failure and on the skipped retry.

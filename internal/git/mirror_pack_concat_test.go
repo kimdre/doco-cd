@@ -264,7 +264,7 @@ func TestConsolidatePacks_RewritesDeltasAcrossPacks(t *testing.T) {
 		t.Fatalf("store loose object: %v", err)
 	}
 
-	result, err := consolidatePacks(storage, packDir, []plumbing.Hash{newest, oldest, middle})
+	result, err := consolidatePacks(storage, packDir, []plumbing.Hash{newest, oldest, middle}, copyPacks)
 	if err != nil || !result.written {
 		t.Fatalf("consolidatePacks() = %+v, %v, want written, nil", result, err)
 	}
@@ -324,7 +324,7 @@ func TestConsolidatePacks_RebuildsDeltaAgainstNewerPack(t *testing.T) {
 	older := writeTestPack(t, packDir, now.Add(-2*time.Hour), refDeltaEntry(y, x))
 	newer := writeTestPack(t, packDir, now.Add(-time.Hour), fullEntry(x))
 
-	result, err := consolidatePacks(storage, packDir, []plumbing.Hash{newer, older})
+	result, err := consolidatePacks(storage, packDir, []plumbing.Hash{newer, older}, copyPacks)
 	if err != nil || !result.written {
 		t.Fatalf("consolidatePacks() = %+v, %v, want written, nil", result, err)
 	}
@@ -382,7 +382,7 @@ func TestConsolidatePacks_KeepsPacksWhenSourceIsCorrupt(t *testing.T) {
 		t.Fatalf("write pack: %v", err)
 	}
 
-	result, err := consolidatePacks(storage, packDir, []plumbing.Hash{first, second})
+	result, err := consolidatePacks(storage, packDir, []plumbing.Hash{first, second}, copyPacks)
 	if err == nil || !strings.Contains(err.Error(), "CRC-32 mismatch") {
 		t.Fatalf("consolidatePacks() error = %v, want a CRC-32 mismatch", err)
 	}
@@ -471,7 +471,7 @@ func BenchmarkConsolidatePacks(b *testing.B) {
 
 		b.StartTimer()
 
-		result, err := consolidatePacks(storage, packDir, packs)
+		result, err := consolidatePacks(storage, packDir, packs, copyPacks)
 		if err != nil || result.objects != packCount+looseCount {
 			b.Fatalf("consolidatePacks() = %+v, %v, want %d objects", result, err, packCount+looseCount)
 		}

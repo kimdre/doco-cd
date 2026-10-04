@@ -91,6 +91,7 @@ type testControlPlaneRunsOptions struct {
 	secretProvider    secretprovider.SecretProvider
 	pollRunner        controlplane.PollRunner
 	maxRunsPerTrigger map[controlplane.RunTrigger]int
+	storageDir        string
 }
 
 func newTestControlPlaneRuns(t testing.TB, options testControlPlaneRunsOptions) *controlplane.Runs {
@@ -133,6 +134,7 @@ func newTestControlPlaneRuns(t testing.TB, options testControlPlaneRunsOptions) 
 		MaxRunsPerTrigger: options.maxRunsPerTrigger,
 		ScheduledJobs:     options.scheduledJobs,
 		SecretProvider:    options.secretProvider,
+		StorageDir:        options.storageDir,
 		Poll: controlplane.PollDependencies{
 			AppConfig:      options.appConfig,
 			DataMountPoint: options.dataMountPoint,

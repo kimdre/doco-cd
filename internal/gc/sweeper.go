@@ -3,7 +3,6 @@ package gc
 import (
 	"context"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -64,7 +63,7 @@ func New(
 		opts:            opts,
 		interval:        interval,
 		now:             time.Now,
-		listRepos:       listRepositoryDirs,
+		listRepos:       store.ListRepositoryDirs,
 		liveRevisions:   LiveRevisions,
 		sweepDirectory:  store.Sweep,
 	}
@@ -300,79 +299,4 @@ func repositoryKeyMatches(repoName, liveKey string) bool {
 	}
 
 	return strings.HasSuffix(repoName, "/"+liveKey) || strings.HasSuffix(liveKey, "/"+repoName)
-}
-
-// maxRepoSearchDepth bounds how deep below the data mount point a repository
-// root is looked for. Repository names are "<host>/<owner>/<repo>", one level
-// deeper for nested groups (e.g. GitLab subgroups); the cap keeps a periodic
-// sweep from walking the entire contents of whatever else lives on the data volume.
-const maxRepoSearchDepth = 6
-
-// repoRootMarkers are the subdirectory names that identify a directory as a
-// source store base directory (see internal/source/store): the bare mirror
-// clone of a Git source, and the published artifacts both source types write.
-var repoRootMarkers = []string{"artifacts", "mirror"}
-
-// listRepositoryDirs returns the absolute path of every source store base
-// directory beneath dataMountPoint.
-//
-// A repository directory is not an immediate child of the mount point:
-// git.GetRepoName (and the OCI equivalent) produce a "<host>/<owner>/<repo>"
-// path, so roots are found by walking - the same way internal/migration
-// locates legacy repository roots - and recognizing a directory that holds an
-// "artifacts" or "mirror" subdirectory. Descent stops at a root, so artifact
-// contents are never walked.
-func listRepositoryDirs(dataMountPoint string) ([]string, error) {
-	if _, err := os.Stat(dataMountPoint); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	var dirs []string
-
-	err := filepath.WalkDir(dataMountPoint, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			// An unreadable subtree must not abort the sweep of the others.
-			if d != nil && d.IsDir() {
-				return filepath.SkipDir
-			}
-
-			return nil //nolint:nilerr // a single unreadable entry is skipped, not fatal
-		}
-
-		if !d.IsDir() || path == dataMountPoint {
-			return nil
-		}
-
-		if isRepoRoot(path) {
-			dirs = append(dirs, path)
-			return filepath.SkipDir
-		}
-
-		rel, err := filepath.Rel(dataMountPoint, path)
-		if err != nil || strings.Count(filepath.ToSlash(rel), "/")+1 >= maxRepoSearchDepth {
-			return filepath.SkipDir
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return dirs, nil
-}
-
-// isRepoRoot reports whether dir is a source store base directory.
-func isRepoRoot(dir string) bool {
-	for _, marker := range repoRootMarkers {
-		if info, err := os.Stat(filepath.Join(dir, marker)); err == nil && info.IsDir() {
-			return true
-		}
-	}
-
-	return false
 }

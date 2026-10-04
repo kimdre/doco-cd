@@ -50,6 +50,8 @@ const (
 	RunTriggerPoll RunTrigger = "poll"
 	// RunTriggerScheduledJob identifies runs accepted from scheduled-job requests.
 	RunTriggerScheduledJob RunTrigger = "scheduled_job"
+	// RunTriggerMirrorCompaction identifies runs accepted from Git mirror compaction requests.
+	RunTriggerMirrorCompaction RunTrigger = "mirror_compaction"
 )
 
 const (
@@ -94,7 +96,7 @@ type RunTarget struct {
 type deploymentRunTarget = RunTarget
 
 // deploymentRunTracker is a thread-safe, in-memory registry for tracking deployment runs.
-// Runs are stored by jobID and organized by trigger type (webhook, poll, scheduled_job).
+// Runs are stored by jobID and organized by trigger type (webhook, poll, scheduled_job, mirror_compaction).
 // Memory is bounded for terminal runs by: max entries per type + 7-day TTL expiration.
 // Active (accepted/running) runs are never evicted until they reach a terminal status.
 // All methods are safe to call on a nil tracker and act as no-ops.
@@ -107,7 +109,7 @@ type deploymentRunTracker struct {
 }
 
 // newDeploymentRunTracker creates a new deployment run tracker with per-type limits.
-// Defaults to 50 entries per trigger type (webhook, poll, scheduled_job) if not specified.
+// Defaults to 50 entries per trigger type (webhook, poll, scheduled_job, mirror_compaction) if not specified.
 // Terminal runs older than 7 days are automatically evicted.
 func newDeploymentRunTracker(maxPerType map[deploymentRunTrigger]int) *deploymentRunTracker {
 	if maxPerType == nil {
@@ -125,6 +127,10 @@ func newDeploymentRunTracker(maxPerType map[deploymentRunTrigger]int) *deploymen
 
 	if maxPerType[deploymentRunTriggerScheduledJob] < 1 {
 		maxPerType[deploymentRunTriggerScheduledJob] = 50
+	}
+
+	if maxPerType[RunTriggerMirrorCompaction] < 1 {
+		maxPerType[RunTriggerMirrorCompaction] = 50
 	}
 
 	return &deploymentRunTracker{
@@ -418,6 +424,7 @@ func NormalizeRunTrigger(value string) (string, error) {
 		string(deploymentRunTriggerWebhook),
 		string(deploymentRunTriggerPoll),
 		string(deploymentRunTriggerScheduledJob),
+		string(RunTriggerMirrorCompaction),
 	}
 
 	if !slices.Contains(valid, value) {

@@ -267,15 +267,10 @@ func concatPacks(storage *filesystem.Storage, packDir string, sources []packSour
 	}
 
 	tmpPackPath := tmpPack.Name()
-	tmpIdxPath := ""
 
 	defer func() {
 		_ = tmpPack.Close()
 		_ = os.Remove(tmpPackPath)
-
-		if tmpIdxPath != "" {
-			_ = os.Remove(tmpIdxPath)
-		}
 	}()
 
 	out := &packOutput{
@@ -345,24 +340,8 @@ func concatPacks(storage *filesystem.Storage, packDir string, sources []packSour
 		return plumbing.ZeroHash, nil, fmt.Errorf("build pack index: %w", err)
 	}
 
-	tmpIdxPath, err = writePackIndex(packDir, idx)
-	if err != nil {
+	if err := installPack(packDir, tmpPackPath, checksum, idx); err != nil {
 		return plumbing.ZeroHash, nil, err
-	}
-
-	base := filepath.Join(packDir, "pack-"+checksum.String())
-
-	// go-git discovers packs by their .pack file, so the index must be in place
-	// first: a pack without its index would break every read of the mirror.
-	if err := os.Rename(tmpIdxPath, base+".idx"); err != nil {
-		return plumbing.ZeroHash, nil, fmt.Errorf("install pack index: %w", err)
-	}
-
-	tmpIdxPath = ""
-
-	if err := os.Rename(tmpPackPath, base+".pack"); err != nil {
-		_ = os.Remove(base + ".idx")
-		return plumbing.ZeroHash, nil, fmt.Errorf("install pack: %w", err)
 	}
 
 	hashes := make([]plumbing.Hash, 0, len(kept))
@@ -371,6 +350,36 @@ func concatPacks(storage *filesystem.Storage, packDir string, sources []packSour
 	}
 
 	return checksum, hashes, nil
+}
+
+// installPack moves the finished pack at tmpPackPath into packDir, named after
+// its checksum, together with the index idx describes.
+func installPack(packDir, tmpPackPath string, checksum plumbing.Hash, idx *idxfile.Writer) error {
+	base := filepath.Join(packDir, "pack-"+checksum.String())
+
+	// Packs are named after their checksum, so the mirror already holds this exact pack.
+	if _, err := os.Stat(base + ".pack"); err == nil {
+		return nil
+	}
+
+	tmpIdxPath, err := writePackIndex(packDir, idx)
+	if err != nil {
+		return err
+	}
+
+	// go-git discovers packs by their .pack file, so the index must be in place
+	// first: a pack without its index would break every read of the mirror.
+	if err := os.Rename(tmpIdxPath, base+".idx"); err != nil {
+		_ = os.Remove(tmpIdxPath)
+		return fmt.Errorf("install pack index: %w", err)
+	}
+
+	if err := os.Rename(tmpPackPath, base+".pack"); err != nil {
+		_ = os.Remove(base + ".idx")
+		return fmt.Errorf("install pack: %w", err)
+	}
+
+	return nil
 }
 
 // writePackIndex encodes idx into a temporary file in packDir and returns its path.

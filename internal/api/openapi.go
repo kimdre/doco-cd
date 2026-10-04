@@ -19,6 +19,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -239,7 +240,7 @@ func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*ope
 		}
 	}
 
-	for _, tag := range []string{"Health", "Runs", "Scheduled jobs", "Projects", "Stacks", "Polling", "Webhooks"} {
+	for _, tag := range []string{"Health", "Runs", "Scheduled jobs", "Projects", "Stacks", "Polling", "Storage", "Webhooks"} {
 		if referencedTags.Contains(tag) {
 			document.Tags = append(document.Tags, &openapi3.Tag{
 				Name:        tag,
@@ -345,6 +346,8 @@ func tagDescription(tag string) string {
 		return "Docker Swarm stack and service management"
 	case "Polling":
 		return "Repository polling operations"
+	case "Storage":
+		return "Git mirror and artifact storage maintenance"
 	case "Webhooks":
 		return "Webhook receivers for Git providers and container registries"
 	default:
@@ -501,6 +504,14 @@ func queryIntParameter(name, description string, defaultValue int, minimum, maxi
 		Value: openapi3.NewQueryParameter(name).
 			WithDescription(description).
 			WithSchema(schema),
+	}
+}
+
+func queryInt64Parameter(name, description string, defaultValue int64, minimum float64) *openapi3.ParameterRef {
+	return &openapi3.ParameterRef{
+		Value: openapi3.NewQueryParameter(name).
+			WithDescription(description).
+			WithSchema(openapi3.NewInt64Schema().WithDefault(defaultValue).WithMin(minimum)),
 	}
 }
 
@@ -700,6 +711,14 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 		return nil, err
 	}
 
+	compactResponses, err := standardResponses(builder, map[int]*openapi3.ResponseRef{
+		http.StatusOK:       runResponse,
+		http.StatusAccepted: stringResponse,
+	}, http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusInternalServerError, http.StatusServiceUnavailable, http.StatusMethodNotAllowed)
+	if err != nil {
+		return nil, err
+	}
+
 	webhookResponses, err := standardResponses(builder, map[int]*openapi3.ResponseRef{
 		http.StatusCreated:  stringResponse,
 		http.StatusAccepted: stringResponse,
@@ -731,7 +750,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 				operation(http.MethodGet, "listDeploymentRuns", "List deployment runs", []string{"Runs"}, openapi3.Parameters{
 					queryIntParameter("limit", "Maximum number of runs.", 50, 1, 200),
 					queryStringParameter("status", "Run status filter.", "accepted", "running", "succeeded", "failed", "skipped"),
-					queryStringParameter("trigger", "Run trigger filter.", "webhook", "poll", "scheduled_job"),
+					queryStringParameter("trigger", "Run trigger filter.", "webhook", "poll", "scheduled_job", "mirror_compaction"),
 				}, nil, responses(listRunsResponses), apiAuth),
 			},
 		},
@@ -873,6 +892,21 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			},
 		},
 		{
+			Pattern: APIPath + "/storage/compact",
+			Handler: http.HandlerFunc(h.CompactMirrorsHandler),
+			Enabled: restEnabled,
+			Root:    APIPath,
+			Operations: []Operation{
+				operation(http.MethodPost, "compactMirrors", "Compact Git mirrors", []string{"Storage"}, openapi3.Parameters{
+					queryStringParameter("repository", "Only compact the mirrors of this repository, e.g. github.com/acme/app. Defaults to all mirrors."),
+					queryStringParameter("mode", "Compaction mode. repack re-encodes all objects and needs several times the mirror size in memory; copy only concatenates the packfiles.",
+						string(git.MirrorCompactionRepack), string(git.MirrorCompactionCopy)),
+					queryInt64Parameter("max_size", "Size in bytes above which repack skips a mirror. 0 disables the limit.", controlplane.DefaultMirrorCompactionMaxSize, 0),
+					queryBoolParameter("wait", "Wait for the compaction to finish and respond with the run.", false),
+				}, nil, responses(compactResponses), apiAuth),
+			},
+		},
+		{
 			Pattern: APIPath + "/sync-windows",
 			Handler: http.HandlerFunc(h.GetSyncWindowsHandler),
 			Enabled: restEnabled,
@@ -958,7 +992,7 @@ func customizeRunSchema(schema *openapi3.SchemaRef) error {
 	}
 
 	schema.Value.Properties["trigger"] = &openapi3.SchemaRef{
-		Value: openapi3.NewStringSchema().WithEnum("webhook", "poll", "scheduled_job"),
+		Value: openapi3.NewStringSchema().WithEnum("webhook", "poll", "scheduled_job", "mirror_compaction"),
 	}
 	schema.Value.Properties["status"] = &openapi3.SchemaRef{
 		Value: openapi3.NewStringSchema().WithEnum("accepted", "running", "succeeded", "failed", "skipped"),

@@ -46,7 +46,7 @@ func newTestSweeper(t *testing.T) (*Sweeper, string) {
 		opts:           store.GCOptions{RetentionRecords: 0, RetentionTTL: time.Minute},
 		interval:       time.Hour,
 		now:            time.Now,
-		listRepos:      listRepositoryDirs,
+		listRepos:      store.ListRepositoryDirs,
 		sweepDirectory: store.Sweep,
 		liveRevisions: func(context.Context, *docker.ContextRegistry, *slog.Logger, string, string) (map[string]set.Set[store.Revision], error) {
 			return nil, nil
@@ -361,88 +361,6 @@ func TestSweeper_Start_NoopWhenUnconfigured(t *testing.T) {
 	// Must return immediately without panicking when required fields are
 	// missing, mirroring internal/certrotation.Watcher's own guard.
 	(&Sweeper{}).Start(context.Background())
-}
-
-// TestListRepositoryDirs_FindsNestedRepoRoots guards the layout that actually
-// exists on disk: git.GetRepoName produces "<host>/<owner>/<repo>", so a
-// repository root is never an immediate child of the data mount point. Listing
-// only immediate children turned the whole sweeper into a no-op.
-func TestListRepositoryDirs_FindsNestedRepoRoots(t *testing.T) {
-	t.Parallel()
-
-	dataMountPoint := t.TempDir()
-
-	gitRepo := filepath.Join(dataMountPoint, "github.com", "owner", "repo-a")
-	makeArtifactDir(t, gitRepo, "rev")
-
-	if err := os.MkdirAll(filepath.Join(gitRepo, "mirror"), 0o755); err != nil {
-		t.Fatalf("mkdir mirror: %v", err)
-	}
-
-	// Deeper nesting, e.g. a GitLab subgroup.
-	nested := filepath.Join(dataMountPoint, "gitlab.com", "group", "subgroup", "repo-b")
-	makeArtifactDir(t, nested, "rev")
-
-	// Not a store base directory, and must not be reported.
-	if err := os.MkdirAll(filepath.Join(dataMountPoint, "unrelated", "stuff"), 0o755); err != nil {
-		t.Fatalf("mkdir unrelated: %v", err)
-	}
-
-	if err := os.WriteFile(filepath.Join(dataMountPoint, "stray-file.txt"), []byte(""), 0o600); err != nil {
-		t.Fatalf("write stray file: %v", err)
-	}
-
-	dirs, err := listRepositoryDirs(dataMountPoint)
-	if err != nil {
-		t.Fatalf("listRepositoryDirs() error = %v", err)
-	}
-
-	got := set.New(dirs...)
-
-	want := []string{gitRepo, nested}
-	if got.Len() != len(want) {
-		t.Fatalf("listRepositoryDirs() = %v, want exactly %v", dirs, want)
-	}
-
-	for _, dir := range want {
-		if !got.Contains(dir) {
-			t.Errorf("listRepositoryDirs() = %v, missing %q", dirs, dir)
-		}
-	}
-
-	dirs, err = listRepositoryDirs(filepath.Join(dataMountPoint, "does-not-exist"))
-	if err != nil {
-		t.Fatalf("listRepositoryDirs(missing) error = %v, want nil", err)
-	}
-
-	if len(dirs) != 0 {
-		t.Fatalf("listRepositoryDirs(missing) = %v, want empty", dirs)
-	}
-}
-
-// TestListRepositoryDirs_DoesNotDescendIntoArtifacts makes sure a published
-// artifact that happens to contain an "artifacts" or "mirror" directory of its
-// own is never mistaken for a repository root.
-func TestListRepositoryDirs_DoesNotDescendIntoArtifacts(t *testing.T) {
-	t.Parallel()
-
-	dataMountPoint := t.TempDir()
-
-	repoDir := filepath.Join(dataMountPoint, "github.com", "owner", "repo")
-	artifact := makeArtifactDir(t, repoDir, "rev")
-
-	if err := os.MkdirAll(filepath.Join(artifact, "mirror"), 0o755); err != nil {
-		t.Fatalf("mkdir nested mirror: %v", err)
-	}
-
-	dirs, err := listRepositoryDirs(dataMountPoint)
-	if err != nil {
-		t.Fatalf("listRepositoryDirs() error = %v", err)
-	}
-
-	if len(dirs) != 1 || dirs[0] != repoDir {
-		t.Fatalf("listRepositoryDirs() = %v, want exactly [%q]", dirs, repoDir)
-	}
 }
 
 func TestRepositoryKeyMatches(t *testing.T) {

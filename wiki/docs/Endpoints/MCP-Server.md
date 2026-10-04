@@ -123,6 +123,7 @@ x-api-key: your-api-key
 | `remove_stack`          | `stack_name`, `context`                                                                        | Remove a Docker Swarm stack.                                                                                         |
 | `trigger_scheduled_job` | `job_name`, `stack`, `context`, `wait` (default `true`)                                        | Trigger one configured scheduled job immediately.                                                                    |
 | `trigger_poll`          | `configs` (array, max 32), `wait` (default `true`)                                             | Trigger one or more poll configurations immediately.                                                                 |
+| `compact_mirrors`       | `repository`, `mode` (repack/copy), `max_size`, `wait` (default `false`)                       | [Compact the Git mirrors](../Reference/Artifact-Storage.md#on-demand-compaction) into a single packfile per mirror.  |
 
 Swarm tools are always advertised. Calls fail if Docker Swarm features are unavailable or disabled.
 
@@ -131,7 +132,7 @@ Swarm tools are always advertised. Calls fail if Docker Swarm features are unava
 
 ## Long-Running Tools
 
-`trigger_scheduled_job` and `trigger_poll` accept a `wait` argument that defaults to `true`.
+`trigger_scheduled_job` and `trigger_poll` accept a `wait` argument that defaults to `true`. `compact_mirrors` accepts a `wait` argument that defaults to `false`.
 
 - **`#!yaml wait: true`**: the tool blocks until the operation completes and returns the final status. Application shutdown cancels active runs after a 10-second grace period. Client disconnects do **not** cancel the running operation.
 - **`#!yaml wait: false`**: the tool returns an `accepted` status and `job_id` immediately. The job continues under the application lifecycle; neither client disconnects nor request cancellation can stop it, but application shutdown does.

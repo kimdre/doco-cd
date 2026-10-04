@@ -149,6 +149,21 @@ func TestOpenAPIDocumentDescribesSecurityParametersAndSchemas(t *testing.T) {
 		t.Fatal("poll operation is missing its request body or payload-too-large response")
 	}
 
+	compactOperation := document.Paths.Find(APIPath + "/storage/compact").Post
+	if compactOperation == nil || compactOperation.Responses.Status(http.StatusConflict) == nil {
+		t.Fatal("storage compaction operation is missing or has no conflict response")
+	}
+
+	for _, name := range []string{"repository", "mode", "max_size", "wait"} {
+		if parameterByName(compactOperation.Parameters, name) == nil {
+			t.Errorf("storage compaction operation is missing parameter %q", name)
+		}
+	}
+
+	if document.Tags.Get("Storage") == nil {
+		t.Fatal("Storage tag is not declared")
+	}
+
 	targetedWebhook := document.Paths.Find(WebhookPath + "/{customTarget}").Post
 	if targetedWebhook.RequestBody == nil || parameterByName(targetedWebhook.Parameters, "customTarget") == nil {
 		t.Fatal("targeted webhook is missing its request body or path parameter")

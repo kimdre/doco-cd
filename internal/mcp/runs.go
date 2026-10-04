@@ -14,7 +14,7 @@ import (
 type listDeploymentRunsInput struct {
 	Limit   *int   `json:"limit,omitempty" jsonschema:"maximum number of runs to return; defaults to 50 and is capped at 200"`
 	Status  string `json:"status,omitempty" jsonschema:"optional run status filter: accepted, running, succeeded, failed, or skipped"`
-	Trigger string `json:"trigger,omitempty" jsonschema:"optional run trigger filter: webhook, poll, or scheduled_job"`
+	Trigger string `json:"trigger,omitempty" jsonschema:"optional run trigger filter: webhook, poll, scheduled_job, or mirror_compaction"`
 }
 
 type listDeploymentRunsOutput struct {

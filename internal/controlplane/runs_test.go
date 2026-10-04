@@ -16,10 +16,12 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
 type testScheduledJobOperations struct {
@@ -115,6 +117,9 @@ type testControlPlaneRunsOptions struct {
 	contexts       *docker.ContextRegistry
 	secretProvider secretprovider.SecretProvider
 	pollRunner     PollRunner
+	storageDir     string
+	listMirrors    func(string) ([]store.Mirror, error)
+	compactMirror  func(context.Context, *slog.Logger, string, git.MirrorCompactOptions) (git.MirrorCompaction, error)
 }
 
 func newTestControlPlaneRuns(t testing.TB, options testControlPlaneRunsOptions) *Runs {
@@ -161,6 +166,15 @@ func newTestControlPlaneRuns(t testing.TB, options testControlPlaneRunsOptions) 
 		}
 	}
 
+	storage := newControlPlaneStorage(options.storageDir)
+	if options.listMirrors != nil {
+		storage.listMirrors = options.listMirrors
+	}
+
+	if options.compactMirror != nil {
+		storage.compact = options.compactMirror
+	}
+
 	runs := newRuns(
 		options.applicationCtx,
 		options.background,
@@ -175,6 +189,7 @@ func newTestControlPlaneRuns(t testing.TB, options testControlPlaneRunsOptions) 
 			options.secretProvider,
 			options.pollRunner,
 		),
+		storage,
 	)
 	t.Cleanup(runs.CloseAndWait)
 

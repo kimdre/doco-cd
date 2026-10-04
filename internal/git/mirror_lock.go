@@ -57,11 +57,30 @@ func AcquireExclusiveMirrorLock(mirrorDir string) func() {
 	return acquireObservedMirrorLock(MirrorLockExclusive, mirrorDir, sourcecache.AcquireExclusivePathLock)
 }
 
+// tryAcquireExclusiveMirrorLock takes the exclusive path lock of the bare
+// mirror at mirrorDir unless another goroutine or process holds it, in which
+// case it returns false instead of waiting. Once released, the lock's hold
+// time is reported.
+func tryAcquireExclusiveMirrorLock(mirrorDir string) (func(), bool, error) {
+	unlock, acquired, err := sourcecache.TryAcquireExclusivePathLock(mirrorDir)
+	if err != nil || !acquired {
+		return nil, false, err
+	}
+
+	return observedMirrorUnlock(MirrorLockExclusive, 0, time.Now(), unlock), true, nil
+}
+
 func acquireObservedMirrorLock(mode, mirrorDir string, acquire func(string) func()) func() {
 	requestedAt := time.Now()
 	unlock := acquire(mirrorDir)
 	acquiredAt := time.Now()
 
+	return observedMirrorUnlock(mode, acquiredAt.Sub(requestedAt), acquiredAt, unlock)
+}
+
+// observedMirrorUnlock wraps unlock so that it runs once and reports the lock's
+// wait and hold time.
+func observedMirrorUnlock(mode string, waited time.Duration, acquiredAt time.Time, unlock func()) func() {
 	var once sync.Once
 
 	return func() {
@@ -69,7 +88,7 @@ func acquireObservedMirrorLock(mode, mirrorDir string, acquire func(string) func
 			held := time.Since(acquiredAt)
 
 			unlock()
-			observeMirrorLock(mode, acquiredAt.Sub(requestedAt), held)
+			observeMirrorLock(mode, waited, held)
 		})
 	}
 }

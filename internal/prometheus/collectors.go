@@ -38,15 +38,21 @@ func init() {
 	)
 
 	gitInternal.SetMirrorPackObserver(func(stats gitInternal.MirrorPackStats) {
-		gitMirrorStats.observe(stats.Repository, stats.Path, stats.PacksAfter, stats.SizeBytes)
+		// A mirror skipped before its packs were listed, e.g. because it was in use, reports none.
+		if stats.PacksAfter >= 0 {
+			gitMirrorStats.observe(stats.Repository, stats.Path, stats.PacksAfter, stats.SizeBytes)
+		}
 
 		if stats.Result == "" {
 			return
 		}
 
-		GitMirrorCompactionsTotal.WithLabelValues(stats.Repository, stats.Result).Inc()
+		GitMirrorCompactionsTotal.WithLabelValues(stats.Repository, string(stats.Mode), stats.Result).Inc()
 
-		GitMirrorCompactionDuration.WithLabelValues(stats.Repository).Observe(stats.Duration.Seconds())
+		// Skipped and cancelled compactions did not do the work being timed.
+		if stats.Result == gitInternal.MirrorCompactionCompacted || stats.Result == gitInternal.MirrorCompactionFailed {
+			GitMirrorCompactionDuration.WithLabelValues(stats.Repository, string(stats.Mode)).Observe(stats.Duration.Seconds())
+		}
 	})
 }
 
@@ -241,14 +247,14 @@ var (
 	GitMirrorCompactionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "git_mirror_compactions_total",
-		Help:      "Total number of bare git mirror packfile compactions by result",
-	}, []string{"repository", "result"})
+		Help:      "Total number of bare git mirror packfile compactions by mode and result",
+	}, []string{"repository", "mode", "result"})
 	GitMirrorCompactionDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "git_mirror_compaction_duration_seconds",
-		Help:      "Duration of bare git mirror packfile compactions in seconds",
+		Help:      "Duration of bare git mirror packfile compactions by mode in seconds",
 		Buckets:   prometheus.ExponentialBuckets(0.05, 2, 12),
-	}, []string{"repository"})
+	}, []string{"repository", "mode"})
 	ArtifactGCRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "artifact_gc_removed_total",

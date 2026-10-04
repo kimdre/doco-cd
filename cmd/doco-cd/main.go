@@ -444,12 +444,14 @@ func run() error {
 		log.Logger,
 		controlplane.Dependencies{
 			MaxRunsPerTrigger: map[controlplane.RunTrigger]int{
-				controlplane.RunTriggerPoll:         50,
-				controlplane.RunTriggerWebhook:      50,
-				controlplane.RunTriggerScheduledJob: 50,
+				controlplane.RunTriggerPoll:             50,
+				controlplane.RunTriggerWebhook:          50,
+				controlplane.RunTriggerScheduledJob:     50,
+				controlplane.RunTriggerMirrorCompaction: 50,
 			},
 			ScheduledJobs:  schedulerManager,
 			SecretProvider: secretProvider,
+			StorageDir:     dataMountPoint.Destination,
 			Poll: controlplane.PollDependencies{
 				AppConfig:      c,
 				DataMountPoint: dataMountPoint,

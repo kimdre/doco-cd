@@ -80,10 +80,10 @@ The API tracks deployment-related runs (for example webhook-triggered deployment
 Use these endpoints to inspect the current status and recent history by `job_id`.
 Each run's `deployments` collection reports the resolved stack and Docker context targets. A single poll or webhook run can contain targets from multiple contexts.
 
-| Endpoint              | Method | Description                           | Query Parameters                                                                                                                                                                                                 |
-|-----------------------|--------|---------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `/v1/api/runs`        | GET    | List recent tracked deployment runs   | - `limit` (integer, default: `50`, max: `200`)<br/>- `status` (string, optional): `accepted`, `running`, `succeeded`, `failed`, `skipped`<br/>- `trigger` (string, optional): `webhook`, `poll`, `scheduled_job` |
-| `/v1/api/run/{jobID}` | GET    | Get details for a specific run/job ID |                                                                                                                                                                                                                  |
+| Endpoint              | Method | Description                           | Query Parameters                                                                                                                                                                                                                      |
+|-----------------------|--------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/v1/api/runs`        | GET    | List recent tracked deployment runs   | - `limit` (integer, default: `50`, max: `200`)<br/>- `status` (string, optional): `accepted`, `running`, `succeeded`, `failed`, `skipped`<br/>- `trigger` (string, optional): `webhook`, `poll`, `scheduled_job`, `mirror_compaction` |
+| `/v1/api/run/{jobID}` | GET    | Get details for a specific run/job ID |                                                                                                                                                                                                                                       |
 
 #### Example Requests
 
@@ -256,6 +256,50 @@ curl --request GET \
       "windows": ["weekend-freeze"],
       "next_open": "2026-01-05T08:00:00+01:00"
     }
+  },
+  "job_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+### Storage
+
+| Endpoint                  | Method | Description                                                                                                                                  | Query Parameters                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------------|--------|----------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/v1/api/storage/compact` | POST   | [Compact the Git mirrors](../Reference/Artifact-Storage.md#on-demand-compaction) in the data directory into a single packfile per mirror. | - `repository` (string, optional): Only compact the mirrors of this repository, e.g. `github.com/acme/app` or a clone URL.<br/>- `mode` (string, default: `repack`): `repack` re-encodes all objects, `copy` only consolidates the packfiles.<br/>- `max_size` (integer, default: `268435456`): Size in bytes above which `repack` skips a mirror. `0` disables the limit.<br/>- `wait` (boolean, default: `false`): Wait for the compaction to finish before responding. |
+
+The compaction is tracked as a run with the trigger `mirror_compaction`. With `wait=true`, the response contains
+the finished run. Its `status` is `succeeded` if at least one mirror was compacted and `skipped` if none was, and
+its `message` summarizes the result of every mirror.
+
+**Common outcomes**
+
+- `200 OK`: compaction finished (`wait=true`).
+- `202 Accepted`: compaction started in the background (`wait=false`). Use the `job_id` with `/v1/api/run/{jobID}`.
+- `400 Bad Request`: unknown `mode` or invalid `max_size`.
+- `404 Not Found`: no Git mirror exists, or none of the given `repository`.
+- `409 Conflict`: another compaction is running. The `job_id` of the response is the one of that run.
+- `500 Internal Server Error`: a mirror failed to compact (`wait=true`). The response contains the summary.
+- `503 Service Unavailable`: doco-cd is shutting down and cancelled the compaction or did not start it.
+
+#### Example Request
+
+```sh
+curl --request POST \
+  --url 'https://cd.example.com/v1/api/storage/compact?wait=true' \
+  --header 'x-api-key: your-api-key'
+```
+
+```json title="Response"
+{
+  "content": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "trigger": "mirror_compaction",
+    "status": "succeeded",
+    "message": "repack of 3 mirrors: 2 compacted, 1 skipped_busy; packfiles 22.2 MiB -> 12.1 MiB",
+    "created_at": "2026-01-03T10:00:00.120391+01:00",
+    "started_at": "2026-01-03T10:00:00.120584+01:00",
+    "finished_at": "2026-01-03T10:00:09.412873+01:00",
+    "updated_at": "2026-01-03T10:00:09.412873+01:00"
   },
   "job_id": "550e8400-e29b-41d4-a716-446655440000"
 }
