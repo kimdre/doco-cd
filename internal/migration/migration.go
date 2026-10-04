@@ -17,6 +17,7 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -33,7 +34,7 @@ const gitDirName = ".git"
 // current stores and unrelated directories untouched. Per-repository failures are logged and do not stop the migration
 // pass or application startup.
 func Run(ctx context.Context, log *slog.Logger, apiClient client.APIClient, dataMountDestination string) error {
-	return run(ctx, log, dataMountDestination, func(ctx context.Context, repoDir string, keep []string) (bool, error) {
+	return run(ctx, log, dataMountDestination, func(ctx context.Context, repoDir string, keep []string) ([]string, error) {
 		return referencedByRunningContainer(ctx, apiClient, repoDir, keep)
 	})
 }
@@ -48,16 +49,22 @@ func RunWithContexts(
 	dataMountSource string,
 	dataMountDestination string,
 ) error {
-	return run(ctx, log, dataMountDestination, func(ctx context.Context, repoDir string, keep []string) (bool, error) {
+	return run(ctx, log, dataMountDestination, contextsReferenceChecker(contexts, dataMountSource, dataMountDestination))
+}
+
+// contextsReferenceChecker returns a referenceChecker that inspects every configured Docker context. Both mount paths
+// of a repository are checked because deployment labels contain daemon-visible host paths.
+func contextsReferenceChecker(contexts *docker.ContextRegistry, dataMountSource, dataMountDestination string) referenceChecker {
+	return func(ctx context.Context, repoDir string, keep []string) ([]string, error) {
 		relativeRepoDir, err := filepath.Rel(dataMountDestination, repoDir)
 		if err != nil {
-			return false, fmt.Errorf("derive host repository path: %w", err)
+			return nil, fmt.Errorf("derive host repository path: %w", err)
 		}
 
 		hostRepoDir := filepath.Join(dataMountSource, relativeRepoDir)
 
 		return referencedAcrossContexts(ctx, contexts, []string{repoDir, hostRepoDir}, keep)
-	})
+	}
 }
 
 // LeftoverTracker remembers, for the lifetime of the process, which repository directories are
@@ -73,6 +80,9 @@ type LeftoverTracker struct {
 type leftoverState struct {
 	mu    sync.Mutex
 	clean bool
+	// usedBy is the list of containers last logged at info level as still using the legacy
+	// leftovers, so an unchanged list is only logged at debug level on later attempts.
+	usedBy []string
 }
 
 // NewLeftoverTracker creates an empty LeftoverTracker.
@@ -155,16 +165,7 @@ func CleanupRepoLeftovers(
 	repoDir string,
 ) error {
 	return cleanupRepoLeftovers(ctx, log, tracker, repoDir,
-		func(ctx context.Context, repoDir string, keep []string) (bool, error) {
-			relativeRepoDir, err := filepath.Rel(dataMountDestination, repoDir)
-			if err != nil {
-				return false, fmt.Errorf("derive host repository path: %w", err)
-			}
-
-			hostRepoDir := filepath.Join(dataMountSource, relativeRepoDir)
-
-			return referencedAcrossContexts(ctx, contexts, []string{repoDir, hostRepoDir}, keep)
-		})
+		contextsReferenceChecker(contexts, dataMountSource, dataMountDestination))
 }
 
 // MigrateRepository attempts a one-off, single-repository migration of repoDir from the legacy
@@ -200,16 +201,7 @@ func MigrateRepository(
 		log = slog.Default()
 	}
 
-	isReferenced := func(ctx context.Context, repoDir string, keep []string) (bool, error) {
-		relativeRepoDir, err := filepath.Rel(dataMountDestination, repoDir)
-		if err != nil {
-			return false, fmt.Errorf("derive host repository path: %w", err)
-		}
-
-		hostRepoDir := filepath.Join(dataMountSource, relativeRepoDir)
-
-		return referencedAcrossContexts(ctx, contexts, []string{repoDir, hostRepoDir}, keep)
-	}
+	isReferenced := contextsReferenceChecker(contexts, dataMountSource, dataMountDestination)
 
 	legacyGitDir := filepath.Join(repoDir, gitDirName)
 
@@ -266,21 +258,40 @@ func cleanupRepoLeftovers(ctx context.Context, log *slog.Logger, tracker *Leftov
 		return nil
 	}
 
-	clean, err := cleanupLegacyLeftovers(ctx, log, isReferenced, repoDir, storeLayoutEntries())
+	usedBy, err := cleanupLegacyLeftovers(ctx, log, isReferenced, repoDir, storeLayoutEntries())
 	if err != nil {
 		return err
 	}
 
-	if clean {
+	if len(usedBy) > 0 {
+		// This runs after every deployment of the repository, so an unchanged list of
+		// containers is only repeated at debug level.
+		level := slog.LevelInfo
+
 		if state != nil {
-			state.clean = true
+			if slices.Equal(state.usedBy, usedBy) {
+				level = slog.LevelDebug
+			}
+
+			state.usedBy = usedBy
 		}
+
+		logLegacyLeftoversKept(ctx, log.With(slog.String("repo_dir", repoDir)), level, usedBy)
+
+		return nil
+	}
+
+	if state != nil {
+		state.clean = true
+		state.usedBy = nil
 	}
 
 	return nil
 }
 
-type referenceChecker func(ctx context.Context, repoDir string, keep []string) (bool, error)
+// referenceChecker returns the containers, Swarm services and Swarm tasks that still use legacy
+// files of repoDir outside the entries in keep. An empty result means the files are unused.
+type referenceChecker func(ctx context.Context, repoDir string, keep []string) ([]string, error)
 
 func run(ctx context.Context, log *slog.Logger, dataMountDestination string, isReferenced referenceChecker) error {
 	if log == nil {
@@ -468,9 +479,16 @@ func migrateRepo(ctx context.Context, log *slog.Logger, isReferenced referenceCh
 	}
 
 	if migrated {
-		_, err = cleanupLegacyLeftovers(ctx, log, isReferenced, repoDir, storeLayoutEntries())
+		usedBy, err := cleanupLegacyLeftovers(ctx, log, isReferenced, repoDir, storeLayoutEntries())
+		if err != nil {
+			return err
+		}
 
-		return err
+		if len(usedBy) > 0 {
+			logLegacyLeftoversKept(ctx, log, slog.LevelInfo, usedBy)
+		}
+
+		return nil
 	}
 
 	// Neither a migrated store nor a legacy checkout.
@@ -727,29 +745,28 @@ func legacyLeftoverEntries(repoDir string, keep []string) ([]string, error) {
 }
 
 // cleanupLegacyLeftovers removes every entry of repoDir that is not in keep,
-// but only once no currently running container's working-directory label
-// still points at one of them. It reports whether repoDir is now free of
-// such entries, so a caller that needs them gone before it can continue
-// (see migrateRepo's handling of a working-tree entry occupying the
-// mirror's own path) can tell a successful cleanup from a deferred one.
-func cleanupLegacyLeftovers(ctx context.Context, log *slog.Logger, isReferenced referenceChecker, repoDir string, keep []string) (bool, error) {
+// but only once no container's working-directory label still points at one
+// of them. It returns the containers that still use the entries, which is
+// empty once repoDir is free of such entries, so a caller can tell a
+// successful cleanup from a deferred one. Logging a deferred cleanup is left
+// to the caller, which knows how often it retries.
+func cleanupLegacyLeftovers(ctx context.Context, log *slog.Logger, isReferenced referenceChecker, repoDir string, keep []string) ([]string, error) {
 	leftovers, err := legacyLeftoverEntries(repoDir, keep)
 	if err != nil {
-		return false, fmt.Errorf("list legacy leftovers: %w", err)
+		return nil, fmt.Errorf("list legacy leftovers: %w", err)
 	}
 
 	if len(leftovers) == 0 {
-		return true, nil
+		return nil, nil
 	}
 
-	referenced, err := isReferenced(ctx, repoDir, keep)
+	usedBy, err := isReferenced(ctx, repoDir, keep)
 	if err != nil {
-		return false, fmt.Errorf("check running containers for legacy references: %w", err)
+		return nil, fmt.Errorf("check running containers for legacy references: %w", err)
 	}
 
-	if referenced {
-		log.Debug("legacy checkout files are still bind-mounted by a running container; leaving them until it is redeployed")
-		return false, nil
+	if len(usedBy) > 0 {
+		return usedBy, nil
 	}
 
 	log.Info("removing legacy checkout files left over after migration", slog.Any("entries", leftovers))
@@ -763,15 +780,27 @@ func cleanupLegacyLeftovers(ctx context.Context, log *slog.Logger, isReferenced 
 	}
 
 	if err := errors.Join(errs...); err != nil {
-		return false, err
+		return nil, err
 	}
 
-	return true, nil
+	return nil, nil
 }
 
-// referencedByRunningContainer reports whether any container currently
-// known to the default Docker context (running or not - a stopped container
-// can still be started again) has a working-directory label pointing inside
+// legacyLeftoversKeptMessage is logged while legacy checkout files are kept because containers still use them.
+const legacyLeftoversKeptMessage = "keeping legacy checkout files while containers still use them; " +
+	"redeploy or remove these containers to clean them up"
+
+// logLegacyLeftoversKept reports that the legacy checkout files of a migrated repository are kept
+// because containers created before the migration still use them. These containers are only
+// moved to the current layout when their deployment is redeployed, which does not happen as long
+// as nothing in it changes, so they are listed to tell users what to redeploy or remove.
+func logLegacyLeftoversKept(ctx context.Context, log *slog.Logger, level slog.Level, usedBy []string) {
+	log.Log(ctx, level, legacyLeftoversKeptMessage, slog.Any("used_by", usedBy))
+}
+
+// referencedByRunningContainer returns every container currently known to
+// the default Docker context (running or not - a stopped container can
+// still be started again) that has a working-directory label pointing inside
 // repoDir, outside the entries in keep.
 //
 // It only inspects the default context: doco-cd cannot know which other
@@ -781,38 +810,55 @@ func cleanupLegacyLeftovers(ctx context.Context, log *slog.Logger, isReferenced 
 // pass; they are picked up by a later restart once the evidence used here
 // (the default context) no longer conflicts, or once that stack has been
 // redeployed and stopped referencing them by any other means.
-func referencedByRunningContainer(ctx context.Context, apiClient client.APIClient, repoDir string, keep []string) (bool, error) {
+func referencedByRunningContainer(ctx context.Context, apiClient client.APIClient, repoDir string, keep []string) ([]string, error) {
 	result, err := apiClient.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+
+	usedBy := set.New[string]()
 
 	for _, cont := range result.Items {
 		if labelsReferenceLegacyPath(cont.Labels, []string{repoDir}, keep) {
-			return true, nil
+			name := ""
+			if len(cont.Names) > 0 {
+				name = cont.Names[0]
+			}
+
+			usedBy.Add(describeLegacyReference(docker.DefaultContextName, name, cont.Labels))
 		}
 	}
 
-	return false, nil
+	return set.SortedSlice(usedBy), nil
 }
 
-func referencedAcrossContexts(ctx context.Context, contexts *docker.ContextRegistry, repoDirs []string, keep []string) (bool, error) {
+func referencedAcrossContexts(ctx context.Context, contexts *docker.ContextRegistry, repoDirs []string, keep []string) ([]string, error) {
 	if contexts == nil {
-		return false, errors.New("docker context registry is unavailable")
+		return nil, errors.New("docker context registry is unavailable")
 	}
 
 	results, err := contexts.List(ctx)
 	if err != nil {
-		return false, fmt.Errorf("list docker contexts: %w", err)
+		return nil, fmt.Errorf("list docker contexts: %w", err)
 	}
+
+	// Every context is inspected, even after a reference was found, so the log lists all
+	// containers that keep the legacy files alive instead of only the first one. A context
+	// that cannot be inspected only fails the check if no other context uses the files,
+	// since they are kept either way.
+	usedBy := set.New[string]()
+
+	var errs []error
 
 	for _, result := range results {
 		if result.Err != nil {
-			return false, fmt.Errorf("inspect docker context %s: %w", result.DisplayName(), result.Err)
+			errs = append(errs, fmt.Errorf("inspect docker context %s: %w", result.DisplayName(), result.Err))
+			continue
 		}
 
 		if result.Cli == nil {
-			return false, fmt.Errorf("inspect docker context %s: missing client", result.DisplayName())
+			errs = append(errs, fmt.Errorf("inspect docker context %s: missing client", result.DisplayName()))
+			continue
 		}
 
 		modes := []bool{false}
@@ -821,27 +867,35 @@ func referencedAcrossContexts(ctx context.Context, contexts *docker.ContextRegis
 		}
 
 		for _, swarmMode := range modes {
-			referenced, err := referencedOnContext(ctx, result.Cli.Client(), swarmMode, repoDirs, keep)
+			references, err := referencedOnContext(ctx, result.Cli.Client(), result.DisplayName(), swarmMode, repoDirs, keep)
 			if err != nil {
-				return false, fmt.Errorf("inspect deployments in docker context %s: %w", result.DisplayName(), err)
+				errs = append(errs, fmt.Errorf("inspect deployments in docker context %s: %w", result.DisplayName(), err))
+				continue
 			}
 
-			if referenced {
-				return true, nil
-			}
+			usedBy.Add(references...)
 		}
 	}
 
-	return false, nil
+	if !usedBy.IsEmpty() {
+		return set.SortedSlice(usedBy), nil
+	}
+
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }
 
 func referencedOnContext(
 	ctx context.Context,
 	apiClient client.APIClient,
+	contextName string,
 	swarmMode bool,
 	repoDirs []string,
 	keep []string,
-) (bool, error) {
+) ([]string, error) {
 	services, err := docker.GetServicesWithLabelKey(
 		ctx,
 		apiClient,
@@ -849,17 +903,19 @@ func referencedOnContext(
 		docker.DocoCDLabels.Deployment.WorkingDir,
 	)
 	if err != nil {
-		return false, fmt.Errorf("list deployments: %w", err)
+		return nil, fmt.Errorf("list deployments: %w", err)
 	}
 
-	for _, labels := range services {
+	var usedBy []string
+
+	for name, labels := range services {
 		if labelsReferenceLegacyPath(labels, repoDirs, keep) {
-			return true, nil
+			usedBy = append(usedBy, describeLegacyReference(contextName, string(name), labels))
 		}
 	}
 
 	if !swarmMode {
-		return false, nil
+		return usedBy, nil
 	}
 
 	// A Swarm service update changes the current service spec before every old task has
@@ -867,7 +923,7 @@ func referencedOnContext(
 	// still have a legacy directory bind-mounted, so service labels alone are not sufficient.
 	tasks, err := apiClient.TaskList(ctx, client.TaskListOptions{})
 	if err != nil {
-		return false, fmt.Errorf("list swarm tasks: %w", err)
+		return nil, fmt.Errorf("list swarm tasks: %w", err)
 	}
 
 	for _, task := range tasks.Items {
@@ -876,11 +932,31 @@ func referencedOnContext(
 		}
 
 		if labelsReferenceLegacyPath(task.Spec.ContainerSpec.Labels, repoDirs, keep) {
-			return true, nil
+			usedBy = append(usedBy, describeLegacyReference(contextName, "task "+task.ID, task.Spec.ContainerSpec.Labels))
 		}
 	}
 
-	return false, nil
+	return usedBy, nil
+}
+
+// describeLegacyReference returns a readable name for a container, Swarm service or Swarm task
+// that still uses legacy files, including the doco-cd deployment it belongs to and its Docker
+// context unless that is the default one.
+func describeLegacyReference(contextName, name string, labels map[string]string) string {
+	description := strings.TrimPrefix(strings.TrimSpace(name), "/")
+	if description == "" {
+		description = "unnamed container"
+	}
+
+	if deployment := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.Name]); deployment != "" && deployment != description {
+		description += " (deployment " + deployment + ")"
+	}
+
+	if contextName != "" && contextName != docker.DefaultContextName {
+		description = contextName + ": " + description
+	}
+
+	return description
 }
 
 func isActiveSwarmTask(task swarmTypes.Task) bool {

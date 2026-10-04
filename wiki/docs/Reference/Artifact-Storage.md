@@ -137,7 +137,23 @@ The source directory is organized by source type and source name, and contains t
 
 Versions prior to v0.120.0 checked repositories out directly into the source directory instead of using a bare mirror and per-revision artifacts.
 On first startup after upgrading, Doco-CD automatically migrates any repository still using the old layout, no action is required.
-Leftover files from the old checkout are only removed once no running container still references them.
+
+The files of the old checkout remain in the source directory next to `mirror/` and `artifacts/`, but are no longer updated.
+Deployments use the files in `artifacts/<revision>` instead.
+The old files are only removed once no container (running or stopped) that was deployed from the old checkout exists anymore.
+Such a container is only moved to an artifact when its stack is redeployed, which does not happen as long as nothing in the stack changes.
+Until then, Doco-CD logs the containers that still use the old files at startup and whenever they change after a deployment:
+
+```json
+{"level":"info","msg":"keeping legacy checkout files while containers still use them; redeploy or remove these containers to clean them up","repo_dir":"/data/github.com/org/example","used_by":["web-app-1 (deployment web)"]}
+```
+
+To remove the old files sooner, redeploy the listed stacks, e.g. by temporarily setting
+[`force_recreate: true`](../Deploy-Settings.md#available-settings) in their deploy configs, and remove containers that no longer belong to any stack.
+The old files are then removed after the next deployment from the repository or the next restart of Doco-CD.
+
+!!! warning
+    Remove `force_recreate` again once the stacks have been redeployed. Otherwise, they are recreated on every deployment, including every poll.
 
 ## Garbage Collection
 
