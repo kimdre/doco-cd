@@ -341,19 +341,50 @@ func TestCleanupObsoleteAutoDiscoveredContainers_RemovalDecision(t *testing.T) {
 
 	ociRequest := func(artifact string) DeployRequest {
 		req := cleanupTestRequest()
-		req.Repository = stages.RepositoryData{Source: config.SourceTypeOCI, SourceUrl: artifact}
+		req.Repository = stages.RepositoryData{
+			Source:            config.SourceTypeOCI,
+			SourceUrl:         artifact,
+			ConfigSourceUrl:   artifact,
+			Revision:          ociTestDigest,
+			ResolvedReference: oci.TagFromArtifact(artifact),
+		}
 
 		return req
 	}
 
 	// ociStack returns a stack deployed from services/web-old of the OCI artifact.
-	ociStack := func(artifact string) container.Summary {
-		return cleanupTestStack("web-old", "", map[string]string{
+	ociStack := func(artifact string, extra ...map[string]string) container.Summary {
+		stack := cleanupTestStack("web-old", "", map[string]string{
 			docker.DocoCDLabels.Deployment.WorkingDir: "/var/lib/doco-cd/" + oci.RepositoryNameFromArtifact(artifact) +
 				"/artifacts/sha256-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/services/web-old",
-			docker.DocoCDLabels.Source.URL:  artifact,
-			docker.DocoCDLabels.Source.Type: "oci",
+			docker.DocoCDLabels.Source.URL:                     artifact,
+			docker.DocoCDLabels.Source.Type:                    "oci",
+			docker.DocoCDLabels.Deployment.AutoDiscoveryConfig: deleteLabel,
 		})
+		for _, labels := range extra {
+			maps.Copy(stack.Labels, labels)
+		}
+
+		return stack
+	}
+
+	ociWebhookRequest := func(artifact string) DeployRequest {
+		req := ociRequest(artifact)
+		req.JobTrigger = stages.JobTriggerWebhook
+		req.Payload = &webhook.ParsedPayload{
+			Source: webhook.PayloadSourceOCI,
+			Ref:    oci.TagFromArtifact(artifact),
+			Digest: ociTestDigest,
+		}
+
+		return req
+	}
+
+	ociTargetConfigs := func(target string) []*deployConfig.Config {
+		cfg := cleanupTestDiscovered("web", services(true, ""))
+		cfg.Internal.ConfigTarget = target
+
+		return []*deployConfig.Config{cfg}
 	}
 
 	tests := []struct {
@@ -484,18 +515,170 @@ func TestCleanupObsoleteAutoDiscoveredContainers_RemovalDecision(t *testing.T) {
 			want:    []string{"web-old"},
 		},
 		{
-			name:       "oci stack deployed from another tag is removed",
-			req:        ociRequest("ghcr.io/org/app:v2"),
-			containers: []container.Summary{ociStack("ghcr.io/org/app:v1")},
+			name: "oci stack tracking the same tag is removed after a digest rotation",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging", map[string]string{
+				docker.DocoCDLabels.Deployment.CommitSHA: "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd",
+				docker.DocoCDLabels.Deployment.TargetRef: "staging",
+			})},
+			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+			want:    []string{"web-old"},
+		},
+		{
+			name: "oci digest source with matching stable tag metadata is removed",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app@"+ociTestDigest, map[string]string{
+				docker.DocoCDLabels.Deployment.TargetRef: "staging",
+			})},
+			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+			want:    []string{"web-old"},
+		},
+		{
+			name:       "independently polled production tag is kept without separate config targets",
+			req:        ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:production")},
+			configs:    []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+		},
+		{
+			name:       "independent tag is kept when no current discovery config remains",
+			req:        ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:production")},
+		},
+		{
+			name: "mixed tag owners in one stack prevent cleanup of every service",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{
+				ociStack("ghcr.io/org/app:staging"),
+				func() container.Summary {
+					c := ociStack("ghcr.io/org/app:production")
+					c.Names = []string{"/web-old-db"}
+
+					return c
+				}(),
+			},
+			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+		},
+		{
+			name:       "same tag uses recorded policy when discovery config is removed",
+			req:        ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging")},
+			want:       []string{"web-old"},
+		},
+		{
+			name: "digest source with another stable tag owner is kept",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app@"+ociTestDigest, map[string]string{
+				docker.DocoCDLabels.Deployment.TargetRef: "production",
+			})},
+			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+		},
+		{
+			name:       "digest source without stable tag metadata is kept",
+			req:        ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app@" + ociTestDigest)},
+			configs:    []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+		},
+		{
+			name: "legacy digest hash target reference does not establish ownership",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app@"+ociTestDigest, map[string]string{
+				docker.DocoCDLabels.Deployment.TargetRef: strings.TrimPrefix(ociTestDigest, "sha256:"),
+			})},
+			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+		},
+		{
+			name: "digest label without source type cannot use deployment reference",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app@"+ociTestDigest, map[string]string{
+				docker.DocoCDLabels.Source.Type:          "",
+				docker.DocoCDLabels.Deployment.TargetRef: "staging",
+			})},
+			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+		},
+		{
+			name: "digest config with remote Git deployment cannot borrow its Git branch",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app@"+ociTestDigest, map[string]string{
+				docker.DocoCDLabels.Deployment.WorkingDir: "/data/github.com/org/remote/artifacts/abc/services/web-old",
+				docker.DocoCDLabels.Deployment.TargetRef:  "staging",
+			})},
+			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+		},
+		{
+			name: "tagged config with remote Git deployment retains its config tag owner",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging", map[string]string{
+				docker.DocoCDLabels.Deployment.WorkingDir: "/data/github.com/org/remote/artifacts/abc/services/web-old",
+				docker.DocoCDLabels.Deployment.TargetRef:  "main",
+			})},
+			want: []string{"web-old"},
+		},
+		{
+			name:       "digest pinned webhook retains the stable artifact tag",
+			req:        ociWebhookRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging")},
+			configs:    []*deployConfig.Config{cleanupTestDiscovered("web", services(true, "^staging$"))},
+			want:       []string{"web-old"},
+		},
+		{
+			name:       "digest only webhook cannot clean a tagged poll owner",
+			req:        ociWebhookRequest("ghcr.io/org/app@" + ociTestDigest),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging")},
+			configs:    []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+		},
+		{
+			name: "digest source request can use an explicitly recorded stable source reference",
+			req: func() DeployRequest {
+				req := ociRequest("ghcr.io/org/app@" + ociTestDigest)
+				req.Repository.ResolvedReference = "staging"
+
+				return req
+			}(),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging")},
 			configs:    []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
 			want:       []string{"web-old"},
 		},
 		{
-			name:       "oci stack deployed from a digest is removed",
-			req:        ociRequest("ghcr.io/org/app:v2"),
-			containers: []container.Summary{ociStack("ghcr.io/org/app@" + ociTestDigest)},
-			configs:    []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
-			want:       []string{"web-old"},
+			name: "legacy tagged source URL establishes ownership without a source type",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging", map[string]string{
+				docker.DocoCDLabels.Source.Type: "",
+			})},
+			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+			want:    []string{"web-old"},
+		},
+		{
+			name: "Git URL on the same OCI host does not identify an OCI cleanup owner",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging", map[string]string{
+				docker.DocoCDLabels.Source.URL: "https://ghcr.io/org/app.git",
+			})},
+			configs: []*deployConfig.Config{cleanupTestDiscovered("web", services(true, ""))},
+		},
+		{
+			name: "explicit matching config target and tag is removed",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging", map[string]string{
+				docker.DocoCDLabels.Deployment.ConfigTarget: "test",
+			})},
+			configs: ociTargetConfigs("test"),
+			want:    []string{"web-old"},
+		},
+		{
+			name: "explicit matching config target does not authorize another tag",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:production", map[string]string{
+				docker.DocoCDLabels.Deployment.ConfigTarget: "test",
+			})},
+			configs: ociTargetConfigs("test"),
+		},
+		{
+			name: "explicit different config target keeps the same tag",
+			req:  ociRequest("ghcr.io/org/app:staging"),
+			containers: []container.Summary{ociStack("ghcr.io/org/app:staging", map[string]string{
+				docker.DocoCDLabels.Deployment.ConfigTarget: "production",
+			})},
+			configs: ociTargetConfigs("test"),
 		},
 		{
 			name:       "oci stack of another repository is kept",
