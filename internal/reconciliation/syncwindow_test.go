@@ -786,10 +786,9 @@ func TestJobCleanupConfigsIncludePinnedStacks(t *testing.T) {
 	pinned := &deployConfig.Config{Name: "pinned"}
 	pinnedOther := &deployConfig.Config{Name: "pinned-other", Context: "other"}
 
-	j := &job{
-		info:   DeployRequest{DeployConfigs: []*deployConfig.Config{own}},
-		pinned: []*deployConfig.Config{pinned, pinnedOther},
-	}
+	j := newReconciliationJob(nil,
+		DeployRequest{DeployConfigs: []*deployConfig.Config{own, pinned, pinnedOther}},
+		map[*deployConfig.Config]struct{}{pinned: {}, pinnedOther: {}}, nil)
 
 	got := j.cleanupConfigsForContextMode("", false)
 	if len(got) != 2 || got[0] != own || got[1] != pinned {

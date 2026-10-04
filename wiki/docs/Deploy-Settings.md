@@ -181,6 +181,10 @@ If the deploy config scans another `reference` or `repository_url` (also support
 doco-cd fetches and publishes that revision first and scans the published files, so nested config files may be
 encrypted with [SOPS](Advanced/Encryption.md) or be symlinks, just like in the job's own repository.
 
+Scheduled runs and certificate-rotation reloads read the deployment configuration from its recorded config-source
+artifact. A deployment's `reference` may differ from that artifact's revision; discovery resolves that reference
+separately rather than assuming it points to the config-source revision.
+
 When `auto_discovery.delete` is set to `true` and an app is no longer available in the `working_dir` (e.g. deleted or
 moved to another directory outside the working dir), doco-cd will remove the deployed project/stack from the docker host.
 See [Removing obsolete stacks](#removing-obsolete-stacks).
@@ -275,6 +279,9 @@ An obsolete stack is also kept if
 - it is redeployed while doco-cd removes obsolete stacks, or
 - a [sync window](Advanced/Sync-Windows.md) blocks the removal.
 
+Reconciliation uses the latest request's discovery ownership and removal settings, even when a webhook filter or
+sync window defers deployment. Recovery of a deferred stack still uses its previously deployed config and source.
+
 !!! note
     As the settings are stored in a label, changing `delete`, `remove_volumes` or `remove_images` recreates the containers
     or services of the discovered stacks on their next deployment.
@@ -297,6 +304,9 @@ When using [custom webhook targets](Endpoints/Webhook-Listener.md#with-custom-ta
   Keys set to `null` keep the base value.
 - Nested objects (such as `build`, `destroy`, `reconciliation`) are merged recursively. The boolean shorthand of an object
   (e.g. `destroy: false`) only sets its `enabled` field.
+- YAML merge keys (`<<`) are resolved before these overrides are applied: explicit keys replace merged values,
+  and earlier entries in a merge sequence take precedence over later ones. A replacement does not retain the
+  shadowed mapping's children; an explicit `null` shadows the merged value and keeps the base setting.
 
 !!! example "Disable a setting of the base config"
     ```yaml title="apps/postgres/.doco-cd.yml"

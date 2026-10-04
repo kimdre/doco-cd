@@ -125,11 +125,10 @@ func (j *job) deployConfigsForContextMode(contextName string, swarmMode bool) []
 }
 
 // cleanupConfigsForContextMode returns the deploy configs whose stacks the
-// obsolete-stack cleanup treats as present: the job's own and its pinned ones.
+// obsolete-stack cleanup treats as present, with the current ownership policy.
+// Deferred stacks retain their old configs only for recovery, not cleanup.
 func (j *job) cleanupConfigsForContextMode(contextName string, swarmMode bool) []*deployConfig.Config {
-	pinned := filterConfigsByMode(filterConfigsByContext(j.pinned, contextName), j.swarmModeForContext(contextName), swarmMode)
-
-	return append(j.deployConfigsForContextMode(contextName, swarmMode), pinned...)
+	return filterConfigsByMode(filterConfigsByContext(j.cleanupConfigs, contextName), j.swarmModeForContext(contextName), swarmMode)
 }
 
 func (j *job) run(ctx context.Context) {

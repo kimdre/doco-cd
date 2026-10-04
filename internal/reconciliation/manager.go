@@ -190,6 +190,9 @@ type job struct {
 	// as present, so it doesn't remove a stack only because a sync window
 	// deferred its deployment.
 	pinned []*deployConfig.Config
+	// cleanupConfigs retain the current request's ownership and removal policy,
+	// independently of the old configs and sources carried for recovery.
+	cleanupConfigs []*deployConfig.Config
 }
 
 // requestFor returns the request dc was deployed with.
@@ -205,12 +208,23 @@ func newJob(manager *Manager, info DeployRequest, deployConfigGroupByEvent map[s
 	return &job{
 		manager:                  manager,
 		info:                     info,
+		cleanupConfigs:           info.DeployConfigs,
 		deployConfigGroupByEvent: deployConfigGroupByEvent,
 		unhealthyRestartHistory:  make(map[string][]time.Time),
 		restartSuppressUntil:     make(map[string]time.Time),
 		closeChan:                make(chan struct{}),
 		readyChan:                make(chan struct{}),
 	}
+}
+
+func newReconciliationJob(manager *Manager, req DeployRequest, deferred map[*deployConfig.Config]struct{}, previous *job) *job {
+	info, carried, pinned := reconciliationJobInfo(req, deferred, previous)
+	j := newJob(manager, req, getDeployConfigGroupByEvent(info.DeployConfigs))
+	j.info = info
+	j.carried = carried
+	j.pinned = pinned
+
+	return j
 }
 
 func (j *job) close() {
@@ -578,18 +592,14 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 	}
 
 	old := m.jobs.jobs[req.Repository.Name]
-	info, carried, pinned := reconciliationJobInfo(req, deferred, old)
 
-	cfg := getDeployConfigGroupByEvent(info.DeployConfigs)
-	if len(cfg) == 0 {
+	newJob := newReconciliationJob(m, req, deferred, old)
+	if len(newJob.deployConfigGroupByEvent) == 0 {
 		m.jobs.mu.Unlock()
 
 		return
 	}
 
-	newJob := newJob(m, info, cfg)
-	newJob.carried = carried
-	newJob.pinned = pinned
 	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	newJob.cancel = cancel
 

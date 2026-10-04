@@ -21,6 +21,7 @@ import (
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -127,6 +128,154 @@ func runCleanupDecision(t *testing.T, req DeployRequest, containers []container.
 	}
 
 	return removable
+}
+
+func TestReconciliationCleanupUsesCurrentOwnershipAfterDeferral(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		webhook    bool
+		filter     string
+		policy     deployConfig.AutoDiscoveryConfig
+		wantRemove bool
+	}{
+		{
+			name:    "webhook filter and delete disabled",
+			webhook: true,
+			filter:  "^refs/heads/dev$",
+			policy:  deployConfig.AutoDiscoveryConfig{Enabled: true},
+		},
+		{
+			name:    "webhook filter keeps obsolete stacks even with delete enabled",
+			webhook: true,
+			filter:  "^refs/heads/dev$",
+			policy:  deployConfig.AutoDiscoveryConfig{Enabled: true, Delete: true, RemoveVolumes: true},
+		},
+		{
+			name:   "sync window and delete disabled",
+			filter: "^refs/heads/main$",
+			policy: deployConfig.AutoDiscoveryConfig{Enabled: true},
+		},
+		{
+			name:       "sync window keeps current resource removal policy",
+			filter:     "^refs/heads/main$",
+			policy:     deployConfig.AutoDiscoveryConfig{Enabled: true, Delete: true},
+			wantRemove: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			oldOrigin := deployConfig.AutoDiscoveryOrigin{
+				WorkingDirectory:   ".",
+				WebhookEventFilter: "^refs/heads/main$",
+				Revision:           "rev-1",
+				Settings: deployConfig.AutoDiscoveryConfig{
+					Enabled: true, Delete: true, RemoveVolumes: true, RemoveImages: true,
+				},
+			}
+			oldAlpha := cleanupTestDiscovered("alpha", oldOrigin)
+			oldAlpha.WebhookEventFilter = oldOrigin.WebhookEventFilter
+			oldAlpha.Reconciliation.Enabled = true
+			oldAlpha.Reconciliation.Events = []string{"die"}
+			oldOriginPtr := oldAlpha.Internal.AutoDiscoveryOrigin
+			oldReq := cleanupTestRequest()
+			oldReq.Repository.Revision = "rev-1"
+			oldReq.DeployConfigs = []*deployConfig.Config{oldAlpha, cleanupTestDiscovered("beta", oldOrigin)}
+			previous := newJob(nil, oldReq, nil)
+
+			manager := newSyncWindowTestManager(t, strings.ReplaceAll(syncWindowTestPolicy, "web*", "*"))
+			stack := cleanupTestStack("beta", "beta", map[string]string{
+				docker.DocoCDLabels.Deployment.AutoDiscoveryConfig: docker.MarshalAutoDiscoveryConfig(oldOrigin.Settings),
+			})
+
+			var recoverySource *DeployRequest
+
+			for _, revision := range []string{"rev-2", "rev-3"} {
+				origin := oldOrigin
+				origin.Revision = revision
+				origin.WebhookEventFilter = tt.filter
+				origin.Settings = tt.policy
+				alpha := cleanupTestDiscovered("alpha", origin)
+				alpha.WebhookEventFilter = tt.filter
+				req := cleanupTestRequest()
+				req.Logger = slog.New(slog.DiscardHandler)
+				req.Repository.Revision = revision
+				req.DeployConfigs = []*deployConfig.Config{alpha}
+
+				var deferred map[*deployConfig.Config]struct{}
+
+				if tt.webhook {
+					req.JobTrigger = stages.JobTriggerWebhook
+					req.Payload = &webhook.ParsedPayload{Ref: "refs/heads/main"}
+					deferred = withWebhookFilteredConfigs(req, nil)
+				} else {
+					gate := manager.newSyncWindowGate(req, syncWindowTestNow)
+					if err := gate.admit(req.Logger, alpha, nil); !errors.Is(err, stages.ErrSyncWindowBlocked) {
+						t.Fatalf("admit() = %v, want a sync-window deferral", err)
+					}
+
+					deferred = gate.deferred()
+				}
+
+				current := newReconciliationJob(manager, req, deferred, previous)
+				if len(current.info.DeployConfigs) != 1 || current.info.DeployConfigs[0] != oldAlpha {
+					t.Fatal("recovery did not retain the original deployment config")
+				}
+
+				source := current.carried[oldAlpha]
+				if source == nil || source.Repository != oldReq.Repository {
+					t.Fatalf("recovery source = %+v, want rev-1", source)
+				}
+
+				if recoverySource != nil && source != recoverySource {
+					t.Fatal("a repeated deferral replaced the original recovery source")
+				}
+
+				recoverySource = source
+
+				if oldAlpha.Internal.AutoDiscoveryOrigin != oldOriginPtr ||
+					*oldAlpha.Internal.AutoDiscoveryOrigin != oldOrigin {
+					t.Fatal("cleanup mutated the original recovery ownership metadata")
+				}
+
+				configs := current.cleanupConfigsForContextMode("", false)
+
+				removable := runCleanupDecision(t, current.info, []container.Summary{stack}, configs)
+				if tt.wantRemove != slices.Equal(removable, []string{"beta"}) ||
+					!tt.wantRemove && len(removable) != 0 {
+					t.Fatalf("removable stacks = %v, want removal = %v", removable, tt.wantRemove)
+				}
+
+				cleanup := newObsoleteStackCleanup(req.Logger, nil, false, "", current.info, configs)
+
+				policy, remove := cleanup.removalPolicy(req.Logger, map[docker.Service]map[string]string{"beta-app": stack.Labels})
+				if remove != tt.wantRemove || remove && (policy.RemoveVolumes || policy.RemoveImages) {
+					t.Fatalf("cleanup policy = %+v, remove = %v, want current policy without resource removal", policy, remove)
+				}
+
+				if len(configs) != 1 || configs[0] != alpha {
+					t.Fatal("cleanup did not retain the current request's ownership metadata")
+				}
+				// The sync window still gates deletion, but does not change ownership.
+				if !tt.webhook && tt.wantRemove {
+					removalReq := current.info
+					removalReq.Origin = syncwindow.OriginAutomatic
+					removalReq.DeployConfigs = nil
+
+					gate := manager.newSyncWindowGate(removalReq, syncWindowTestNow)
+					if gate.allowRemoval(req.Logger, "", "beta") {
+						t.Fatal("cleanup bypassed the sync window")
+					}
+				}
+
+				previous = current
+			}
+		})
+	}
 }
 
 func TestCleanupObsoleteAutoDiscoveredContainers_SkipsDifferentTargetBeforeRepositoryMatch(t *testing.T) {
