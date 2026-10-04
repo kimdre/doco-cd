@@ -105,6 +105,10 @@ func newDiscoverySource(repoRoot, reference, mirrorRoot, primaryRevision string,
 		opts = &GitOptions{}
 	}
 
+	if opts.PrimaryReference != "" {
+		reference = opts.PrimaryReference
+	}
+
 	s := &discoverySource{
 		repoRoot:   repoRoot,
 		labelRoot:  repositoryLabelRoot(repoRoot, mirrorRoot),
@@ -209,7 +213,7 @@ func (s *discoverySource) newStore(cloneURL, baseDir string, c *Config) (*store.
 // Nested configs are read from the artifact, so they are decrypted and their symlinks resolved like
 // the files a deployment uses.
 func (s *discoverySource) publishAndScan(ctx context.Context, gitStore *store.GitStore, storeDir, labelRoot string, c *Config) ([]*Config, error) {
-	// Keeps the garbage collector from removing the artifact or the whole store during the scan.
+	// Keeps the garbage collector from removing immutable artifacts during the scan.
 	unlockGC, err := sourcecache.AcquireSharedGCPathLock(storeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire artifact GC lock: %w", err)

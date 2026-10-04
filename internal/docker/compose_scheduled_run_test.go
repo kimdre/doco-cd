@@ -10,6 +10,8 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
+	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -558,6 +560,102 @@ func TestLoadComposeScheduledDeployConfigReportsUnavailableSource(t *testing.T) 
 	_, _, err := loadComposeScheduledDeployConfig(context.Background(), ref, newStubProvider(nil, nil), opts)
 	if !errors.Is(err, ErrComposeScheduledSourceUnavailable) {
 		t.Fatalf("expected ErrComposeScheduledSourceUnavailable, got %v", err)
+	}
+}
+
+func TestLoadComposeScheduledDeployConfigDiscoversDeploymentReference(t *testing.T) {
+	t.Parallel()
+
+	for name, config := range map[string]string{
+		"explicit deployment reference":  "reference: feature\nworking_dir: stacks\nauto_discovery: true\n",
+		"inherited deployment reference": "working_dir: stacks\nauto_discovery: true\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := newLayoutRepo(t)
+			repo.write(map[string]string{
+				".doco-cd.yaml":              config,
+				"stacks/shared/compose.yaml": "services: {}\n",
+			})
+
+			main := repo.commit("main config source")
+			if err := repo.wt.Checkout(&gogit.CheckoutOptions{
+				Branch: plumbing.NewBranchReferenceName("feature"),
+				Create: true,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			repo.write(map[string]string{
+				".doco-cd.yaml":                     "invalid: [\n",
+				"stacks/feature-only/compose.yaml":  "services: {}\n",
+				"stacks/feature-only/.doco-cd.yaml": "name: scheduled-feature\n",
+			})
+			feature := repo.commit("feature deployment source")
+
+			dataMountPath := t.TempDir()
+			repositoryURL := "file://" + filepath.ToSlash(repo.dir)
+
+			gitStore, err := store.NewGitStore(store.GitStoreOptions{
+				CloneURL: repositoryURL,
+				BaseDir:  filepath.Join(dataMountPath, git.GetRepoName(repositoryURL)),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			mainRevision, err := gitStore.Resolve(t.Context(), "main")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := gitStore.Publish(t.Context(), mainRevision); err != nil {
+				t.Fatal(err)
+			}
+
+			featureRevision, err := gitStore.Resolve(t.Context(), "feature")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			artifact, err := gitStore.Publish(t.Context(), featureRevision)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, repoPath, err := loadComposeScheduledDeployConfig(t.Context(), composeScheduledServiceRef{
+				Project:          "scheduled-feature",
+				Service:          "backup",
+				RepositoryURL:    repositoryURL,
+				SourceType:       "git",
+				DeploymentName:   "scheduled-feature",
+				Reference:        "feature",
+				ConfigRevision:   main.String(),
+				ConfigWorkingDir: ".",
+				WorkingDir:       filepath.Join(artifact.Path, "stacks", "feature-only"),
+			}, newStubProvider(nil, nil), ScheduledComposeOptions{
+				DeployConfigBaseDir: ".",
+				ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if cfg.Reference != "feature" || cfg.Internal.ConfigSourceRevision != main.String() ||
+				cfg.Internal.ConfigSourceWorkingDir != "." {
+				t.Fatalf("reloaded config lost separate deployment/config-source metadata: %+v", cfg)
+			}
+
+			if origin := cfg.Internal.AutoDiscoveryOrigin; origin == nil || origin.Revision != feature.String() {
+				t.Fatalf("discovery origin = %+v, want feature revision %s", origin, feature)
+			}
+
+			if repoPath != artifact.Path || cfg.WorkingDirectory != filepath.Join("stacks", "feature-only") {
+				t.Fatalf("deployment paths = %q, %q, want feature artifact %q and feature-only directory",
+					repoPath, cfg.WorkingDirectory, artifact.Path)
+			}
+		})
 	}
 }
 

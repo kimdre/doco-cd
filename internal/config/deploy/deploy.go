@@ -391,7 +391,8 @@ func remoteDiscoveryStoreDir(sourceBaseDir, repoRoot, repositoryURL string) stri
 }
 
 // GetConfigs returns deployment configurations discovered in repoRoot. gitMirrorRoot and primaryRevision identify the
-// Git source when repoRoot is a published artifact.
+// Git source when repoRoot is a published artifact. primaryRevision must be resolved from reference,
+// or from gitOpts.PrimaryReference when the config source and deployment references differ.
 func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, reference, gitMirrorRoot, primaryRevision string, gitOpts *GitOptions) ([]*Config, error) {
 	configDir := filepath.Join(repoRoot, configBaseDir)
 

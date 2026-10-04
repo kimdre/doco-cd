@@ -556,8 +556,13 @@ func loadComposeScheduledDeployConfig(
 		gitMirrorRoot = filepath.Join(sourceRepoPath, "mirror")
 	}
 
+	gitOpts := scheduledDiscoveryGitOptions(ref, opts.ComposeLoad)
+	// TargetRef describes the deployment, not the branch that supplied ConfigRevision.
+	// Only the artifact's commit hash is known to resolve to primaryRevision.
+	gitOpts.PrimaryReference = primaryRevision
+
 	configs, err := deploy.GetConfigs(ctx, configRepoPath, opts.DeployConfigBaseDir, ref.ConfigTarget, ref.Reference,
-		gitMirrorRoot, primaryRevision, scheduledDiscoveryGitOptions(ref, opts.ComposeLoad))
+		gitMirrorRoot, primaryRevision, gitOpts)
 	if err != nil {
 		return nil, "", fmt.Errorf("load deploy config for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
 	}
