@@ -60,10 +60,9 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 	if s.DeployConfig.Destroy.RemoveRepoDir {
 		// The source directory is a cache shared by every stack deployed from this repository: it holds the mirror,
 		// every published artifact (the bind-mount sources of running stacks), their mutable live copies and any
-		// legacy checkout still in use. Removing it for one stack would break all others, so the option is ignored;
-		// the artifact garbage collector removes whole sources once nothing has used them for ARTIFACT_GC_SOURCE_TTL.
+		// legacy checkout still in use. Removing it for one stack would break all others, so the option is ignored.
 		stageLog.Warn("destroy.remove_dir is deprecated and ignored: the source directory is shared by all stacks of this repository "+
-			"and is removed by the artifact garbage collector once it is no longer used (see ARTIFACT_GC_SOURCE_TTL)",
+			"and is kept; artifact garbage collection only removes unreferenced immutable artifacts, not mirrors or mutable live/ data",
 			slog.String("repository", s.Repository.Name))
 	}
 

@@ -87,7 +87,6 @@ The source directory is organized by source type and source name, and contains t
                   root/  # Live copies of the files excluded from recreation
                   manifest.json  # Files copied from the source
             example.gc-use.lock  # Lock file for the garbage collector while the source is in use
-            example.last-used  # Time the source was last used
             example.lock  # Lock file for source-level operations
     ```
 
@@ -129,7 +128,6 @@ The source directory is organized by source type and source name, and contains t
                   root/  # Live copies of the files excluded from recreation
                   manifest.json  # Files copied from the source
             example.gc-use.lock  # Lock file for the garbage collector while the source is in use
-            example.last-used  # Time the source was last used
             example.lock  # Lock file for source-level operations
     ```
 
@@ -192,28 +190,19 @@ entirely with `#!yaml ARTIFACT_GC_ENABLED: false` if you prefer to manage disk u
 
 The number of copies each sweep removes and keeps per repository/artifact is exposed in the
 `doco_cd_artifact_gc_removed_total` and `doco_cd_artifact_gc_kept` [Prometheus metrics](../Endpoints/Metrics.md).
-Both stop being reported for a repository once its source directory has been removed (see [Unused sources](#unused-sources)).
+Both stop being reported for a repository if its source directory no longer exists.
 
-### Unused sources
+### Source directory retention
 
 All stacks deployed from a repository/artifact share its source directory, so destroying a stack never removes it
 (the former `destroy.remove_dir` deploy setting is deprecated and ignored).
-Instead, the garbage collector removes the whole source directory (Git mirror, artifacts, submodule mirrors and live files)
-once it has not been used for [`ARTIFACT_GC_SOURCE_TTL`](../App-Settings.md#artifact-garbage-collection-settings) (7 days by default).
-A source directory is kept as long as any of the following is true:
+The garbage collector only removes unreferenced immutable artifacts under `artifacts/`, together with their
+publish records and lock files, according to the retention settings above. It does not remove whole source
+directories, Git mirrors, submodule mirrors or mutable `live/` data, even when the source is no longer deployed.
+Mutable [live files](#live-files) are not subject to artifact cache retention.
 
-- A container or Swarm service in any Docker context was deployed from it, regardless of whether it is running or
-  merely stopped, or its working directory or deploy config is still within it (e.g. a deployment from before the
-  artifact storage was introduced).
-- A deployment from it is in progress.
-- A deployment, poll or scheduled job used it within `ARTIFACT_GC_SOURCE_TTL`.
-- It contains the source directory of another source, e.g. the OCI artifact `ghcr.io/org/example/config` is stored
-  inside the source directory of `ghcr.io/org/example`.
-
-The time a source was last used is recorded as the modification time of the `<source>.last-used` file next to its directory.
-A source directory without this file (e.g. one created by an older version of doco-cd) is kept for `ARTIFACT_GC_SOURCE_TTL`
-after the first sweep. The lock files next to the directory (`<source>.lock` and `<source>.gc-use.lock`) are never removed.
-Set `#!yaml ARTIFACT_GC_SOURCE_TTL: 0` to keep unused source directories.
+Automatic cleanup of unused whole-source directories is deferred to
+[#1981](https://github.com/kimdre/doco-cd/issues/1981).
 
 ### Removed artifacts
 

@@ -67,19 +67,6 @@ func contextsReferenceChecker(contexts *docker.ContextRegistry, dataMountSource,
 	}
 }
 
-// ReferencedAcrossContexts returns every container, Swarm service or Swarm task on any configured Docker context whose
-// working directory lies inside repoDir, the in-container path of a source store below dataMountDestination. It fails
-// closed: an error is returned when a context could not be inspected and no reference was found elsewhere.
-func ReferencedAcrossContexts(
-	ctx context.Context,
-	contexts *docker.ContextRegistry,
-	dataMountSource string,
-	dataMountDestination string,
-	repoDir string,
-) ([]string, error) {
-	return contextsReferenceChecker(contexts, dataMountSource, dataMountDestination)(ctx, repoDir, nil)
-}
-
 // LeftoverTracker remembers, for the lifetime of the process, which repository directories are
 // already known to be free of legacy leftovers, so CleanupRepoLeftovers can skip redundant
 // checks for them. A repository can never regain a legacy on-disk layout once migrated, so a

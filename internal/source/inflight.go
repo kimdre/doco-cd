@@ -1,9 +1,6 @@
 package source
 
-import (
-	"strings"
-	"sync"
-)
+import "sync"
 
 // inFlightTracker reference-counts revisions that a Prepare-to-deploy call is
 // currently using, keyed by repository name and revision. It exists to close
@@ -76,25 +73,4 @@ func IsInFlight(repoName, revision string) bool {
 	defer inFlight.mu.Unlock()
 
 	return inFlight.revisions[inFlightKey(repoName, revision)] > 0
-}
-
-// IsRepositoryInFlight reports whether any revision of repoName is currently
-// marked in-flight by an unreleased MarkInFlight call.
-func IsRepositoryInFlight(repoName string) bool {
-	if repoName == "" {
-		return false
-	}
-
-	prefix := inFlightKey(repoName, "")
-
-	inFlight.mu.Lock()
-	defer inFlight.mu.Unlock()
-
-	for key, count := range inFlight.revisions {
-		if count > 0 && strings.HasPrefix(key, prefix) {
-			return true
-		}
-	}
-
-	return false
 }

@@ -109,90 +109,30 @@ func TestListRepositoryDirs_DoesNotDescendIntoArtifacts(t *testing.T) {
 	}
 }
 
-// A store that is being removed must not be listed as a store of its own.
-func TestListRepositoryDirs_SkipsEvictingStores(t *testing.T) {
+func TestListRepositoryDirs_FindsStoresNamedEvicting(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
 
 	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+	evictingRepoDir := filepath.Join(dataDir, "github.com", "owner", "app.evicting")
+	evictingOwnerRepoDir := filepath.Join(dataDir, "github.com", "owner.evicting", "repo")
 	mkdirAll(t, filepath.Join(repoDir, store.MirrorSubdir))
-	mkdirAll(t, filepath.Join(repoDir+store.EvictingSuffix, store.MirrorSubdir))
+	mkdirAll(t, filepath.Join(evictingRepoDir, store.MirrorSubdir))
+	mkdirAll(t, filepath.Join(evictingOwnerRepoDir, store.ArtifactsSubdir))
 
 	dirs, err := store.ListRepositoryDirs(dataDir)
 	if err != nil {
 		t.Fatalf("ListRepositoryDirs() error = %v", err)
 	}
 
-	if len(dirs) != 1 || dirs[0] != repoDir {
-		t.Fatalf("ListRepositoryDirs() = %v, want exactly [%q]", dirs, repoDir)
-	}
-}
+	slices.Sort(dirs)
 
-// The store's own entries hold files that look like store layouts (published repository content) and lock files.
-func TestContainsNestedStore_IgnoresStoreEntries(t *testing.T) {
-	t.Parallel()
+	want := []string{repoDir, evictingRepoDir, evictingOwnerRepoDir}
+	slices.Sort(want)
 
-	repoDir := t.TempDir()
-
-	for _, dir := range []string{
-		filepath.Join(store.ArtifactsSubdir, "rev", "app", store.ArtifactsSubdir),
-		filepath.Join(store.LiveSubdir, "default", "stack", "root", store.MirrorSubdir),
-		filepath.Join(store.SubmodulesSubdir, "sub", store.MirrorSubdir),
-		filepath.Join(store.MirrorSubdir, "refs"),
-	} {
-		if err := os.MkdirAll(filepath.Join(repoDir, dir), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", dir, err)
-		}
-	}
-
-	for _, file := range []string{
-		filepath.Join(store.ArtifactsSubdir, "rev", "app.gc-use.lock"),
-		filepath.Join(store.ArtifactsSubdir, "rev.lock"),
-		store.MirrorSubdir + ".lock",
-		"leftover.txt",
-	} {
-		if err := os.WriteFile(filepath.Join(repoDir, file), nil, 0o600); err != nil {
-			t.Fatalf("write %s: %v", file, err)
-		}
-	}
-
-	nested, err := store.ContainsNestedStore(repoDir)
-	if err != nil || nested {
-		t.Fatalf("ContainsNestedStore() = (%v, %v), want (false, nil)", nested, err)
-	}
-}
-
-func TestContainsNestedStore_FindsNestedStores(t *testing.T) {
-	t.Parallel()
-
-	for name, entry := range map[string]string{
-		"nested store layout":               filepath.Join("config", store.ArtifactsSubdir) + "/",
-		"deeper nested store layout":        filepath.Join("group", "config", store.MirrorSubdir) + "/",
-		"GC gate of a removed nested store": "config.gc-use.lock",
-		"use record of a nested store":      filepath.Join("group", "config.last-used"),
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			repoDir := t.TempDir()
-			mkdirAll(t, filepath.Join(repoDir, store.MirrorSubdir))
-
-			if strings.HasSuffix(entry, "/") {
-				mkdirAll(t, filepath.Join(repoDir, entry))
-			} else {
-				mkdirAll(t, filepath.Dir(filepath.Join(repoDir, entry)))
-
-				if err := os.WriteFile(filepath.Join(repoDir, entry), nil, 0o600); err != nil {
-					t.Fatalf("write %s: %v", entry, err)
-				}
-			}
-
-			nested, err := store.ContainsNestedStore(repoDir)
-			if err != nil || !nested {
-				t.Fatalf("ContainsNestedStore() = (%v, %v), want (true, nil)", nested, err)
-			}
-		})
+	if !slices.Equal(dirs, want) {
+		t.Fatalf("ListRepositoryDirs() = %v, want %v", dirs, want)
 	}
 }
 

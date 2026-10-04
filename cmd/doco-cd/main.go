@@ -585,7 +585,6 @@ func run() error {
 				RetentionRecords: c.ArtifactGCRetentionRecords,
 				RetentionTTL:     c.ArtifactGCRetentionTTL,
 			},
-			c.ArtifactGCSourceTTL,
 			c.ArtifactGCInterval,
 		)
 

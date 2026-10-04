@@ -75,8 +75,8 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 	// store between publication and the deployment labels becoming visible.
 	// The gate is shared: GitStore/OCIStore each lock their own mutation (mirror fetch, artifact publish)
 	// internally, so any number of Prepare calls for this repository - at the same or different revisions -
-	// may run concurrently. Only the garbage collector takes it exclusively, before it removes artifacts or
-	// the whole store (see internal/gc).
+	// may run concurrently. Only the garbage collector takes it exclusively, before it removes artifacts
+	// (see internal/gc).
 	unlockGC, err := sourcecache.AcquireSharedGCPathLock(internalRepoPath)
 	if err != nil {
 		return Result{}, wrapPrepareError(ErrPrepare, fmt.Errorf("acquire artifact GC lock: %w", err))

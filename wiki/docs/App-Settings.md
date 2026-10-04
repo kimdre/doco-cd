@@ -58,7 +58,10 @@ The settings are grouped below by the part of the application they configure.
 | `ARTIFACT_GC_INTERVAL`          | duration | How often the artifact garbage collector sweeps for removable artifacts (it also always sweeps once at startup). Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration).                                                                                                                                                             | `10m`   |
 | `ARTIFACT_GC_RETENTION_RECORDS` | number   | Number of most-recent unreferenced artifacts kept per repository/artifact, regardless of `ARTIFACT_GC_RETENTION_TTL`.                                                                                                                                                                                                                        | `2`     |
 | `ARTIFACT_GC_RETENTION_TTL`     | duration | How long an unreferenced artifact beyond `ARTIFACT_GC_RETENTION_RECORDS` is kept before it becomes eligible for removal. Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration).                                                                                                                                                     | `1m`    |
-| `ARTIFACT_GC_SOURCE_TTL`        | duration | How long a source directory (Git mirror and all artifacts of a repository/artifact) that is no longer used by any deployment is kept before it is removed. Set to `0` to keep unused source directories. See [Unused sources](Reference/Artifact-Storage.md#unused-sources). Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration). | `168h`  |
+
+Garbage collection only removes unreferenced immutable artifacts according to the retention settings above.
+Shared source directories, Git mirrors, submodule mirrors and mutable `live/` data are not removed by the sweeper.
+Destroying a stack also keeps its shared source directory; see [Source directory retention](Reference/Artifact-Storage.md#source-directory-retention).
 
 ## OCI Registry Settings
 
