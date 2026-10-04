@@ -201,16 +201,29 @@ func TestGitStore_PublishReusesPlaintextOfUnchangedCiphertext(t *testing.T) {
 		t.Fatalf("Chtimes: %v", err)
 	}
 
-	if err := os.Remove(first.Path + ".decrypted.json"); err != nil {
-		t.Fatalf("remove first record: %v", err)
-	}
-
 	commitTestFile(t, repo, repoPath, "compose.yaml", "services: {} # v2\n", "another unrelated change")
 
 	third := publishRevision(t, newStore(), "main")
 
-	if got := readArtifactFile(t, third, "secret.yaml"); got != fixture {
-		t.Fatalf("third artifact = %q, want ciphertext (no key, no trusted plaintext)", got)
+	if got := readArtifactFile(t, third, "secret.yaml"); got != want {
+		t.Fatalf("third artifact = %q, want plaintext of the older untouched artifact %q", got, want)
+	}
+
+	// With no trusted copy left, the file stays ciphertext since no key is set.
+	if err := os.Remove(first.Path + ".decrypted.json"); err != nil {
+		t.Fatalf("remove first record: %v", err)
+	}
+
+	if err := os.Remove(third.Path + ".decrypted.json"); err != nil {
+		t.Fatalf("remove third record: %v", err)
+	}
+
+	commitTestFile(t, repo, repoPath, "compose.yaml", "services: {} # v3\n", "yet another unrelated change")
+
+	fourth := publishRevision(t, newStore(), "main")
+
+	if got := readArtifactFile(t, fourth, "secret.yaml"); got != fixture {
+		t.Fatalf("fourth artifact = %q, want ciphertext (no key, no trusted plaintext)", got)
 	}
 }
 

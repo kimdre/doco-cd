@@ -102,12 +102,14 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 
 		copied := false
 
-		if src, ok := sources[entry.key()]; ok {
+		for _, src := range sources[entry.key()] {
 			if err = copyPlaintext(src, path); err == nil {
 				copied = true
-			} else {
-				log.Debug("not reusing plaintext of earlier artifact", slog.String("path", path), slog.Any("error", err))
+
+				break
 			}
+
+			log.Debug("not reusing plaintext of earlier artifact", slog.String("path", path), slog.Any("error", err))
 		}
 
 		switch {
@@ -145,9 +147,9 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 }
 
 // loadPlaintextSources indexes the decrypted files of every published artifact
-// under baseDir by format and ciphertext. The newest artifact wins on identical keys.
-func loadPlaintextSources(log *slog.Logger, baseDir string) map[string]plaintextSource {
-	sources := map[string]plaintextSource{}
+// under baseDir by format and ciphertext, newest artifact first.
+func loadPlaintextSources(log *slog.Logger, baseDir string) map[string][]plaintextSource {
+	sources := map[string][]plaintextSource{}
 
 	artifacts, err := listArtifacts(baseDir)
 	if err != nil {
@@ -185,11 +187,11 @@ func loadPlaintextSources(log *slog.Logger, baseDir string) map[string]plaintext
 		records = append(records, recorded{Artifact: a, modTime: info.ModTime().UnixNano(), record: r})
 	}
 
-	sort.Slice(records, func(i, j int) bool { return records[i].modTime < records[j].modTime })
+	sort.Slice(records, func(i, j int) bool { return records[i].modTime > records[j].modTime })
 
 	for _, r := range records {
 		for rel, f := range r.record.Files {
-			sources[f.key()] = plaintextSource{path: filepath.Join(r.Path, filepath.FromSlash(rel)), plaintext: f.Plaintext}
+			sources[f.key()] = append(sources[f.key()], plaintextSource{path: filepath.Join(r.Path, filepath.FromSlash(rel)), plaintext: f.Plaintext})
 		}
 	}
 
