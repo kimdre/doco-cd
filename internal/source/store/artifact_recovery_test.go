@@ -23,6 +23,7 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 			write := func(dir string) error {
 				return os.WriteFile(filepath.Join(dir, "config"), []byte("intact"), 0o600)
 			}
+
 			artifact, err := publishDir(base, "rev", write)
 			if err != nil {
 				t.Fatal(err)
@@ -32,6 +33,7 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 			if reason, err := artifactStaleReason(artifact.Path, deployedAt, noArtifactBirthTime); err != nil || reason != "" {
 				t.Fatalf("first publication is stale: %q, %v", reason, err)
 			}
+
 			mounted, err := os.OpenRoot(artifact.Path)
 			if err != nil {
 				t.Fatal(err)
@@ -48,6 +50,7 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 				if err := os.RemoveAll(artifact.Path); err != nil {
 					t.Fatal(err)
 				}
+
 				if scenario == "empty replacement" {
 					if err := os.Mkdir(artifact.Path, 0o755); err != nil {
 						t.Fatal(err)
@@ -57,6 +60,7 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+
 				if scenario == "removed publication metadata" {
 					for _, suffix := range []string{publishedSuffix, publicationTimeSuffix} {
 						if err := os.Remove(artifact.Path + suffix); err != nil {
@@ -68,6 +72,7 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 				if err := recordArtifactPublication(artifact.Path); err != nil {
 					t.Fatal(err)
 				}
+
 				if err := setAsideUnpublished(filepath.Dir(artifact.Path), artifact.Path); err != nil {
 					t.Fatal(err)
 				}
@@ -76,6 +81,7 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 			if _, found, err := lookupArtifact(base, "rev"); err != nil || found {
 				t.Fatalf("restored artifact accepted: found=%v, err=%v", found, err)
 			}
+
 			if _, err := publishDir(base, "rev", write); err != nil {
 				t.Fatal(err)
 			}
@@ -90,9 +96,11 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 				if err != nil || reason != ArtifactReplaced {
 					t.Fatalf("recovery without birth time = %q, %v", reason, err)
 				}
+
 				if _, err := publishDir(base, "rev", write); err != nil {
 					t.Fatal(err)
 				}
+
 				current, err := os.ReadFile(artifact.Path + publicationTimeSuffix)
 				if err != nil || string(current) != string(record) {
 					t.Fatalf("cached publication changed recovery signal: %q, %v", current, err)
@@ -113,21 +121,26 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				for _, entry := range entries {
 					if entry.IsDir() && entry.Name() != "rev" {
 						path := filepath.Join(filepath.Dir(artifact.Path), entry.Name())
+
 						old := time.Now().Add(-2 * orphanedTempMaxAge)
 						if err := os.Chtimes(path, old, old); err != nil {
 							t.Fatal(err)
 						}
 					}
 				}
+
 				if err := sweepOrphanedTemp(base); err != nil {
 					t.Fatal(err)
 				}
+
 				if _, err := mounted.ReadFile("config"); !errors.Is(err, os.ErrNotExist) {
 					t.Fatalf("swept old mount still contains config: %v", err)
 				}
+
 				if reason, err := artifactStaleReason(artifact.Path, deployedAt, noArtifactBirthTime); err != nil || reason != ArtifactReplaced {
 					t.Fatalf("sweeping erased recovery signal: %q, %v", reason, err)
 				}
@@ -143,6 +156,7 @@ func TestArtifactReplacementSameSecondWithoutBirthTime(t *testing.T) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := recordArtifactMetadata(dir, publicationTimeSuffix, "2026-01-01T12:00:00.123456789Z"); err != nil {
 		t.Fatal(err)
 	}
@@ -164,16 +178,20 @@ func TestPublishDirReplacementRecordFailureLeavesOldDirectory(t *testing.T) {
 	t.Parallel()
 
 	base := t.TempDir()
+
 	dir := filepath.Join(base, ArtifactsSubdir, "rev")
 	if err := os.MkdirAll(dir+publicationTimeSuffix, 0o755); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.WriteFile(filepath.Join(dir, "config"), []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.WriteFile(dir+publishedSuffix, []byte("restored-identity"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -184,6 +202,7 @@ func TestPublishDirReplacementRecordFailureLeavesOldDirectory(t *testing.T) {
 	if err == nil {
 		t.Fatal("publication succeeded without a durable replacement record")
 	}
+
 	if data, err := os.ReadFile(filepath.Join(dir, "config")); err != nil || string(data) != "old" {
 		t.Fatalf("failed publication moved old mounted directory: %q, %v", data, err)
 	}

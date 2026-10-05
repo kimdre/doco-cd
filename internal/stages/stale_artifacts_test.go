@@ -220,10 +220,12 @@ func TestStaleArtifactServicesRecordedRepublication(t *testing.T) {
 	source, destination, storeBase := newStaleArtifactTestStore(t)
 	replacedDir := publishStaleTestArtifact(t, storeBase, staleTestPinned)
 	publishStaleTestArtifact(t, storeBase, staleTestRevision)
+
 	replacedAt := time.Now().UTC()
 	if err := os.WriteFile(replacedDir+".published-at", []byte(replacedAt.Format(time.RFC3339Nano)), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	old := replacedAt.Add(-time.Nanosecond).Format(time.RFC3339Nano)
 	recovered := replacedAt.Add(time.Nanosecond).Format(time.RFC3339Nano)
 	deployed := map[docker.Service]docker.ServiceStatus{
@@ -238,6 +240,7 @@ func TestStaleArtifactServicesRecordedRepublication(t *testing.T) {
 		if len(got) != 1 || got[0].Service != "pinned-old" || got[0].Reason != artifactReplaced {
 			t.Fatalf("recorded republication recovery = %+v", got)
 		}
+
 		if change := staleArtifactChange(got); !slices.Equal(change.Services, []string{"pinned-old"}) {
 			t.Fatalf("forced recovery services = %v", change.Services)
 		}

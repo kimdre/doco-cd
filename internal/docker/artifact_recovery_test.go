@@ -34,6 +34,7 @@ func TestStaleSwarmArtifactServicesRotation(t *testing.T) {
 
 	dest := t.TempDir()
 	base := filepath.Join(dest, "repo")
+
 	dir := filepath.Join(base, store.ArtifactsSubdir, "rev")
 	if err := os.MkdirAll(dir, filesystem.PermDir); err != nil {
 		t.Fatal(err)
@@ -78,6 +79,7 @@ func TestStaleSwarmArtifactServicesRotation(t *testing.T) {
 
 	fake.services[0].Spec.Labels[DocoCDLabels.Deployment.Timestamp] = future
 	fake.services[2].Spec.Labels[DocoCDLabels.Deployment.PinnedRevisions] = ""
+
 	got, err := staleSwarmArtifactServices(t.Context(), fake, "stack", load)
 	if err != nil || len(got) != 0 {
 		t.Fatalf("after successful recovery = %v, %v", got, err)

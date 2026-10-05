@@ -189,6 +189,7 @@ func getLatestServiceStatus(cacheMap *sync.Map, statusMap map[Service]ServiceSta
 
 func deploymentTimestampAtLeast(timestamp, previous string) bool {
 	current, currentErr := time.Parse(time.RFC3339, timestamp)
+
 	old, oldErr := time.Parse(time.RFC3339, previous)
 	if currentErr != nil || oldErr != nil {
 		return timestamp >= previous

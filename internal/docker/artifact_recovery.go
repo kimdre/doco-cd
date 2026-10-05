@@ -64,6 +64,7 @@ func DataMountPath(hostPath, dataMountSource, dataMountDestination string) (stri
 // ArtifactStoreBase returns the store of revision that path is nested under.
 func ArtifactStoreBase(path string, revision store.Revision) (string, bool) {
 	dirName := store.ArtifactDirName(revision)
+
 	for dir := filepath.Clean(path); ; {
 		parent := filepath.Dir(dir)
 		if parent == dir {
