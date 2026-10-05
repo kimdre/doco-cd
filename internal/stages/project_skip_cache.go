@@ -22,6 +22,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
 const maxProjectSkipCacheEntries = 512
@@ -110,6 +111,7 @@ func (s *StageManager) projectSkipKey() projectSkipKey {
 // localProjectInputs proves that the Git subtree contains every input that
 // can affect the loaded project. Anything remote, shared outside this stack,
 // mutable through the process environment, or ambiguous uses the full path.
+// Bind mounts of host paths outside the repository are not project inputs.
 // It returns nil if the project may be cached, or an error describing the
 // first input that prevents it.
 func (s *StageManager) localProjectInputs(project *types.Project) error {
@@ -134,6 +136,11 @@ func (s *StageManager) localProjectInputs(project *types.Project) error {
 	}
 
 	externalDir, err := getAbsWorkingDir(s.Repository.PathExternal, s.DeployConfig.WorkingDirectory)
+	if err != nil {
+		return err
+	}
+
+	repositoryDir, err := filepath.Abs(s.Repository.PathExternal)
 	if err != nil {
 		return err
 	}
@@ -176,6 +183,22 @@ func (s *StageManager) localProjectInputs(project *types.Project) error {
 
 		return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) &&
 			!hasSymlink(p)
+	}
+
+	// outsideRepository reports whether p is a host path outside the
+	// repository checkout, such as a media directory or the Docker socket.
+	// The full pre-deploy path ignores those too (see
+	// docker.HasChangedBindMounts), so they cannot change its outcome.
+	outsideRepository := func(p string) bool {
+		if p == "" || strings.Contains(p, ":") {
+			return false
+		}
+
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(externalDir, p)
+		}
+
+		return !filesystem.InBasePath(repositoryDir, p)
 	}
 
 	notLocal := func(kind, p string) error {
@@ -238,13 +261,15 @@ func (s *StageManager) localProjectInputs(project *types.Project) error {
 		}
 
 		for _, volume := range svc.Volumes {
-			if volume.Type == "bind" && !inside(volume.Source) {
+			if volume.Type != types.VolumeTypeBind || outsideRepository(volume.Source) {
+				continue
+			}
+
+			if !inside(volume.Source) {
 				return notLocal(fmt.Sprintf("service %q bind mount source", svc.Name), volume.Source)
 			}
 
-			if volume.Type == "bind" {
-				directories = append(directories, volume.Source)
-			}
+			directories = append(directories, volume.Source)
 		}
 
 		if svc.Build != nil {

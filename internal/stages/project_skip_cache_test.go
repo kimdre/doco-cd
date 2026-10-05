@@ -246,6 +246,40 @@ func TestProjectSkipCacheRejectsExternalInputsAndIncludes(t *testing.T) {
 		t.Fatal("shared bind mount must require full project loading")
 	}
 
+	bind := func(source string) {
+		project.Services["web"] = types.ServiceConfig{Name: "web", Volumes: []types.ServiceVolumeConfig{{Type: types.VolumeTypeBind, Source: source}}}
+	}
+
+	bind("../shared")
+
+	if s.localProjectInputs(project) == nil {
+		t.Fatal("a relative bind mount outside the stack must require full project loading")
+	}
+
+	hostDir := t.TempDir()
+	for _, source := range []string{hostDir, "/var/run/docker.sock", filepath.Dir(root)} {
+		bind(source)
+
+		if err := s.localProjectInputs(project); err != nil {
+			t.Fatalf("host bind mount %q outside the repository should not prevent caching: %v", source, err)
+		}
+	}
+
+	link := filepath.Join(stackDir, "media")
+	if err := os.Symlink(hostDir, link); err != nil {
+		t.Fatal(err)
+	}
+
+	bind(link)
+
+	if s.localProjectInputs(project) == nil {
+		t.Fatal("a bind mount through a symlink inside the repository must require full project loading")
+	}
+
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+
 	project.Services["web"] = types.ServiceConfig{Name: "web"}
 
 	project.Services["web"] = types.ServiceConfig{Name: "web", Build: &types.BuildConfig{
