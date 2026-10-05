@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 // Not parallel: it overrides removeAll.
@@ -51,7 +53,7 @@ func TestPurgeTombstones_RetriesFailedRemovals(t *testing.T) {
 		t.Fatalf("PurgeTombstones() retry = %d, %v, want both tombstones removed", removed, err)
 	}
 
-	entries, err := os.ReadDir(filepath.Join(dataDir, ".doco-cd-trash"))
+	entries, err := os.ReadDir(filepath.Join(dataDir, sourcecache.TombstoneDirName))
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("tombstone namespace = %v, %v, want it empty", entries, err)
 	}

@@ -169,7 +169,7 @@ func TestPrepare_ReservedRepositoryName(t *testing.T) {
 	_, err := p.Prepare(t.Context(), Request{
 		Logger:         logger.New(logger.LevelCritical).Logger,
 		JobTrigger:     stages.JobTriggerWebhook,
-		SourceRef:      "https://.doco-cd-trash/owner/repo.git",
+		SourceRef:      "https://.evicted/owner/repo.git",
 		DataMountPoint: testMountPoint(t),
 	})
 	if !errors.Is(err, ErrInvalidRepositoryName) || !errors.Is(err, sourcecache.ErrReservedSourcePath) {

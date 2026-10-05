@@ -17,7 +17,7 @@ import (
 // TombstoneDirName is the directory directly below the source root that holds the tombstones of evicted source
 // stores until they are purged (see internal/source/store). It is reserved: no source store may live in it, and
 // everything in it is garbage.
-const TombstoneDirName = ".doco-cd-trash"
+const TombstoneDirName = ".evicted"
 
 // treeLockSuffix names the lock that coordinates a source store with the stores nested below it. Every gate
 // acquisition holds it shared for each directory its store is nested in, and source eviction holds it exclusively

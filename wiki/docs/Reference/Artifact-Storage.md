@@ -61,7 +61,7 @@ The source directory is organized by source type and source name, and contains t
 
     ```tree title="Example Git Source Layout"
     <DATA_MOUNT_PATH>/
-      .doco-cd-trash/  # Evicted source data that is being removed, see Source garbage collection
+      .evicted/  # Evicted source data that is being removed, see Source garbage collection
       github.com/
         org/
           example/  # Source directory
@@ -121,7 +121,7 @@ The source directory is organized by source type and source name, and contains t
 
     ```tree title="Example OCI Source Layout"
     <DATA_MOUNT_PATH>/
-      .doco-cd-trash/  # Evicted source data that is being removed, see Source garbage collection
+      .evicted/  # Evicted source data that is being removed, see Source garbage collection
       ghcr.io/
         org/
           example/  # Source directory
@@ -258,9 +258,9 @@ Eviction is designed to never remove data that is still in use:
 - A source that is in use while the sweep runs, e.g. by a deployment, a [mirror compaction](#on-demand-compaction)
   or a source nested in it, is skipped until the next sweep. Deployments of a source wait for an eviction in progress.
 - If any Docker context cannot be inspected, no source is evicted in that sweep.
-- The evicted directories are first moved to `<DATA_MOUNT_PATH>/.doco-cd-trash/` and removed from there afterwards,
+- The evicted directories are first moved to `<DATA_MOUNT_PATH>/.evicted/` and removed from there afterwards,
   so a source is never left partially removed. Leftovers, e.g. after a crash, are removed by the next sweep and on startup,
-  even if source garbage collection was disabled in the meantime. Sources named `.doco-cd-trash` are rejected.
+  even if source garbage collection was disabled in the meantime. Sources named `.evicted` are rejected.
 
 The sweep runs every [`SOURCE_GC_INTERVAL`](../App-Settings.md#source-garbage-collection-settings), starting one interval
 after startup to give every source in use the chance to record its use first.
