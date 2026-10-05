@@ -9,6 +9,7 @@ tags:
 
 The Doco-CD image has a Docker health check that checks against `http://localhost:${HTTP_PORT}/v1/health` inside the container by default.
 When both `HTTP_TLS_CERT_FILE` and `HTTP_TLS_KEY_FILE` are set, the built-in health check automatically switches to `https://localhost:${HTTP_PORT}/v1/health`.
+The health check command (`/doco-cd healthcheck`) only reads `HTTP_PORT`, `HTTP_TLS_CERT_FILE`, `HTTP_TLS_KEY_FILE` and `LOG_LEVEL`, so it does not load or validate the rest of the configuration.
 
 You can adjust the health check settings in your `docker-compose.yml` file like this:
 
