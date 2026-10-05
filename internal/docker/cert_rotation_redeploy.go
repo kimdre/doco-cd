@@ -108,7 +108,7 @@ func RotateProjectCertificates(
 
 	payload := certRotationPayload(labels, resolvedSourceType(ref, opts.Scheduled))
 
-	timestamp := time.Now().UTC().Format(time.RFC3339)
+	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
 	projectHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash])
 	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
@@ -170,7 +170,7 @@ func rotateSwarmProjectCertificates(
 
 	payload := certRotationPayload(labels, resolvedSourceType(ref, certOpts.Scheduled))
 
-	timestamp := time.Now().UTC().Format(time.RFC3339)
+	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
 	projectHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash])
 	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
@@ -181,6 +181,13 @@ func rotateSwarmProjectCertificates(
 	}
 
 	opts.Logger = slog.Default().With(slog.String("stack", ref.Project))
+
+	// Rotation updates the metadata of unchanged siblings too. Recover their stale
+	// mounts in that same update before the new timestamp can hide the replacement.
+	opts.ForceUpdateServices, err = staleSwarmArtifactServices(ctx, dockerCli.Client(), ref.Project, certOpts.Scheduled.ComposeLoad)
+	if err != nil {
+		return fmt.Errorf("check swarm artifacts for cert rotation of %s: %w", ref.Project, err)
+	}
 
 	addSwarmServiceLabels(cfg, project, deployConfig, payload, sourceURL, ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash)
 	addSwarmVolumeLabels(cfg, deployConfig, payload)

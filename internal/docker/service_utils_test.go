@@ -22,6 +22,25 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
+func TestDeploymentTimestampAtLeastSubsecond(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		current, previous string
+		want              bool
+	}{
+		{"2026-01-01T12:00:00.000000001Z", "2026-01-01T12:00:00Z", true},
+		{"2026-01-01T12:00:00Z", "2026-01-01T12:00:00.000000001Z", false},
+		{"2026-01-01T12:00:00.1Z", "2026-01-01T12:00:00.11Z", false},
+		{"2026-01-01T12:00:00.1Z", "2026-01-01T12:00:00.1Z", true},
+		{"2026-01-01T12:00:00.1Z", "", true},
+	} {
+		if got := deploymentTimestampAtLeast(tc.current, tc.previous); got != tc.want {
+			t.Fatalf("timestamp %s >= %s = %v, want %v", tc.current, tc.previous, got, tc.want)
+		}
+	}
+}
+
 func Test_getLatestServiceState(t *testing.T) {
 	t.Parallel()
 

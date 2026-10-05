@@ -135,6 +135,10 @@ func lookupArtifact(baseDir string, revision Revision) (Artifact, bool, error) {
 // onto empty bind mounts.
 const publishedSuffix = ".published"
 
+// publicationTimeSuffix records when an artifact path was last published. It survives
+// process restarts and does not depend on the filesystem supporting birth times.
+const publicationTimeSuffix = ".published-at"
+
 // publishLockSuffix names the path lock (see sourcecache.AcquireRequiredExclusivePathLock) publishDir holds while it
 // moves an artifact into place. Its lock file is the artifact's path followed by publishLockSuffix and ".lock".
 const publishLockSuffix = ".publish"
@@ -179,18 +183,22 @@ func recordPublished(path string) error {
 		return err
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), tempArtifactPrefix+filepath.Base(path)+publishedSuffix+"-*")
+	return recordArtifactMetadata(path, publishedSuffix, identity)
+}
+
+func recordArtifactMetadata(path, suffix, value string) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), tempArtifactPrefix+filepath.Base(path)+suffix+"-*")
 	if err != nil {
 		return err
 	}
 
-	_, err = tmp.WriteString(identity)
+	_, err = tmp.WriteString(value)
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
 
 	if err == nil {
-		err = os.Rename(tmp.Name(), path+publishedSuffix)
+		err = os.Rename(tmp.Name(), path+suffix)
 	}
 
 	if err != nil {
@@ -198,6 +206,12 @@ func recordPublished(path string) error {
 	}
 
 	return err
+}
+
+// recordArtifactPublication runs before moving the old directory, so a crash
+// between the rename and publishing cannot lose the recovery signal.
+func recordArtifactPublication(path string) error {
+	return recordArtifactMetadata(path, publicationTimeSuffix, time.Now().UTC().Format(time.RFC3339Nano))
 }
 
 // containsNonDirectory reports whether the tree at root contains anything but directories.
@@ -344,6 +358,10 @@ func publishDir(baseDir string, revision Revision, write func(dir string) error)
 		return existing, nil
 	}
 
+	if err := recordArtifactPublication(finalPath); err != nil {
+		return Artifact{}, fmt.Errorf("record publication of artifact %s: %w", revision, err)
+	}
+
 	if err := setAsideUnpublished(artifactsDir, finalPath); err != nil {
 		return Artifact{}, fmt.Errorf("set aside unpublished directory of artifact %s: %w", revision, err)
 	}
@@ -395,7 +413,7 @@ func sweepOrphanedTemp(baseDir string) error {
 	cutoff := time.Now().Add(-orphanedTempMaxAge)
 
 	for _, e := range entries {
-		// Besides directories, this also removes temporary files recordPublished failed to rename into place.
+		// Besides directories, this also removes temporary metadata files that failed to rename into place.
 		if !strings.HasPrefix(e.Name(), tempArtifactPrefix) {
 			continue
 		}

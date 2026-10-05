@@ -134,9 +134,9 @@ func Sweep(baseDir string, live set.Set[Revision], opts GCOptions, now time.Time
 			errs = append(errs, fmt.Errorf("remove artifact lock file %s: %w", c.Revision, err))
 		}
 
-		// The publish record and lock (see publishedSuffix and publishLockSuffix) belong to the removed directory
+		// The publication metadata and lock belong to the removed directory
 		// as well. A publish of the same revision later on writes a new record either way.
-		for _, sibling := range []string{c.Path + publishedSuffix, c.Path + publishLockSuffix + ".lock"} {
+		for _, sibling := range []string{c.Path + publishedSuffix, c.Path + publicationTimeSuffix, c.Path + publishLockSuffix + ".lock"} {
 			if err = os.Remove(sibling); err != nil && !os.IsNotExist(err) {
 				errs = append(errs, fmt.Errorf("remove artifact file %s: %w", filepath.Base(sibling), err))
 			}

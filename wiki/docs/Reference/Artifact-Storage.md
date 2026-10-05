@@ -69,6 +69,7 @@ The source directory is organized by source type and source name, and contains t
               <revision>.lock  # Lock file for artifact access
               <revision>.publish.lock  # Lock file for publishing the artifact
               <revision>.published  # Identity of the published artifact directory
+              <revision>.published-at  # Time of the last artifact publication
               ...
             mirror/  # Bare Git repository mirror
               HEAD
@@ -121,6 +122,7 @@ The source directory is organized by source type and source name, and contains t
               sha256-<digest>.lock  # Lock file for artifact access
               sha256-<digest>.publish.lock  # Lock file for publishing the artifact
               sha256-<digest>.published  # Identity of the published artifact directory
+              sha256-<digest>.published-at  # Time of the last artifact publication
               ...
             live/  # Mutable live files of stacks
               <context>/
@@ -209,14 +211,19 @@ Automatic cleanup of unused whole-source directories is deferred to
 If an artifact a deployed service uses was removed (e.g. manually or by `destroy.remove_dir` in an older version of doco-cd,
 see [#1962](https://github.com/kimdre/doco-cd/issues/1962)), the service is recreated on the next deployment of its stack,
 even if nothing changed. Its containers would otherwise keep using the removed directory, which appears empty to them.
-On file systems that record the creation time of files (e.g. ext4, XFS or Btrfs), this also applies if the artifact was
-published again since the containers were created.
+Publications are recorded in `<revision>.published-at` before replacing the directory, so recovery also works on
+file systems without creation times and survives failed deployments and doco-cd restarts. Deployment timestamps
+retain subsecond precision so a successful recreation stops recovery even within the same second.
+On file systems that record creation times (e.g. ext4, XFS or Btrfs), those also detect older, unrecorded replacements.
 
 When a container restarts while its bind-mounted directory is missing, Docker re-creates the directory empty, and with it
 the directory of the artifact. To tell such a directory apart from the published artifact, the identity (inode and
 creation time) of every published artifact directory is recorded in `<revision>.published` next to it.
-An artifact directory that does not match its record is moved aside and published again. An artifact directory without
-a record (e.g. one published by an older version of doco-cd) is only used if it contains any files.
+An artifact directory that does not match its record is moved aside and published again, including restored directories
+whose copied identity records no longer match their restored inodes. An artifact directory without a record
+(e.g. one published by an older version of doco-cd) is only used if it contains any files.
+Only services still using an artifact replaced after their deployment are recreated; unrelated services are left alone.
+Swarm certificate rotations perform the same check before updating service metadata, without rerunning job-mode services.
 
 ## Git Mirror Compaction
 

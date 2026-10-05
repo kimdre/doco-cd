@@ -427,7 +427,7 @@ func recreateManagedProject(
 		return err
 	}
 
-	timestamp := time.Now().UTC().Format(time.RFC3339)
+	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
 	payload := &webhook.ParsedPayload{
 		Source:   webhook.PayloadSource(SourceTypeLabelValue(string(sourceType), labels[DocoCDLabels.Source.Type])),
