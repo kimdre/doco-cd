@@ -10,7 +10,8 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sigstore/cosign/v3/pkg/cosign"
-	"github.com/sigstore/cosign/v3/pkg/signature"
+	"github.com/sigstore/sigstore/pkg/cryptoutils"
+	"github.com/sigstore/sigstore/pkg/signature"
 
 	"github.com/kimdre/doco-cd/internal/config"
 )
@@ -37,6 +38,18 @@ func normalizeVerifyMaxWorkers(maxWorkers uint) int {
 	}
 
 	return int(maxWorkers)
+}
+
+// loadPublicKeyVerifier parses a PEM public key from the trust policy into a
+// SHA-256 verifier. It matches cosign's signature.LoadPublicKeyRaw, which is not
+// used because its package links the Kubernetes client into the binary.
+func loadPublicKeyVerifier(key string) (signature.Verifier, error) {
+	pub, err := cryptoutils.UnmarshalPEMToPublicKey([]byte(strings.TrimSpace(key)))
+	if err != nil {
+		return nil, err
+	}
+
+	return signature.LoadVerifier(pub, crypto.SHA256)
 }
 
 // toCosignIdentity converts a keyless identity from the trust policy to a Cosign identity.
@@ -112,7 +125,7 @@ func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPol
 	var failures []string
 
 	for _, key := range effectivePolicy.PublicKeys {
-		verifier, err := signature.LoadPublicKeyRaw([]byte(strings.TrimSpace(key)), crypto.SHA256)
+		verifier, err := loadPublicKeyVerifier(key)
 		if err != nil {
 			failures = append(failures, "public key load failed: "+fmt.Sprintf("%v", err))
 			continue
