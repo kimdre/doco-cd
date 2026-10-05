@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
 )
@@ -31,7 +29,7 @@ func RegisterServer(port uint16, tlsCertFile string, tlsKeyFile string, log *log
 	)
 
 	mux := http.NewServeMux()
-	mux.Handle(MetricsPath, promhttp.Handler())
+	mux.Handle(MetricsPath, Handler())
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
