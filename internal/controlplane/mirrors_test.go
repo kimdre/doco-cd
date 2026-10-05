@@ -567,7 +567,7 @@ func TestCompactMirrorExcludesSourceEviction(t *testing.T) {
 			t.Errorf("TryAcquireSourceEvictionLock() during compaction = %t, %v, want busy", acquired, err)
 		}
 
-		return git.MirrorCompaction{MirrorPackStats: git.MirrorPackStats{Result: git.MirrorCompactionCompacted}}, nil
+		return git.MirrorCompaction{Result: git.MirrorCompactionCompacted}, nil
 	}
 
 	if _, err := storage.compactMirror(t.Context(), slog.Default(), mirror, git.MirrorCompactOptions{Mode: git.MirrorCompactionRepack}); err != nil {

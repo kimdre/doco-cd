@@ -273,7 +273,7 @@ func (r *sourceReferences) addLabels(labels map[string]string) {
 		r.addPath(labels[key])
 	}
 
-	for _, file := range strings.Split(labels[api.ConfigFilesLabel], ",") {
+	for file := range strings.SplitSeq(labels[api.ConfigFilesLabel], ",") {
 		r.addPath(file)
 	}
 

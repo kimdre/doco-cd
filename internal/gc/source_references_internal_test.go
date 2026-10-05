@@ -366,8 +366,8 @@ func TestSourceReferencesOf(t *testing.T) {
 	}}}
 
 	results := []docker.ContextClientResult{
-		{ContextClient: docker.ContextClient{Cli: liveTestCli{apiClient: first}}},
-		{ContextClient: docker.ContextClient{Name: "remote", Cli: liveTestCli{apiClient: second}}},
+		{Cli: liveTestCli{apiClient: first}},
+		{Name: "remote", Cli: liveTestCli{apiClient: second}},
 	}
 
 	refs, err := sourceReferencesOf(ctx, results, testHostDataRoot, testContainerDataRoot)
@@ -379,14 +379,14 @@ func TestSourceReferencesOf(t *testing.T) {
 
 	// A context that cannot be reached could use any store.
 	unavailable := append(slices.Clone(results), docker.ContextClientResult{
-		ContextClient: docker.ContextClient{Name: "down"},
-		Err:           errors.New("connection refused"),
+		Name: "down",
+		Err:  errors.New("connection refused"),
 	})
 	if _, err := sourceReferencesOf(ctx, unavailable, testHostDataRoot, testContainerDataRoot); err == nil {
 		t.Error("sourceReferencesOf() with an unavailable context: error = nil, want error")
 	}
 
-	withoutClient := []docker.ContextClientResult{{ContextClient: docker.ContextClient{Name: "broken"}}}
+	withoutClient := []docker.ContextClientResult{{Name: "broken"}}
 	if _, err := sourceReferencesOf(ctx, withoutClient, testHostDataRoot, testContainerDataRoot); err == nil {
 		t.Error("sourceReferencesOf() with a context without client: error = nil, want error")
 	}
