@@ -19,14 +19,17 @@ func TestObsoleteStackCleanupScopesAncestryToDeploymentReference(t *testing.T) {
 	t.Parallel()
 
 	repoDir, mainRevision, deployedRevision := newTestRepoWithTwoCommits(t)
+
 	repo, err := gogit.PlainOpen(repoDir)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	wt, err := repo.Worktree()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	newer, err := wt.Commit("feature removes obsolete stack", &gogit.CommitOptions{
 		AllowEmptyCommits: true,
 		Author:            &object.Signature{Name: "Jane Doe", Email: "jane@example.com", When: time.Date(2026, 1, 1, 0, 2, 0, 0, time.UTC)},
@@ -61,6 +64,7 @@ func TestObsoleteStackCleanupScopesAncestryToDeploymentReference(t *testing.T) {
 			if tt.featureStale {
 				featureRevision = mainRevision
 			}
+
 			configs := []*deployConfig.Config{
 				cleanupTestDiscovered("main-keep", deployConfig.AutoDiscoveryOrigin{
 					WorkingDirectory: "services", Reference: tt.mainRef, Revision: mainRevision, MirrorDir: repoDir,
@@ -80,10 +84,12 @@ func TestObsoleteStackCleanupScopesAncestryToDeploymentReference(t *testing.T) {
 				docker.DocoCDLabels.Deployment.TargetRef: tt.deployedRef,
 			})
 			got := runCleanupDecision(t, req, []container.Summary{stack}, configs)
+
 			var want []string
 			if tt.wantRemove {
 				want = []string{"feature-old"}
 			}
+
 			if !slices.Equal(got, want) {
 				t.Fatalf("removable stacks = %v, want %v", got, want)
 			}
@@ -99,6 +105,7 @@ func TestObsoleteStackCleanupRemovedOriginRetainsStaleGuardAcrossReferences(t *t
 	req.Repository.MirrorDir = repoDir
 	req.Repository.Revision = older
 	req.Repository.ResolvedReference = "main"
+
 	stack := cleanupTestStack("feature-old", "services/feature-old", map[string]string{
 		docker.DocoCDLabels.Deployment.CommitSHA: newer,
 		docker.DocoCDLabels.Deployment.TargetRef: "feature",
