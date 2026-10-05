@@ -1136,3 +1136,37 @@ func TestCheckServiceMismatch(t *testing.T) {
 		})
 	}
 }
+
+func TestRepositoryLabelMatches(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		label        string
+		repositories []string
+		want         bool
+	}{
+		{name: "empty label", label: " ", repositories: []string{"github.com/owner/repo"}, want: false},
+		{name: "no repositories", label: "owner/repo", want: false},
+		{name: "only empty repositories", label: "owner/repo", repositories: []string{"", " "}, want: false},
+		{name: "repository name", label: "github.com/owner/repo", repositories: []string{"github.com/owner/repo"}, want: true},
+		{name: "full name label", label: "owner/repo", repositories: []string{"https://github.com/owner/repo.git"}, want: true},
+		{name: "scp-like git url", label: "owner/repo", repositories: []string{"git@github.com:owner/repo.git"}, want: true},
+		{name: "label with whitespace", label: " owner/repo ", repositories: []string{"https://github.com/owner/repo.git"}, want: true},
+		{name: "second repository", label: "owner/app", repositories: []string{"github.com/owner/config", "https://github.com/owner/app.git"}, want: true},
+		{name: "other repository", label: "owner/other", repositories: []string{"github.com/owner/repo"}, want: false},
+		{name: "oci tag ignored", label: "ghcr.io/org/app", repositories: []string{"ghcr.io/org/app:v2"}, want: true},
+		{name: "oci digest ignored", label: "org/app", repositories: []string{"ghcr.io/org/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}, want: true},
+		{name: "other oci repository", label: "ghcr.io/org/other", repositories: []string{"ghcr.io/org/app:v2"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := RepositoryLabelMatches(tt.label, tt.repositories...); got != tt.want {
+				t.Fatalf("RepositoryLabelMatches(%q, %q) = %v, want %v", tt.label, tt.repositories, got, tt.want)
+			}
+		})
+	}
+}

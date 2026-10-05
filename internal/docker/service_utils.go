@@ -14,6 +14,7 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+	"github.com/opencontainers/go-digest"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 
@@ -63,6 +64,13 @@ func normalizeRepositoryForLabelMatch(repository string) string {
 		return ""
 	}
 
+	// Strip an OCI digest suffix (repo@sha256:...) first, since GetRepoName reads it as an scp-like Git URL (user@host:path).
+	if idx := strings.LastIndex(repository, "@"); idx > 0 {
+		if _, err := digest.Parse(repository[idx+1:]); err == nil {
+			repository = repository[:idx]
+		}
+	}
+
 	// Normalize scheme/scp-like urls to host/owner/repo when possible.
 	repository = git.GetRepoName(repository)
 
@@ -94,6 +102,24 @@ func normalizeRepositoryForLabelMatch(repository string) string {
 // artifact garbage collection (internal/gc) to build its live-revision set.
 func NormalizeRepositoryLabel(repository string) string {
 	return normalizeRepositoryForLabelMatch(repository)
+}
+
+// RepositoryLabelMatches reports whether label, a cd.doco.source.name label value, names one of
+// repositories, matched like GetLatestDeployStatus matches it. A repository can be a repository name or
+// URL, or an OCI artifact reference whose tag or digest is ignored.
+func RepositoryLabelMatches(label string, repositories ...string) bool {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return false
+	}
+
+	for _, repository := range repositories {
+		if strings.TrimSpace(repository) != "" && buildRepositoryLabelCandidates(repository).Contains(label) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // buildRepositoryLabelCandidates generates a set of candidate repository label values

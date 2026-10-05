@@ -23,6 +23,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/source/store"
 	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 // cleanupObsoleteAutoDiscoveredContainers removes auto-discovered stacks of req's source that are not part of
@@ -176,11 +177,23 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	}
 
 	// The URLs may differ in format (e.g., "https://github.com/kimdre/doco-cd.git" vs.
-	// "https://github.com/kimdre/doco-cd") or protocol (e.g., "ssh://git@github.com/kimdre/doco-cd.git").
+	// "https://github.com/kimdre/doco-cd") or protocol (e.g., "ssh://git@github.com/kimdre/doco-cd.git"), and
+	// OCI references in their digest. The label holds the URL of the job's source, see
+	// stages.sourceURLForLabels. OCI storage identity is repository-based, but cleanup
+	// ownership also requires the stable reference below.
 	cloneURL := c.req.Repository.SourceUrl
+
 	labelURL := labels[docker.DocoCDLabels.Source.URL]
-	cloneURLRepoName := git.GetRepoName(cloneURL)
-	labelURLRepoName := git.GetRepoName(labelURL)
+	if c.req.Repository.Source == config.SourceTypeOCI &&
+		(strings.TrimSpace(cloneURL) == "" || config.OciUrl(cloneURL).Validate() != nil ||
+			strings.TrimSpace(labelURL) == "" || config.OciUrl(labelURL).Validate() != nil) {
+		stackLog.Warn("skipping obsolete OCI stack with missing or invalid source URL")
+
+		return deployConfig.AutoDiscoveryConfig{}, false
+	}
+
+	cloneURLRepoName := c.sourceRepoName(cloneURL)
+	labelURLRepoName := c.sourceRepoName(labelURL)
 	match := cloneURLRepoName == labelURLRepoName
 
 	stackLog.Debug("checking auto-discovered stack for repository match",
@@ -196,6 +209,10 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	if !match {
 		stackLog.Debug("skipping auto-discovered stack as it belongs to a different repository")
 
+		return deployConfig.AutoDiscoveryConfig{}, false
+	}
+
+	if c.req.Repository.Source == config.SourceTypeOCI && !c.ociOwnerMatches(stackLog, labels) {
 		return deployConfig.AutoDiscoveryConfig{}, false
 	}
 
@@ -253,6 +270,73 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	return policy, true
 }
 
+// ociOwnerMatches separates independent tags sharing one source store. A digest-only source
+// needs stable reference metadata; the immutable revision itself is not a lifecycle owner.
+func (c *obsoleteStackCleanup) ociOwnerMatches(stackLog *slog.Logger, labels map[string]string) bool {
+	runRef := c.req.Repository.ResolvedReference
+	if runRef == "" && c.req.Payload != nil && c.req.Payload.Source == webhook.PayloadSourceOCI {
+		runRef = c.req.Payload.Ref
+	}
+
+	stackRef := ""
+	if _, inOCIStore := artifactRelativeDir(labels[docker.DocoCDLabels.Deployment.WorkingDir],
+		c.sourceRepoName(labels[docker.DocoCDLabels.Source.URL])); inOCIStore &&
+		labels[docker.DocoCDLabels.Source.Type] == string(config.SourceTypeOCI) {
+		// repository_url deployments record a Git deployment reference instead. Only
+		// use TargetRef when the deployment itself lives in the OCI source store.
+		stackRef = labels[docker.DocoCDLabels.Deployment.TargetRef]
+	}
+
+	runOwner := ociCleanupReference(c.req.Repository.SourceUrl, runRef)
+
+	stackOwner := ociCleanupReference(labels[docker.DocoCDLabels.Source.URL], stackRef)
+	if runOwner == "" || stackOwner == "" {
+		stackLog.Warn("skipping obsolete OCI stack because its stable reference ownership is missing or ambiguous",
+			slog.String("run_reference", runOwner), slog.String("stack_reference", stackOwner))
+
+		return false
+	}
+
+	if runOwner != stackOwner {
+		stackLog.Debug("skipping auto-discovered OCI stack belonging to a different source reference",
+			slog.String("run_reference", runOwner), slog.String("stack_reference", stackOwner))
+
+		return false
+	}
+
+	return true
+}
+
+func ociCleanupReference(artifact, reference string) string {
+	artifact = strings.TrimSpace(artifact)
+	reference = strings.TrimSpace(reference)
+
+	if artifact == "" || config.OciUrl(artifact).Validate() != nil {
+		return ""
+	}
+
+	identifier := oci.TagFromArtifact(artifact)
+	if !strings.Contains(artifact, "@") {
+		// The config source URL is authoritative; TargetRef can name a Git
+		// deployment branch when repository_url is set.
+		return identifier
+	}
+
+	// ExtractOciArtifactTag historically records a digest's bare hash in TargetRef.
+	// Neither that hash nor the complete digest establishes a stable tag owner.
+	_, hash, _ := strings.Cut(identifier, ":")
+	if reference == "" || reference == identifier || reference == hash {
+		return ""
+	}
+
+	tagged := oci.RepositoryNameFromArtifact(artifact) + ":" + reference
+	if config.OciUrl(tagged).Validate() != nil || oci.TagFromArtifact(tagged) != reference {
+		return ""
+	}
+
+	return reference
+}
+
 // Missing reference metadata retains the conservative ancestry guard used by
 // older deployments. Known, different references do not establish staleness.
 func cleanupRevisionApplies(reference, deployedReference string) bool {
@@ -283,11 +367,17 @@ func (c *obsoleteStackCleanup) storeName(origin deployConfig.AutoDiscoveryOrigin
 		return git.GetRepoName(origin.RepositoryURL)
 	}
 
+	return c.sourceRepoName(c.req.Repository.SourceUrl)
+}
+
+// sourceRepoName returns the repository name of url, a URL of the job's source, without the tag or digest
+// of an OCI artifact reference.
+func (c *obsoleteStackCleanup) sourceRepoName(url string) string {
 	if c.req.Repository.Source == config.SourceTypeOCI {
-		return oci.RepositoryNameFromArtifact(c.req.Repository.SourceUrl)
+		return oci.RepositoryNameFromArtifact(url)
 	}
 
-	return git.GetRepoName(c.req.Repository.SourceUrl)
+	return git.GetRepoName(url)
 }
 
 // artifactRelativeDir returns workingDir relative to the root of the artifact it lies in, if that artifact
