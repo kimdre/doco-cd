@@ -1,9 +1,18 @@
 package oci
 
 import (
+	"bytes"
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"testing"
+
+	"github.com/sigstore/sigstore/pkg/cryptoutils"
 
 	"github.com/kimdre/doco-cd/internal/config"
 )
@@ -86,5 +95,65 @@ func TestNormalizeVerifyMaxWorkers(t *testing.T) {
 				t.Fatalf("normalizeVerifyMaxWorkers(%d) = %d, want %d", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadPublicKeyVerifier(t *testing.T) {
+	t.Parallel()
+
+	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	edPublic, edPrivate, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	message := []byte("doco-cd")
+	digest := sha256.Sum256(message)
+
+	ecdsaSignature, err := ecdsa.SignASN1(rand.Reader, ecdsaKey, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testCases := []struct {
+		name      string
+		publicKey crypto.PublicKey
+		signature []byte
+	}{
+		{name: "ecdsa", publicKey: ecdsaKey.Public(), signature: ecdsaSignature},
+		{name: "ed25519", publicKey: edPublic, signature: ed25519.Sign(edPrivate, message)},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			pemKey, err := cryptoutils.MarshalPublicKeyToPEM(tc.publicKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Trust policies often carry surrounding whitespace from YAML block scalars.
+			verifier, err := loadPublicKeyVerifier("\n  " + string(pemKey) + "\n")
+			if err != nil {
+				t.Fatalf("loadPublicKeyVerifier() error = %v", err)
+			}
+
+			if err = verifier.VerifySignature(bytes.NewReader(tc.signature), bytes.NewReader(message)); err != nil {
+				t.Errorf("VerifySignature() error = %v", err)
+			}
+
+			if err = verifier.VerifySignature(bytes.NewReader(tc.signature), bytes.NewReader([]byte("tampered"))); err == nil {
+				t.Error("VerifySignature() accepted a signature for a different message")
+			}
+		})
+	}
+
+	if _, err = loadPublicKeyVerifier("not a public key"); err == nil {
+		t.Error("loadPublicKeyVerifier() accepted an invalid key")
 	}
 }

@@ -134,6 +134,16 @@ func detectDataMountPoint(
 }
 
 func main() {
+	// The container healthcheck runs this binary every 30 seconds, so keep it
+	// independent of the configuration and setup done in run().
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		if err := runHealthcheck(context.Background(), os.LookupEnv); err != nil {
+			os.Exit(1)
+		}
+
+		return
+	}
+
 	// split to app to make defer work when os.Exit().
 	if err := run(); err != nil {
 		slog.Error("application stopped with error", logger.ErrAttr(err))
@@ -141,6 +151,36 @@ func main() {
 	}
 
 	slog.Info("application stopped normally")
+}
+
+// runHealthcheck checks the health endpoint of the running server. It only
+// reads the environment variables it needs, so it stays cheap and works even
+// when unrelated settings (e.g. secret files) cannot be loaded.
+func runHealthcheck(ctx context.Context, lookupEnv func(string) (string, bool)) error {
+	logLevel := slog.LevelInfo
+
+	if value, ok := lookupEnv("LOG_LEVEL"); ok {
+		if level, err := logger.ParseLevel(value); err == nil {
+			logLevel = level
+		}
+	}
+
+	log := logger.New(logLevel)
+
+	target, err := healthcheck.TargetFromEnv(lookupEnv, api.HealthPath)
+	if err != nil {
+		log.Log(ctx, logger.LevelCritical, "health check failed", logger.ErrAttr(err))
+		return err
+	}
+
+	if err = healthcheck.Check(ctx, target.URL, target.SkipTLSVerify); err != nil {
+		log.Log(ctx, logger.LevelCritical, "health check failed", logger.ErrAttr(err), slog.String("url", target.URL))
+		return err
+	}
+
+	log.InfoContext(ctx, "health check successful", slog.String("url", target.URL))
+
+	return nil
 }
 
 // run is the main entry point for the application.
@@ -201,25 +241,6 @@ func run() error {
 
 	if len(os.Args) > 1 && os.Args[1] == "apply-self" {
 		return runApplySelf(ctx, log, c, os.Args[2:])
-	}
-
-	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		scheme := "http"
-		if c.HttpTLSEnabled {
-			scheme = "https"
-		}
-
-		checkUrl := fmt.Sprintf("%s://localhost:%d%s", scheme, c.HttpPort, api.HealthPath)
-
-		err := healthcheck.Check(ctx, checkUrl, c.HttpTLSEnabled)
-		if err != nil {
-			log.Critical("health check failed", logger.ErrAttr(err), slog.String("url", checkUrl))
-			return err
-		}
-
-		log.Info("health check successful", slog.String("url", checkUrl))
-
-		return nil
 	}
 
 	log.Info("starting application", slog.String("version", app.Version), slog.String("log_level", c.LogLevel))
