@@ -130,7 +130,7 @@ var (
 		Name:      "deployment_stage_duration_seconds",
 		Help:      "Duration of deployment stages in seconds",
 		Buckets:   DurationBuckets,
-	}, []string{"repository", "deployment", "context", "stage", "outcome"})
+	}, []string{"repository", "stage", "outcome"})
 	DeploymentQueueDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployment_queue_duration_seconds",

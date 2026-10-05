@@ -18,22 +18,6 @@ func TestDeploymentMetricLabels(t *testing.T) {
 	if got := deploymentMetricsRepository(&RepositoryData{Name: " owner/repo "}); got != "owner/repo" {
 		t.Fatalf("deploymentMetricsRepository() = %q, want owner/repo", got)
 	}
-
-	if got := deploymentMetricsName(nil); got != "unknown" {
-		t.Fatalf("deploymentMetricsName(nil) = %q, want unknown", got)
-	}
-
-	if got := deploymentMetricsName(&deploy.Config{Name: " app "}); got != "app" {
-		t.Fatalf("deploymentMetricsName() = %q, want app", got)
-	}
-
-	if got := deploymentMetricsContext(nil); got != "default" {
-		t.Fatalf("deploymentMetricsContext(nil) = %q, want default", got)
-	}
-
-	if got := deploymentMetricsContext(&deploy.Config{Context: " remote "}); got != "remote" {
-		t.Fatalf("deploymentMetricsContext() = %q, want remote", got)
-	}
 }
 
 func TestShouldPostPendingCommitStatus(t *testing.T) {
