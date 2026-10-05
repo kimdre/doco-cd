@@ -110,23 +110,32 @@ func (s *StageManager) projectSkipKey() projectSkipKey {
 // localProjectInputs proves that the Git subtree contains every input that
 // can affect the loaded project. Anything remote, shared outside this stack,
 // mutable through the process environment, or ambiguous uses the full path.
-func (s *StageManager) localProjectInputs(project *types.Project) bool {
-	if project == nil || !s.DeployConfig.AutoDiscovery.Enabled ||
-		s.Repository.Source != config.SourceTypeGit ||
-		s.Repository.MirrorDir == "" || s.Repository.Revision == "" ||
-		s.DeployConfig.RepositoryUrl != "" ||
-		!s.staticProjectEnvironment() {
-		return false
+// It returns nil if the project may be cached, or an error describing the
+// first input that prevents it.
+func (s *StageManager) localProjectInputs(project *types.Project) error {
+	switch {
+	case project == nil:
+		return errors.New("no Compose project loaded")
+	case !s.DeployConfig.AutoDiscovery.Enabled:
+		return errors.New("auto-discovery is disabled")
+	case s.Repository.Source != config.SourceTypeGit:
+		return errors.New("source is not a Git repository")
+	case s.Repository.MirrorDir == "" || s.Repository.Revision == "":
+		return errors.New("repository mirror or revision is unknown")
+	case s.DeployConfig.RepositoryUrl != "":
+		return errors.New("deployment uses repository_url")
+	case !s.staticProjectEnvironment():
+		return errors.New("process environment is passed to the project")
 	}
 
 	internalDir, err := getAbsWorkingDir(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory)
 	if err != nil {
-		return false
+		return err
 	}
 
 	externalDir, err := getAbsWorkingDir(s.Repository.PathExternal, s.DeployConfig.WorkingDirectory)
 	if err != nil {
-		return false
+		return err
 	}
 
 	hasSymlink := func(p string) bool {
@@ -169,58 +178,68 @@ func (s *StageManager) localProjectInputs(project *types.Project) bool {
 			!hasSymlink(p)
 	}
 
+	notLocal := func(kind, p string) error {
+		return fmt.Errorf("%s %q is outside the project directory or behind a symlink", kind, p)
+	}
+
 	for _, file := range append(append([]string{}, s.DeployConfig.ComposeFiles...), project.ComposeFiles...) {
 		if !inside(file) {
-			return false
+			return notLocal("compose file", file)
 		}
 	}
 
-	for _, file := range append(append([]string{}, s.DeployConfig.EnvFiles...), s.DeployConfig.ExternalSecretsFiles...) {
+	for _, file := range s.DeployConfig.EnvFiles {
 		if !inside(file) {
-			return false
+			return notLocal("env file", file)
 		}
 	}
 
-	for _, cfg := range project.Configs {
+	for _, file := range s.DeployConfig.ExternalSecretsFiles {
+		if !inside(file) {
+			return notLocal("external secrets file", file)
+		}
+	}
+
+	for name, cfg := range project.Configs {
 		if cfg.File != "" && !inside(cfg.File) {
-			return false
+			return notLocal(fmt.Sprintf("config %q file", name), cfg.File)
 		}
 	}
 
-	for _, secret := range project.Secrets {
+	for name, secret := range project.Secrets {
 		if secret.File != "" && !inside(secret.File) {
-			return false
+			return notLocal(fmt.Sprintf("secret %q file", name), secret.File)
 		}
 	}
 
 	for _, svc := range project.AllServices() {
 		if svc.Extends != nil {
-			return false
+			return fmt.Errorf("service %q uses extends", svc.Name)
 		}
 
 		if svc.Dockerfile != "" && !inside(svc.Dockerfile) {
-			return false
+			return notLocal(fmt.Sprintf("service %q Dockerfile", svc.Name), svc.Dockerfile)
 		}
 
 		if svc.CredentialSpec != nil && svc.CredentialSpec.File != "" && !inside(svc.CredentialSpec.File) {
-			return false
+			return notLocal(fmt.Sprintf("service %q credential spec", svc.Name), svc.CredentialSpec.File)
 		}
 
 		for _, f := range svc.EnvFiles {
 			if !inside(f.Path) {
-				return false
+				return notLocal(fmt.Sprintf("service %q env file", svc.Name), f.Path)
 			}
 		}
 
 		for _, f := range svc.LabelFiles {
 			if !inside(f) {
-				return false
+				return notLocal(fmt.Sprintf("service %q label file", svc.Name), f)
 			}
 		}
 
 		for _, volume := range svc.Volumes {
 			if volume.Type == "bind" && !inside(volume.Source) {
-				return false
+				return notLocal(fmt.Sprintf("service %q bind mount source", svc.Name), volume.Source)
 			}
 
 			if volume.Type == "bind" {
@@ -230,7 +249,7 @@ func (s *StageManager) localProjectInputs(project *types.Project) bool {
 
 		if svc.Build != nil {
 			if !inside(svc.Build.Context) {
-				return false
+				return notLocal(fmt.Sprintf("service %q build context", svc.Name), svc.Build.Context)
 			}
 
 			directories = append(directories, svc.Build.Context)
@@ -241,18 +260,18 @@ func (s *StageManager) localProjectInputs(project *types.Project) bool {
 				}
 
 				if !inside(dockerfile) {
-					return false
+					return notLocal(fmt.Sprintf("service %q build Dockerfile", svc.Name), dockerfile)
 				}
 			}
 
 			if len(svc.Build.SSH) > 0 {
 				// Agent sockets and key material are not revision-bound.
-				return false
+				return fmt.Errorf("service %q build uses SSH", svc.Name)
 			}
 
-			for _, context := range svc.Build.AdditionalContexts {
+			for name, context := range svc.Build.AdditionalContexts {
 				if !inside(context) {
-					return false
+					return notLocal(fmt.Sprintf("service %q additional build context %q", svc.Name, name), context)
 				}
 
 				directories = append(directories, context)
@@ -260,7 +279,7 @@ func (s *StageManager) localProjectInputs(project *types.Project) bool {
 
 			for _, secret := range svc.Build.Secrets {
 				if secret.Source != "" && !inside(secret.Source) {
-					return false
+					return notLocal(fmt.Sprintf("service %q build secret", svc.Name), secret.Source)
 				}
 			}
 		}
@@ -275,17 +294,21 @@ func (s *StageManager) localProjectInputs(project *types.Project) bool {
 
 		rel, err := filepath.Rel(externalDir, file)
 		if err != nil {
-			return false
+			return err
 		}
 
 		contents, err := os.ReadFile(filepath.Join(internalDir, rel)) // #nosec G304
 		if err != nil {
-			return false
+			return err
 		}
 
 		var node yaml.Node
-		if err := yaml.Unmarshal(contents, &node); err != nil || hasComposeIncludes(node) {
-			return false
+		if err := yaml.Unmarshal(contents, &node); err != nil {
+			return fmt.Errorf("parse compose file %q: %w", file, err)
+		}
+
+		if hasComposeIncludes(node) {
+			return fmt.Errorf("compose file %q uses include", file)
 		}
 	}
 
@@ -298,7 +321,7 @@ func (s *StageManager) localProjectInputs(project *types.Project) bool {
 
 		rel, err := filepath.Rel(externalDir, dir)
 		if err != nil {
-			return false
+			return err
 		}
 
 		symlinkFound := false
@@ -315,12 +338,16 @@ func (s *StageManager) localProjectInputs(project *types.Project) bool {
 
 			return nil
 		})
-		if err != nil || symlinkFound {
-			return false
+		if err != nil {
+			return err
+		}
+
+		if symlinkFound {
+			return fmt.Errorf("directory %q contains a symlink", dir)
 		}
 	}
 
-	return true
+	return nil
 }
 
 // staticProjectEnvironment returns true if the project environment does not
@@ -409,7 +436,12 @@ func projectExpectedServices(project *types.Project) types.Services {
 // It includes the deployed commit, configuration hash, Compose project hash,
 // and expected services.
 func (s *StageManager) cacheUnchangedProject(stageLog *slog.Logger, deployedCommit, projectHash string) {
-	if s.ProjectSkips == nil || !s.localProjectInputs(s.Docker.Project) {
+	if s.ProjectSkips == nil {
+		return
+	}
+
+	if err := s.localProjectInputs(s.Docker.Project); err != nil {
+		stageLog.Debug("project inputs are not cacheable; using full pre-deploy next run", slog.String("reason", err.Error()))
 		return
 	}
 
@@ -510,30 +542,50 @@ func projectTree(repo *gogit.Repository, hash plumbing.Hash, dir string) (*objec
 }
 
 // skipFromCachedProject determines whether the current project can be skipped
-// based on a cached snapshot of its previous state.
+// based on a cached snapshot of its previous state. Every fallback to the full
+// pre-deploy path is logged with its reason.
 func (s *StageManager) skipFromCachedProject(
 	stageLog *slog.Logger, deployedCommit, deployedComposeHash string,
 	deployedStatus map[docker.Service]docker.ServiceStatus,
 ) bool {
-	if s.ProjectSkips == nil || !s.DeployConfig.AutoDiscovery.Enabled ||
-		s.DeployConfig.ForceImagePull || s.DeployConfig.ForceRecreate ||
-		s.Repository.Source != config.SourceTypeGit ||
-		!s.staticProjectEnvironment() {
+	fallback := func(reason string) bool {
+		stageLog.Debug("cached project preflight unavailable; using full pre-deploy", slog.String("reason", reason))
 		return false
+	}
+
+	switch {
+	case s.ProjectSkips == nil:
+		return fallback("project skip cache is disabled")
+	case !s.DeployConfig.AutoDiscovery.Enabled:
+		return fallback("auto-discovery is disabled")
+	case s.DeployConfig.ForceImagePull:
+		return fallback("force_image_pull is enabled")
+	case s.DeployConfig.ForceRecreate:
+		return fallback("force_recreate is enabled")
+	case s.Repository.Source != config.SourceTypeGit:
+		return fallback("source is not a Git repository")
+	case !s.staticProjectEnvironment():
+		return fallback("process environment is passed to the project")
 	}
 
 	configHash, err := s.projectSkipConfigHash()
 	if err != nil {
-		return false
+		return fallback(err.Error())
 	}
 
 	snapshot, ok := s.ProjectSkips.load(s.projectSkipKey())
-	if !ok || snapshot.configHash != configHash ||
-		snapshot.deployedCommit != deployedCommit ||
-		snapshot.composeHash == "" || snapshot.composeHash != deployedComposeHash ||
-		snapshot.treeHash.IsZero() ||
-		s.Repository.Revision == "" {
-		return false
+
+	switch {
+	case !ok:
+		return fallback("no cached snapshot")
+	case snapshot.configHash != configHash:
+		return fallback("deployment config changed since the cached snapshot")
+	case snapshot.deployedCommit != deployedCommit:
+		return fallback("deployed commit differs from the cached snapshot")
+	case snapshot.composeHash == "" || snapshot.composeHash != deployedComposeHash:
+		return fallback("deployed Compose project differs from the cached snapshot")
+	case snapshot.treeHash.IsZero() || s.Repository.Revision == "":
+		return fallback("cached snapshot or revision is incomplete")
 	}
 
 	latest := plumbing.NewHash(s.Repository.Revision)
@@ -541,10 +593,10 @@ func (s *StageManager) skipFromCachedProject(
 
 	deployed := plumbing.NewHash(snapshot.deployedCommit)
 	if latest.IsZero() || validated.IsZero() || deployed.IsZero() {
-		return false
+		return fallback("cached snapshot or revision is not a commit hash")
 	}
 
-	unchanged := false
+	var reason string
 
 	err = s.withMirrorRead(func(repo *gogit.Repository) error {
 		if _, err := repo.CommitObject(deployed); err != nil {
@@ -552,35 +604,44 @@ func (s *StageManager) skipFromCachedProject(
 		}
 
 		if deployed != latest && isStaleDeployment(repo, s.Repository.MirrorDir, latest, deployed, s.GitAncestry, stageLog) {
+			reason = "a newer revision is already deployed"
 			return nil
 		}
 		// Do not use a cached answer from a newer or diverged revision.
 		ancestor, err := s.GitAncestry.isAncestor(s.Repository.MirrorDir, validated, latest, func() (bool, error) {
 			return s.GitAncestry.isAncestorFromHistory(repo, s.Repository.MirrorDir, validated, latest)
 		})
-		if err != nil || !ancestor {
+		if err != nil {
 			return err
 		}
 
-		var treeHash plumbing.Hash
+		if !ancestor {
+			reason = "cached snapshot is not an ancestor of the latest revision"
+			return nil
+		}
 
-		treeHash, err = projectTreeHash(repo, latest, s.DeployConfig.WorkingDirectory)
-		unchanged = err == nil && treeHash == snapshot.treeHash
+		treeHash, err := projectTreeHash(repo, latest, s.DeployConfig.WorkingDirectory)
+		if err != nil {
+			return err
+		}
 
-		return err
+		if treeHash != snapshot.treeHash {
+			reason = "project directory changed since the cached snapshot"
+		}
+
+		return nil
 	})
 	if err != nil {
-		stageLog.Debug("cached project comparison unavailable; using full pre-deploy", slog.String("reason", err.Error()))
-		return false
+		return fallback(err.Error())
 	}
 
-	if !unchanged {
-		return false
+	if reason != "" {
+		return fallback(reason)
 	}
 
 	mismatches := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedStatus, snapshot.services)
 	if len(s.dropSchedulerHeldProjectMismatches(mismatches, snapshot.projectName, stageLog)) != 0 {
-		return false
+		return fallback("deployed services differ from the cached snapshot")
 	}
 
 	stageLog.Debug("unchanged Git subtree and deployed project, skipping full pre-deploy",

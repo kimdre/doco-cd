@@ -1,12 +1,14 @@
 package stages
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -235,12 +237,12 @@ func TestProjectSkipCacheRejectsExternalInputsAndIncludes(t *testing.T) {
 		AppConfig:    &app.Config{},
 	}
 
-	if !s.localProjectInputs(project) {
-		t.Fatal("expected local compose-only project to be eligible")
+	if err := s.localProjectInputs(project); err != nil {
+		t.Fatalf("expected local compose-only project to be eligible: %v", err)
 	}
 
 	project.Services["web"] = types.ServiceConfig{Name: "web", Volumes: []types.ServiceVolumeConfig{{Type: "bind", Source: filepath.Join(root, "shared")}}}
-	if s.localProjectInputs(project) {
+	if s.localProjectInputs(project) == nil {
 		t.Fatal("shared bind mount must require full project loading")
 	}
 
@@ -250,7 +252,7 @@ func TestProjectSkipCacheRejectsExternalInputsAndIncludes(t *testing.T) {
 		Context:    filepath.Join(stackDir, "build"),
 		Dockerfile: "../../shared.Dockerfile",
 	}}
-	if s.localProjectInputs(project) {
+	if s.localProjectInputs(project) == nil {
 		t.Fatal("a Dockerfile outside the stack must require full project loading")
 	}
 
@@ -260,7 +262,7 @@ func TestProjectSkipCacheRejectsExternalInputsAndIncludes(t *testing.T) {
 			"shared": "git@github.com:owner/shared.git",
 		},
 	}}
-	if s.localProjectInputs(project) {
+	if s.localProjectInputs(project) == nil {
 		t.Fatal("a remote build context must require full project loading")
 	}
 
@@ -268,12 +270,12 @@ func TestProjectSkipCacheRejectsExternalInputsAndIncludes(t *testing.T) {
 		Context: filepath.Join(stackDir, "build"),
 		SSH:     types.SSHConfig{{ID: "default"}},
 	}}
-	if s.localProjectInputs(project) {
+	if s.localProjectInputs(project) == nil {
 		t.Fatal("a build using mutable SSH credentials must require full project loading")
 	}
 
 	project.Services["web"] = types.ServiceConfig{Name: "web", CredentialSpec: &types.CredentialSpecConfig{File: filepath.Join(root, "shared.json")}}
-	if s.localProjectInputs(project) {
+	if s.localProjectInputs(project) == nil {
 		t.Fatal("a credential spec outside the stack must require full project loading")
 	}
 
@@ -281,22 +283,22 @@ func TestProjectSkipCacheRejectsExternalInputsAndIncludes(t *testing.T) {
 
 	writeCompose("include:\n  - ../shared.yaml\nservices:\n  web:\n    image: nginx\n")
 
-	if s.localProjectInputs(project) {
+	if s.localProjectInputs(project) == nil {
 		t.Fatal("a Compose include must require full loading")
 	}
 
 	writeCompose("services:\n  web:\n    image: nginx\n")
 
 	s.AppConfig.PassEnv = true
-	if s.localProjectInputs(project) {
+	if s.localProjectInputs(project) == nil {
 		t.Fatal("process environment interpolation is not covered by the Git tree")
 	}
 
 	s.AppConfig.PassEnv = false
 
 	s.AppConfig.GitCloneSubmodules = true
-	if !s.localProjectInputs(project) {
-		t.Fatal("default submodule cloning should allow repos without submodules")
+	if err := s.localProjectInputs(project); err != nil {
+		t.Fatalf("default submodule cloning should allow repos without submodules: %v", err)
 	}
 
 	if err := os.WriteFile(filepath.Join(root, ".gitmodules"), []byte("[submodule \"shared\"]\n"), 0o600); err != nil {
@@ -304,13 +306,13 @@ func TestProjectSkipCacheRejectsExternalInputsAndIncludes(t *testing.T) {
 	}
 
 	// Gitlinks are checked per project subtree when a snapshot is stored.
-	if !s.localProjectInputs(project) {
-		t.Fatal("a submodule elsewhere in the repository is not a project input")
+	if err := s.localProjectInputs(project); err != nil {
+		t.Fatalf("a submodule elsewhere in the repository is not a project input: %v", err)
 	}
 
 	s.AppConfig.GitCloneSubmodules = false
-	if !s.localProjectInputs(project) {
-		t.Fatal("disabled submodule cloning is not a dynamic project input")
+	if err := s.localProjectInputs(project); err != nil {
+		t.Fatalf("disabled submodule cloning is not a dynamic project input: %v", err)
 	}
 
 	if err := os.Symlink("compose.yaml", filepath.Join(stackDir, "linked.yaml")); err != nil {
@@ -318,8 +320,84 @@ func TestProjectSkipCacheRejectsExternalInputsAndIncludes(t *testing.T) {
 	}
 
 	project.Services["web"] = types.ServiceConfig{Name: "web", Volumes: []types.ServiceVolumeConfig{{Type: "bind", Source: stackDir}}}
-	if s.localProjectInputs(project) {
+	if s.localProjectInputs(project) == nil {
 		t.Fatal("symlink targets in referenced directories may change outside the Git subtree")
+	}
+}
+
+func TestProjectSkipCacheLogsFallbackReasons(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	stackDir := filepath.Join(root, "stack")
+	if err := os.Mkdir(stackDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	composePath := filepath.Join(stackDir, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  web:\n    image: nginx\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &deploy.Config{
+		Name:             "stack",
+		WorkingDirectory: "stack",
+		ComposeFiles:     []string{"compose.yaml"},
+		AutoDiscovery:    deploy.AutoDiscoveryConfig{Enabled: true},
+	}
+	cfg.Internal.Hash = "effective-config"
+	s := &StageManager{
+		Repository: &RepositoryData{
+			Source:       config.SourceTypeGit,
+			MirrorDir:    root,
+			Revision:     "0123456789abcdef0123456789abcdef01234567",
+			PathInternal: root,
+			PathExternal: root,
+		},
+		DeployConfig: cfg,
+		AppConfig:    &app.Config{},
+		Docker: &Docker{Project: &types.Project{
+			ComposeFiles: []string{composePath},
+			Services: types.Services{"web": {Name: "web", Volumes: []types.ServiceVolumeConfig{
+				{Type: types.VolumeTypeBind, Source: filepath.Join(root, "shared")},
+			}}},
+		}},
+		ProjectSkips: NewProjectSkipCache(),
+	}
+
+	var buf bytes.Buffer
+
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	s.cacheUnchangedProject(log, s.Repository.Revision, "hash")
+
+	if out := buf.String(); !strings.Contains(out, "project inputs are not cacheable") ||
+		!strings.Contains(out, `service \"web\" bind mount source`) {
+		t.Fatalf("expected the disqualifying bind mount to be logged, got:\n%s", out)
+	}
+
+	buf.Reset()
+
+	if s.skipFromCachedProject(log, s.Repository.Revision, "hash", nil) {
+		t.Fatal("expected fallback without a cached snapshot")
+	}
+
+	if out := buf.String(); !strings.Contains(out, "cached project preflight unavailable") ||
+		!strings.Contains(out, "reason=\"no cached snapshot\"") {
+		t.Fatalf("expected the fallback reason to be logged, got:\n%s", out)
+	}
+
+	buf.Reset()
+
+	cfg.ForceImagePull = true
+
+	if s.skipFromCachedProject(log, s.Repository.Revision, "hash", nil) {
+		t.Fatal("expected fallback with force_image_pull")
+	}
+
+	if out := buf.String(); !strings.Contains(out, "reason=\"force_image_pull is enabled\"") {
+		t.Fatalf("expected the force_image_pull reason to be logged, got:\n%s", out)
 	}
 }
 
