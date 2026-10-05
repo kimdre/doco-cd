@@ -145,6 +145,10 @@ func (s *discoverySource) discover(ctx context.Context, c *Config) ([]*Config, e
 		return nil, fmt.Errorf("%w: auto_discovery.depth must be >= 0", ErrInvalidConfig)
 	}
 
+	if snapshot := s.opts.DiscoverySnapshot; snapshot != nil {
+		return s.discoverSnapshot(c, snapshot)
+	}
+
 	switch {
 	case c.RepositoryUrl != "":
 		return s.discoverRemote(ctx, c)
@@ -155,6 +159,49 @@ func (s *discoverySource) discover(ctx context.Context, c *Config) ([]*Config, e
 
 		return scanDiscovery("", configs, err)
 	}
+}
+
+// discoverSnapshot restores a single deployed source. Other discovery entries in the config file
+// do not describe that deployment, so they are excluded rather than resolving their moving refs.
+func (s *discoverySource) discoverSnapshot(c *Config, snapshot *DiscoverySnapshot) ([]*Config, error) {
+	if !gitInternal.ReferenceMatches(snapshot.Reference, c.Reference) &&
+		!gitInternal.ReferenceMatches(c.Reference, snapshot.Reference) {
+		return nil, nil
+	}
+
+	labelRoot := s.labelRoot
+	if c.RepositoryUrl != "" {
+		labelRoot = remoteDiscoveryStoreDir(s.opts.SourceBaseDir, s.repoRoot, string(c.RepositoryUrl))
+	}
+
+	snapshotLabelRoot := repositoryLabelRoot(snapshot.RepositoryRoot, snapshot.MirrorDir)
+	if filepath.Clean(labelRoot) != filepath.Clean(snapshotLabelRoot) {
+		expected, err := os.Stat(labelRoot)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("stat discovery repository %s: %w", labelRoot, err)
+		}
+
+		recorded, err := os.Stat(snapshotLabelRoot)
+		if err != nil {
+			return nil, fmt.Errorf("stat recorded discovery repository %s: %w", snapshotLabelRoot, err)
+		}
+
+		if !os.SameFile(expected, recorded) {
+			return nil, nil
+		}
+	}
+
+	if !plumbing.IsHash(snapshot.Revision) {
+		configs, err := autoDiscoverDeployments(os.DirFS(snapshot.RepositoryRoot), snapshotLabelRoot, "", c)
+
+		return scanDiscovery("", configs, err)
+	}
+
+	return scanPublished(snapshot.RepositoryRoot, snapshotLabelRoot, snapshot.MirrorDir, plumbing.NewHash(snapshot.Revision), c)
 }
 
 // discoverGit discovers c in the job's own Git repository.

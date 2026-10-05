@@ -382,8 +382,7 @@ func remoteDiscoveryStoreDir(sourceBaseDir, repoRoot, repositoryURL string) stri
 	repoName := gitInternal.GetRepoName(repositoryURL)
 
 	if sourceBaseDir == "" {
-		// No base directory supplied (e.g. scheduled runs, which pass no
-		// git options at all); fall back to the legacy sibling guess.
+		// No shared source directory supplied; fall back to the legacy sibling guess.
 		return path.Join(path.Dir(repoRoot), repoName)
 	}
 
