@@ -20,8 +20,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./poll.yaml:/etc/doco-cd/poll.yaml:ro
       - data:/data
-    healthcheck:
-      test: ["CMD", "/doco-cd", "healthcheck"]
+    healthcheck: # runs the image's built-in /healthcheck command
       start_period: 15s
       interval: 30s
       timeout: 5s

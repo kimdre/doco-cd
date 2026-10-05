@@ -18,8 +18,7 @@ services:
       - data:/data
     secrets:
       - sops_age_key
-    healthcheck:
-      test: ["CMD", "/doco-cd", "healthcheck"]
+    healthcheck: # runs the image's built-in /healthcheck command
       start_period: 15s
       interval: 30s
       timeout: 5s

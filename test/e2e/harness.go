@@ -438,7 +438,7 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 					hc.Binds = append(hc.Binds, h.contextConfigDir+":/root/.docker:ro")
 				}
 			},
-			WaitingFor: wait.ForExec([]string{"/doco-cd", "healthcheck"}).
+			WaitingFor: wait.ForExec([]string{"/healthcheck"}).
 				WithStartupTimeout(60 * time.Second).
 				WithPollInterval(500 * time.Millisecond),
 		},
@@ -600,9 +600,9 @@ func buildDaemonImage() (string, error) {
 	return tag, nil
 }
 
-// buildDaemonBinary compiles doco-cd into a fresh directory for the platform
-// the docker daemon runs containers on. The nobitwarden tag keeps the build
-// CGO-free and mirrors the image build's DISABLE_BITWARDEN=true.
+// buildDaemonBinary compiles doco-cd and the healthcheck into a fresh directory
+// for the platform the docker daemon runs containers on. The nobitwarden tag
+// keeps the build CGO-free and mirrors the image build's DISABLE_BITWARDEN=true.
 func buildDaemonBinary() (string, error) {
 	binDir, err := os.MkdirTemp("", "doco-cd-e2e-bin-")
 	if err != nil {
@@ -614,6 +614,7 @@ func buildDaemonBinary() (string, error) {
 		"-ldflags", "-s -w -X github.com/kimdre/doco-cd/internal/config/app.Version=e2e",
 		"-o", binDir,
 		"./cmd/doco-cd",
+		"./cmd/healthcheck",
 	)
 	cmd.Dir = repoDir
 
