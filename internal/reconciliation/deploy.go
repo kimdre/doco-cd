@@ -48,21 +48,21 @@ func (m *Manager) Deploy(ctx context.Context, req DeployRequest) error {
 	// Sync windows are evaluated once for the whole request, see syncWindowGate.
 	gate := m.newSyncWindowGate(req, time.Now())
 
-	err := m.deploy(ctx, req, gate)
+	results, err := m.deploy(ctx, req, gate)
 
 	// Skip long-lived reconciliation listeners for test-triggered deployments.
 	// Test runs use testName only to make stacks unique and do not need background
 	// Docker event watchers that can outlive the test and race with TempDir cleanup.
 	if req.TestName == "" {
-		m.addJob(ctx, req, gate.deferred())
+		m.addJob(ctx, req, gate.deferred(), successfulForcedDeployments(results))
 	}
 
 	return err
 }
 
-func (m *Manager) deploy(ctx context.Context, req DeployRequest, gate *syncWindowGate) error {
+func (m *Manager) deploy(ctx context.Context, req DeployRequest, gate *syncWindowGate) ([]stackResult, error) {
 	if req.Repository.Source == config.SourceTypeOCI && !req.Repository.OCITrusted {
-		return fmt.Errorf("%w: refusing to run reconciliation cleanup before trust-policy verification", ErrOCIArtifactNotVerified)
+		return nil, fmt.Errorf("%w: refusing to run reconciliation cleanup before trust-policy verification", ErrOCIArtifactNotVerified)
 	}
 
 	configsByContext := map[string][]*deployConfig.Config{}
@@ -97,7 +97,7 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest, gate *syncWindo
 		}
 	}
 
-	return m.handleDeployWithContexts(ctx, req, contextCLIs, gate)
+	return m.deployWithContexts(ctx, req, contextCLIs, gate)
 }
 
 // handleDeploy deploys req. It is used by reconciliation, whose requests are
@@ -110,6 +110,12 @@ func (m *Manager) handleDeploy(ctx context.Context, req DeployRequest) error {
 }
 
 func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployRequest, contextCLIs map[string]deployContextCLI, gate *syncWindowGate) error {
+	_, err := m.deployWithContexts(ctx, req, contextCLIs, gate)
+
+	return err
+}
+
+func (m *Manager) deployWithContexts(ctx context.Context, req DeployRequest, contextCLIs map[string]deployContextCLI, gate *syncWindowGate) ([]stackResult, error) {
 	// Deployments run concurrently, grouped by repository and reference, and
 	// limited by this manager's deployment limiter.
 	var wg sync.WaitGroup
@@ -153,7 +159,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 				if recovered := recover(); recovered != nil {
 					logger.LogRecoveredPanic(deployLog, "stack deployment", recovered)
 
-					resultCh <- stackResult{name: dc.Name, context: dc.Context, err: fmt.Errorf("panic during deployment of stack %q: %v", dc.Name, recovered)}
+					resultCh <- stackResult{config: dc, name: dc.Name, context: dc.Context, err: fmt.Errorf("panic during deployment of stack %q: %v", dc.Name, recovered)}
 				}
 			}()
 
@@ -168,7 +174,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 
 				gate.record(dc, err)
 
-				resultCh <- stackResult{name: dc.Name, context: dc.Context, err: err}
+				resultCh <- stackResult{config: dc, name: dc.Name, context: dc.Context, err: err}
 
 				return
 			}
@@ -177,7 +183,7 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 
 			gate.record(dc, err)
 
-			resultCh <- stackResult{name: dc.Name, context: dc.Context, err: err}
+			resultCh <- stackResult{config: dc, name: dc.Name, context: dc.Context, err: err}
 		}(deployCfg)
 	}
 
@@ -190,14 +196,34 @@ func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployReques
 		results = append(results, e)
 	}
 
-	return summarizeDeployResults(results, len(req.DeployConfigs))
+	return results, summarizeDeployResults(results, len(req.DeployConfigs))
 }
 
 // stackResult is the result of deploying one stack of a request.
 type stackResult struct {
+	config  *deployConfig.Config
 	name    string
 	context string
 	err     error
+}
+
+func successfulForcedDeployments(results []stackResult) map[*deployConfig.Config]struct{} {
+	var deployed map[*deployConfig.Config]struct{}
+
+	for _, result := range results {
+		dc := result.config
+		if dc == nil || !dc.ForceRecreate || dc.Destroy.Enabled || result.err != nil {
+			continue
+		}
+
+		if deployed == nil {
+			deployed = make(map[*deployConfig.Config]struct{})
+		}
+
+		deployed[dc] = struct{}{}
+	}
+
+	return deployed
 }
 
 // summarizeDeployResults combines the results of the stacks of one request
