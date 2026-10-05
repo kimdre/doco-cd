@@ -556,7 +556,49 @@ func loadComposeScheduledDeployConfig(
 		gitMirrorRoot = filepath.Join(sourceRepoPath, "mirror")
 	}
 
-	configs, err := deploy.GetConfigs(ctx, configRepoPath, opts.DeployConfigBaseDir, ref.ConfigTarget, ref.Reference, gitMirrorRoot, primaryRevision, nil)
+	gitOpts := scheduledDiscoveryGitOptions(ref, opts.ComposeLoad)
+	// TargetRef describes the deployment, not the branch that supplied ConfigRevision.
+	// Only the artifact's commit hash is known to resolve to primaryRevision.
+	gitOpts.PrimaryReference = primaryRevision
+	// The top-level config and the deployment may come from different repositories or revisions.
+	// Discovery must read the deployment's materialized snapshot, not re-resolve its branch.
+	snapshot := &deploy.DiscoverySnapshot{
+		RepositoryRoot: configRepoPath,
+		MirrorDir:      gitMirrorRoot,
+		Revision:       primaryRevision,
+		Reference:      ref.Reference,
+	}
+	if snapshot.Reference == "" {
+		snapshot.Reference = deploy.DefaultReference
+	}
+
+	if artifactRoot, deploymentStore, found := artifactAndStoreFromWorkingDir(ref.WorkingDir, dataMountPath); found {
+		if !filesystem.IsDir(artifactRoot) {
+			return nil, "", fmt.Errorf("%w: deployment artifact %s for scheduled service %s/%s",
+				ErrComposeScheduledSourceUnavailable, artifactRoot, ref.Project, ref.Service)
+		}
+
+		_, revision, _ := store.ArtifactRoot(deploymentStore, artifactRoot)
+		snapshot.RepositoryRoot = artifactRoot
+		snapshot.Revision = string(revision)
+		snapshot.MirrorDir = filepath.Join(deploymentStore, store.MirrorSubdir)
+	} else {
+		legacyRoot, _, pathErr := resolveScheduledComposeRepoRoot(ref.WorkingDir, dataMountPath, configRepoPath)
+		if pathErr != nil {
+			return nil, "", pathErr
+		}
+
+		if filepath.Clean(legacyRoot) != filepath.Clean(configRepoPath) {
+			snapshot.RepositoryRoot = legacyRoot
+			snapshot.MirrorDir = ""
+			snapshot.Revision = ""
+		}
+	}
+
+	gitOpts.DiscoverySnapshot = snapshot
+
+	configs, err := deploy.GetConfigs(ctx, configRepoPath, opts.DeployConfigBaseDir, ref.ConfigTarget, ref.Reference,
+		gitMirrorRoot, primaryRevision, gitOpts)
 	if err != nil {
 		return nil, "", fmt.Errorf("load deploy config for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
 	}
@@ -605,6 +647,29 @@ func loadComposeScheduledDeployConfig(
 	}
 
 	return deployConfig, deploymentRepoPath, nil
+}
+
+// scheduledDiscoveryGitOptions returns the Git options auto-discovery uses while reloading a scheduled
+// service's deploy config. Credentials remain available, but DiscoverySnapshot prevents fetching
+// while restoring a deployment.
+func scheduledDiscoveryGitOptions(ref composeScheduledServiceRef, load ComposeLoadOptions) *deploy.GitOptions {
+	sourceURL := ""
+	// RepositoryURL falls back to the short "owner/repo" source name, which cannot be fetched.
+	if strings.Contains(ref.RepositoryURL, "://") || git.IsSSH(ref.RepositoryURL) {
+		sourceURL = ref.RepositoryURL
+	}
+
+	return &deploy.GitOptions{
+		SSHPrivateKey:           load.SSHPrivateKey,
+		SSHPrivateKeyPassphrase: load.SSHPrivateKeyPassphrase,
+		GitAccessToken:          load.GitAccessToken,
+		SkipTLSVerification:     load.SkipTLSVerify,
+		HttpProxy:               load.HttpProxy,
+		GitCloneSubmodules:      load.GitCloneSubmodules,
+		GitCloneDepth:           load.GitCloneDepth,
+		SourceURL:               sourceURL,
+		SourceBaseDir:           load.DataMountPath,
+	}
 }
 
 // resolveScheduledSourceRepo finds the prepared Git or OCI source directory.

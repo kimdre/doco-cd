@@ -145,3 +145,20 @@ func fetchedReferenceExistsAfterFetch(repo *git.Repository, ref string) (bool, e
 
 	return false, nil
 }
+
+// ReferenceMatches reports whether configuredReference names the reference a
+// job resolved as resolvedReference. A fully qualified branch reference
+// (refs/heads/<name>) also matches its short branch name.
+//
+// The normalization is asymmetric on purpose: a short configured name can be
+// ambiguous with a same-named tag, while refs/heads/<name> unambiguously
+// identifies the branch that was resolved.
+func ReferenceMatches(resolvedReference, configuredReference string) bool {
+	if resolvedReference == configuredReference {
+		return true
+	}
+
+	branch, ok := strings.CutPrefix(resolvedReference, BranchPrefix)
+
+	return ok && branch == configuredReference
+}

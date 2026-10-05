@@ -29,6 +29,17 @@ func TestParseAutoDiscoveryConfigIgnoresKeyOrder(t *testing.T) {
 	}
 }
 
+// TestParseAutoDiscoveryConfigFailsClosed ensures a stack whose policy cannot be read is never removed.
+func TestParseAutoDiscoveryConfigFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	for _, label := range []string{"", "{", "enabled: [true", "delete: maybe"} {
+		if got := ParseAutoDiscoveryConfig(label); got != (deploy.AutoDiscoveryConfig{}) {
+			t.Errorf("ParseAutoDiscoveryConfig(%q) = %+v, want the zero config", label, got)
+		}
+	}
+}
+
 func TestMarshalAutoDiscoveryConfigRoundTrip(t *testing.T) {
 	t.Parallel()
 

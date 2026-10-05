@@ -46,7 +46,7 @@ func TestDeploy_RejectsUnverifiedOCIArtifact(t *testing.T) {
 
 	manager := newTestManager(t)
 
-	err := manager.deploy(t.Context(), DeployRequest{
+	_, err := manager.deploy(t.Context(), DeployRequest{
 		Logger:     logger.New(logger.LevelCritical).Logger,
 		JobTrigger: stages.JobTriggerWebhook,
 		Repository: stages.RepositoryData{

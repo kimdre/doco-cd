@@ -200,6 +200,29 @@ func isStaleDeployment(
 	return isStale
 }
 
+// IsStaleRevision reports whether revision is proven to predate deployed, both read from the Git mirror
+// mirrorDir: a job that saw revision must not undo what a newer job deployed at deployed. Like
+// isStaleDeployment it fails open, so a missing mirror, a non-hash revision or an unknown ancestry
+// returns false. cache may be nil.
+func IsStaleRevision(mirrorDir, revision, deployed string, cache *GitAncestryCache, log *slog.Logger) bool {
+	revision, deployed = strings.TrimSpace(revision), strings.TrimSpace(deployed)
+	if mirrorDir == "" || revision == deployed || !plumbing.IsHash(revision) || !plumbing.IsHash(deployed) {
+		return false
+	}
+
+	stale, err := git.MirrorRead(mirrorDir, func(repo *gogit.Repository) (bool, error) {
+		return isStaleDeployment(repo, mirrorDir, plumbing.NewHash(revision), plumbing.NewHash(deployed), cache, log), nil
+	})
+	if err != nil {
+		log.Debug("could not read mirror to compare revisions, treating revision as current",
+			slog.String("mirror", mirrorDir), slog.String("reason", err.Error()))
+
+		return false
+	}
+
+	return stale
+}
+
 // measurePreDeployOperation is a helper function that measures
 // the duration of a pre-deploy operation and logs the outcome.
 func measurePreDeployOperation[T any](

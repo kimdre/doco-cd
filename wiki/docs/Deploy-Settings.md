@@ -176,21 +176,31 @@ If `auto_discovery` is enabled, doco-cd will try to find projects/stacks to depl
 Doco-cd will internally generate new deploy configs based on the directory name and inherits all other settings from the 
 base deploy config inside the `.doco-cd.yml` file or the inline deployment config inside the poll config.
 
+Doco-cd scans the revision the deployment job resolved, so the discovered stacks always match the deployed revision.
+If the deploy config scans another `reference` or `repository_url` (also supported in inline poll configs),
+doco-cd fetches and publishes that revision first and scans the published files, so nested config files may be
+encrypted with [SOPS](Advanced/Encryption.md) or be symlinks, just like in the job's own repository.
+
+Scheduled runs and certificate-rotation reloads read the deployment configuration from its recorded config-source
+artifact. A deployment's `reference` may differ from that artifact's revision; discovery resolves that reference
+separately rather than assuming it points to the config-source revision.
+
 When `auto_discovery.delete` is set to `true` and an app is no longer available in the `working_dir` (e.g. deleted or
 moved to another directory outside the working dir), doco-cd will remove the deployed project/stack from the docker host.
+See [Removing obsolete stacks](#removing-obsolete-stacks).
 
 #### Auto-Discovery settings
 
 `auto_discovery` accepts either a boolean or a nested object in the deployment configuration file. 
 Use `auto_discovery: true` to enable it with defaults, or use the object form below to customize the settings.
 
-| Key              | Type    | Description                                                                                          | Default value |
-|------------------|---------|------------------------------------------------------------------------------------------------------|---------------|
-| `enabled`        | boolean | Enables auto-discovery of services to deploy in the working directory                                | `false`       |
-| `depth`          | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit            | `0`           |
-| `delete`         | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `false`       |
-| `remove_volumes` | boolean | Remove volumes of auto-discovered deployments when they are deleted                                  | `false`       |
-| `remove_images`  | boolean | Remove images of auto-discovered deployments when they are deleted                                   | `true`        |
+| Key              | Type    | Description                                                                                                     | Default value |
+|------------------|---------|-----------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`        | boolean | Enables auto-discovery of services to deploy in the working directory                                           | `false`       |
+| `depth`          | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit. Must not be negative | `0`           |
+| `delete`         | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory            | `false`       |
+| `remove_volumes` | boolean | Remove volumes of auto-discovered deployments when they are deleted                                             | `false`       |
+| `remove_images`  | boolean | Remove images of auto-discovered deployments when they are deleted                                              | `true`        |
 
 ??? example "Auto-discovery Setup Example"
     <div class="grid cards" markdown>
@@ -252,6 +262,34 @@ auto_discovery:
     By default, `remove_volumes` is set to `false`, meaning volumes are **preserved** when auto-discovered stacks are deleted.
     This is a safer default to prevent accidental data loss (e.g., databases). Set `remove_volumes: true` if you want volumes to be removed when stacks are auto-deleted.
 
+#### Removing obsolete stacks
+
+Before deploying, doco-cd looks for stacks it auto-discovered from the same repository and [deployment target](#multiple-deployment-targets)
+that no deployment config of the run has anymore, neither a discovered nor an explicit one. Stopped stacks are included.
+
+The `delete`, `remove_volumes` and `remove_images` settings of an obsolete stack are taken from the current auto-discovery
+config whose `working_dir` and `depth` cover the stack's directory. If several do, all of them must allow the removal.
+If none does, e.g. because the auto-discovery config was removed, the settings the stack was deployed with are used.
+They are stored in the `cd.doco.deployment.auto_discovery.config` label of the stack; a stack with an empty or unreadable label is kept.
+
+An obsolete stack is also kept if
+
+- the [webhook filter](#webhook-filter) of its auto-discovery config does not match the webhook event,
+- it runs a newer commit than the one doco-cd scanned, e.g. because a newer deployment finished first,
+- it is redeployed while doco-cd removes obsolete stacks, or
+- a [sync window](Advanced/Sync-Windows.md) blocks the removal.
+
+When several references scan the same directory, the newer-commit guard uses the scan of the stack's deployed
+reference, not an older scan of a different reference. Missing reference metadata, or no current scan of the
+deployed reference, retains the conservative ancestry guard. All covering configs must still permit removal.
+
+Reconciliation uses the latest request's discovery ownership and removal settings, even when a webhook filter or
+sync window defers deployment. Recovery of a deferred stack still uses its previously deployed config and source.
+
+!!! note
+    As the settings are stored in a label, changing `delete`, `remove_volumes` or `remove_images` recreates the containers
+    or services of the discovered stacks on their next deployment.
+
 #### Nested config overrides
 
 For each auto-discovered compose directory, doco-cd also checks for a local [deployment config file](#deployment-configuration-file) in that directory.
@@ -266,8 +304,22 @@ When using [custom webhook targets](Endpoints/Webhook-Listener.md#with-custom-ta
 
 - Maps are merged key-by-key (`external_secrets`, `environment`, `build.args`)
 - Slices replace the base value when the nested value is non-empty
-- Scalar values override the base value when the nested value is non-zero/non-empty
-- Nested objects (such as `build`, `destroy`, `reconciliation`) are merged recursively
+- Scalar values override the base value when the key is set in the nested config, even to `false`, `0` or an empty string.
+  Keys set to `null` keep the base value.
+- Nested objects (such as `build`, `destroy`, `reconciliation`) are merged recursively. The boolean shorthand of an object
+  (e.g. `destroy: false`) only sets its `enabled` field.
+- YAML merge keys (`<<`) are resolved before these overrides are applied: explicit keys replace merged values,
+  and earlier entries in a merge sequence take precedence over later ones. A replacement does not retain the
+  shadowed mapping's children; an explicit `null` shadows the merged value and keeps the base setting.
+
+!!! example "Disable a setting of the base config"
+    ```yaml title="apps/postgres/.doco-cd.yml"
+    remove_orphans: false
+    destroy:
+      remove_volumes: false # (1)!
+    ```
+
+    1. Keeps the volumes of this stack, even if the base config removes them.
 
 ##### Non-overridable Fields
 
@@ -354,7 +406,7 @@ The following settings can be used to configure how the deployed compose stack/p
 | Key              | Type    | Description                                                                                                                                                                                                                                                                                                | Default value |
 |------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
 | `enabled`        | boolean | Enable destructive removal of the deployment and its resources.                                                                                                                                                                                                                                            | `false`       |
-| `remove_volumes` | boolean | Remove all volumes used by the deployment (always `true` in docker swarm mode)                                                                                                                                                                                                                             | `true`        |
+| `remove_volumes` | boolean | Remove all volumes used by the deployment (in docker swarm mode only the volumes on the node doco-cd is connected to)                                                                                                                                                                                       | `true`        |
 | `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                                                                                                                                                    | `true`        |
 | `remove_dir`     | boolean | **Deprecated** and ignored. All stacks deployed from a repository share its source directory in the data directory, so destroying a stack keeps it. [Artifact garbage collection](Reference/Artifact-Storage.md#garbage-collection) only removes unreferenced immutable artifacts; mirrors and mutable `live/` data are not removed by the sweeper. | `false`       |
 

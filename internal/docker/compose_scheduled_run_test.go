@@ -10,6 +10,8 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
+	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -558,6 +560,369 @@ func TestLoadComposeScheduledDeployConfigReportsUnavailableSource(t *testing.T) 
 	_, _, err := loadComposeScheduledDeployConfig(context.Background(), ref, newStubProvider(nil, nil), opts)
 	if !errors.Is(err, ErrComposeScheduledSourceUnavailable) {
 		t.Fatalf("expected ErrComposeScheduledSourceUnavailable, got %v", err)
+	}
+}
+
+func TestLoadComposeScheduledDeployConfigDiscoversDeploymentReference(t *testing.T) {
+	t.Parallel()
+
+	for name, config := range map[string]string{
+		"explicit deployment reference":  "reference: feature\nworking_dir: stacks\nauto_discovery: true\n",
+		"inherited deployment reference": "working_dir: stacks\nauto_discovery: true\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := newLayoutRepo(t)
+			repo.write(map[string]string{
+				".doco-cd.yaml":              config,
+				"stacks/shared/compose.yaml": "services: {}\n",
+			})
+
+			main := repo.commit("main config source")
+			if err := repo.wt.Checkout(&gogit.CheckoutOptions{
+				Branch: plumbing.NewBranchReferenceName("feature"),
+				Create: true,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			repo.write(map[string]string{
+				".doco-cd.yaml":                     "invalid: [\n",
+				"stacks/feature-only/compose.yaml":  "services: {}\n",
+				"stacks/feature-only/.doco-cd.yaml": "name: scheduled-feature\n",
+			})
+			feature := repo.commit("feature deployment source")
+
+			dataMountPath := t.TempDir()
+			repositoryURL := "file://" + filepath.ToSlash(repo.dir)
+
+			gitStore, err := store.NewGitStore(store.GitStoreOptions{
+				CloneURL: repositoryURL,
+				BaseDir:  filepath.Join(dataMountPath, git.GetRepoName(repositoryURL)),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			mainRevision, err := gitStore.Resolve(t.Context(), "main")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := gitStore.Publish(t.Context(), mainRevision); err != nil {
+				t.Fatal(err)
+			}
+
+			featureRevision, err := gitStore.Resolve(t.Context(), "feature")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			artifact, err := gitStore.Publish(t.Context(), featureRevision)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, repoPath, err := loadComposeScheduledDeployConfig(t.Context(), composeScheduledServiceRef{
+				Project:          "scheduled-feature",
+				Service:          "backup",
+				RepositoryURL:    repositoryURL,
+				SourceType:       "git",
+				DeploymentName:   "scheduled-feature",
+				Reference:        "feature",
+				ConfigRevision:   main.String(),
+				ConfigWorkingDir: ".",
+				WorkingDir:       filepath.Join(artifact.Path, "stacks", "feature-only"),
+			}, newStubProvider(nil, nil), ScheduledComposeOptions{
+				DeployConfigBaseDir: ".",
+				ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if cfg.Reference != "feature" || cfg.Internal.ConfigSourceRevision != main.String() ||
+				cfg.Internal.ConfigSourceWorkingDir != "." {
+				t.Fatalf("reloaded config lost separate deployment/config-source metadata: %+v", cfg)
+			}
+
+			if origin := cfg.Internal.AutoDiscoveryOrigin; origin == nil || origin.Revision != feature.String() {
+				t.Fatalf("discovery origin = %+v, want feature revision %s", origin, feature)
+			}
+
+			if repoPath != artifact.Path || cfg.WorkingDirectory != filepath.Join("stacks", "feature-only") {
+				t.Fatalf("deployment paths = %q, %q, want feature artifact %q and feature-only directory",
+					repoPath, cfg.WorkingDirectory, artifact.Path)
+			}
+		})
+	}
+}
+
+func TestLoadComposeScheduledDeployConfigUsesRecordedSnapshots(t *testing.T) {
+	t.Parallel()
+
+	for _, layout := range []string{
+		"same reference", "different reference", "qualified parent reference", "inherited reference",
+		"repository_url", "nested reference",
+	} {
+		for _, remoteState := range []string{"offline", "advanced", "removed branch"} {
+			t.Run(layout+"/"+remoteState, func(t *testing.T) {
+				t.Parallel()
+
+				deploymentRepo := newLayoutRepo(t)
+				repositoryURL := "file://" + filepath.ToSlash(deploymentRepo.dir)
+				deploymentReference := "main"
+
+				rootConfig := "working_dir: stacks\nauto_discovery: true\nenvironment:\n  CONFIG_SNAPSHOT: recorded\n"
+
+				switch layout {
+				case "different reference", "nested reference":
+					rootConfig = "reference: feature\n" + rootConfig
+				case "qualified parent reference":
+					rootConfig = "reference: refs/heads/feature\n" + rootConfig
+				}
+				// An unrelated discovery entry must not cause a reload to resolve another ref.
+				if layout != "nested reference" {
+					rootConfig += "---\nreference: unrelated\nworking_dir: stacks\nauto_discovery: true\n"
+				}
+
+				deploymentRepo.write(map[string]string{".doco-cd.yaml": rootConfig})
+				configRevision := deploymentRepo.commit("config source")
+
+				if layout != "same reference" {
+					deploymentReference = "feature"
+					if err := deploymentRepo.wt.Checkout(&gogit.CheckoutOptions{
+						Branch: plumbing.NewBranchReferenceName(deploymentReference),
+						Create: true,
+					}); err != nil {
+						t.Fatal(err)
+					}
+
+					deploymentRepo.write(map[string]string{".doco-cd.yaml": "invalid: [\n"})
+				}
+
+				nestedConfig := "name: scheduled-snapshot\nenvironment:\n  DEPLOYMENT_SNAPSHOT: recorded\n"
+				if layout == "nested reference" {
+					nestedConfig = "reference: other\n" + nestedConfig
+				}
+
+				deploymentRepo.write(map[string]string{
+					"stacks/alpha/compose.yaml": "services: {}\n",
+					"shared/deploy.yaml":        nestedConfig,
+				})
+
+				if err := os.Symlink("../../shared/deploy.yaml", filepath.Join(deploymentRepo.dir, "stacks/alpha/.doco-cd.yaml")); err != nil {
+					t.Fatal(err)
+				}
+
+				if _, err := deploymentRepo.wt.Add("stacks/alpha/.doco-cd.yaml"); err != nil {
+					t.Fatal(err)
+				}
+
+				deploymentRevision := deploymentRepo.commit("deployed snapshot")
+				if layout == "same reference" {
+					configRevision = deploymentRevision
+				}
+
+				dataMountPath := t.TempDir()
+				newStore := func(url string) *store.GitStore {
+					t.Helper()
+
+					gitStore, err := store.NewGitStore(store.GitStoreOptions{
+						CloneURL: url,
+						BaseDir:  filepath.Join(dataMountPath, git.GetRepoName(url)),
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					return gitStore
+				}
+				publish := func(gitStore *store.GitStore, reference string) store.Artifact {
+					t.Helper()
+
+					revision, err := gitStore.Resolve(t.Context(), reference)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					artifact, err := gitStore.Publish(t.Context(), revision)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					return artifact
+				}
+
+				deploymentStore := newStore(repositoryURL)
+				configArtifact := publish(deploymentStore, "main")
+				deploymentArtifact := publish(deploymentStore, deploymentReference)
+
+				recordedReference := "refs/heads/" + deploymentReference
+				if layout == "qualified parent reference" {
+					recordedReference = deploymentReference
+				}
+
+				if layout == "nested reference" {
+					initialConfigs, err := deploy.GetConfigs(t.Context(), configArtifact.Path, ".", "", "main",
+						deploymentStore.MirrorDir(), configRevision.String(), &deploy.GitOptions{
+							SourceURL:     repositoryURL,
+							SourceBaseDir: dataMountPath,
+						})
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					initialConfig, err := findComposeScheduledDeployConfig(initialConfigs, "scheduled-snapshot")
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					if origin := initialConfig.Internal.AutoDiscoveryOrigin; origin == nil ||
+						initialConfig.Reference != "feature" || origin.Reference != "feature" {
+						t.Fatalf("nested reference must not override parent discovery reference: config=%s origin=%+v",
+							initialConfig.Reference, origin)
+					}
+
+					recordedReference = initialConfig.Reference
+				}
+
+				if layout == "repository_url" {
+					configRepo := newLayoutRepo(t)
+					remoteConfig := "repository_url: " + repositoryURL + "\nreference: feature\n" + rootConfig
+					// Another repository using the same ref is not the recorded deployment source.
+					remoteConfig += "---\nrepository_url: file:///unavailable/other.git\nreference: feature\nauto_discovery: true\n"
+					configRepo.write(map[string]string{".doco-cd.yaml": remoteConfig})
+					configRevision = configRepo.commit("separate config repository")
+					repositoryURL = "file://" + filepath.ToSlash(configRepo.dir)
+					configArtifact = publish(newStore(repositoryURL), "main")
+				}
+
+				switch remoteState {
+				case "offline":
+					offlineDir := deploymentRepo.dir + "-offline"
+					if err := os.Rename(deploymentRepo.dir, offlineDir); err != nil {
+						t.Fatal(err)
+					}
+
+					t.Cleanup(func() {
+						if err := os.Rename(offlineDir, deploymentRepo.dir); err != nil {
+							t.Error(err)
+						}
+					})
+				case "advanced":
+					deploymentRepo.write(map[string]string{
+						"shared/deploy.yaml": "name: scheduled-snapshot\nenvironment:\n  DEPLOYMENT_SNAPSHOT: advanced\n",
+						".doco-cd.yaml":      "working_dir: stacks\nauto_discovery: true\nenvironment:\n  CONFIG_SNAPSHOT: advanced\n",
+					})
+					deploymentRepo.commit("remote branch advanced")
+					// Advance the mirror too: reading the locally cached branch is also incorrect.
+					if _, err := deploymentStore.Resolve(t.Context(), deploymentReference); err != nil {
+						t.Fatal(err)
+					}
+				case "removed branch":
+					if err := deploymentRepo.wt.Checkout(&gogit.CheckoutOptions{
+						Branch: plumbing.NewBranchReferenceName("replacement"),
+						Create: true,
+					}); err != nil {
+						t.Fatal(err)
+					}
+
+					if err := deploymentRepo.repo.Storer.RemoveReference(plumbing.NewBranchReferenceName(deploymentReference)); err != nil {
+						t.Fatal(err)
+					}
+
+					mirror, err := gogit.PlainOpen(deploymentStore.MirrorDir())
+					if err != nil {
+						t.Fatal(err)
+					}
+					// The reload must not depend on a surviving mirror ref either.
+					for _, reference := range []plumbing.ReferenceName{
+						plumbing.NewBranchReferenceName(deploymentReference),
+						plumbing.NewRemoteReferenceName("origin", deploymentReference),
+					} {
+						if err := mirror.Storer.RemoveReference(reference); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+
+				ref := composeScheduledServiceRef{
+					Project:          "scheduled-snapshot",
+					Service:          "backup",
+					RepositoryURL:    repositoryURL,
+					SourceType:       "git",
+					DeploymentName:   "scheduled-snapshot",
+					Reference:        recordedReference,
+					ConfigRevision:   configRevision.String(),
+					ConfigWorkingDir: configArtifact.Path,
+					WorkingDir:       filepath.Join(deploymentArtifact.Path, "stacks", "alpha"),
+				}
+
+				cfg, repoPath, err := loadComposeScheduledDeployConfig(t.Context(), ref, newStubProvider(nil, nil),
+					ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}})
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if repoPath != deploymentArtifact.Path || cfg.WorkingDirectory != filepath.Join("stacks", "alpha") {
+					t.Fatalf("deployment paths = %q, %q, want recorded artifact %q and stacks/alpha",
+						repoPath, cfg.WorkingDirectory, deploymentArtifact.Path)
+				}
+
+				if cfg.Internal.ConfigSourceRevision != configRevision.String() ||
+					cfg.Internal.ConfigSourceWorkingDir != configArtifact.Path {
+					t.Fatalf("config source = %q, %q, want %s, %s", cfg.Internal.ConfigSourceRevision,
+						cfg.Internal.ConfigSourceWorkingDir, configRevision, configArtifact.Path)
+				}
+
+				if cfg.Internal.Environment["CONFIG_SNAPSHOT"] != "recorded" ||
+					cfg.Internal.Environment["DEPLOYMENT_SNAPSHOT"] != "recorded" {
+					t.Fatalf("reload used moving source settings: %v", cfg.Internal.Environment)
+				}
+
+				if layout == "nested reference" && cfg.Reference != recordedReference {
+					t.Fatalf("nested reference changed during reload: got %s, want %s", cfg.Reference, recordedReference)
+				}
+
+				if origin := cfg.Internal.AutoDiscoveryOrigin; origin == nil || origin.Revision != deploymentRevision.String() ||
+					origin.MirrorDir != deploymentStore.MirrorDir() {
+					t.Fatalf("discovery origin = %+v, want recorded revision %s and mirror %s",
+						origin, deploymentRevision, deploymentStore.MirrorDir())
+				}
+			})
+		}
+	}
+}
+
+func TestLoadComposeScheduledDeployConfigRequiresRecordedDeploymentArtifact(t *testing.T) {
+	t.Parallel()
+
+	dataMountPath := t.TempDir()
+	repositoryURL := "https://example.com/owner/config.git"
+	configRevision := "abcdef0123456789abcdef0123456789abcdef0123"
+	configArtifact := filepath.Join(dataMountPath, git.GetRepoName(repositoryURL), store.ArtifactsSubdir, configRevision)
+
+	if err := os.MkdirAll(configArtifact, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(configArtifact, ".doco-cd.yaml"), []byte("auto_discovery: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := loadComposeScheduledDeployConfig(t.Context(), composeScheduledServiceRef{
+		Project:        "scheduled",
+		RepositoryURL:  repositoryURL,
+		SourceType:     "git",
+		DeploymentName: "scheduled",
+		Reference:      "feature",
+		ConfigRevision: configRevision,
+		WorkingDir:     filepath.Join(dataMountPath, "deployment", store.ArtifactsSubdir, configRevision, "stack"),
+	}, newStubProvider(nil, nil), ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}})
+	if !errors.Is(err, ErrComposeScheduledSourceUnavailable) {
+		t.Fatalf("missing recorded artifact error = %v, want ErrComposeScheduledSourceUnavailable", err)
 	}
 }
 
@@ -1388,4 +1753,45 @@ func TestPrepareComposeProjectForOneOffRun(t *testing.T) {
 			t.Fatal("expected error for missing service, got nil")
 		}
 	})
+}
+
+func TestScheduledDiscoveryGitOptions(t *testing.T) {
+	t.Parallel()
+
+	load := ComposeLoadOptions{
+		SkipTLSVerify:           true,
+		GitCloneSubmodules:      true,
+		GitCloneDepth:           5,
+		SSHPrivateKey:           "key",
+		SSHPrivateKeyPassphrase: "passphrase",
+		GitAccessToken:          "token",
+		DataMountPath:           "/data",
+	}
+
+	got := scheduledDiscoveryGitOptions(composeScheduledServiceRef{RepositoryURL: "https://example.com/owner/repo.git"}, load)
+
+	want := deploy.GitOptions{
+		SSHPrivateKey:           "key",
+		SSHPrivateKeyPassphrase: "passphrase",
+		GitAccessToken:          "token",
+		SkipTLSVerification:     true,
+		GitCloneSubmodules:      true,
+		GitCloneDepth:           5,
+		SourceURL:               "https://example.com/owner/repo.git",
+		SourceBaseDir:           "/data",
+	}
+	if *got != want {
+		t.Fatalf("scheduledDiscoveryGitOptions() = %+v, want %+v", *got, want)
+	}
+
+	for _, repositoryURL := range []string{"git@example.com:owner/repo.git", "ssh://git@example.com/owner/repo.git"} {
+		if got := scheduledDiscoveryGitOptions(composeScheduledServiceRef{RepositoryURL: repositoryURL}, load); got.SourceURL != repositoryURL {
+			t.Errorf("SourceURL = %q, want %q", got.SourceURL, repositoryURL)
+		}
+	}
+
+	// The short source name label cannot be fetched.
+	if got := scheduledDiscoveryGitOptions(composeScheduledServiceRef{RepositoryURL: "owner/repo"}, load); got.SourceURL != "" {
+		t.Errorf("SourceURL = %q for a short source name, want empty", got.SourceURL)
+	}
 }

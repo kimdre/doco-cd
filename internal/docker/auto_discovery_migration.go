@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/moby/moby/client"
+
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 )
 
 const (
@@ -119,15 +121,20 @@ func getStandaloneAutoDiscoveryServices(ctx context.Context, cli client.APIClien
 	result := make(map[Service]map[string]string)
 
 	for _, label := range []string{DocoCDLabels.Deployment.AutoDiscovery, legacyAutoDiscoverLabel} {
-		services, err := GetLabeledServices(ctx, cli, false, label, "true")
+		// Stopped containers are listed too, so obsolete stacks are removed even if they are not running.
+		containers, err := GetLabeledContainers(ctx, cli, label, "true", true)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get containers with label %s=true: %w", label, err)
 		}
 
-		for service, labels := range services {
-			normalized, _ := normalizeAutoDiscoveryLabels(labels)
+		for _, cont := range containers {
+			if len(cont.Names) == 0 {
+				continue
+			}
+
+			normalized, _ := normalizeAutoDiscoveryLabels(cont.Labels)
 			if normalized != nil {
-				result[service] = normalized
+				result[Service(cont.Names[0])] = normalized
 			}
 		}
 	}
@@ -152,8 +159,8 @@ func normalizeAutoDiscoveryLabels(labels map[string]string) (map[string]string, 
 	normalized[DocoCDLabels.Deployment.AutoDiscovery] = strconv.FormatBool(enabled)
 
 	if _, hasConfig := labels[DocoCDLabels.Deployment.AutoDiscoveryConfig]; !hasConfig {
-		cfg := ParseAutoDiscoveryConfig("")
-		cfg.Enabled = enabled
+		// The defaults of the versions that wrote the legacy labels.
+		cfg := deployConfig.AutoDiscoveryConfig{Enabled: enabled, Delete: true, RemoveImages: true}
 
 		legacyDelete := labels[legacyAutoDiscoveryDeleteLabel]
 		if legacyDelete == "" {

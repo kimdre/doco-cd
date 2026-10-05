@@ -385,6 +385,46 @@ func (h *Harness) ReplaceInWorktree(relPath, old, replacement string) {
 	}
 }
 
+// RemoveFromWorktree deletes a file or directory under the scenario worktree;
+// the next RepoPush commits the deletion.
+func (h *Harness) RemoveFromWorktree(relPath string) {
+	h.t.Helper()
+
+	path := filepath.Join(h.worktree, relPath)
+	if _, err := os.Lstat(path); err != nil {
+		h.t.Fatalf("remove %s: %v", relPath, err)
+	}
+
+	if err := os.RemoveAll(path); err != nil {
+		h.t.Fatalf("remove %s: %v", relPath, err)
+	}
+}
+
+// WaitForLogLineAfter waits until a single daemon log line written after
+// offset contains all of substrs, e.g. a message and the stack it refers to.
+func (h *Harness) WaitForLogLineAfter(offset int, timeout time.Duration, substrs ...string) {
+	h.t.Helper()
+	h.WaitFor(timeout, fmt.Sprintf("new daemon log line contains %q", substrs), func() bool {
+		for line := range strings.Lines(h.logsSince(offset)) {
+			if containsAll(line, substrs) {
+				return true
+			}
+		}
+
+		return false
+	})
+}
+
+func containsAll(s string, substrs []string) bool {
+	for _, substr := range substrs {
+		if !strings.Contains(s, substr) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // WaitFor re-runs check every second until it returns true or the timeout hits.
 func (h *Harness) WaitFor(timeout time.Duration, desc string, check func() bool) {
 	h.t.Helper()

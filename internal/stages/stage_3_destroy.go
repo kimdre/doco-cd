@@ -50,13 +50,6 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 		return fmt.Errorf("failed to destroy stack: %w", err)
 	}
 
-	if s.Docker.SwarmMode && s.DeployConfig.Destroy.RemoveVolumes {
-		err = docker.RemoveLabeledVolumes(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.DeployConfig.Name)
-		if err != nil {
-			return fmt.Errorf("failed to remove volumes: %w", err)
-		}
-	}
-
 	if s.DeployConfig.Destroy.RemoveRepoDir {
 		// The source directory is a cache shared by every stack deployed from this repository: it holds the mirror,
 		// every published artifact (the bind-mount sources of running stacks), their mutable live copies and any

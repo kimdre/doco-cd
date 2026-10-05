@@ -3,13 +3,17 @@ package reconciliation
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/docker/compose/v5/pkg/api"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 func TestNewManagerAppliesDefaultDeploymentLimit(t *testing.T) {
@@ -250,5 +254,106 @@ func TestIsSchedulerStopHeldEmptyNames(t *testing.T) {
 
 	if r.IsSchedulerStopHeld("", "proj", "") {
 		t.Fatal("expected empty service name to never be held")
+	}
+}
+
+func TestManagerAddJobKeepsJobOfNewerRevision(t *testing.T) {
+	t.Parallel()
+
+	repoDir, older, newer := newTestRepoWithTwoCommits(t)
+
+	request := func(revision, reference string) DeployRequest {
+		return DeployRequest{
+			Logger:     slog.New(slog.DiscardHandler),
+			JobTrigger: stages.JobTriggerWebhook,
+			Repository: stages.RepositoryData{
+				Name:              "repo",
+				MirrorDir:         repoDir,
+				Revision:          revision,
+				ResolvedReference: reference,
+			},
+			DeployConfigs: []*deployConfig.Config{{Name: "web"}},
+		}
+	}
+
+	manager := newTestManagerWithDependencies(t, Dependencies{})
+	current := newJob(manager, request(newer, "refs/heads/main"), nil)
+	manager.jobs.jobs["repo"] = current
+
+	manager.addJob(t.Context(), request(older, "main"), nil, nil)
+
+	if manager.jobs.jobs["repo"] != current {
+		t.Fatal("a request for an older revision replaced the reconciliation job")
+	}
+
+	select {
+	case <-current.closeChan:
+		t.Fatal("the reconciliation job of the newer revision was closed")
+	default:
+	}
+
+	if !predatesJob(request(older, "main"), current.info) {
+		t.Fatal("older revision of the same reference does not predate the job")
+	}
+
+	if predatesJob(request(newer, "main"), request(older, "main")) {
+		t.Fatal("newer revision predates the job")
+	}
+
+	if predatesJob(request(older, "refs/tags/v1"), current.info) {
+		t.Fatal("revision of another reference predates the job")
+	}
+
+	otherMirror := request(older, "main")
+	otherMirror.Repository.MirrorDir = t.TempDir()
+
+	if predatesJob(otherMirror, current.info) {
+		t.Fatal("revision of another mirror predates the job")
+	}
+}
+
+func TestWithWebhookFilteredConfigs(t *testing.T) {
+	t.Parallel()
+
+	main := &deployConfig.Config{Name: "main", WebhookEventFilter: "^refs/heads/main$"}
+	dev := &deployConfig.Config{Name: "dev", WebhookEventFilter: "^refs/heads/dev$"}
+	unfiltered := &deployConfig.Config{Name: "unfiltered"}
+	deferred := &deployConfig.Config{Name: "deferred"}
+
+	req := DeployRequest{
+		JobTrigger:    stages.JobTriggerWebhook,
+		Payload:       &webhook.ParsedPayload{Ref: "refs/heads/main"},
+		DeployConfigs: []*deployConfig.Config{main, dev, unfiltered, deferred},
+	}
+
+	got := withWebhookFilteredConfigs(req, map[*deployConfig.Config]struct{}{deferred: {}})
+	if len(got) != 2 {
+		t.Fatalf("deferred configs = %d, want 2", len(got))
+	}
+
+	for _, dc := range []*deployConfig.Config{dev, deferred} {
+		if _, ok := got[dc]; !ok {
+			t.Fatalf("%s is not deferred", dc.Name)
+		}
+	}
+
+	// Configs the filter skipped keep the deploy config of the previous job.
+	previousDev := &deployConfig.Config{Name: "dev"}
+	previous := newJob(nil, DeployRequest{DeployConfigs: []*deployConfig.Config{previousDev}}, nil)
+
+	info, carried, _ := reconciliationJobInfo(req, got, previous)
+	if _, ok := carried[previousDev]; !ok {
+		t.Fatal("the deploy config skipped by the webhook event filter was not carried over")
+	}
+
+	for _, dc := range info.DeployConfigs {
+		if dc == dev {
+			t.Fatal("the deploy config skipped by the webhook event filter is reconciled")
+		}
+	}
+
+	req.JobTrigger = stages.JobTriggerPoll
+	if got := withWebhookFilteredConfigs(req, nil); got != nil {
+		t.Fatalf("poll request deferred %d configs", len(got))
 	}
 }

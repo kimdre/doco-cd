@@ -3,6 +3,7 @@ package deploy
 import (
 	"bytes"
 	"container/list"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -153,8 +154,10 @@ type discoveryCacheEntry struct {
 // Overrides contain parsed user fields only; the base Config (including Internal) is
 // cloned and applied afresh for every discovery.
 type discoveryMatch struct {
-	dir          string
-	override     *Config
+	dir      string
+	override *Config
+	// overrideKeys are the YAML keys the nested config sets, see mergeConfigKeys.
+	overrideKeys *yamlKeys
 	overrideSize int
 }
 
@@ -260,15 +263,10 @@ func (c *AutoDiscoveryConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// expandInlineAutoDiscoverConfigs replaces enabled inline auto-discovery entries with deployments under repoRoot.
-// labelRoot is a revision-stable directory naming the repository; repoRoot itself is usually a per-revision
-// artifact directory. revisionKey overrides the repository HEAD when repoRoot is not a Git checkout.
-func expandInlineAutoDiscoverConfigs(repoRoot, labelRoot, mirrorRoot, revisionKey string, deployments []*Config) ([]*Config, error) {
+// expandInlineAutoDiscoverConfigs replaces enabled inline auto-discovery entries with the deployments they
+// discover in source.
+func expandInlineAutoDiscoverConfigs(ctx context.Context, source *discoverySource, deployments []*Config) ([]*Config, error) {
 	expanded := make([]*Config, 0, len(deployments))
-
-	if revisionKey == "" {
-		revisionKey = revisionKeyForRepoRoot(repoRoot)
-	}
 
 	for _, deployment := range deployments {
 		if !deployment.AutoDiscovery.Enabled {
@@ -276,15 +274,9 @@ func expandInlineAutoDiscoverConfigs(repoRoot, labelRoot, mirrorRoot, revisionKe
 			continue
 		}
 
-		fsys, release := publishedGitDiscoveryFS(repoRoot, labelRoot, mirrorRoot, plumbing.NewHash(revisionKey), deployment)
-		discoveredConfigs, err := autoDiscoverDeployments(fsys, labelRoot, revisionKey, deployment)
-
-		if release != nil {
-			release()
-		}
-
+		discoveredConfigs, err := source.discover(ctx, deployment)
 		if err != nil {
-			return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
+			return nil, err
 		}
 
 		expanded = append(expanded, discoveredConfigs...)
@@ -362,23 +354,6 @@ type publishedDiscoveryFS struct {
 	verifier *discoveryVerifier
 }
 
-// revisionKeyForRepoRoot returns the current HEAD commit hash for repoRoot,
-// or "" if repoRoot is not a git repository. A disk scan never uses Git tree
-// hashes for subtree caching: materialized contents may differ from HEAD.
-func revisionKeyForRepoRoot(repoRoot string) string {
-	repo, err := git.PlainOpen(repoRoot)
-	if err != nil {
-		return ""
-	}
-
-	head, err := repo.Head()
-	if err != nil {
-		return ""
-	}
-
-	return head.Hash().String()
-}
-
 // autoDiscoverDeployments scans fsys for compose files and creates a Config for each matching subdirectory.
 // Only an object-backed TreeFS with a matching revision can reuse Git subtree metadata;
 // disk artifacts, submodules and OCI sources cannot be identified by Git tree hashes.
@@ -390,7 +365,15 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 		repository: repoRoot,
 		label:      repositoryLabel,
 		base:       baseConfig,
-		compose:    set.New(baseConfig.ComposeFiles...),
+		origin: &AutoDiscoveryOrigin{
+			WorkingDirectory:   path.Clean(baseConfig.WorkingDirectory),
+			Reference:          baseConfig.Reference,
+			RepositoryURL:      string(baseConfig.RepositoryUrl),
+			WebhookEventFilter: baseConfig.WebhookEventFilter,
+			Revision:           revisionKey,
+			Settings:           baseConfig.AutoDiscovery,
+		},
+		compose: set.New(baseConfig.ComposeFiles...),
 	}
 
 	// A plain TreeFS has no materialized inputs. A published artifact has both
@@ -691,6 +674,7 @@ type discoveryScanner struct {
 	label      string
 	settings   string
 	base       *Config
+	origin     *AutoDiscoveryOrigin
 	compose    set.Set[string]
 	configs    []*Config
 
@@ -734,13 +718,14 @@ func (s *discoveryScanner) appendConfig(p string, match discoveryMatch) error {
 
 	c.WorkingDirectory = p
 	if match.override != nil {
-		mergeConfig(c, clone.New(match.override))
+		mergeConfigKeys(c, clone.New(match.override), match.overrideKeys)
 	}
 
 	if err := c.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
 
+	c.Internal.AutoDiscoveryOrigin = s.origin
 	s.configs = append(s.configs, c)
 
 	return nil
@@ -822,8 +807,14 @@ func (s *discoveryScanner) scan(p string, depth int) ([]discoveryMatch, error) {
 				return nil, fmt.Errorf("%w: %s contains %d documents", ErrMultipleYAMLDocuments, localCfgPath, len(localConfigs))
 			}
 
+			keys, keysErr := yamlKeysOf(b)
+			if keysErr != nil {
+				return nil, fmt.Errorf("failed to parse nested .doco-cd config at %s: %w", localCfgPath, keysErr)
+			}
+
 			match.override = localConfigs[0]
 			match.override.Internal.File = ""
+			match.overrideKeys = keys
 
 			// Bound cached contents by the size of the parsed value, not only
 			// the source bytes (YAML aliases can expand during decoding).
@@ -832,7 +823,7 @@ func (s *discoveryScanner) scan(p string, depth int) ([]discoveryMatch, error) {
 				if marshalErr != nil {
 					match.overrideSize = maxAutoDiscoveryCacheEntryBytes + 1
 				} else {
-					match.overrideSize = len(encoded) * 4
+					match.overrideSize = len(encoded)*4 + keys.size()
 				}
 			}
 
@@ -926,24 +917,36 @@ func dirHasFile(entries []os.DirEntry, name string) bool {
 //   - Nested structs: all sub-fields are merged (parent tag opts them in)
 //   - Scalars: replaced if the override holds a non-zero value.
 func mergeConfig(base, override *Config) {
-	mergeStructByTag(reflect.ValueOf(base).Elem(), reflect.ValueOf(override).Elem())
+	mergeConfigKeys(base, override, nil)
+}
+
+// mergeConfigKeys merges override into base like mergeConfig. keys are the YAML keys the override sets:
+// a scalar the override sets replaces the base value even if it is zero, such as `remove_volumes: false`,
+// and a scalar it does not set is kept. A nil keys falls back to mergeConfig's non-zero rule.
+func mergeConfigKeys(base, override *Config, keys *yamlKeys) {
+	mergeStructByTag(reflect.ValueOf(base).Elem(), reflect.ValueOf(override).Elem(), keys)
 }
 
 // mergeStructByTag iterates a struct's fields and merges only those tagged doco:"allowOverride".
-func mergeStructByTag(base, override reflect.Value) {
+func mergeStructByTag(base, override reflect.Value, keys *yamlKeys) {
 	t := base.Type()
 	for i := 0; i < t.NumField(); i++ {
 		if t.Field(i).Tag.Get("doco") != "allowOverride" {
 			continue
 		}
 
-		mergeField(base.Field(i), override.Field(i))
+		fieldKeys, set := keys.field(t.Field(i))
+		if !set {
+			continue
+		}
+
+		mergeField(base.Field(i), override.Field(i), fieldKeys)
 	}
 }
 
 // mergeField applies a single field merge from override into base.
 // For structs the merge recurses into all sub-fields (no tag check – parent has opted in).
-func mergeField(base, override reflect.Value) {
+func mergeField(base, override reflect.Value, keys *yamlKeys) {
 	switch base.Kind() {
 	case reflect.Map:
 		if override.IsNil() || override.Len() == 0 {
@@ -967,19 +970,25 @@ func mergeField(base, override reflect.Value) {
 
 	case reflect.Struct:
 		// Recurse into all sub-fields; the parent tag already opted them in.
-		mergeAllStructFields(base, override)
+		mergeAllStructFields(base, override, keys.forStruct())
 
 	default:
-		// Scalar: apply only when the override holds a non-zero value.
-		if !override.IsZero() {
+		// Scalar: apply when the override sets it, or holds a non-zero value if that is unknown.
+		if keys != nil || !override.IsZero() {
 			base.Set(override)
 		}
 	}
 }
 
 // mergeAllStructFields merges every field of override into base without tag checks.
-func mergeAllStructFields(base, override reflect.Value) {
+func mergeAllStructFields(base, override reflect.Value, keys *yamlKeys) {
+	t := base.Type()
 	for i := 0; i < base.NumField(); i++ {
-		mergeField(base.Field(i), override.Field(i))
+		fieldKeys, set := keys.field(t.Field(i))
+		if !set {
+			continue
+		}
+
+		mergeField(base.Field(i), override.Field(i), fieldKeys)
 	}
 }

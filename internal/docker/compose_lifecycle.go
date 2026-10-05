@@ -47,6 +47,13 @@ func DestroyStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
+		// Removing a swarm stack keeps its volumes.
+		if deployConfig.Destroy.RemoveVolumes {
+			if err = RemoveLabeledVolumes(*ctx, (*dockerCli).Client(), true, deployConfig.Name); err != nil {
+				return fmt.Errorf("failed to remove volumes: %w", err)
+			}
+		}
+
 		return nil
 	}
 
