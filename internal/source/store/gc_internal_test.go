@@ -153,7 +153,7 @@ func TestSweep_RemovesArtifactLockFileAlongsideExpiredArtifact(t *testing.T) {
 	lockPath := artifact.Path + ".lock"
 	publishLockPath := artifact.Path + publishLockSuffix + ".lock"
 
-	for _, path := range []string{lockPath, publishLockPath} {
+	for _, path := range []string{lockPath, publishLockPath, artifact.Path + publicationTimeSuffix} {
 		if err := os.WriteFile(path, nil, 0o600); err != nil {
 			t.Fatalf("create artifact lock file: %v", err)
 		}
@@ -168,7 +168,7 @@ func TestSweep_RemovesArtifactLockFileAlongsideExpiredArtifact(t *testing.T) {
 		t.Fatalf("Sweep() removed = %v, want to include %q", result.Removed, "expired")
 	}
 
-	for _, path := range []string{lockPath, publishLockPath, artifact.Path + publishedSuffix} {
+	for _, path := range []string{lockPath, publishLockPath, artifact.Path + publishedSuffix, artifact.Path + publicationTimeSuffix} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("%s still exists on disk, stat err = %v", filepath.Base(path), err)
 		}

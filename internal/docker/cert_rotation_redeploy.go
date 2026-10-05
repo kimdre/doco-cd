@@ -108,7 +108,7 @@ func RotateProjectCertificates(
 
 	payload := certRotationPayload(labels, resolvedSourceType(ref, opts.Scheduled))
 
-	timestamp := time.Now().UTC().Format(time.RFC3339)
+	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
 	projectHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash])
 	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
@@ -170,7 +170,7 @@ func rotateSwarmProjectCertificates(
 
 	payload := certRotationPayload(labels, resolvedSourceType(ref, certOpts.Scheduled))
 
-	timestamp := time.Now().UTC().Format(time.RFC3339)
+	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
 	projectHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash])
 	sourceURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])

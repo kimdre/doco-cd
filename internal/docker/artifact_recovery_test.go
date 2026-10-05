@@ -39,8 +39,9 @@ func TestStaleSwarmArtifactServicesRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok, err := filesystem.BirthTime(dir); err != nil || !ok {
-		t.Skipf("file system does not record creation times: %v", err)
+	// The durable signal also exercises the production no-btime fallback on macOS.
+	if err := os.WriteFile(dir+".published-at", []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
 	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)

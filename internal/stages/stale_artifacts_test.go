@@ -214,6 +214,41 @@ func TestDataMountPath(t *testing.T) {
 	}
 }
 
+func TestStaleArtifactServicesRecordedRepublication(t *testing.T) {
+	t.Parallel()
+
+	source, destination, storeBase := newStaleArtifactTestStore(t)
+	replacedDir := publishStaleTestArtifact(t, storeBase, staleTestPinned)
+	publishStaleTestArtifact(t, storeBase, staleTestRevision)
+	replacedAt := time.Now().UTC()
+	if err := os.WriteFile(replacedDir+".published-at", []byte(replacedAt.Format(time.RFC3339Nano)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := replacedAt.Add(-time.Nanosecond).Format(time.RFC3339Nano)
+	recovered := replacedAt.Add(time.Nanosecond).Format(time.RFC3339Nano)
+	deployed := map[docker.Service]docker.ServiceStatus{
+		"pinned-old": {Labels: staleTestLabels(source, destination, storeBase, "app", old, staleTestPinned)},
+		"healthy":    {Labels: staleTestLabels(source, destination, storeBase, "app", recovered, "")},
+		"recovered":  {Labels: staleTestLabels(source, destination, storeBase, "app", recovered, staleTestPinned)},
+	}
+	log := slog.New(slog.DiscardHandler)
+
+	for range 2 {
+		got := staleArtifactServices(deployed, source, destination, log)
+		if len(got) != 1 || got[0].Service != "pinned-old" || got[0].Reason != artifactReplaced {
+			t.Fatalf("recorded republication recovery = %+v", got)
+		}
+		if change := staleArtifactChange(got); !slices.Equal(change.Services, []string{"pinned-old"}) {
+			t.Fatalf("forced recovery services = %v", change.Services)
+		}
+	}
+
+	deployed["pinned-old"].Labels[docker.DocoCDLabels.Deployment.Timestamp] = recovered
+	if got := staleArtifactServices(deployed, source, destination, log); len(got) != 0 {
+		t.Fatalf("successful recreation repeats recovery: %+v", got)
+	}
+}
+
 func TestArtifactStoreBase(t *testing.T) {
 	t.Parallel()
 

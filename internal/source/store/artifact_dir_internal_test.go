@@ -241,7 +241,7 @@ func TestPublishDir_ConcurrentSameRevision_IsIdempotent(t *testing.T) {
 		names[i] = e.Name()
 	}
 
-	if !slices.Equal(names, []string{"rev1", "rev1" + publishLockSuffix + ".lock", "rev1" + publishedSuffix}) {
+	if !slices.Equal(names, []string{"rev1", "rev1" + publishLockSuffix + ".lock", "rev1" + publishedSuffix, "rev1" + publicationTimeSuffix}) {
 		t.Fatalf("artifacts dir entries = %v, want the artifact and its publish record and lock", names)
 	}
 }

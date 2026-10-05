@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/compose/convert"
@@ -168,7 +169,7 @@ func getLatestServiceStatus(cacheMap *sync.Map, statusMap map[Service]ServiceSta
 		// Get the candidate with the latest timestamp for the most recent deployment comparison.
 		// Use 'equal' here; ensure latestLabels is not empty if timestamp is empty.
 		// TODO: If timestamps are equal, the result may be random for simultaneous deployments.
-		if timestamp >= latestTimestamp {
+		if deploymentTimestampAtLeast(timestamp, latestTimestamp) {
 			latestTimestamp = timestamp
 			latestLabels = labels
 		}
@@ -184,6 +185,16 @@ func getLatestServiceStatus(cacheMap *sync.Map, statusMap map[Service]ServiceSta
 	}
 
 	return ret
+}
+
+func deploymentTimestampAtLeast(timestamp, previous string) bool {
+	current, currentErr := time.Parse(time.RFC3339, timestamp)
+	old, oldErr := time.Parse(time.RFC3339, previous)
+	if currentErr != nil || oldErr != nil {
+		return timestamp >= previous
+	}
+
+	return !current.Before(old)
 }
 
 func getDeployStatus(ctx context.Context, client client.APIClient, swarmMode bool, deployName string) (map[Service]ServiceStatus, error) {

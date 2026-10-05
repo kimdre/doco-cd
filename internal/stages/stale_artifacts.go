@@ -29,8 +29,8 @@ type staleArtifact struct {
 // artifact was published again under the same path. Artifacts are immutable and only published once, so an artifact
 // created after the deployment that created a service's containers was removed in between (for example by
 // destroy.remove_dir before it was deprecated, see https://github.com/kimdre/doco-cd/issues/1962). Such services
-// must be recreated even if nothing changed. Whether an artifact was published again can only be detected on file
-// systems that record the creation time of files; otherwise, only missing artifacts are detected.
+// must be recreated even if nothing changed. Republication is recorded durably by the store, independently of
+// filesystem birth-time support. Birth times also detect older, unrecorded replacements where supported.
 func staleArtifactServices(
 	deployed map[docker.Service]docker.ServiceStatus, dataMountSource, dataMountDestination string, log *slog.Logger,
 ) []staleArtifact {
