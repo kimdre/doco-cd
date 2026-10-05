@@ -9,7 +9,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/common/lifecycle"
-	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
@@ -144,8 +143,6 @@ func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmi
 
 		prometheus.DeploymentStageDuration.WithLabelValues(
 			deploymentMetricsRepository(s.Repository),
-			deploymentMetricsName(s.DeployConfig),
-			deploymentMetricsContext(s.DeployConfig),
 			string(stageName),
 			outcome,
 		).Observe(metadata.FinishedAt.Sub(metadata.StartedAt).Seconds())
@@ -252,22 +249,6 @@ func deploymentMetricsRepository(repository *RepositoryData) string {
 	}
 
 	return strings.TrimSpace(repository.Name)
-}
-
-func deploymentMetricsName(config *deploy.Config) string {
-	if config == nil || strings.TrimSpace(config.Name) == "" {
-		return "unknown"
-	}
-
-	return strings.TrimSpace(config.Name)
-}
-
-func deploymentMetricsContext(config *deploy.Config) string {
-	if config == nil {
-		return "default"
-	}
-
-	return docker.DisplayContextName(config.Context)
 }
 
 // PostQueuedCommitStatus reports a resolved webhook deployment that requires
