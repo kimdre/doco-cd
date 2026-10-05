@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +14,51 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
+
+func mustArtifactPath(t *testing.T, baseDir string, revision Revision) string {
+	t.Helper()
+
+	path, err := artifactPath(baseDir, revision)
+	if err != nil {
+		t.Fatalf("artifactPath(%q) error = %v", revision, err)
+	}
+
+	return path
+}
+
+func TestArtifactPath_RejectsRevisionsOutsideArtifactsDir(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+
+	for _, revision := range []Revision{"", ".", "..", "../rev1", "rev1/../..", "sha256:../../etc", "/abs", `rev\1`, "rev/1"} {
+		if path, err := artifactPath(baseDir, revision); !errors.Is(err, ErrInvalidRevision) {
+			t.Errorf("artifactPath(%q) = %q, %v, want %v", revision, path, err, ErrInvalidRevision)
+		}
+
+		if _, _, err := lookupArtifact(baseDir, revision); !errors.Is(err, ErrInvalidRevision) {
+			t.Errorf("lookupArtifact(%q) error = %v, want %v", revision, err, ErrInvalidRevision)
+		}
+
+		_, err := publishDir(baseDir, revision, func(string) error {
+			t.Errorf("publishDir(%q) wrote an artifact for an invalid revision", revision)
+			return nil
+		})
+		if !errors.Is(err, ErrInvalidRevision) {
+			t.Errorf("publishDir(%q) error = %v, want %v", revision, err, ErrInvalidRevision)
+		}
+	}
+
+	for _, revision := range []Revision{
+		"0123456789abcdef0123456789abcdef01234567",
+		"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	} {
+		want := filepath.Join(baseDir, ArtifactsSubdir, artifactDirName(revision))
+		if got := mustArtifactPath(t, baseDir, revision); got != want {
+			t.Errorf("artifactPath(%q) = %q, want %q", revision, got, want)
+		}
+	}
+}
 
 func TestPublishDir_CreatesReadableArtifact(t *testing.T) {
 	t.Parallel()
@@ -25,7 +72,7 @@ func TestPublishDir_CreatesReadableArtifact(t *testing.T) {
 		t.Fatalf("publishDir() error = %v", err)
 	}
 
-	wantPath := artifactPath(baseDir, "rev1")
+	wantPath := mustArtifactPath(t, baseDir, "rev1")
 	if artifact.Path != wantPath {
 		t.Fatalf("artifact.Path = %q, want %q", artifact.Path, wantPath)
 	}
@@ -121,7 +168,7 @@ func TestPublishDir_ConcurrentDifferentRevisions_BothSucceedIndependently(t *tes
 	}
 
 	for _, rev := range revisions {
-		content, err := os.ReadFile(filepath.Join(artifactPath(baseDir, rev), "marker.txt"))
+		content, err := os.ReadFile(filepath.Join(mustArtifactPath(t, baseDir, rev), "marker.txt"))
 		if err != nil {
 			t.Fatalf("read published file for %s: %v", rev, err)
 		}
@@ -174,7 +221,7 @@ func TestPublishDir_ConcurrentSameRevision_IsIdempotent(t *testing.T) {
 		t.Fatalf("got %d successful results, want %d", len(results), attempts)
 	}
 
-	want := artifactPath(baseDir, "rev1")
+	want := mustArtifactPath(t, baseDir, "rev1")
 	for _, artifact := range results {
 		if artifact.Path != want {
 			t.Errorf("artifact.Path = %q, want %q (every concurrent publish of the same revision must agree on one path)", artifact.Path, want)
@@ -182,23 +229,24 @@ func TestPublishDir_ConcurrentSameRevision_IsIdempotent(t *testing.T) {
 	}
 
 	// Exactly one published artifact directory exists for the revision -
-	// concurrent losers must not each leave their own copy behind.
+	// concurrent losers must not each leave their own copy behind. Next to it
+	// are only its publish record and lock.
 	entries, err := os.ReadDir(filepath.Join(baseDir, ArtifactsSubdir))
 	if err != nil {
 		t.Fatalf("read artifacts dir: %v", err)
 	}
 
-	if len(entries) != 1 {
-		names := make([]string, len(entries))
-		for i, e := range entries {
-			names[i] = e.Name()
-		}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
+	}
 
-		t.Fatalf("artifacts dir entries = %v, want exactly one", names)
+	if !slices.Equal(names, []string{"rev1", "rev1" + publishLockSuffix + ".lock", "rev1" + publishedSuffix, "rev1" + publicationTimeSuffix}) {
+		t.Fatalf("artifacts dir entries = %v, want the artifact and its publish record and lock", names)
 	}
 }
 
-func TestSweepOrphanedTemp_RemovesOnlyTmpDirs(t *testing.T) {
+func TestSweepOrphanedTemp_RemovesOnlyTmpEntries(t *testing.T) {
 	t.Parallel()
 
 	baseDir := t.TempDir()
@@ -216,17 +264,26 @@ func TestSweepOrphanedTemp_RemovesOnlyTmpDirs(t *testing.T) {
 		t.Fatalf("create orphaned temp dir: %v", err)
 	}
 
+	orphanedRecord := filepath.Join(artifactsDir, ".tmp-rev2.published-123")
+	if err := os.WriteFile(orphanedRecord, nil, 0o600); err != nil {
+		t.Fatalf("create orphaned temp record: %v", err)
+	}
+
 	aged := time.Now().Add(-2 * orphanedTempMaxAge)
-	if err := os.Chtimes(orphan, aged, aged); err != nil {
-		t.Fatalf("age orphaned temp dir: %v", err)
+	for _, path := range []string{orphan, orphanedRecord} {
+		if err := os.Chtimes(path, aged, aged); err != nil {
+			t.Fatalf("age orphaned temp entry: %v", err)
+		}
 	}
 
 	if err := sweepOrphanedTemp(baseDir); err != nil {
 		t.Fatalf("sweepOrphanedTemp() error = %v", err)
 	}
 
-	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
-		t.Errorf("expected orphaned temp dir to be removed, stat err = %v", err)
+	for _, path := range []string{orphan, orphanedRecord} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("expected orphaned temp entry %s to be removed, stat err = %v", filepath.Base(path), err)
+		}
 	}
 
 	if _, found, err := lookupArtifact(baseDir, "rev1"); err != nil || !found {
@@ -290,6 +347,154 @@ func TestLookupArtifact_NotFoundVsFound(t *testing.T) {
 
 	if artifact.Revision != "rev1" {
 		t.Errorf("artifact.Revision = %q, want %q", artifact.Revision, "rev1")
+	}
+}
+
+func TestPublishDir_RecordsPublishedIdentity(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+
+	artifact, err := publishDir(baseDir, "rev1", func(_ string) error { return nil })
+	if err != nil {
+		t.Fatalf("publishDir() error = %v", err)
+	}
+
+	recorded, err := os.ReadFile(artifact.Path + publishedSuffix)
+	if err != nil {
+		t.Fatalf("read publish record: %v", err)
+	}
+
+	identity, err := filesystem.Identity(artifact.Path)
+	if err != nil {
+		t.Fatalf("Identity() error = %v", err)
+	}
+
+	if string(recorded) != identity {
+		t.Errorf("publish record = %q, want %q", recorded, identity)
+	}
+}
+
+// replaceWithSkeleton replaces the artifact directory at path with a new directory tree, as Docker does when it
+// re-creates a missing bind-mount source. The original is renamed instead of removed, so the replacement cannot
+// reuse its inode.
+func replaceWithSkeleton(t *testing.T, path string, files ...string) {
+	t.Helper()
+
+	if err := os.Rename(path, path+"-replaced"); err != nil {
+		t.Fatalf("move artifact away: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(path, "data", "nested"), filesystem.PermDir); err != nil {
+		t.Fatalf("re-create artifact directory: %v", err)
+	}
+
+	for _, name := range files {
+		if err := os.WriteFile(filepath.Join(path, "data", name), []byte("x"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+}
+
+func TestLookupArtifact_RejectsRecreatedDirectory(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("directory identities are only available on Linux")
+	}
+
+	t.Parallel()
+
+	for name, files := range map[string][]string{
+		"directories only":            nil,
+		"written to by the container": {"written-by-container.txt"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			baseDir := t.TempDir()
+
+			artifact, err := publishDir(baseDir, "rev1", func(dir string) error {
+				return os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("v1"), 0o600)
+			})
+			if err != nil {
+				t.Fatalf("publishDir() error = %v", err)
+			}
+
+			replaceWithSkeleton(t, artifact.Path, files...)
+
+			if _, found, err := lookupArtifact(baseDir, "rev1"); err != nil || found {
+				t.Fatalf("lookupArtifact() of re-created directory = (found=%v, err=%v), want (false, nil)", found, err)
+			}
+
+			republished, err := publishDir(baseDir, "rev1", func(dir string) error {
+				return os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("v1"), 0o600)
+			})
+			if err != nil {
+				t.Fatalf("publishDir() republish error = %v", err)
+			}
+
+			if content, err := os.ReadFile(filepath.Join(republished.Path, "compose.yaml")); err != nil || string(content) != "v1" {
+				t.Errorf("republished compose.yaml = (%q, %v), want (%q, nil)", content, err, "v1")
+			}
+
+			if _, found, err := lookupArtifact(baseDir, "rev1"); err != nil || !found {
+				t.Errorf("lookupArtifact() after republish = (found=%v, err=%v), want (true, nil)", found, err)
+			}
+
+			entries, err := os.ReadDir(filepath.Join(baseDir, ArtifactsSubdir))
+			if err != nil {
+				t.Fatalf("read artifacts dir: %v", err)
+			}
+
+			setAside := false
+
+			for _, e := range entries {
+				if e.IsDir() && strings.HasPrefix(e.Name(), tempArtifactPrefix+"unpublished-") {
+					setAside = true
+				}
+			}
+
+			if !setAside {
+				t.Errorf("expected the re-created directory to be set aside, artifacts dir entries = %v", entries)
+			}
+		})
+	}
+}
+
+func TestLookupArtifact_UnrecordedDirectory(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		file      string
+		wantFound bool
+	}{
+		"published before records adopted": {file: "compose.yaml", wantFound: true},
+		"directories only rejected":        {wantFound: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			baseDir := t.TempDir()
+			path := mustArtifactPath(t, baseDir, "rev1")
+
+			if err := os.MkdirAll(filepath.Join(path, "data"), filesystem.PermDir); err != nil {
+				t.Fatalf("create artifact directory: %v", err)
+			}
+
+			if tc.file != "" {
+				if err := os.WriteFile(filepath.Join(path, "data", tc.file), []byte("v1"), 0o600); err != nil {
+					t.Fatalf("write %s: %v", tc.file, err)
+				}
+			}
+
+			if _, found, err := lookupArtifact(baseDir, "rev1"); err != nil || found != tc.wantFound {
+				t.Fatalf("lookupArtifact() = (found=%v, err=%v), want (%v, nil)", found, err, tc.wantFound)
+			}
+
+			_, err := os.Stat(path + publishedSuffix)
+			if recorded := err == nil; recorded != tc.wantFound {
+				t.Errorf("publish record written = %v (stat err = %v), want %v", recorded, err, tc.wantFound)
+			}
+		})
 	}
 }
 

@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -103,5 +104,23 @@ func TestForcedRecreateServices(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestStaleArtifactServices(t *testing.T) {
+	t.Parallel()
+
+	changes := []Change{
+		{Type: "modified", Services: []string{"web"}},
+		{Type: ChangeTypeStaleArtifact, Services: []string{"db", "cache"}},
+		{Type: ChangeTypeFailedDeployRetry},
+		{Type: ChangeTypeStaleArtifact, Services: []string{"db"}},
+	}
+
+	got := staleArtifactServices(changes)
+	slices.Sort(got)
+
+	if want := []string{"cache", "db"}; !slices.Equal(got, want) {
+		t.Fatalf("staleArtifactServices() = %v, want %v", got, want)
 	}
 }

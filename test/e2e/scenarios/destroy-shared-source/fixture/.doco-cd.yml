@@ -1,0 +1,9 @@
+name: e2e-destroy-shared-source-keep
+working_dir: keep
+swarm:
+  enabled: false
+---
+name: e2e-destroy-shared-source-gone
+working_dir: gone
+swarm:
+  enabled: false

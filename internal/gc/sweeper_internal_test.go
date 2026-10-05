@@ -233,8 +233,13 @@ func TestSweeper_Sweep_ProcessesEveryRepoDirUnderDataMountPoint(t *testing.T) {
 
 	var repos []string
 
-	for _, name := range []string{"repo-a", "repo-b"} {
-		repoDir := filepath.Join(dataMountPoint, "github.com", "owner", name)
+	for _, name := range []string{
+		"github.com/owner/repo-a",
+		"github.com/owner/repo-b",
+		"github.com/owner/app.evicting",
+		"github.com/owner.evicting/repo",
+	} {
+		repoDir := filepath.Join(dataMountPoint, filepath.FromSlash(name))
 		artifactPath := makeArtifactDir(t, repoDir, "expired")
 
 		old := time.Now().Add(-time.Hour)
@@ -384,6 +389,55 @@ func TestRepositoryKeyMatches(t *testing.T) {
 	for _, tc := range tests {
 		if got := repositoryKeyMatches(tc.repoName, tc.liveKey); got != tc.want {
 			t.Errorf("repositoryKeyMatches(%q, %q) = %v, want %v", tc.repoName, tc.liveKey, got, tc.want)
+		}
+	}
+}
+
+func TestSweeper_Sweep_KeepsMirrorAndLiveDataAfterAllArtifactsExpire(t *testing.T) {
+	t.Parallel()
+
+	s, dataMountPoint := newTestSweeper(t)
+	repoDir := filepath.Join(dataMountPoint, "github.com", "owner", "retained-source")
+	artifactPath := makeArtifactDir(t, repoDir, "expired")
+	old := time.Now().Add(-30 * 24 * time.Hour)
+
+	if err := os.Chtimes(artifactPath, old, old); err != nil {
+		t.Fatalf("backdate artifact: %v", err)
+	}
+
+	var retainedFiles []string
+
+	for _, dir := range []string{
+		store.MirrorSubdir,
+		filepath.Join(store.SubmodulesSubdir, "submodule"),
+		filepath.Join(store.LiveSubdir, "default", "stack", "root"),
+	} {
+		path := filepath.Join(repoDir, dir, "data")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("create retained directory: %v", err)
+		}
+
+		if err := os.WriteFile(path, []byte("retained"), 0o600); err != nil {
+			t.Fatalf("write retained data: %v", err)
+		}
+
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatalf("backdate retained data: %v", err)
+		}
+
+		retainedFiles = append(retainedFiles, path)
+	}
+
+	s.sweep(context.Background())
+	s.sweep(context.Background())
+
+	if _, err := os.Stat(artifactPath); !os.IsNotExist(err) {
+		t.Fatalf("expired artifact still exists, stat err = %v", err)
+	}
+
+	for _, path := range retainedFiles {
+		if data, err := os.ReadFile(path); err != nil || string(data) != "retained" {
+			t.Errorf("sweep changed retained data %s: contents = %q, err = %v", path, data, err)
 		}
 	}
 }

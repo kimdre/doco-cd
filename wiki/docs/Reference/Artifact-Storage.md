@@ -67,6 +67,9 @@ The source directory is organized by source type and source name, and contains t
             artifacts/  # Immutable Git tree exports
               <revision>/  # Immutable export of a Git tree for a specific revision
               <revision>.lock  # Lock file for artifact access
+              <revision>.publish.lock  # Lock file for publishing the artifact
+              <revision>.published  # Identity of the published artifact directory
+              <revision>.published-at  # Time of the last artifact publication
               ...
             mirror/  # Bare Git repository mirror
               HEAD
@@ -92,8 +95,9 @@ The source directory is organized by source type and source name, and contains t
       Its packfiles are [compacted](#git-mirror-compaction) automatically.
     - `artifacts/<revision>` is an immutable export of a Git tree. Deployments use this directory,
       allowing multiple revisions of the same source to be deployed in parallel.
-    - `mirror.lock`, `<revision>.lock`, and `submodules/<url-hash>.lock` coordinate access to shared
-      source data to prevent race conditions when multiple deployments are running in parallel.
+    - `mirror.lock`, `<revision>.lock`, `<revision>.publish.lock` and `submodules/<url-hash>.lock` coordinate access
+      to shared source data to prevent race conditions when multiple deployments are running in parallel.
+    - `<revision>.published` identifies the directory published as `artifacts/<revision>`, see [Removed artifacts](#removed-artifacts).
     - `submodules/<url-hash>` is a bare Git mirror of a submodule, named after the SHA-256 hash of its URL,
       when [`GIT_CLONE_SUBMODULES`](../Git-Settings.md#general) is enabled. Each submodule URL, including those of
       nested submodules, has one mirror that is shared by all revisions of the source. The files of a submodule
@@ -116,6 +120,9 @@ The source directory is organized by source type and source name, and contains t
             artifacts/  # Immutable OCI artifact exports
               sha256-<digest>/  # Extracted artifact for a specific digest
               sha256-<digest>.lock  # Lock file for artifact access
+              sha256-<digest>.publish.lock  # Lock file for publishing the artifact
+              sha256-<digest>.published  # Identity of the published artifact directory
+              sha256-<digest>.published-at  # Time of the last artifact publication
               ...
             live/  # Mutable live files of stacks
               <context>/
@@ -129,8 +136,9 @@ The source directory is organized by source type and source name, and contains t
     - `artifacts/<digest>` is an immutable extraction of the OCI artifact for a
       content digest. The digest is encoded in the directory name because `:`
       is not safe in Docker bind-mount source paths.
-    - `<digest>.lock` coordinates access while an artifact is being published
+    - `<digest>.lock` and `<digest>.publish.lock` coordinate access while an artifact is being published
       or used by a deployment.
+    - `<digest>.published` identifies the directory published as `artifacts/<digest>`, see [Removed artifacts](#removed-artifacts).
     - `live/<context>/<stack>` contains the [live files](#live-files) of a stack.
 
 ### Upgrading from v0.119.x or earlier
@@ -184,8 +192,38 @@ entirely with `#!yaml ARTIFACT_GC_ENABLED: false` if you prefer to manage disk u
 
 The number of copies each sweep removes and keeps per repository/artifact is exposed in the
 `doco_cd_artifact_gc_removed_total` and `doco_cd_artifact_gc_kept` [Prometheus metrics](../Endpoints/Metrics.md).
-Both stop being reported for a repository once its directory has been removed, e.g. by
-[`destroy.remove_dir`](../Deploy-Settings.md#destroy-settings).
+Both stop being reported for a repository if its source directory no longer exists.
+
+### Source directory retention
+
+All stacks deployed from a repository/artifact share its source directory, so destroying a stack never removes it
+(the former `destroy.remove_dir` deploy setting is deprecated and ignored).
+The garbage collector only removes unreferenced immutable artifacts under `artifacts/`, together with their
+publish records and lock files, according to the retention settings above. It does not remove whole source
+directories, Git mirrors, submodule mirrors or mutable `live/` data, even when the source is no longer deployed.
+Mutable [live files](#live-files) are not subject to artifact cache retention.
+
+Automatic cleanup of unused whole-source directories is deferred to
+[#1981](https://github.com/kimdre/doco-cd/issues/1981).
+
+### Removed artifacts
+
+If an artifact a deployed service uses was removed (e.g. manually or by `destroy.remove_dir` in an older version of doco-cd,
+see [#1962](https://github.com/kimdre/doco-cd/issues/1962)), the service is recreated on the next deployment of its stack,
+even if nothing changed. Its containers would otherwise keep using the removed directory, which appears empty to them.
+Publications are recorded in `<revision>.published-at` before replacing the directory, so recovery also works on
+file systems without creation times and survives failed deployments and doco-cd restarts. Deployment timestamps
+retain subsecond precision so a successful recreation stops recovery even within the same second.
+On file systems that record creation times (e.g. ext4, XFS or Btrfs), those also detect older, unrecorded replacements.
+
+When a container restarts while its bind-mounted directory is missing, Docker re-creates the directory empty, and with it
+the directory of the artifact. To tell such a directory apart from the published artifact, the identity (inode and
+creation time) of every published artifact directory is recorded in `<revision>.published` next to it.
+An artifact directory that does not match its record is moved aside and published again, including restored directories
+whose copied identity records no longer match their restored inodes. An artifact directory without a record
+(e.g. one published by an older version of doco-cd) is only used if it contains any files.
+Only services still using an artifact replaced after their deployment are recreated; unrelated services are left alone.
+Swarm certificate rotations perform the same check before updating service metadata, without rerunning job-mode services.
 
 ## Git Mirror Compaction
 

@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -724,18 +725,50 @@ func (h *Harness) CrashHookFired() bool {
 // inspectDataVolume runs a shell command against the scenario data volume from
 // a throwaway container, since the volume is not reachable from the test host.
 func (h *Harness) inspectDataVolume(script string) string {
+	output, _, err := h.runOnDataVolume(script, true)
+	if err != nil {
+		return "unavailable: " + err.Error()
+	}
+
+	return output
+}
+
+// ModifyDataVolume runs a shell command with write access to the scenario data
+// volume from a throwaway container, e.g. to remove files behind doco-cd's
+// back, and fails the test unless the command succeeds.
+func (h *Harness) ModifyDataVolume(script string) string {
+	h.t.Helper()
+
+	output, exitCode, err := h.runOnDataVolume(script, false)
+	if err != nil {
+		h.t.Fatalf("modify data volume: %v", err)
+	}
+
+	if exitCode != 0 {
+		h.t.Fatalf("modify data volume: %q exited with %d: %s", script, exitCode, output)
+	}
+
+	return output
+}
+
+func (h *Harness) runOnDataVolume(script string, readOnly bool) (string, int, error) {
+	bind := h.dataVolume + ":/data"
+	if readOnly {
+		bind += ":ro"
+	}
+
 	created, err := h.docker.ContainerCreate(h.ctx, client.ContainerCreateOptions{
 		Config: &container.Config{
 			Image: "alpine:3.22",
 			Cmd:   []string{"sh", "-c", script},
 		},
 		HostConfig: &container.HostConfig{
-			Binds:      []string{h.dataVolume + ":/data:ro"},
+			Binds:      []string{bind},
 			AutoRemove: false,
 		},
 	})
 	if err != nil {
-		return "unavailable: " + err.Error()
+		return "", 0, err
 	}
 
 	defer func() {
@@ -743,19 +776,26 @@ func (h *Harness) inspectDataVolume(script string) string {
 	}()
 
 	if _, err = h.docker.ContainerStart(h.ctx, created.ID, client.ContainerStartOptions{}); err != nil {
-		return "unavailable: " + err.Error()
+		return "", 0, err
 	}
+
+	exitCode, stopped := 0, false
 
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, stopped := h.ContainerExitCode(created.ID); stopped {
+		if exitCode, stopped = h.ContainerExitCode(created.ID); stopped {
 			break
 		}
 
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	return h.rawContainerLogs(created.ID)
+	output := h.rawContainerLogs(created.ID)
+	if !stopped {
+		return output, 0, errors.New("command did not finish within 20s")
+	}
+
+	return output, exitCode, nil
 }
 
 // cleanupSelfUpdate removes everything a self-update scenario can leave behind:

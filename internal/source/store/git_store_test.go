@@ -354,10 +354,17 @@ func TestGitStore_PublishReusesArtifactPublishedWhileWaiting(t *testing.T) {
 	// passes without exercising the second lookup, but it never fails spuriously.
 	time.Sleep(100 * time.Millisecond)
 
+	// An empty directory would not count as published (it may as well have been re-created by Docker), so the
+	// artifact gets content.
 	artifactDir := filepath.Join(baseDir, store.ArtifactsSubdir, store.ArtifactDirName(revision))
 	if err := os.MkdirAll(artifactDir, filesystem.PermDir); err != nil {
 		unlock()
 		t.Fatalf("create artifact: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(artifactDir, "compose.yaml"), nil, 0o600); err != nil {
+		unlock()
+		t.Fatalf("write artifact content: %v", err)
 	}
 
 	unlock()

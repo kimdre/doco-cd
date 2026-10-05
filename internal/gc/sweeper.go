@@ -155,9 +155,8 @@ func (s *Sweeper) sweep(ctx context.Context) {
 }
 
 // forgetRemovedRepositories deletes the GC metrics of every repository an earlier
-// sweep reported whose directory is no longer among repoDirs, e.g. after
-// destroy.remove_dir. Their last values would otherwise be exported until
-// doco-cd restarts.
+// sweep reported whose directory is no longer among repoDirs, e.g. after it was
+// removed by hand. Their last values would otherwise be exported until doco-cd restarts.
 func (s *Sweeper) forgetRemovedRepositories(repoDirs []string) {
 	current := make(set.Set[string], len(repoDirs))
 

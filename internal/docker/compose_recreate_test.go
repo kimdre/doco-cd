@@ -334,7 +334,12 @@ func TestValidateManagedRecreateRevision(t *testing.T) {
 
 		// sourceRepoPath is a GitStore base directory: the expected revision
 		// is only "cached" if it was already published under artifacts/<sha>.
-		if err := os.MkdirAll(filepath.Join(repoPath, "artifacts", commitSHA), 0o755); err != nil {
+		artifactDir := filepath.Join(repoPath, "artifacts", commitSHA)
+		if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(artifactDir, "compose.yaml"), nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
 
@@ -386,7 +391,12 @@ func TestValidateManagedRecreateRevision(t *testing.T) {
 
 		// sourcePath is an OCIStore base directory: the expected revision
 		// is only "cached" if it was already published under artifacts/<digest>.
-		if err := os.MkdirAll(filepath.Join(sourcePath, "artifacts", store.ArtifactDirName("sha256:deployed")), 0o755); err != nil {
+		artifactDir := filepath.Join(sourcePath, "artifacts", store.ArtifactDirName("sha256:deployed"))
+		if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(artifactDir, "compose.yaml"), nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
 

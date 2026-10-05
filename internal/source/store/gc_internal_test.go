@@ -151,8 +151,12 @@ func TestSweep_RemovesArtifactLockFileAlongsideExpiredArtifact(t *testing.T) {
 	artifact := touchArtifact(t, baseDir, "expired", now, 2*time.Hour)
 
 	lockPath := artifact.Path + ".lock"
-	if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
-		t.Fatalf("create artifact lock file: %v", err)
+	publishLockPath := artifact.Path + publishLockSuffix + ".lock"
+
+	for _, path := range []string{lockPath, publishLockPath, artifact.Path + publicationTimeSuffix} {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatalf("create artifact lock file: %v", err)
+		}
 	}
 
 	result, err := Sweep(baseDir, nil, GCOptions{RetentionRecords: 0, RetentionTTL: time.Minute}, now)
@@ -164,8 +168,10 @@ func TestSweep_RemovesArtifactLockFileAlongsideExpiredArtifact(t *testing.T) {
 		t.Fatalf("Sweep() removed = %v, want to include %q", result.Removed, "expired")
 	}
 
-	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
-		t.Errorf("artifact lock file still exists on disk, stat err = %v", err)
+	for _, path := range []string{lockPath, publishLockPath, artifact.Path + publishedSuffix, artifact.Path + publicationTimeSuffix} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s still exists on disk, stat err = %v", filepath.Base(path), err)
+		}
 	}
 }
 
@@ -198,19 +204,37 @@ func TestSweep_KeepsLockFileOfLiveOrRetainedArtifact(t *testing.T) {
 	if _, err := os.Stat(lockPath); err != nil {
 		t.Errorf("live artifact's lock file was removed: %v", err)
 	}
+
+	if _, found, err := lookupArtifact(baseDir, "live"); err != nil || !found {
+		t.Errorf("lookupArtifact(live) after Sweep() = (found=%v, err=%v), want (true, nil)", found, err)
+	}
 }
 
-func TestSweep_NeverTouchesMirrorOrSubmodulesOrTemp(t *testing.T) {
+func TestSweep_NeverTouchesMirrorOrSubmodulesOrLiveOrTemp(t *testing.T) {
 	t.Parallel()
 
 	baseDir := t.TempDir()
 	now := time.Now()
 
 	// Sibling state a real GitStore keeps alongside "artifacts/".
-	for _, dir := range []string{MirrorSubdir, "submodules"} {
+	var retainedFiles []string
+
+	for _, dir := range []string{MirrorSubdir, SubmodulesSubdir, filepath.Join(LiveSubdir, "default", "stack", "root")} {
 		if err := os.MkdirAll(filepath.Join(baseDir, dir), 0o755); err != nil {
 			t.Fatalf("create %s: %v", dir, err)
 		}
+
+		path := filepath.Join(baseDir, dir, "data")
+		if err := os.WriteFile(path, []byte("retained"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+
+		old := now.Add(-30 * 24 * time.Hour)
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatalf("backdate %s: %v", path, err)
+		}
+
+		retainedFiles = append(retainedFiles, path)
 	}
 
 	if err := os.WriteFile(filepath.Join(baseDir, "mirror.lock"), []byte(""), 0o600); err != nil {
@@ -225,18 +249,34 @@ func TestSweep_NeverTouchesMirrorOrSubmodulesOrTemp(t *testing.T) {
 		t.Fatalf("create temp artifact dir: %v", err)
 	}
 
-	if _, err := Sweep(baseDir, nil, GCOptions{RetentionRecords: 0, RetentionTTL: time.Minute}, now); err != nil {
+	result, err := Sweep(baseDir, nil, GCOptions{RetentionRecords: 0, RetentionTTL: time.Minute}, now)
+	if err != nil {
 		t.Fatalf("Sweep() error = %v", err)
+	}
+
+	if !containsRevision(result.Removed, "expired") {
+		t.Fatalf("Sweep() removed = %v, want to include %q", result.Removed, "expired")
+	}
+
+	if _, err := os.Stat(filepath.Join(baseDir, ArtifactsSubdir, "expired")); !os.IsNotExist(err) {
+		t.Errorf("expired artifact directory still exists, stat err = %v", err)
 	}
 
 	for _, path := range []string{
 		filepath.Join(baseDir, MirrorSubdir),
-		filepath.Join(baseDir, "submodules"),
+		filepath.Join(baseDir, SubmodulesSubdir),
+		filepath.Join(baseDir, LiveSubdir),
 		filepath.Join(baseDir, "mirror.lock"),
 		tmpDir,
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("Sweep() removed or touched %s unexpectedly: stat err = %v", path, err)
+		}
+	}
+
+	for _, path := range retainedFiles {
+		if data, err := os.ReadFile(path); err != nil || string(data) != "retained" {
+			t.Errorf("Sweep() changed retained data %s: contents = %q, err = %v", path, data, err)
 		}
 	}
 }

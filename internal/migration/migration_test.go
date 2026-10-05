@@ -432,6 +432,24 @@ func TestLabelsReferenceLegacyPath_AcceptsHostAndContainerMountPaths(t *testing.
 	}
 }
 
+func TestLabelsReferenceLegacyPath_ChecksConfigWorkingDir(t *testing.T) {
+	t.Parallel()
+
+	repoDir := "/data/github.com/owner/config-repo"
+	labels := map[string]string{
+		docker.DocoCDLabels.Deployment.WorkingDir:   "/data/github.com/owner/app-repo/artifacts/rev",
+		docker.DocoCDLabels.Source.ConfigWorkingDir: filepath.Join(repoDir, store.ArtifactsSubdir, "rev"),
+	}
+
+	if !labelsReferenceLegacyPath(labels, []string{repoDir}, nil) {
+		t.Fatal("config working directory inside the repository was not recognized as a reference")
+	}
+
+	if labelsReferenceLegacyPath(labels, []string{repoDir}, storeLayoutEntries()) {
+		t.Fatal("config working directory inside a kept store entry was reported as a reference")
+	}
+}
+
 func TestReferencedOnContext_SwarmProtectsLegacyPathUsedByActiveOldTask(t *testing.T) {
 	t.Parallel()
 

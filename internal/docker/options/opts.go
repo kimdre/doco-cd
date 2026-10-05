@@ -19,6 +19,8 @@ type Deploy struct {
 	Environment      map[string]string
 	Timeout          time.Duration
 	Logger           *slog.Logger
+	// ForceUpdateServices names the services whose unchanged tasks must be recreated.
+	ForceUpdateServices []string
 }
 
 // Config holds docker stack config options.

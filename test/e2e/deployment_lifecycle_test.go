@@ -55,7 +55,7 @@ func TestDeploymentLifecycle(t *testing.T) {
 	h.ReplaceInWorktree(
 		".doco-cd.yml",
 		"working_dir: deploy",
-		"working_dir: deploy\ndestroy:\n  enabled: true\n  remove_images: false\n  remove_dir: false",
+		"working_dir: deploy\ndestroy:\n  enabled: true\n  remove_images: false",
 	)
 	h.RepoPush("destroy deployment")
 

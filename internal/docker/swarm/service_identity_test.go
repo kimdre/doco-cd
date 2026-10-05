@@ -15,6 +15,8 @@ import (
 	"github.com/docker/cli/cli/streams"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
+
+	"github.com/kimdre/doco-cd/internal/docker/options"
 )
 
 type serviceIdentityClient struct {
@@ -146,7 +148,8 @@ func TestDeployServicesIdentity(t *testing.T) {
 				"api": {TaskTemplate: swarmTypes.TaskSpec{ContainerSpec: &swarmTypes.ContainerSpec{Image: "example:latest"}}},
 			}
 
-			deployed, err := deployServices(t.Context(), cli, services, convert.NewNamespace("stack"), false, ResolveImageNever, log)
+			deployed, err := deployServices(t.Context(), cli, services, convert.NewNamespace("stack"),
+				&options.Deploy{ResolveImage: ResolveImageNever, Logger: log})
 			if tc.updateErr != nil || tc.createErr != nil {
 				if err == nil || !strings.Contains(err.Error(), "stack_api (id="+tc.wantID+")") {
 					t.Fatalf("deployServices() error = %v, want name and ID", err)

@@ -969,8 +969,19 @@ func isActiveSwarmTask(task swarmTypes.Task) bool {
 	}
 }
 
+// labelsReferenceLegacyPath reports whether the deployment or config working directory recorded in labels lies inside
+// one of repoDirs, outside of its keep entries.
 func labelsReferenceLegacyPath(labels map[string]string, repoDirs []string, keep []string) bool {
-	workingDir := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.WorkingDir])
+	for _, key := range []string{docker.DocoCDLabels.Deployment.WorkingDir, docker.DocoCDLabels.Source.ConfigWorkingDir} {
+		if workingDirReferencesPath(strings.TrimSpace(labels[key]), repoDirs, keep) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func workingDirReferencesPath(workingDir string, repoDirs []string, keep []string) bool {
 	if workingDir == "" {
 		return false
 	}

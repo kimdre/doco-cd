@@ -145,7 +145,6 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 		removeConfig.Destroy.Enabled = true
 		removeConfig.Destroy.RemoveVolumes = autoDiscoverCfg.RemoveVolumes
 		removeConfig.Destroy.RemoveImages = autoDiscoverCfg.RemoveImages
-		removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
 
 		err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig, swarmMode)
 		if err != nil {

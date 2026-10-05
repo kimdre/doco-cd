@@ -109,6 +109,33 @@ func TestListRepositoryDirs_DoesNotDescendIntoArtifacts(t *testing.T) {
 	}
 }
 
+func TestListRepositoryDirs_FindsStoresNamedEvicting(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+	evictingRepoDir := filepath.Join(dataDir, "github.com", "owner", "app.evicting")
+	evictingOwnerRepoDir := filepath.Join(dataDir, "github.com", "owner.evicting", "repo")
+	mkdirAll(t, filepath.Join(repoDir, store.MirrorSubdir))
+	mkdirAll(t, filepath.Join(evictingRepoDir, store.MirrorSubdir))
+	mkdirAll(t, filepath.Join(evictingOwnerRepoDir, store.ArtifactsSubdir))
+
+	dirs, err := store.ListRepositoryDirs(dataDir)
+	if err != nil {
+		t.Fatalf("ListRepositoryDirs() error = %v", err)
+	}
+
+	slices.Sort(dirs)
+
+	want := []string{repoDir, evictingRepoDir, evictingOwnerRepoDir}
+	slices.Sort(want)
+
+	if !slices.Equal(dirs, want) {
+		t.Fatalf("ListRepositoryDirs() = %v, want %v", dirs, want)
+	}
+}
+
 func TestListMirrors(t *testing.T) {
 	t.Parallel()
 

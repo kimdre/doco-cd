@@ -21,6 +21,7 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) error {
 	}
 
 	opts.Logger = req.stackLog
+	opts.ForceUpdateServices = staleArtifactServices(req.request.DetectedChanges)
 
 	addSwarmServiceLabels(cfg, req.project, deployConfig, req.request.Payload, req.request.SourceURL, req.externalWorkingDir,
 		req.request.AppVersion, req.timestamp, req.request.LatestCommit, req.projectHash)
