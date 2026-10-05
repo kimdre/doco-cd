@@ -280,7 +280,7 @@ func TestManagerAddJobKeepsJobOfNewerRevision(t *testing.T) {
 	current := newJob(manager, request(newer, "refs/heads/main"), nil)
 	manager.jobs.jobs["repo"] = current
 
-	manager.addJob(t.Context(), request(older, "main"), nil)
+	manager.addJob(t.Context(), request(older, "main"), nil, nil)
 
 	if manager.jobs.jobs["repo"] != current {
 		t.Fatal("a request for an older revision replaced the reconciliation job")

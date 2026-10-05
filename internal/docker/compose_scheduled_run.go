@@ -560,6 +560,42 @@ func loadComposeScheduledDeployConfig(
 	// TargetRef describes the deployment, not the branch that supplied ConfigRevision.
 	// Only the artifact's commit hash is known to resolve to primaryRevision.
 	gitOpts.PrimaryReference = primaryRevision
+	// The top-level config and the deployment may come from different repositories or revisions.
+	// Discovery must read the deployment's materialized snapshot, not re-resolve its branch.
+	snapshot := &deploy.DiscoverySnapshot{
+		RepositoryRoot: configRepoPath,
+		MirrorDir:      gitMirrorRoot,
+		Revision:       primaryRevision,
+		Reference:      ref.Reference,
+	}
+	if snapshot.Reference == "" {
+		snapshot.Reference = deploy.DefaultReference
+	}
+
+	if artifactRoot, deploymentStore, found := artifactAndStoreFromWorkingDir(ref.WorkingDir, dataMountPath); found {
+		if !filesystem.IsDir(artifactRoot) {
+			return nil, "", fmt.Errorf("%w: deployment artifact %s for scheduled service %s/%s",
+				ErrComposeScheduledSourceUnavailable, artifactRoot, ref.Project, ref.Service)
+		}
+
+		_, revision, _ := store.ArtifactRoot(deploymentStore, artifactRoot)
+		snapshot.RepositoryRoot = artifactRoot
+		snapshot.Revision = string(revision)
+		snapshot.MirrorDir = filepath.Join(deploymentStore, store.MirrorSubdir)
+	} else {
+		legacyRoot, _, pathErr := resolveScheduledComposeRepoRoot(ref.WorkingDir, dataMountPath, configRepoPath)
+		if pathErr != nil {
+			return nil, "", pathErr
+		}
+
+		if filepath.Clean(legacyRoot) != filepath.Clean(configRepoPath) {
+			snapshot.RepositoryRoot = legacyRoot
+			snapshot.MirrorDir = ""
+			snapshot.Revision = ""
+		}
+	}
+
+	gitOpts.DiscoverySnapshot = snapshot
 
 	configs, err := deploy.GetConfigs(ctx, configRepoPath, opts.DeployConfigBaseDir, ref.ConfigTarget, ref.Reference,
 		gitMirrorRoot, primaryRevision, gitOpts)
@@ -614,8 +650,8 @@ func loadComposeScheduledDeployConfig(
 }
 
 // scheduledDiscoveryGitOptions returns the Git options auto-discovery uses while reloading a scheduled
-// service's deploy config. They match the options of the job that deployed it, so discovery reuses the
-// job's stores and credentials.
+// service's deploy config. Credentials remain available, but DiscoverySnapshot prevents fetching
+// while restoring a deployment.
 func scheduledDiscoveryGitOptions(ref composeScheduledServiceRef, load ComposeLoadOptions) *deploy.GitOptions {
 	sourceURL := ""
 	// RepositoryURL falls back to the short "owner/repo" source name, which cannot be fetched.

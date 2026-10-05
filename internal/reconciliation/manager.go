@@ -557,11 +557,17 @@ func (r *deploymentTracker) isInProgress(repository, context, stack string) bool
 // filter skipped were not deployed either and are handled the same way.
 //
 // A request whose revision predates the one of the current job does not replace
-// it: the deployments of the newer revision won, see stages.IsStaleRevision.
-func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*deployConfig.Config]struct{}) {
+// it unless a forced deployment succeeded. A successful rollback replaces only
+// the recovery state of the stacks it deployed.
+func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*deployConfig.Config]struct{},
+	forcedDeployments map[*deployConfig.Config]struct{},
+) {
 	deferred = withWebhookFilteredConfigs(req, deferred)
 
-	var checked *job
+	var (
+		checked *job
+		stale   bool
+	)
 
 	for {
 		m.jobs.mu.Lock()
@@ -572,7 +578,12 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 		}
 
 		old := m.jobs.jobs[req.Repository.Name]
-		if old == nil || old == checked {
+		if old == nil {
+			stale = false
+			break
+		}
+
+		if old == checked {
 			break
 		}
 
@@ -580,7 +591,8 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 
 		// Reading the mirror can take a while, so it happens without the lock and
 		// the job is checked again afterwards.
-		if predatesJob(req, old.info) {
+		stale = predatesJob(req, old.info)
+		if stale && len(forcedDeployments) == 0 {
 			req.Logger.Info("keeping the reconciliation job of a newer revision",
 				slog.String("revision", req.Repository.Revision),
 				slog.String("job_revision", old.info.Repository.Revision))
@@ -593,9 +605,21 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 
 	old := m.jobs.jobs[req.Repository.Name]
 
+	if stale {
+		req, deferred = forcedRollbackRequest(req, old, forcedDeployments)
+	}
+
 	newJob := newReconciliationJob(m, req, deferred, old)
 	if len(newJob.deployConfigGroupByEvent) == 0 {
+		if stale {
+			delete(m.jobs.jobs, req.Repository.Name)
+		}
+
 		m.jobs.mu.Unlock()
+
+		if stale {
+			old.close()
+		}
 
 		return
 	}
@@ -622,6 +646,41 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 
 		newJob.run(jobCtx)
 	}()
+}
+
+// forcedRollbackRequest retains the current job's other stacks, including their
+// source requests, rather than applying an older request to stacks that did not
+// successfully roll back.
+func forcedRollbackRequest(req DeployRequest, previous *job, deployed map[*deployConfig.Config]struct{}) (DeployRequest, map[*deployConfig.Config]struct{}) {
+	configs := make([]*deployConfig.Config, 0, len(req.DeployConfigs)+len(previous.cleanupConfigs))
+
+	for _, dc := range req.DeployConfigs {
+		if _, ok := deployed[dc]; ok {
+			configs = append(configs, dc)
+		}
+	}
+
+	deferred := make(map[*deployConfig.Config]struct{})
+
+	for _, dc := range previous.cleanupConfigs {
+		replaced := false
+
+		for _, rollback := range configs {
+			if sameStack(dc, rollback) {
+				replaced = true
+				break
+			}
+		}
+
+		if !replaced {
+			configs = append(configs, dc)
+			deferred[dc] = struct{}{}
+		}
+	}
+
+	req.DeployConfigs = configs
+
+	return req, deferred
 }
 
 // withWebhookFilteredConfigs returns deferred extended by the deploy configs of

@@ -295,7 +295,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 		}
 	}()
 
-	timestamp := time.Now().UTC().Format(time.RFC3339)
+	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 
 	projectHash := ""
 	if projectPreloaded {

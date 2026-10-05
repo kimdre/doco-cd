@@ -376,7 +376,7 @@ func prepareSelfApply(
 	}
 
 	payload := selfApplierPayload(record)
-	timestamp := time.Now().UTC().Format(time.RFC3339)
+	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	addComposeServiceLabels(project, deployConfig, payload, record.Source.SourceURL,
 		ref.WorkingDir, app.Version, timestamp, ComposeVersion, record.Source.CommitSHA, record.Source.ProjectHash)
 
