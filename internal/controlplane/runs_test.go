@@ -120,6 +120,7 @@ type testControlPlaneRunsOptions struct {
 	storageDir     string
 	listMirrors    func(string) ([]store.Mirror, error)
 	compactMirror  func(context.Context, *slog.Logger, string, git.MirrorCompactOptions) (git.MirrorCompaction, error)
+	acquireMirror  func(store.Mirror) (func(), error)
 }
 
 func newTestControlPlaneRuns(t testing.TB, options testControlPlaneRunsOptions) *Runs {
@@ -173,6 +174,12 @@ func newTestControlPlaneRuns(t testing.TB, options testControlPlaneRunsOptions) 
 
 	if options.compactMirror != nil {
 		storage.compact = options.compactMirror
+	}
+
+	// The test mirrors do not exist, so only real stores take their GC gates.
+	storage.acquireMirror = func(store.Mirror) (func(), error) { return func() {}, nil }
+	if options.acquireMirror != nil {
+		storage.acquireMirror = options.acquireMirror
 	}
 
 	runs := newRuns(

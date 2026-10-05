@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
@@ -136,6 +137,47 @@ func TestListRepositoryDirs_FindsStoresNamedEvicting(t *testing.T) {
 	}
 }
 
+func TestListRepositoryDirs_SkipsTombstones(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+
+	repoDir := filepath.Join(dataDir, "github.com", "owner", "repo")
+	makeBareMirror(t, filepath.Join(repoDir, store.MirrorSubdir), "https://github.com/owner/repo.git")
+
+	// Evicted caches keep the store layout in their tombstone until they are purged.
+	tomb := filepath.Join(dataDir, sourcecache.TombstoneDirName, "20260101T000000Z-1")
+	makeBareMirror(t, filepath.Join(tomb, store.MirrorSubdir), "https://github.com/owner/evicted.git")
+	mkdirAll(t, filepath.Join(tomb, store.ArtifactsSubdir, "rev"))
+
+	// Only the namespace directly below the data directory is reserved.
+	nested := filepath.Join(dataDir, "github.com", sourcecache.TombstoneDirName, "repo")
+	mkdirAll(t, filepath.Join(nested, store.ArtifactsSubdir))
+
+	dirs, err := store.ListRepositoryDirs(dataDir)
+	if err != nil {
+		t.Fatalf("ListRepositoryDirs() error = %v", err)
+	}
+
+	slices.Sort(dirs)
+
+	want := []string{nested, repoDir}
+	slices.Sort(want)
+
+	if !slices.Equal(dirs, want) {
+		t.Fatalf("ListRepositoryDirs() = %v, want %v", dirs, want)
+	}
+
+	mirrors, err := store.ListMirrors(dataDir)
+	if err != nil {
+		t.Fatalf("ListMirrors() error = %v", err)
+	}
+
+	if want := []store.Mirror{{Repository: "github.com/owner/repo", Path: filepath.Join(repoDir, store.MirrorSubdir), Owner: repoDir}}; !slices.Equal(mirrors, want) {
+		t.Fatalf("ListMirrors() = %v, want %v", mirrors, want)
+	}
+}
+
 func TestListMirrors(t *testing.T) {
 	t.Parallel()
 
@@ -169,10 +211,10 @@ func TestListMirrors(t *testing.T) {
 	}
 
 	want := []store.Mirror{
-		{Repository: "github.com/owner/lib", Path: filepath.Join(lib, store.MirrorSubdir)},
-		{Repository: "github.com/owner/lib", Path: filepath.Join(repoA, store.SubmodulesSubdir, "aaa")},
-		{Repository: "github.com/owner/repo-a", Path: filepath.Join(repoA, store.MirrorSubdir)},
-		{Repository: "gitlab.com/group/sub/tool", Path: filepath.Join(repoA, store.SubmodulesSubdir, "bbb")},
+		{Repository: "github.com/owner/lib", Path: filepath.Join(lib, store.MirrorSubdir), Owner: lib},
+		{Repository: "github.com/owner/lib", Path: filepath.Join(repoA, store.SubmodulesSubdir, "aaa"), Owner: repoA},
+		{Repository: "github.com/owner/repo-a", Path: filepath.Join(repoA, store.MirrorSubdir), Owner: repoA},
+		{Repository: "gitlab.com/group/sub/tool", Path: filepath.Join(repoA, store.SubmodulesSubdir, "bbb"), Owner: repoA},
 	}
 	if !slices.Equal(mirrors, want) {
 		t.Fatalf("ListMirrors() =\n%v\nwant\n%v", mirrors, want)
@@ -211,10 +253,10 @@ func TestListMirrors_ComposeIncludes(t *testing.T) {
 	}
 
 	want := []store.Mirror{
-		{Repository: "github.com/owner/app", Path: filepath.Join(repoDir, store.MirrorSubdir)},
-		{Repository: "github.com/owner/lib", Path: filepath.Join(fallbackInclude, store.MirrorSubdir)},
-		{Repository: "github.com/owner/lib", Path: filepath.Join(include, store.MirrorSubdir)},
-		{Repository: "github.com/owner/tool", Path: filepath.Join(include, store.SubmodulesSubdir, "bbb")},
+		{Repository: "github.com/owner/app", Path: filepath.Join(repoDir, store.MirrorSubdir), Owner: repoDir},
+		{Repository: "github.com/owner/lib", Path: filepath.Join(fallbackInclude, store.MirrorSubdir), Owner: fallbackInclude},
+		{Repository: "github.com/owner/lib", Path: filepath.Join(include, store.MirrorSubdir), Owner: repoDir},
+		{Repository: "github.com/owner/tool", Path: filepath.Join(include, store.SubmodulesSubdir, "bbb"), Owner: repoDir},
 	}
 	if !slices.Equal(mirrors, want) {
 		t.Fatalf("ListMirrors() =\n%v\nwant\n%v", mirrors, want)
@@ -282,7 +324,7 @@ func TestListMirrors_InvalidConfiguration(t *testing.T) {
 			}
 
 			mirrors, err = store.ListMirrors(dataDir)
-			if want := []store.Mirror{{Repository: "github.com/owner/other", Path: other}}; err != nil || !slices.Equal(mirrors, want) {
+			if want := []store.Mirror{{Repository: "github.com/owner/other", Path: other, Owner: filepath.Dir(other)}}; err != nil || !slices.Equal(mirrors, want) {
 				t.Fatalf("ListMirrors(incomplete clone) = %v, %v, want %v", mirrors, err, want)
 			}
 		})
@@ -316,7 +358,7 @@ func TestListMirrors_UnreadableDirectory(t *testing.T) {
 
 	if len(mirrors) != 2 ||
 		mirrors[0].Path != submodules || mirrors[0].Repository != "" || !errors.Is(mirrors[0].Err, fs.ErrPermission) ||
-		mirrors[1] != (store.Mirror{Repository: "github.com/owner/app", Path: filepath.Join(repoDir, store.MirrorSubdir)}) {
+		mirrors[1] != (store.Mirror{Repository: "github.com/owner/app", Path: filepath.Join(repoDir, store.MirrorSubdir), Owner: repoDir}) {
 		t.Fatalf("ListMirrors() = %+v, want the unreadable submodule directory and the readable mirror", mirrors)
 	}
 }

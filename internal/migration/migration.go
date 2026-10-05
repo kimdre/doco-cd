@@ -306,6 +306,8 @@ func run(ctx context.Context, log *slog.Logger, dataMountDestination string, isR
 		return fmt.Errorf("migration: stat data mount point %s: %w", dataMountDestination, err)
 	}
 
+	tombstones := filepath.Join(dataMountDestination, sourcecache.TombstoneDirName)
+
 	return filepath.WalkDir(dataMountDestination, func(path string, d os.DirEntry, err error) error {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
@@ -318,6 +320,11 @@ func run(ctx context.Context, log *slog.Logger, dataMountDestination string, isR
 
 		if path == dataMountDestination || !d.IsDir() {
 			return nil
+		}
+
+		// Evicted source data is garbage, never a repository to migrate.
+		if path == tombstones {
+			return filepath.SkipDir
 		}
 
 		isRepoRoot, checkErr := looksLikeRepoRoot(path)

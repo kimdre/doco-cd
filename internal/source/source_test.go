@@ -161,6 +161,22 @@ func TestPrepare_InvalidRepositoryName(t *testing.T) {
 	}
 }
 
+func TestPrepare_ReservedRepositoryName(t *testing.T) {
+	t.Parallel()
+
+	p := newTestPreparer(t, nil)
+
+	_, err := p.Prepare(t.Context(), Request{
+		Logger:         logger.New(logger.LevelCritical).Logger,
+		JobTrigger:     stages.JobTriggerWebhook,
+		SourceRef:      "https://.doco-cd-trash/owner/repo.git",
+		DataMountPoint: testMountPoint(t),
+	})
+	if !errors.Is(err, ErrInvalidRepositoryName) || !errors.Is(err, sourcecache.ErrReservedSourcePath) {
+		t.Fatalf("expected ErrInvalidRepositoryName for the tombstone namespace, got %v", err)
+	}
+}
+
 func TestResolveDeployConfigs_UnsupportedJobTrigger(t *testing.T) {
 	t.Parallel()
 

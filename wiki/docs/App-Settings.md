@@ -63,6 +63,14 @@ Garbage collection only removes unreferenced immutable artifacts according to th
 Shared source directories, Git mirrors, submodule mirrors and mutable `live/` data are not removed by the sweeper.
 Destroying a stack also keeps its shared source directory; see [Source directory retention](Reference/Artifact-Storage.md#source-directory-retention).
 
+### Source Garbage Collection Settings
+
+| Key                       | Type     | Description                                                                                                                                                                                                                                                                                                                                                       | Default |
+|---------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| `SOURCE_GC_ENABLED`       | boolean  | Enables the built-in sweeper that evicts the Git mirror, submodule mirrors and artifacts of sources that have not been used for longer than `SOURCE_GC_RETENTION_TTL` and are not referenced by any container, Swarm service or Swarm task. Mutable `live/` data is never evicted. See [Source garbage collection](Reference/Artifact-Storage.md#source-garbage-collection). | `false` |
+| `SOURCE_GC_INTERVAL`      | duration | How often the source garbage collector looks for unused sources. The first sources are evicted one interval after startup. Must be at least `1m`. Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration).                                                                                                                                                | `1h`    |
+| `SOURCE_GC_RETENTION_TTL` | duration | How long a source must have been unused before it becomes eligible for eviction. Set it well above the longest poll interval and the longest time between scheduled runs, otherwise their sources are fetched again from scratch each time. Must be at least `1h`. Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration).                               | `168h`  |
+
 ## OCI Registry Settings
 
 | Key                       | Type | Description                                                                                                                                                                                                                                | Default                    |
