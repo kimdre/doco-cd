@@ -62,12 +62,12 @@ func TestStaleSwarmArtifactServicesRotation(t *testing.T) {
 	job.Spec.Mode.ReplicatedJob = &swarm.ReplicatedJob{}
 	globalJob := service("global-job", past, "")
 	globalJob.Spec.Mode.GlobalJob = &swarm.GlobalJob{}
-	fake := &artifactRecoveryListClient{swarmPinningTestClient: swarmPinningTestClient{services: []swarm.Service{
+	fake := &artifactRecoveryListClient{services: []swarm.Service{
 		service("unchanged-sibling", past, ""),
 		service("healthy-sibling", future, ""),
 		service("missing-pinned", future, "old"),
 		job, globalJob,
-	}}}
+	}}
 	load := ComposeLoadOptions{DataHostPath: "/srv/data", DataMountPath: dest}
 
 	for range 2 { // A failed update or process restart must leave recovery selectable.

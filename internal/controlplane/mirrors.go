@@ -274,15 +274,13 @@ func (c *Runs) compactMirrors(ctx context.Context, log *slog.Logger, mirrors []s
 				slog.Any("error", mirror.Err))
 
 			summary.add(git.MirrorCompaction{
-				MirrorPackStats: git.MirrorPackStats{
-					Repository:  mirror.Repository,
-					Path:        mirror.Path,
-					PacksBefore: -1,
-					PacksAfter:  -1,
-					SizeBytes:   -1,
-					Mode:        opts.Mode,
-					Result:      git.MirrorCompactionFailed,
-				},
+				Repository:      mirror.Repository,
+				Path:            mirror.Path,
+				PacksBefore:     -1,
+				PacksAfter:      -1,
+				SizeBytes:       -1,
+				Mode:            opts.Mode,
+				Result:          git.MirrorCompactionFailed,
 				SizeBytesBefore: -1,
 			})
 

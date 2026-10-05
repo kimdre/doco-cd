@@ -501,9 +501,9 @@ func newRepackObjectStorer(ctx context.Context, storage *filesystem.Storage) (re
 	}
 
 	objects := repackObjectStorer{
-		contextObjectStorer: contextObjectStorer{EncodedObjectStorer: storage, ctx: ctx},
-		deltas:              storage,
-		duplicates:          duplicates,
+		EncodedObjectStorer: storage, ctx: ctx,
+		deltas:     storage,
+		duplicates: duplicates,
 	}
 
 	return objects, hashes, nil

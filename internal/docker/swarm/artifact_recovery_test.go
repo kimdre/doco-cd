@@ -105,7 +105,7 @@ func TestDeployServicesArtifactRecoveryFailurePreservesRetry(t *testing.T) {
 	t.Parallel()
 
 	updateErr := errors.New("service update rejected")
-	apiClient := &artifactRecoveryClient{serviceIdentityClient: serviceIdentityClient{
+	apiClient := &artifactRecoveryClient{
 		updateErr: updateErr,
 		services: []swarmTypes.Service{{ID: "api-id", Spec: swarmTypes.ServiceSpec{
 			Name:   "stack_api",
@@ -114,8 +114,7 @@ func TestDeployServicesArtifactRecoveryFailurePreservesRetry(t *testing.T) {
 				ForceUpdate:   7,
 				ContainerSpec: &swarmTypes.ContainerSpec{Image: "example:latest"},
 			},
-		}}},
-	}}
+		}}}}
 	newSpec := apiClient.services[0].Spec
 	newSpec.Labels = map[string]string{"cd.doco.deployment.timestamp": "after-replacement"}
 	services := map[string]swarmTypes.ServiceSpec{"api": newSpec}
