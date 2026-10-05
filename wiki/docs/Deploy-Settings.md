@@ -279,6 +279,10 @@ An obsolete stack is also kept if
 - it is redeployed while doco-cd removes obsolete stacks, or
 - a [sync window](Advanced/Sync-Windows.md) blocks the removal.
 
+When several references scan the same directory, the newer-commit guard uses the scan of the stack's deployed
+reference, not an older scan of a different reference. Missing reference metadata, or no current scan of the
+deployed reference, retains the conservative ancestry guard. All covering configs must still permit removal.
+
 Reconciliation uses the latest request's discovery ownership and removal settings, even when a webhook filter or
 sync window defers deployment. Recovery of a deferred stack still uses its previously deployed config and source.
 

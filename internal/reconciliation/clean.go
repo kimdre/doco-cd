@@ -200,6 +200,7 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	}
 
 	deployed := labels[docker.DocoCDLabels.Deployment.CommitSHA]
+	deployedReference := labels[docker.DocoCDLabels.Deployment.TargetRef]
 
 	owners := c.owners(labels[docker.DocoCDLabels.Deployment.WorkingDir])
 	if len(owners) == 0 {
@@ -220,6 +221,10 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	}
 
 	policy := deployConfig.AutoDiscoveryConfig{Delete: true, RemoveVolumes: true, RemoveImages: true}
+	hasReferenceOwner := slices.ContainsFunc(owners, func(owner deployConfig.AutoDiscoveryOrigin) bool {
+		return strings.TrimSpace(owner.Reference) != "" && strings.TrimSpace(deployedReference) != "" &&
+			cleanupRevisionApplies(owner.Reference, deployedReference)
+	})
 
 	for _, owner := range owners {
 		if !stages.WebhookEventFilterMatches(c.req.JobTrigger, owner.WebhookEventFilter, c.req.Payload) {
@@ -229,7 +234,8 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 			return deployConfig.AutoDiscoveryConfig{}, false
 		}
 
-		if stages.IsStaleRevision(owner.MirrorDir, owner.Revision, deployed, c.ancestry, stackLog) {
+		if (!hasReferenceOwner || cleanupRevisionApplies(owner.Reference, deployedReference)) &&
+			stages.IsStaleRevision(owner.MirrorDir, owner.Revision, deployed, c.ancestry, stackLog) {
 			return deployConfig.AutoDiscoveryConfig{}, false
 		}
 
@@ -245,6 +251,16 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	}
 
 	return policy, true
+}
+
+// Missing reference metadata retains the conservative ancestry guard used by
+// older deployments. Known, different references do not establish staleness.
+func cleanupRevisionApplies(reference, deployedReference string) bool {
+	reference = strings.TrimSpace(reference)
+	deployedReference = strings.TrimSpace(deployedReference)
+
+	return reference == "" || deployedReference == "" ||
+		git.ReferenceMatches(reference, deployedReference) || git.ReferenceMatches(deployedReference, reference)
 }
 
 // owners returns the auto-discovery configs that scan workingDir, the working directory of a stack.
