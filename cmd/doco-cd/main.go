@@ -134,10 +134,10 @@ func detectDataMountPoint(
 }
 
 func main() {
-	// The container healthcheck runs this binary every 30 seconds, so keep it
-	// independent of the configuration and setup done in run().
+	// Kept for existing healthcheck configurations. The image runs the smaller
+	// /healthcheck binary instead, see cmd/healthcheck.
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		if err := runHealthcheck(context.Background(), os.LookupEnv); err != nil {
+		if err := healthcheck.Run(context.Background(), os.LookupEnv); err != nil {
 			os.Exit(1)
 		}
 
@@ -151,36 +151,6 @@ func main() {
 	}
 
 	slog.Info("application stopped normally")
-}
-
-// runHealthcheck checks the health endpoint of the running server. It only
-// reads the environment variables it needs, so it stays cheap and works even
-// when unrelated settings (e.g. secret files) cannot be loaded.
-func runHealthcheck(ctx context.Context, lookupEnv func(string) (string, bool)) error {
-	logLevel := slog.LevelInfo
-
-	if value, ok := lookupEnv("LOG_LEVEL"); ok {
-		if level, err := logger.ParseLevel(value); err == nil {
-			logLevel = level
-		}
-	}
-
-	log := logger.New(logLevel)
-
-	target, err := healthcheck.TargetFromEnv(lookupEnv, api.HealthPath)
-	if err != nil {
-		log.Log(ctx, logger.LevelCritical, "health check failed", logger.ErrAttr(err))
-		return err
-	}
-
-	if err = healthcheck.Check(ctx, target.URL, target.SkipTLSVerify); err != nil {
-		log.Log(ctx, logger.LevelCritical, "health check failed", logger.ErrAttr(err), slog.String("url", target.URL))
-		return err
-	}
-
-	log.InfoContext(ctx, "health check successful", slog.String("url", target.URL))
-
-	return nil
 }
 
 // run is the main entry point for the application.

@@ -5,13 +5,50 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 const defaultHTTPPort = 80
+
+// Path is the health endpoint of the doco-cd server.
+const Path = "/v1/health"
+
+// Run checks the health endpoint of the server running in the same container.
+// It only reads HTTP_PORT, HTTP_TLS_CERT_FILE, HTTP_TLS_KEY_FILE and LOG_LEVEL,
+// so it stays cheap and works even when unrelated settings (e.g. secret files)
+// cannot be loaded.
+func Run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
+	logLevel := slog.LevelInfo
+
+	if value, ok := lookupEnv("LOG_LEVEL"); ok {
+		if level, err := logger.ParseLevel(value); err == nil {
+			logLevel = level
+		}
+	}
+
+	log := logger.New(logLevel)
+
+	target, err := TargetFromEnv(lookupEnv, Path)
+	if err != nil {
+		log.Log(ctx, logger.LevelCritical, "health check failed", logger.ErrAttr(err))
+		return err
+	}
+
+	if err = Check(ctx, target.URL, target.SkipTLSVerify); err != nil {
+		log.Log(ctx, logger.LevelCritical, "health check failed", logger.ErrAttr(err), slog.String("url", target.URL))
+		return err
+	}
+
+	log.InfoContext(ctx, "health check successful", slog.String("url", target.URL))
+
+	return nil
+}
 
 // Target is the local health endpoint of the running server.
 type Target struct {
