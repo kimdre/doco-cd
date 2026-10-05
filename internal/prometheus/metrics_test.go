@@ -10,7 +10,6 @@ import (
 	"time"
 
 	clientPrometheus "github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -38,7 +37,7 @@ func TestServe(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	handler := promhttp.Handler()
+	handler := Handler()
 	handler.ServeHTTP(rr, req)
 
 	if status := rr.Code; status != expectedStatusCode {
@@ -81,7 +80,7 @@ func TestDeploymentMetricsIncludeContextLabel(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	promhttp.Handler().ServeHTTP(rr, req)
+	Handler().ServeHTTP(rr, req)
 
 	linePattern := regexp.MustCompile(`doco_cd_deployments_total\{[^}]*context="remote"[^}]*deployment="test-stack"[^}]*repository="github.com/example/repo"[^}]*\}\s+1`)
 	if !linePattern.MatchString(rr.Body.String()) {
