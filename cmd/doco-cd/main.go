@@ -139,6 +139,7 @@ func main() {
 	// compatibility path for existing healthcheck configurations.
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		slog.Warn("'/doco-cd healthcheck' is deprecated; use '/healthcheck' instead")
+
 		if err := healthcheck.Run(context.Background(), os.LookupEnv); err != nil {
 			os.Exit(1)
 		}
