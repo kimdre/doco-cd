@@ -12,3 +12,27 @@ Dockerfile
 *compose*.yaml
 .dockerignore
 Makefile
+
+# Not needed to build the binaries. Excluding them keeps the build context small
+# and stops unrelated changes (docs, tests, CI) from invalidating the Go build step,
+# since the sources are bind-mounted from the context.
+.github/
+examples/
+out/
+**/*.md
+**/*_test.go
+LICENSE
+CODEOWNERS
+codecov.yml
+renovate.json
+.golangci.yaml
+.editorconfig
+.gitignore
+.gitmodules
+
+# Local secrets and test fixtures that must never end up in a build
+.env
+*.env
+ed25519
+ed25519.pub
+docker-config.json

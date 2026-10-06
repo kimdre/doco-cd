@@ -25,8 +25,7 @@ services:
     # The health gate decides whether the new version is kept. Without a
     # healthcheck doco-cd falls back to running `doco-cd healthcheck` inside
     # the new container, which is slower and less precise.
-    healthcheck:
-      test: ["CMD", "/doco-cd", "healthcheck"]
+    healthcheck: # runs the image's built-in /healthcheck command
       interval: 10s
       timeout: 5s
       start_period: 15s
