@@ -255,6 +255,10 @@ func (h *Handler) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request
 		}
 
 		if errors.Is(err, docker.ErrComposeSourceRevisionConflict) {
+			jobLog.With(
+				logger.ErrAttr(err),
+				slog.String("project", projectName),
+			).Warn("project recreation blocked by source revision conflict")
 			restapi.JSONError(w, err.Error(), "", jobID, http.StatusConflict)
 
 			return

@@ -11,6 +11,7 @@ import (
 	"github.com/docker/cli/cli/command"
 
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
@@ -65,6 +66,7 @@ type ProjectAction struct {
 	projectName string
 	action      string
 	message     string
+	lockKey     string
 	execute     func(context.Context, time.Duration, *slog.Logger) error
 }
 
@@ -113,12 +115,15 @@ func DestroyProject(
 func RunProjectAction(
 	ctx context.Context,
 	dockerCLI command.Cli,
+	contextName string,
 	projectName string,
 	action string,
 	timeoutSeconds int,
 	log *slog.Logger,
 ) (ProjectActionResult, error) {
-	operation, err := ResolveProjectAction(ctx, dockerCLI, projectName, action, ProjectActionOptions{})
+	operation, err := ResolveProjectAction(ctx, dockerCLI, projectName, action, ProjectActionOptions{
+		Context: contextName,
+	})
 	if err != nil {
 		return ProjectActionResult{}, err
 	}
@@ -132,7 +137,11 @@ func ResolveProjectAction(ctx context.Context, dockerCLI command.Cli, projectNam
 		return ProjectAction{}, err
 	}
 
-	operation := ProjectAction{projectName: projectName, action: action}
+	operation := ProjectAction{
+		projectName: projectName,
+		action:      action,
+		lockKey:     lock.StackKey(opts.Context, projectName),
+	}
 
 	switch action {
 	case "start":
@@ -179,6 +188,13 @@ func ExecuteProjectAction(ctx context.Context, operation ProjectAction, timeoutS
 	timeout, err := projectActionTimeout(timeoutSeconds)
 	if err != nil {
 		return ProjectActionResult{}, err
+	}
+
+	// RecreateProject takes this lock itself while it resolves the deployed
+	// source revision. Other lifecycle actions must serialize with deployments.
+	if operation.action != "recreate" {
+		lock.LockStack(operation.lockKey)
+		defer lock.UnlockStack(operation.lockKey)
 	}
 
 	if err := operation.execute(ctx, timeout, log); err != nil {

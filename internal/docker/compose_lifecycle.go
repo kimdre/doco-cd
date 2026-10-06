@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,8 +21,10 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/store"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -411,6 +416,25 @@ func recreateManagedProject(
 	}
 	defer unlockSource()
 
+	legacyWorkingDir := ref.WorkingDir
+
+	ref, err = migrateLegacyRecreateRef(ctx, ref, labels, sourceRepoPath, sourceType, opts.ComposeLoad)
+	if err != nil {
+		return err
+	}
+
+	if ref.WorkingDir != legacyWorkingDir {
+		// The legacy reload lock holds the GC gate, but not the artifact lock.
+		// Protect the newly published snapshot for the rest of this recreation.
+		artifactRoot, _, found := artifactAndStoreFromWorkingDir(ref.WorkingDir, opts.ComposeLoad.DataMountPath)
+		if !found {
+			return fmt.Errorf("%w: cannot locate migrated artifact for project %s", ErrComposeSourceRevisionConflict, ref.Project)
+		}
+
+		unlockArtifact := sourcecache.AcquirePathLock(artifactRoot)
+		defer unlockArtifact()
+	}
+
 	if err := validateManagedRecreateRevision(ref, labels, sourceRepoPath, sourceType); err != nil {
 		return err
 	}
@@ -471,6 +495,127 @@ func recreateManagedProject(
 	}
 
 	return nil
+}
+
+// migrateLegacyRecreateRef moves a legacy Git deployment to its exact deployed
+// artifact, exporting it from the migrated mirror if it has never been published.
+// It must be called while holding the source store's shared GC gate.
+func migrateLegacyRecreateRef(
+	ctx context.Context,
+	ref composeScheduledServiceRef,
+	labels map[string]string,
+	sourceRepoPath string,
+	sourceType config.SourceType,
+	loadOpts ComposeLoadOptions,
+) (composeScheduledServiceRef, error) {
+	if sourceType != config.SourceTypeGit {
+		return ref, nil
+	}
+
+	if _, _, found := artifactAndStoreFromWorkingDir(ref.WorkingDir, loadOpts.DataMountPath); found {
+		return ref, nil
+	}
+
+	legacyRoot := sourceRepoPath
+	if !filesystem.InBasePath(legacyRoot, ref.WorkingDir) && loadOpts.DataHostPath != "" {
+		if hostRoot, ok := rebasePath(sourceRepoPath, loadOpts.DataMountPath, loadOpts.DataHostPath); ok {
+			legacyRoot = hostRoot
+		}
+	}
+
+	if !filesystem.InBasePath(legacyRoot, ref.WorkingDir) {
+		// DATA_HOST_PATH is optional. Startup creates a host-to-container
+		// symlink for auto-detected mounts; retain that host spelling for Docker.
+		resolvedSourceRepoPath, err := filepath.EvalSymlinks(sourceRepoPath)
+		if err != nil {
+			resolvedSourceRepoPath = filepath.Clean(sourceRepoPath)
+		}
+
+		for candidate := filepath.Clean(ref.WorkingDir); candidate != filepath.Dir(candidate); candidate = filepath.Dir(candidate) {
+			resolved, err := filepath.EvalSymlinks(candidate)
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					continue
+				}
+
+				return ref, fmt.Errorf("%w: resolve legacy working directory for project %s: %w", ErrComposeSourceRevisionConflict, ref.Project, err)
+			}
+
+			if resolved == resolvedSourceRepoPath {
+				legacyRoot = candidate
+				break
+			}
+		}
+	}
+
+	if !filesystem.InBasePath(legacyRoot, ref.WorkingDir) {
+		// A repository_url override may deploy from a different store.
+		// Do not migrate it using the config source's mirror.
+		return ref, nil
+	}
+
+	if _, _, found := store.ArtifactRoot(legacyRoot, ref.WorkingDir); found {
+		return ref, nil
+	}
+
+	expected := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
+	if expected == "" {
+		return ref, fmt.Errorf("%w: project %s has no deployed revision; run a normal deployment with force_recreate: true",
+			ErrComposeSourceRevisionConflict, ref.Project)
+	}
+
+	gitStore, err := store.NewGitStore(store.GitStoreOptions{
+		CloneURL:                ref.RepositoryURL,
+		BaseDir:                 sourceRepoPath,
+		SSHPrivateKey:           loadOpts.SSHPrivateKey,
+		SSHPrivateKeyPassphrase: loadOpts.SSHPrivateKeyPassphrase,
+		AccessToken:             loadOpts.GitAccessToken,
+		SkipTLSVerify:           loadOpts.SkipTLSVerify,
+		ProxyOptions:            loadOpts.HttpProxy,
+		CloneSubmodules:         loadOpts.GitCloneSubmodules,
+		Depth:                   loadOpts.GitCloneDepth,
+	})
+	if err != nil {
+		return ref, fmt.Errorf("%w: open cached Git source for project %s: %w", ErrComposeSourceRevisionConflict, ref.Project, err)
+	}
+
+	// Publish only reads the cached commit; it never advances the deployment
+	// to the branch's latest revision or copies stale legacy working-tree files.
+	artifact, err := gitStore.Publish(ctx, store.Revision(expected))
+	if err != nil {
+		return ref, fmt.Errorf("%w: publish deployed revision %s for project %s: %w; run a normal deployment with force_recreate: true",
+			ErrComposeSourceRevisionConflict, expected, ref.Project, err)
+	}
+
+	hostArtifactRoot, ok := rebasePath(artifact.Path, sourceRepoPath, legacyRoot)
+	if !ok {
+		return ref, fmt.Errorf("%w: artifact for project %s is outside its source store", ErrComposeSourceRevisionConflict, ref.Project)
+	}
+
+	workingDir, ok := rebasePath(ref.WorkingDir, legacyRoot, hostArtifactRoot)
+	if !ok {
+		return ref, fmt.Errorf("%w: working directory for project %s is outside its source store", ErrComposeSourceRevisionConflict, ref.Project)
+	}
+
+	ref.WorkingDir = workingDir
+	ref.SourceType = string(sourceType)
+
+	ref.ConfigFiles = slices.Clone(ref.ConfigFiles)
+	for i, path := range ref.ConfigFiles {
+		if rebased, ok := rebasePath(path, legacyRoot, hostArtifactRoot); ok {
+			ref.ConfigFiles[i] = rebased
+		}
+	}
+
+	if ref.ConfigRevision == "" {
+		ref.ConfigRevision = expected
+	}
+
+	if ref.ConfigRevision == expected {
+		ref.ConfigWorkingDir = hostArtifactRoot
+	}
+
+	return ref, nil
 }
 
 // validateManagedRecreateRevision ensures the cache still contains the deployed revision.

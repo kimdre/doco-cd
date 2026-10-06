@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -12,6 +13,9 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
+	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -140,6 +144,197 @@ compose_files:
 
 	if got := after[0].Labels[DocoCDLabels.Deployment.ConfigHash]; got != "deployed-config-hash" {
 		t.Fatalf("config hash label = %q, want deployed-config-hash", got)
+	}
+}
+
+func TestRecreateProjectManagedLegacyCheckout(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		published   bool
+		hostAlias   bool
+		hostPath    bool
+		running     bool
+		unavailable bool
+	}{
+		{name: "unpublished deployed revision"},
+		{name: "already published deployed revision", published: true},
+		{name: "auto-detected host path differs from mount path", hostAlias: true},
+		{name: "explicit host path differs from mount path", hostAlias: true, hostPath: true},
+		{name: "running legacy stack", running: true},
+		{name: "deployed revision absent from mirror", unavailable: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			dataMountPath := t.TempDir()
+			repositoryURL := "https://example.com/owner/legacy"
+			projectName := test.ConvertTestName(t.Name())
+			repoPath := filepath.Join(dataMountPath, git.GetRepoName(repositoryURL))
+			composeContent := `services:
+  web:
+    image: nginx:latest
+    labels:
+      example.com/source: committed
+    volumes:
+      - ./nginx/data/custom:/source-config:ro
+`
+			sourceRepo := createGitRepoWithCompose(t, map[string]string{
+				".doco-cd.yml":                       fmt.Sprintf("name: %s\nworking_dir: stack\ncompose_files:\n  - compose.yml\n", projectName),
+				"stack/compose.yml":                  composeContent,
+				"stack/nginx/data/custom/config.txt": "committed configuration\n",
+			})
+
+			sourceWorktree, err := sourceRepo.Worktree()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			head, err := sourceRepo.Head()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			commitSHA := head.Hash().String()
+			if tc.unavailable {
+				commitSHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+			}
+
+			// Polling may have advanced the mirror since this stack was deployed.
+			// Recreation must still use the recorded commit, not the branch tip.
+			if err := os.WriteFile(filepath.Join(sourceWorktree.Filesystem.Root(), "stack", "compose.yml"),
+				[]byte(strings.ReplaceAll(composeContent, "committed", "newer")), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := sourceWorktree.Add("stack/compose.yml"); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := sourceWorktree.Commit("advance source", &gogit.CommitOptions{
+				Author: &object.Signature{Name: "test", Email: "test@example.invalid", When: time.Now()},
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := gogit.PlainClone(repoPath, false, &gogit.CloneOptions{URL: sourceWorktree.Filesystem.Root()}); err != nil {
+				t.Fatal(err)
+			}
+
+			// Startup migration moves .git into mirror but retains the old files
+			// while containers still reference their legacy working directory.
+			if err := os.Rename(filepath.Join(repoPath, ".git"), filepath.Join(repoPath, store.MirrorSubdir)); err != nil {
+				t.Fatal(err)
+			}
+
+			gitStore, err := store.NewGitStore(store.GitStoreOptions{CloneURL: repositoryURL, BaseDir: repoPath})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if tc.published {
+				if _, err := gitStore.Publish(ctx, store.Revision(commitSHA)); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			hostDataPath := dataMountPath
+			if tc.hostAlias {
+				hostDataPath = filepath.Join(t.TempDir(), "host-data")
+				if err := os.Symlink(dataMountPath, hostDataPath); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			hostRepoPath := filepath.Join(hostDataPath, git.GetRepoName(repositoryURL))
+
+			legacyComposePath := filepath.Join(hostRepoPath, "stack", "compose.yml")
+			if err := os.WriteFile(legacyComposePath, []byte(strings.ReplaceAll(composeContent, "committed", "stale")), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			stack := test.ComposeUp(ctx, t, test.WithFile(legacyComposePath), test.WithName(projectName),
+				test.WithCustomLabel(map[string]string{
+					DocoCDLabels.Deployment.Name:       projectName,
+					DocoCDLabels.Deployment.TargetRef:  "main",
+					DocoCDLabels.Deployment.CommitSHA:  commitSHA,
+					DocoCDLabels.Deployment.ConfigHash: "deployed-config-hash",
+					DocoCDLabels.Source.Type:           string(config.SourceTypeGit),
+					DocoCDLabels.Source.Name:           "owner/legacy",
+					DocoCDLabels.Source.URL:            repositoryURL,
+				}))
+
+			beforeID := stack.ServiceContainerID(ctx, t, "web")
+			if !tc.running {
+				if err := StopProject(ctx, stack.DockerCli, projectName, 30*time.Second); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			opts := ScheduledComposeOptions{
+				ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+				DeployConfigBaseDir: "/",
+			}
+			if tc.hostPath {
+				opts.ComposeLoad.DataHostPath = hostDataPath
+			}
+
+			err = RecreateProject(ctx, "", stack.DockerCli, projectName, "", 30*time.Second, nil, opts)
+			if tc.unavailable {
+				if !errors.Is(err, ErrComposeSourceRevisionConflict) || !errors.Is(err, store.ErrRevisionNotFound) {
+					t.Fatalf("RecreateProject() error = %v, want source conflict caused by missing cached revision", err)
+				}
+
+				if got := stack.ServiceContainerID(ctx, t, "web"); got != beforeID {
+					t.Fatal("recreation replaced a container despite the missing deployed revision")
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("RecreateProject() error = %v", err)
+			}
+
+			afterID := stack.ServiceContainerID(ctx, t, "web")
+			if afterID == beforeID {
+				t.Fatal("legacy container was restarted instead of recreated")
+			}
+
+			after, err := stack.Client.ContainerInspect(ctx, afterID, client.ContainerInspectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			artifactRoot := filepath.Join(hostRepoPath, store.ArtifactsSubdir, commitSHA)
+			for key, want := range map[string]string{
+				api.WorkingDirLabel:                  filepath.Join(artifactRoot, "stack"),
+				api.ConfigFilesLabel:                 filepath.Join(artifactRoot, "stack", "compose.yml"),
+				DocoCDLabels.Deployment.WorkingDir:   filepath.Join(artifactRoot, "stack"),
+				DocoCDLabels.Deployment.CommitSHA:    commitSHA,
+				DocoCDLabels.Deployment.ConfigHash:   "deployed-config-hash",
+				DocoCDLabels.Source.ConfigRevision:   commitSHA,
+				DocoCDLabels.Source.ConfigWorkingDir: artifactRoot,
+				"example.com/source":                 "committed",
+			} {
+				if got := after.Container.Config.Labels[key]; got != want {
+					t.Errorf("label %q = %q, want %q", key, got, want)
+				}
+			}
+
+			wantMount := filepath.Join(artifactRoot, "stack", "nginx", "data", "custom")
+			if len(after.Container.Mounts) != 1 || after.Container.Mounts[0].Source != wantMount {
+				t.Fatalf("bind mounts = %#v, want source %s", after.Container.Mounts, wantMount)
+			}
+
+			if !after.Container.State.Running {
+				t.Fatal("recreated container is not running")
+			}
+
+			if tc.published {
+				if err := RecreateProject(ctx, "", stack.DockerCli, projectName, "web", 30*time.Second, nil, opts); err != nil {
+					t.Fatalf("recreating the migrated service again failed: %v", err)
+				}
+			}
+		})
 	}
 }
 

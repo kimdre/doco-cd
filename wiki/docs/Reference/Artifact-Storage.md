@@ -171,6 +171,14 @@ To remove the old files sooner, redeploy the listed stacks, e.g. by temporarily 
 [`force_recreate: true`](../Deploy-Settings.md#available-settings) in their deploy configs, and remove containers that no longer belong to any stack.
 The old files are then removed after the next deployment from the repository or the next restart of Doco-CD.
 
+For Git stacks deployed from the same repository as their deployment config, you can also call
+[`POST /v1/api/project/{projectName}/recreate`](../Endpoints/REST-API.md#force-recreate-all-services-in-a-compose-project)
+directly, without stopping the stack first. Recreation moves the stack to the artifact of its **deployed commit**,
+exporting that commit from the cached mirror if necessary. It does not fetch or deploy the latest branch revision.
+If the deployed commit is no longer cached, the API returns `409 Conflict`; use a normal deployment with
+`#!yaml force_recreate: true` instead. A stop/recreate sequence is unnecessary and does not prevent polling or reconciliation
+from starting the stopped stack between requests.
+
 !!! warning
     Remove `force_recreate` again once the stacks have been redeployed. Otherwise, they are recreated on every deployment, including every poll.
 
