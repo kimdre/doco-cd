@@ -232,6 +232,26 @@ func TestRun_LeavesFreshInstallUntouched(t *testing.T) {
 	}
 }
 
+func TestRun_LeavesTombstonesUntouched(t *testing.T) {
+	dataDir := t.TempDir()
+
+	// A tombstone of an evicted legacy store would look like a repository to migrate.
+	tomb := filepath.Join(dataDir, sourcecache.TombstoneDirName, "20260101T000000Z-1", "github.com", "owner", "repo")
+	initLegacyCheckout(t, tomb)
+
+	if err := Run(t.Context(), nil, &migrationTestClient{}, dataDir); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(tomb, ".git")); err != nil {
+		t.Fatalf("tombstone was migrated: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(tomb, store.MirrorSubdir)); !os.IsNotExist(err) {
+		t.Fatalf("tombstone got a mirror, stat err = %v", err)
+	}
+}
+
 // TestRun_PreservesLiveSourceLockFile guards the reason migration must not
 // touch "<repoDir>.lock": source.Prepare acquires exactly that path's lock
 // on every deployment, for Git and OCI sources alike, so the file is live

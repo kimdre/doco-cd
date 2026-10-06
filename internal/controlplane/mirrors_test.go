@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/git"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
@@ -451,5 +453,145 @@ func TestFormatBytes(t *testing.T) {
 		if got := formatBytes(n); got != want {
 			t.Errorf("formatBytes(%d) = %q, want %q", n, got, want)
 		}
+	}
+}
+
+func TestTriggerMirrorCompactionHoldsSourceStoreGates(t *testing.T) {
+	t.Parallel()
+
+	errGate := errors.New("gate unavailable")
+
+	owners := map[string]string{
+		testMirrors[0].Path: "/data/github.com/owner/a",
+		testMirrors[1].Path: "/data/github.com/owner/a",
+		testMirrors[2].Path: "/data/github.com/owner/b",
+	}
+
+	var (
+		mu       sync.Mutex
+		held     = map[string]bool{}
+		acquired []string
+	)
+
+	compactor := &recordingCompactor{}
+	tracker := newDeploymentRunTracker(nil)
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		tracker:    tracker,
+		storageDir: "/data",
+		listMirrors: func(string) ([]store.Mirror, error) {
+			mirrors := slices.Clone(testMirrors)
+			for i := range mirrors {
+				mirrors[i].Owner = owners[mirrors[i].Path]
+			}
+
+			return mirrors, nil
+		},
+		compactMirror: func(ctx context.Context, log *slog.Logger, path string, opts git.MirrorCompactOptions) (git.MirrorCompaction, error) {
+			mu.Lock()
+			owner := owners[path]
+			isHeld := held[owner]
+			mu.Unlock()
+
+			if !isHeld {
+				t.Errorf("compacted %s without holding the gate of %s", path, owner)
+			}
+
+			return compactor.compact(ctx, log, path, opts)
+		},
+		acquireMirror: func(mirror store.Mirror) (func(), error) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			acquired = append(acquired, mirror.Owner)
+
+			if mirror.Owner == "/data/github.com/owner/b" {
+				return nil, errGate
+			}
+
+			held[mirror.Owner] = true
+
+			return func() {
+				mu.Lock()
+				defer mu.Unlock()
+
+				held[mirror.Owner] = false
+			}, nil
+		},
+	})
+
+	jobID, err := runs.TriggerMirrorCompaction(t.Context(), "", MirrorCompactionRequest{}, true)
+
+	var failed *MirrorCompactionsFailedError
+	if !errors.As(err, &failed) || failed.Failed != 1 || failed.Total != 3 || !errors.Is(err, errGate) {
+		t.Fatalf("TriggerMirrorCompaction() error = %v, want 1/3 failed with the gate error", err)
+	}
+
+	if want := []string{"/data/github.com/owner/a", "/data/github.com/owner/a", "/data/github.com/owner/b"}; !slices.Equal(acquired, want) {
+		t.Fatalf("acquired gates %v, want %v", acquired, want)
+	}
+
+	if len(compactor.calls) != 2 || compactor.calls[0].path != testMirrors[0].Path || compactor.calls[1].path != testMirrors[1].Path {
+		t.Fatalf("compacted %+v, want only the mirrors whose gate was acquired", compactor.calls)
+	}
+
+	if held["/data/github.com/owner/a"] {
+		t.Fatal("gate still held after the compaction run")
+	}
+
+	run, _ := tracker.Get(jobID)
+	if want := "repack of 3 mirrors: 2 compacted, 1 failed; packfiles 600 B -> 200 B"; run.Status != RunStatusFailed || run.Message != want {
+		t.Fatalf("run = %#v, want failed run with message %q", run, want)
+	}
+}
+
+// Not parallel: it registers the source root.
+func TestCompactMirrorExcludesSourceEviction(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Cleanup(sourcecache.SetSourceRoot(dataDir))
+
+	owner := filepath.Join(dataDir, "github.com", "owner", "a")
+	mirror := store.Mirror{Repository: "github.com/owner/a", Path: filepath.Join(owner, store.MirrorSubdir), Owner: owner}
+
+	if err := os.MkdirAll(mirror.Path, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	storage := newControlPlaneStorage(dataDir)
+	storage.compact = func(context.Context, *slog.Logger, string, git.MirrorCompactOptions) (git.MirrorCompaction, error) {
+		// An active compaction must not lose its mirror to source eviction.
+		if release, acquired, err := sourcecache.TryAcquireSourceEvictionLock(owner); err != nil || acquired {
+			if release != nil {
+				release()
+			}
+
+			t.Errorf("TryAcquireSourceEvictionLock() during compaction = %t, %v, want busy", acquired, err)
+		}
+
+		return git.MirrorCompaction{Result: git.MirrorCompactionCompacted}, nil
+	}
+
+	if _, err := storage.compactMirror(t.Context(), slog.Default(), mirror, git.MirrorCompactOptions{Mode: git.MirrorCompactionRepack}); err != nil {
+		t.Fatalf("compactMirror() error = %v", err)
+	}
+
+	release, acquired, err := sourcecache.TryAcquireSourceEvictionLock(owner)
+	if err != nil || !acquired {
+		t.Fatalf("TryAcquireSourceEvictionLock() after compaction = %t, %v, want acquired", acquired, err)
+	}
+
+	release()
+
+	// A store evicted after the mirror was listed is reported, not recreated.
+	if err := os.RemoveAll(owner); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := storage.compactMirror(t.Context(), slog.Default(), mirror, git.MirrorCompactOptions{Mode: git.MirrorCompactionRepack})
+	if !errors.Is(err, errMirrorRemoved) || result.Result != git.MirrorCompactionFailed {
+		t.Fatalf("compactMirror(evicted) = %+v, %v, want a failure for the removed mirror", result, err)
+	}
+
+	if _, err := os.Stat(owner); !os.IsNotExist(err) {
+		t.Fatalf("compactMirror(evicted) recreated the store, stat err = %v", err)
 	}
 }

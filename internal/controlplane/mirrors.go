@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/git"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
@@ -107,10 +110,15 @@ func (e *MirrorCompactionsFailedError) Unwrap() error {
 	return e.Cause
 }
 
+// errMirrorRemoved reports a mirror whose source store was evicted after it was listed.
+var errMirrorRemoved = errors.New("mirror was removed")
+
 type controlPlaneStorage struct {
 	dir         string
 	listMirrors func(dataDir string) ([]store.Mirror, error)
 	compact     func(ctx context.Context, log *slog.Logger, path string, opts git.MirrorCompactOptions) (git.MirrorCompaction, error)
+	// acquireMirror keeps a mirror's source store from being evicted until the returned function is called.
+	acquireMirror func(mirror store.Mirror) (func(), error)
 
 	mu sync.Mutex
 	// activeCompaction is the job ID of the compaction run in progress, if any.
@@ -119,10 +127,36 @@ type controlPlaneStorage struct {
 
 func newControlPlaneStorage(dir string) *controlPlaneStorage {
 	return &controlPlaneStorage{
-		dir:         dir,
-		listMirrors: store.ListMirrors,
-		compact:     git.CompactMirror,
+		dir:           dir,
+		listMirrors:   store.ListMirrors,
+		compact:       git.CompactMirror,
+		acquireMirror: acquireMirrorStore,
 	}
+}
+
+// acquireMirrorStore holds the GC gate of the source store that owns mirror, without counting the compaction as a
+// use of the store, and fails if the mirror no longer exists.
+func acquireMirrorStore(mirror store.Mirror) (func(), error) {
+	if mirror.Owner == "" {
+		return nil, fmt.Errorf("mirror %s has no source store", mirror.Path)
+	}
+
+	release, err := sourcecache.AcquireSharedSourceMaintenanceLock(mirror.Owner)
+	if err != nil {
+		return nil, fmt.Errorf("acquire source GC lock: %w", err)
+	}
+
+	if _, err := os.Lstat(mirror.Path); err != nil {
+		release()
+
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("%w: %s", errMirrorRemoved, mirror.Path)
+		}
+
+		return nil, err
+	}
+
+	return release, nil
 }
 
 // mirrors returns the mirrors of repository, or all mirrors if it is empty.
@@ -246,6 +280,35 @@ func (c *Runs) TriggerMirrorCompaction(ctx context.Context, jobID string, req Mi
 	return jobID, err
 }
 
+// compactMirror compacts mirror while holding its source store's GC gate, so the store cannot be evicted meanwhile.
+func (s *controlPlaneStorage) compactMirror(ctx context.Context, log *slog.Logger, mirror store.Mirror, opts git.MirrorCompactOptions) (git.MirrorCompaction, error) {
+	release, err := s.acquireMirror(mirror)
+	if err != nil {
+		log.Warn("failed to compact git mirror",
+			slog.String("repository", mirror.Repository),
+			slog.String("path", mirror.Path),
+			slog.Any("error", err))
+
+		return failedMirrorCompaction(mirror, opts.Mode), err
+	}
+	defer release()
+
+	return s.compact(ctx, log, mirror.Path, opts)
+}
+
+func failedMirrorCompaction(mirror store.Mirror, mode git.MirrorCompactionMode) git.MirrorCompaction {
+	return git.MirrorCompaction{
+		Repository:      mirror.Repository,
+		Path:            mirror.Path,
+		PacksBefore:     -1,
+		PacksAfter:      -1,
+		SizeBytes:       -1,
+		Mode:            mode,
+		Result:          git.MirrorCompactionFailed,
+		SizeBytesBefore: -1,
+	}
+}
+
 // compactMirrors compacts mirrors one after another and summarizes the results.
 func (c *Runs) compactMirrors(ctx context.Context, log *slog.Logger, mirrors []store.Mirror, opts git.MirrorCompactOptions) (RunResult, error) {
 	log.Info("compacting git mirrors",
@@ -273,16 +336,7 @@ func (c *Runs) compactMirrors(ctx context.Context, log *slog.Logger, mirrors []s
 				slog.String("path", mirror.Path),
 				slog.Any("error", mirror.Err))
 
-			summary.add(git.MirrorCompaction{
-				Repository:      mirror.Repository,
-				Path:            mirror.Path,
-				PacksBefore:     -1,
-				PacksAfter:      -1,
-				SizeBytes:       -1,
-				Mode:            opts.Mode,
-				Result:          git.MirrorCompactionFailed,
-				SizeBytesBefore: -1,
-			})
+			summary.add(failedMirrorCompaction(mirror, opts.Mode))
 
 			if cause == nil {
 				cause = mirror.Err
@@ -291,7 +345,7 @@ func (c *Runs) compactMirrors(ctx context.Context, log *slog.Logger, mirrors []s
 			continue
 		}
 
-		result, err := c.storage.compact(ctx, log, mirror.Path, opts)
+		result, err := c.storage.compactMirror(ctx, log, mirror, opts)
 		if err != nil && result.Result == "" {
 			result.Result = git.MirrorCompactionFailed
 		}

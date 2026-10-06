@@ -63,6 +63,14 @@ Garbage collection only removes unreferenced immutable artifacts according to th
 Shared source directories, Git mirrors, submodule mirrors and mutable `live/` data are not removed by the sweeper.
 Destroying a stack also keeps its shared source directory; see [Source directory retention](Reference/Artifact-Storage.md#source-directory-retention).
 
+### Source Garbage Collection Settings
+
+| Key                       | Type     | Description                                                                                                                     | Default |
+|---------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------|---------|
+| `SOURCE_GC_ENABLED`       | boolean  | Enable cleanup of unused source caches. See [Source garbage collection](Reference/Artifact-Storage.md#source-garbage-collection). | `false` |
+| `SOURCE_GC_INTERVAL`      | duration | Time between sweeps. The first sweep runs one interval after startup. Minimum: `1m`. Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration). | `1h`    |
+| `SOURCE_GC_RETENTION_TTL` | duration | Minimum idle time before eviction. Minimum: `1h`. Accepts a [Go duration](https://pkg.go.dev/time#ParseDuration). | `168h`  |
+
 ## OCI Registry Settings
 
 | Key                       | Type | Description                                                                                                                                                                                                                                | Default                    |

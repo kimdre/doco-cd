@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 
 	"github.com/kimdre/doco-cd/internal/git"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
 // maxRepoSearchDepth bounds how deep below the data directory a store base
@@ -33,7 +34,8 @@ var repoRootMarkers = []string{ArtifactsSubdir, MirrorSubdir}
 // directories are found by walking - the same way internal/migration locates
 // legacy repository roots - and recognizing a directory that holds an
 // "artifacts" or "mirror" subdirectory. Descent stops at a base directory, so
-// artifact contents are never walked, and unreadable subtrees are skipped.
+// artifact contents are never walked, and unreadable subtrees are skipped, as
+// are the tombstones of evicted stores (see sourcecache.TombstoneDirName).
 func ListRepositoryDirs(dataDir string) ([]string, error) {
 	if _, err := os.Stat(dataDir); err != nil {
 		if os.IsNotExist(err) {
@@ -44,6 +46,8 @@ func ListRepositoryDirs(dataDir string) ([]string, error) {
 	}
 
 	var dirs []string
+
+	tombstones := filepath.Join(dataDir, sourcecache.TombstoneDirName)
 
 	err := filepath.WalkDir(dataDir, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -57,6 +61,10 @@ func ListRepositoryDirs(dataDir string) ([]string, error) {
 
 		if !d.IsDir() || path == dataDir {
 			return nil
+		}
+
+		if path == tombstones {
+			return filepath.SkipDir
 		}
 
 		if isRepoRoot(path) {
@@ -98,6 +106,10 @@ type Mirror struct {
 	// Path is the mirror's directory, or the directory that could not be
 	// listed if Err is set.
 	Path string
+	// Owner is the base directory of the store whose GC gate protects the
+	// mirror: the store itself, or for a Compose Git include store the store
+	// that published the artifacts it is nested in.
+	Owner string
 	// Err reports why the mirror could not be inspected, e.g. an unreadable
 	// configuration.
 	Err error
@@ -117,8 +129,15 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 
 	var mirrors []Mirror
 
+	// owners maps every root to the store whose GC gate protects it.
+	owners := make(map[string]string, len(roots))
+	for _, root := range roots {
+		owners[root] = root
+	}
+
 	for i := 0; i < len(roots); i++ {
 		root := roots[i]
+		owner := owners[root]
 
 		// Compose places include stores next to the published revision. Only
 		// inspect that cache, never descend into arbitrary artifact contents.
@@ -126,12 +145,13 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 
 		includes, err := os.ReadDir(cacheDir)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			mirrors = append(mirrors, Mirror{Path: cacheDir, Err: fmt.Errorf("list compose git mirrors: %w", err)})
+			mirrors = append(mirrors, Mirror{Path: cacheDir, Owner: owner, Err: fmt.Errorf("list compose git mirrors: %w", err)})
 		}
 
 		for _, entry := range includes {
 			if dir := filepath.Join(cacheDir, entry.Name()); entry.IsDir() && isRepoRoot(dir) {
 				roots = append(roots, dir)
+				owners[dir] = owner
 			}
 		}
 
@@ -143,7 +163,7 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 
 			switch {
 			case err != nil:
-				mirror := Mirror{Path: mirrorDir, Err: err}
+				mirror := Mirror{Path: mirrorDir, Owner: owner, Err: err}
 
 				// Other stores' base directories are their repository's name below
 				// the data directory, which still lets a filter select the mirror.
@@ -155,7 +175,7 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 
 				mirrors = append(mirrors, mirror)
 			case repository != "":
-				mirrors = append(mirrors, Mirror{Repository: repository, Path: mirrorDir})
+				mirrors = append(mirrors, Mirror{Repository: repository, Path: mirrorDir, Owner: owner})
 			}
 		}
 
@@ -164,7 +184,7 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 		entries, err := os.ReadDir(submodules)
 		if err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
-				mirrors = append(mirrors, Mirror{Path: submodules, Err: fmt.Errorf("list submodule mirrors: %w", err)})
+				mirrors = append(mirrors, Mirror{Path: submodules, Owner: owner, Err: fmt.Errorf("list submodule mirrors: %w", err)})
 			}
 
 			continue
@@ -181,9 +201,9 @@ func ListMirrors(dataDir string) ([]Mirror, error) {
 
 			switch {
 			case err != nil:
-				mirrors = append(mirrors, Mirror{Path: dir, Err: err})
+				mirrors = append(mirrors, Mirror{Path: dir, Owner: owner, Err: err})
 			case repository != "":
-				mirrors = append(mirrors, Mirror{Repository: repository, Path: dir})
+				mirrors = append(mirrors, Mirror{Repository: repository, Path: dir, Owner: owner})
 			}
 		}
 	}

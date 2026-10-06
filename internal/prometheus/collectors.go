@@ -35,6 +35,7 @@ func init() {
 		McpRequestsTotal, McpErrorsTotal, McpRequestDuration,
 		GitMirrorPacks, GitMirrorSizeBytes, GitMirrorCompactionsTotal, GitMirrorCompactionDuration,
 		ArtifactGCRemovedTotal, ArtifactGCKept,
+		SourceGCEvictedTotal,
 	)
 
 	gitInternal.SetMirrorPackObserver(func(stats gitInternal.MirrorPackStats) {
@@ -265,6 +266,11 @@ var (
 		Name:      "artifact_gc_kept",
 		Help:      "Number of source artifacts kept by the last artifact garbage collector sweep",
 	}, []string{"repository"})
+	SourceGCEvictedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "source_gc_evicted_total",
+		Help:      "Total number of unused source stores whose caches were evicted by the source garbage collector",
+	})
 	/* --8<-- [end:collectors]
 	Add new collectors above this comment */
 )
