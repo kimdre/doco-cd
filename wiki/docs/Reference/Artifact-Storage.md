@@ -61,6 +61,7 @@ The source directory is organized by source type and source name, and contains t
 
     ```tree title="Example Git Source Layout"
     <DATA_MOUNT_PATH>/
+      .evicted/  # Evicted source data that is being removed, see Source garbage collection
       github.com/
         org/
           example/  # Source directory
@@ -87,8 +88,11 @@ The source directory is organized by source type and source name, and contains t
                 <stack>/
                   root/  # Live copies of the files excluded from recreation
                   manifest.json  # Files copied from the source
-            example.gc-use.lock  # Lock file for the garbage collector while the source is in use
-            example.lock  # Lock file for source-level operations
+          example.gc-use.lock  # Lock file for the garbage collectors while the source is in use
+          example.lock  # Lock file for source-level operations
+          example.tree-use.lock  # Lock file for the source garbage collector while a source nested in this path is in use
+        org.tree-use.lock
+      github.com.tree-use.lock
     ```
 
     - `mirror` is a bare Git mirror used to resolve revisions. It is never checked out directly.
@@ -114,6 +118,7 @@ The source directory is organized by source type and source name, and contains t
 
     ```tree title="Example OCI Source Layout"
     <DATA_MOUNT_PATH>/
+      .evicted/  # Evicted source data that is being removed, see Source garbage collection
       ghcr.io/
         org/
           example/  # Source directory
@@ -129,8 +134,11 @@ The source directory is organized by source type and source name, and contains t
                 <stack>/
                   root/  # Live copies of the files excluded from recreation
                   manifest.json  # Files copied from the source
-            example.gc-use.lock  # Lock file for the garbage collector while the source is in use
-            example.lock  # Lock file for source-level operations
+          example.gc-use.lock  # Lock file for the garbage collectors while the source is in use
+          example.lock  # Lock file for source-level operations
+          example.tree-use.lock  # Lock file for the source garbage collector while a source nested in this path is in use
+        org.tree-use.lock
+      ghcr.io.tree-use.lock
     ```
 
     - `artifacts/<digest>` is an immutable extraction of the OCI artifact for a
@@ -140,6 +148,9 @@ The source directory is organized by source type and source name, and contains t
       or used by a deployment.
     - `<digest>.published` identifies the directory published as `artifacts/<digest>`, see [Removed artifacts](#removed-artifacts).
     - `live/<context>/<stack>` contains the [live files](#live-files) of a stack.
+
+`<name>.gc-use.lock` records when a source was last used. The `.tree-use.lock` files shown above coordinate cleanup
+with nested source paths.
 
 ### Upgrading from v0.119.x or earlier
 
@@ -196,15 +207,52 @@ Both stop being reported for a repository if its source directory no longer exis
 
 ### Source directory retention
 
-All stacks deployed from a repository/artifact share its source directory, so destroying a stack never removes it
-(the former `destroy.remove_dir` deploy setting is deprecated and ignored).
-The garbage collector only removes unreferenced immutable artifacts under `artifacts/`, together with their
-publish records and lock files, according to the retention settings above. It does not remove whole source
-directories, Git mirrors, submodule mirrors or mutable `live/` data, even when the source is no longer deployed.
-Mutable [live files](#live-files) are not subject to artifact cache retention.
+All stacks deployed from a repository or artifact share its source directory, so destroying a stack does not remove it. 
+Artifact GC prunes unreferenced entries under `artifacts/`; it does not remove the source directory, mirrors or mutable `live/` data. 
+Enable [source garbage collection](#source-garbage-collection) to reclaim caches for unused sources.
 
-Automatic cleanup of unused whole-source directories is deferred to
-[#1981](https://github.com/kimdre/doco-cd/issues/1981).
+### Source garbage collection
+
+Source GC is disabled by default. Enable it with [`SOURCE_GC_ENABLED`](../App-Settings.md#source-garbage-collection-settings)
+to reclaim caches for sources that are no longer used.
+
+#### Eligibility
+
+A source becomes eligible after it has been unused for [`SOURCE_GC_RETENTION_TTL`](../App-Settings.md#source-garbage-collection-settings)
+and no Docker objects refer to it. Deployments, polls, scheduled job runs and auto-discovery reset its last-use time.
+
+doco-cd scans all configured Docker contexts. It checks every container (running or stopped, managed by doco-cd or not),
+plus Swarm services and tasks in any state. During a rolling update in Swarm Mode, it checks both the current and previous service
+specifications. A Docker object keeps a source if it:
+
+- mounts the source, a path inside it, or one of its parent directories, directly or through a local bind volume;
+- records one of those paths as its working directory or Compose config path in a label; or
+- has a `cd.doco.source.url` or `cd.doco.source.name` label that identifies the source.
+
+Paths at or above the data directory do not count. If doco-cd cannot inspect a context, it skips all evictions for that
+sweep.
+
+#### What gets removed
+
+GC removes only the source's `mirror/`, `submodules/` and `artifacts/` directories. Compose Git includes cached there
+go with them; shared Compose Git include caches outside source directories are left alone. The next use fetches or
+publishes the removed caches again.
+
+GC leaves `live/` and source-level lock files in place. It does not evict legacy checkouts created before _[v0.120.0](#upgrading-from-v0119x-or-earlier)_.
+It also keeps a source's caches if they contain another source or a directory that could be one, such as a GitLab group
+named `mirror`. The source directory is removed only if empty.
+
+Before deleting caches, GC moves them to `<DATA_MOUNT_PATH>/.evicted/`. The next sweep or startup removes leftovers,
+even if source GC has since been disabled. `.evicted` is a reserved source name.
+
+The first sweep runs one [`SOURCE_GC_INTERVAL`](../App-Settings.md#source-garbage-collection-settings) after startup;
+later sweeps run at that interval. Successful evictions are logged and counted by the
+`doco_cd_source_gc_evicted_total` [Prometheus metric](../Endpoints/Metrics.md).
+
+!!! warning "Retention TTL"
+    Set [`SOURCE_GC_RETENTION_TTL`](../App-Settings.md#source-garbage-collection-settings) longer than the longest poll
+    interval and the longest gap between scheduled runs. Otherwise, GC may remove a cache before the next run, so it must
+    be fetched or published again.
 
 ### Removed artifacts
 

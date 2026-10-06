@@ -73,7 +73,31 @@ const gcLockSuffix = ".gc-use"
 
 // AcquireSharedGCPathLock marks a source store as actively preparing or deploying without sharing a lock namespace with
 // source mutation locks. Unlike ordinary source locks, it fails rather than silently dropping cross-process protection.
+//
+// Below the source root (see SetSourceRoot), it also excludes the eviction of every store the path is nested in, and
+// it records the store's use for source eviction once acquired and once released (see LastSourceUse). Paths in the
+// tombstone namespace are rejected with ErrReservedSourcePath.
 func AcquireSharedGCPathLock(path string) (func(), error) {
+	return acquireSharedSourceGate(path, true)
+}
+
+// AcquireSharedSourceMaintenanceLock takes the same shared gate as AcquireSharedGCPathLock without recording a use of
+// the store, for maintenance such as manual mirror compaction that must neither race with nor delay source eviction.
+func AcquireSharedSourceMaintenanceLock(path string) (func(), error) {
+	return acquireSharedSourceGate(path, false)
+}
+
+func acquireSharedSourceGate(path string, recordUse bool) (func(), error) {
+	ancestors, err := sourceAncestors(path)
+	if err != nil {
+		return nil, err
+	}
+
+	unlockAncestors, err := acquireSharedTreeLocks(ancestors)
+	if err != nil {
+		return nil, err
+	}
+
 	key := canonicalLockKey(path + gcLockSuffix)
 
 	value, _ := repoLocks.LoadOrStore(key, &sync.RWMutex{})
@@ -83,15 +107,26 @@ func AcquireSharedGCPathLock(path string) (func(), error) {
 	unlockFile, err := acquireRequiredCrossProcessLock(key, unix.LOCK_SH)
 	if err != nil {
 		mutex.RUnlock()
+		unlockAncestors()
+
 		return nil, err
+	}
+
+	if recordUse {
+		recordSourceUse(key)
 	}
 
 	var once sync.Once
 
 	return func() {
 		once.Do(func() {
+			if recordUse {
+				recordSourceUse(key)
+			}
+
 			unlockFile()
 			mutex.RUnlock()
+			unlockAncestors()
 		})
 	}, nil
 }
@@ -323,7 +358,11 @@ func acquireRequiredCrossProcessLock(path string, mode int) (func(), error) {
 }
 
 func tryAcquireCrossProcessLock(path string) (func(), bool, error) {
-	unlock, err := acquireRequiredCrossProcessLock(path, unix.LOCK_EX|unix.LOCK_NB)
+	return tryAcquireCrossProcessLockMode(path, unix.LOCK_EX)
+}
+
+func tryAcquireCrossProcessLockMode(path string, mode int) (func(), bool, error) {
+	unlock, err := acquireRequiredCrossProcessLock(path, mode|unix.LOCK_NB)
 	if err != nil {
 		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
 			return nil, false, nil

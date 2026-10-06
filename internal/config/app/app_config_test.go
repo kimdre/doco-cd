@@ -1238,6 +1238,67 @@ func TestGetConfig_ArtifactGCRetentionRecordsRejectsNegative(t *testing.T) {
 	}
 }
 
+func TestGetConfig_SourceGCDefaults(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.SourceGCEnabled {
+		t.Fatal("expected SourceGCEnabled to default to false")
+	}
+
+	if cfg.SourceGCRetentionTTL != 168*time.Hour {
+		t.Fatalf("expected SourceGCRetentionTTL default to be 168h, got %s", cfg.SourceGCRetentionTTL)
+	}
+
+	if cfg.SourceGCInterval != time.Hour {
+		t.Fatalf("expected SourceGCInterval default to be 1h, got %s", cfg.SourceGCInterval)
+	}
+}
+
+func TestGetConfig_SourceGCEnabled(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SOURCE_GC_ENABLED", "true")
+	t.Setenv("SOURCE_GC_RETENTION_TTL", "720h")
+	t.Setenv("SOURCE_GC_INTERVAL", "6h")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if !cfg.SourceGCEnabled || cfg.SourceGCRetentionTTL != 720*time.Hour || cfg.SourceGCInterval != 6*time.Hour {
+		t.Fatalf("expected source GC enabled with TTL 720h and interval 6h, got %t, %s, %s",
+			cfg.SourceGCEnabled, cfg.SourceGCRetentionTTL, cfg.SourceGCInterval)
+	}
+}
+
+func TestGetConfig_SourceGCRejectsShortDurations(t *testing.T) {
+	for _, tt := range []struct{ name, value string }{
+		{name: "SOURCE_GC_RETENTION_TTL", value: "59m"},
+		{name: "SOURCE_GC_INTERVAL", value: "59s"},
+		{name: "SOURCE_GC_INTERVAL", value: "0"},
+	} {
+		t.Run(tt.name+"="+tt.value, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", "info")
+			t.Setenv("HTTP_PORT", "8080")
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			t.Setenv(tt.name, tt.value)
+
+			if _, err := GetConfig(); err == nil {
+				t.Fatalf("expected %s=%s to be rejected", tt.name, tt.value)
+			}
+		})
+	}
+}
+
 func TestGetConfig_ArtifactGCIntervalRejectsZero(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")

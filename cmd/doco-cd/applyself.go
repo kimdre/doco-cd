@@ -19,6 +19,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 	"github.com/kimdre/doco-cd/internal/source"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
@@ -85,6 +86,9 @@ func runApplySelf(ctx context.Context, log *logger.Logger, c *app.Config, args [
 	if err = CreateMountpointSymlink(dataMountPoint); err != nil {
 		return failBeforeApply(fmt.Errorf("create the data mount symlink: %w", err))
 	}
+
+	// Source stores used here must stay protected from a source garbage collector running in another process.
+	sourcecache.SetSourceRoot(dataMountPoint.Destination)
 
 	secretProvider, err := initApplierSecretProvider(ctx, log, c)
 	if err != nil {
@@ -181,6 +185,9 @@ func runSelfBootstrap(ctx context.Context, log *logger.Logger, c *app.Config, do
 	if err = CreateMountpointSymlink(dataMountPoint); err != nil {
 		return fmt.Errorf("create the data mount symlink: %w", err)
 	}
+
+	// Source stores used here must stay protected from a source garbage collector running in another process.
+	sourcecache.SetSourceRoot(dataMountPoint.Destination)
 
 	reconciliationManager, err := reconciliation.NewManager(reconciliation.Dependencies{
 		AppConfig:                c,

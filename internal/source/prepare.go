@@ -53,6 +53,10 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 		return Result{}, wrapPrepareError(ErrInvalidRepositoryName, fmt.Errorf("invalid repository name: %s, contains '..'", repoName))
 	}
 
+	if sourcecache.IsReservedSourceName(repoName) {
+		return Result{}, wrapPrepareError(ErrInvalidRepositoryName, fmt.Errorf("invalid repository name: %s, %w", repoName, sourcecache.ErrReservedSourcePath))
+	}
+
 	// Path inside the container.
 	internalRepoPath, err := filesystem.VerifyAndSanitizePath(
 		filepath.Join(req.DataMountPoint.Destination, repoName),

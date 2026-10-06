@@ -26,6 +26,7 @@ func TestArtifactGCMetricsAreRegistered(t *testing.T) {
 	for _, expectedName := range []string{
 		"doco_cd_artifact_gc_removed_total",
 		"doco_cd_artifact_gc_kept",
+		"doco_cd_source_gc_evicted_total",
 	} {
 		if !slices.Contains(metricNames, expectedName) {
 			t.Errorf("expected gathered metrics to contain %q", expectedName)

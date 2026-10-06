@@ -36,6 +36,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/secretprovider/openbao"
+	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/store"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 
@@ -368,6 +369,11 @@ func run() error {
 		return err
 	}
 
+	// Register the data directory before any source store is used, so the GC gates of the stores also record and
+	// protect the stores nested in each other, which the source garbage collector relies on. They do so even while
+	// it is disabled, so it knows about every nested store once it is enabled.
+	sourcecache.SetSourceRoot(dataMountPoint.Destination)
+
 	// Convert repositories using an old on-disk layout to the current store layout
 	// before anything starts reading from or writing to the data mount point.
 	// Must run here, synchronously, ahead of webhook/poll/scheduler startup.
@@ -614,6 +620,25 @@ func run() error {
 		})
 	} else {
 		log.Info("artifact garbage collector disabled by configuration")
+	}
+
+	if c.SourceGCEnabled {
+		sourceSweeper := gc.NewSourceSweeper(
+			contexts,
+			log.Logger,
+			dataMountPoint.Source,
+			dataMountPoint.Destination,
+			c.SourceGCRetentionTTL,
+			c.SourceGCInterval,
+		)
+
+		graceful.SafeGo(&wg, log.Logger, func() {
+			sourceSweeper.Start(ctx)
+		})
+	} else {
+		// Evicted source data whose removal was interrupted is removed even after eviction was disabled.
+		gc.PurgeSourceTombstones(log.Logger, dataMountPoint.Destination)
+		log.Debug("source garbage collector disabled by configuration")
 	}
 
 	apiMounts := api.Mounts{
