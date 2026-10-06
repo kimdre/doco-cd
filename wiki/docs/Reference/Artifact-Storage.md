@@ -228,7 +228,7 @@ It is disabled by default and enabled with [`#!yaml SOURCE_GC_ENABLED: true`](..
 
 A source is evicted once it has not been used for longer than
 [`SOURCE_GC_RETENTION_TTL`](../App-Settings.md#source-garbage-collection-settings) and nothing references it.
-A source is used by every deployment, poll, scheduled run and auto-discovery of its repository/artifact.
+A source is used by every deployment, poll, scheduled job run and auto-discovery of its repository/artifact.
 A source is referenced by every container (running or stopped, deployed by doco-cd or not), Swarm service
 (including its previous specification during a rolling update) and Swarm task (in any state) of every Docker context, if it
 
@@ -268,7 +268,7 @@ Every eviction is logged and counted in the `doco_cd_source_gc_evicted_total` [P
 
 !!! warning
     Set [`SOURCE_GC_RETENTION_TTL`](../App-Settings.md#source-garbage-collection-settings) well above the longest
-    poll interval and the longest time between scheduled runs. Otherwise, their sources are evicted between two uses
+    poll interval and the longest time between scheduled job runs. Otherwise, their sources are evicted between two uses
     and fetched again from scratch every time.
 
 ### Removed artifacts
