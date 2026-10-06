@@ -219,48 +219,21 @@ func sha256Hex(content []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// writeDecryptRecord stores record next to the published artifact, written to a
-// temporary file first and renamed into place so a concurrent loadPlaintextSources
-// never reads a partial record. A failure only costs reuse on the next publish,
-// so it is logged, not returned.
+// writeDecryptRecord stores record next to the published artifact, through the
+// same temp-file-and-rename path as the other artifact metadata, so a concurrent
+// loadPlaintextSources never reads a partial record. A failure only costs reuse
+// on the next publish, so it is logged, not returned.
 func writeDecryptRecord(log *slog.Logger, artifact Artifact, record decryptRecord) {
 	if len(record.Files) == 0 {
 		return
 	}
 
-	err := writeFileAtomic(artifact.Path+decryptRecordSuffix, record)
+	data, err := json.Marshal(record)
+	if err == nil {
+		err = recordArtifactMetadata(artifact.Path, decryptRecordSuffix, string(data))
+	}
+
 	if err != nil {
 		log.Warn("failed to write decrypt record", slog.String("artifact", string(artifact.Revision)), slog.Any("error", err))
 	}
-}
-
-// writeFileAtomic marshals v as JSON into a temporary sibling of path and renames it into place.
-func writeFileAtomic(path string, v any) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	tmp, err := os.CreateTemp(filepath.Dir(path), tempArtifactPrefix+filepath.Base(path)+"-*")
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = os.Remove(tmp.Name()) }()
-
-	if _, err = tmp.Write(data); err != nil {
-		_ = tmp.Close()
-
-		return err
-	}
-
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-
-	if err = os.Chmod(tmp.Name(), filesystem.PermOwner); err != nil {
-		return err
-	}
-
-	return os.Rename(tmp.Name(), path)
 }
