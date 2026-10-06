@@ -6,8 +6,9 @@ tags:
 
 # Migrating from Docker Compose
 
-Action plan to hand stacks you currently run by hand, over SSH or with Ansible over to Doco-CD.
-Read [Core Concepts](Core-Concepts.md) and [Getting Started](Getting-Started.md) first, this page only covers the migration itself.
+This guide helps you move stacks currently managed manually, through SSH, or with Ansible to Doco-CD.
+Read [Core Concepts](Core-Concepts.md) and [Getting Started](Getting-Started.md) first.
+This page focuses on the migration itself.
 
 ## What changes
 
@@ -191,13 +192,15 @@ One stack at a time, least critical first.
 
 2. Pick the adoption path.
 
-    | Situation                                                      | Steps                                                                                                                                                   |
-    |----------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-    | Same project name                                              | Commit and let Doco-CD deploy. Named volumes and absolute host paths are kept.                                                                          |
-    | Different project name, or no Compose project at all (`docker run`) | Pin every named volume to its existing name with `#!yaml name:` (`docker volume ls`), run `docker compose down` **without** `-v` on the old project, then deploy. |
+    | Situation                                   | Steps                                                                                                                                                                                     |
+    |---------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+    | Same project name                           | Commit and let Doco-CD deploy. Named volumes and absolute host paths are kept.                                                                                                            |
+    | Different project name                      | Pin every named volume to its existing name with `#!yaml name:` (`docker volume ls`), run `docker compose down` **without** `-v` on the old project, then deploy.                          |
+    | No Compose project, started with `docker run` | There is no project for `docker compose down` to remove. Pin the volumes as above, then `docker stop <container>` and `docker rm <container>` **without** `-v` for each one, then deploy. |
 
     !!! warning
-        Skipping the `docker compose down` in the second case leaves two sets of containers that fight over ports and volumes.
+        Skipping the stop and remove in the last two cases leaves two sets of containers that fight over ports, names and volumes.
+        `docker rm` without `-v` keeps named volumes and host paths, only anonymous volumes of that container are lost.
 
 3. Trigger the deployment: wait for the poll interval, push a commit to a configured webhook, or call the API.
 
@@ -245,6 +248,7 @@ One stack at a time, least critical first.
     !!! warning "Moving the branch back to an older commit is skipped"
         When the revision a run resolves to is an ancestor of the commit that is already deployed, Doco-CD treats the run as stale and skips it, so a newer state is never silently reverted.
         Use a revert commit, or set [`force_recreate`](Deploy-Settings.md#available-settings), which bypasses that guard.
+        Remove `force_recreate` again after the rollback deployment, otherwise every following deployment and poll recreates the services.
 
     Keep the old compose files and env files on the host until the stack has survived one normal change.
 
