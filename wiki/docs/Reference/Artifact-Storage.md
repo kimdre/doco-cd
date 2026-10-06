@@ -176,7 +176,7 @@ For Git stacks deployed from the same repository as their deployment config, you
 directly, without stopping the stack first. Recreation moves the stack to the artifact of its **deployed commit**,
 exporting that commit from the cached mirror if necessary. It does not fetch or deploy the latest branch revision.
 If the deployed commit is no longer cached, the API returns `409 Conflict`; use a normal deployment with
-`force_recreate: true` instead. A stop/recreate sequence is unnecessary and does not prevent polling or reconciliation
+`#!yaml force_recreate: true` instead. A stop/recreate sequence is unnecessary and does not prevent polling or reconciliation
 from starting the stopped stack between requests.
 
 !!! warning

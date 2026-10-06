@@ -328,7 +328,7 @@ There is no need to stop the project before recreating it.
 
 Managed recreation returns `409 Conflict` when the cached Git/OCI source cannot
 be verified or the deployed Git commit cannot be exported from the mirror. Run a
-normal deployment with `force_recreate: true` to refresh the source cache and
+normal deployment with `#!yaml force_recreate: true` to refresh the source cache and
 deployment metadata. To see the error response in scripts, use
 `curl --fail-with-body` rather than `curl --fail`, and check its exit status before
 reporting success.
