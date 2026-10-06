@@ -25,8 +25,9 @@ services:
       retries: 3
 ```
 
-!!! tip "Use `/healthcheck` instead of `/doco-cd healthcheck`"
-    `/doco-cd healthcheck` still works and runs the same check, but it starts the full doco-cd binary.
+!!! warning "Deprecated: `/doco-cd healthcheck`"
+    `/doco-cd healthcheck` remains available for backward compatibility, but is deprecated. Use `/healthcheck` instead.
+    The old command starts the full doco-cd binary:
     Every start runs the initialization code of all its dependencies, which keeps a large part of the binary in the page cache.
     `docker stats` counts that page cache as container memory.
     If your compose file sets `test: ["CMD", "/doco-cd", "healthcheck"]`, remove the `test` line or change it to `test: ["CMD", "/healthcheck"]`.
