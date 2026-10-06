@@ -201,7 +201,15 @@ func (h *Handler) controlProject(
 		return nil, controlProjectOutput{}, err
 	}
 
-	result, err := controlplane.RunProjectAction(ctx, contextClient.Cli, projectName, input.Action, timeout, jobLog)
+	result, err := controlplane.RunProjectAction(
+		ctx,
+		contextClient.Cli,
+		docker.NormalizeContextName(input.Context),
+		projectName,
+		input.Action,
+		timeout,
+		jobLog,
+	)
 	if err != nil {
 		return nil, controlProjectOutput{}, err
 	}

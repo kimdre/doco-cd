@@ -320,10 +320,18 @@ curl --request POST \
 | `/v1/api/project/{projectName}/restart`  | POST   | Restart a project                   |                                                                                                                                                            |
 | `/v1/api/project/{projectName}/recreate` | POST   | Force-recreate a project or service | - `service` (string, optional): Name of the service to recreate.<br/>- `timeout` (integer, default: `30`): Time in seconds to wait for containers to stop. |
 
+Managed recreation uses the revision recorded on the deployment, not the latest
+branch or tag. For legacy Git deployments from the same repository as their deploy
+config, it exports the deployed commit from the cached mirror if necessary and
+moves the recreated services to the [artifact layout](../Reference/Artifact-Storage.md#upgrading-from-v0119x-or-earlier).
+There is no need to stop the project before recreating it.
+
 Managed recreation returns `409 Conflict` when the cached Git/OCI source cannot
-be verified against the revision recorded on the running deployment. Run a
-normal deployment to refresh the source cache and deployment metadata before
-retrying recreation.
+be verified or the deployed Git commit cannot be exported from the mirror. Run a
+normal deployment with `force_recreate: true` to refresh the source cache and
+deployment metadata. To see the error response in scripts, use
+`curl --fail-with-body` rather than `curl --fail`, and check its exit status before
+reporting success.
 
 ### Swarm Stacks
 
