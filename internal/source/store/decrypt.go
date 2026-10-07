@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
+	"syscall"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -19,7 +21,10 @@ import (
 // the files decrypted in it, keyed by ciphertext. GC removes it with the artifact.
 const decryptRecordSuffix = ".decrypted.json"
 
-var errPlaintextStale = errors.New("plaintext does not match its record")
+var (
+	errPlaintextStale     = errors.New("plaintext does not match its record")
+	errPlaintextIrregular = errors.New("plaintext is not a regular file")
+)
 
 // decryptRecord lists the SOPS files decrypted in one artifact, keyed by their
 // slash-separated path relative to the artifact root.
@@ -198,9 +203,40 @@ func loadPlaintextSources(log *slog.Logger, baseDir string) map[string][]plainte
 	return sources
 }
 
-// copyPlaintext writes src's content to dst, unless src no longer matches its record.
+// copyPlaintext writes src's content to dst, unless src is not a regular file
+// or no longer matches its record.
+//
+// src sits in an artifact a container may bind-mount writable, so it cannot be
+// trusted to still be a file: a FIFO put in its place would block a plain read,
+// and with it the publish and the mirror lock, until something writes to it.
+// It is therefore opened without blocking and checked on the open descriptor,
+// which also covers a swap between the lstat and the open.
 func copyPlaintext(src plaintextSource, dst string) error {
-	content, err := os.ReadFile(src.path) // #nosec G304 -- path comes from the store's own decrypt record
+	info, err := os.Lstat(src.path)
+	if err != nil {
+		return err
+	}
+
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: %s", errPlaintextIrregular, src.path)
+	}
+
+	f, err := os.OpenFile(src.path, os.O_RDONLY|syscall.O_NONBLOCK, 0) // #nosec G304 -- path comes from the store's own decrypt record
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = f.Close() }()
+
+	if info, err = f.Stat(); err != nil {
+		return err
+	}
+
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: %s", errPlaintextIrregular, src.path)
+	}
+
+	content, err := io.ReadAll(io.LimitReader(f, info.Size()+1))
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/getsops/sops/v3/age"
 
@@ -224,6 +226,60 @@ func TestGitStore_PublishReusesPlaintextOfUnchangedCiphertext(t *testing.T) {
 
 	if got := readArtifactFile(t, fourth, "secret.yaml"); got != fixture {
 		t.Fatalf("fourth artifact = %q, want ciphertext (no key, no trusted plaintext)", got)
+	}
+}
+
+// TestGitStore_PublishSkipsIrregularPlaintextSource replaces a cached plaintext
+// with a FIFO, as a container with a writable bind mount could. The next publish
+// must neither block on it nor reuse it.
+func TestGitStore_PublishSkipsIrregularPlaintextSource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mkfifo is not available on windows")
+	}
+
+	encryption.SetupAgeKeyEnvVar(t)
+
+	const want = "this.is.encrypted: \"yes\"\n"
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+	commitTestFile(t, repo, repoPath, "secret.yaml", readEncryptionFixture(t, "encrypted.yaml"), "add encrypted file")
+
+	baseDir := t.TempDir()
+
+	newStore := func() *store.GitStore {
+		s, err := store.NewGitStore(store.GitStoreOptions{CloneURL: "file://" + repoPath, BaseDir: baseDir})
+		if err != nil {
+			t.Fatalf("NewGitStore() error = %v", err)
+		}
+
+		return s
+	}
+
+	first := publishRevision(t, newStore(), "main")
+
+	cached := filepath.Join(first.Path, "secret.yaml")
+	if err := os.Remove(cached); err != nil {
+		t.Fatalf("remove cached plaintext: %v", err)
+	}
+
+	if err := syscall.Mkfifo(cached, 0o600); err != nil {
+		t.Fatalf("mkfifo: %v", err)
+	}
+
+	commitTestFile(t, repo, repoPath, "compose.yaml", "services: {}\n", "unrelated change")
+
+	done := make(chan store.Artifact, 1)
+
+	go func() { done <- publishRevision(t, newStore(), "main") }()
+
+	select {
+	case second := <-done:
+		if got := readArtifactFile(t, second, "secret.yaml"); got != want {
+			t.Fatalf("second artifact = %q, want fresh decryption %q", got, want)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Publish() blocked on the FIFO in the earlier artifact")
 	}
 }
 
