@@ -14,14 +14,20 @@ By default, this endpoint is available on Port `9120`, but can be configured usi
 
 ## Available Metrics
 
-See the following Source Code to find out about the currently available metrics:
-```go title="Prometheus Collectors"
---8<-- "internal/prometheus/collectors.go:collectors"
-```
+The table lists every metric family, its type and description, and the label names attached to its time series. Metric names use the `doco_cd_` prefix.
 
-Duration histograms using `DurationBuckets` have buckets from 5ms up to 10 minutes (the Prometheus default buckets plus 20s, 30s, 60s, 120s, 300s and 600s), so long-running deployments, webhooks and source preparations still get meaningful quantiles.
+<!-- metrics-table -->
 
-`deployment_stage_duration_seconds` is labelled by `repository`, `stage` and `outcome` only, because a histogram per deployment and stage produces a large number of series. Use `deployment_duration_seconds` for the duration of individual deployments.
+Most operation-duration histograms have bucket boundaries from 5 milliseconds through 10 minutes: 
+Prometheus' default boundaries plus 20, 30, 60, 120, 300, and 600 seconds. 
+MCP request duration uses Prometheus' default buckets (5 milliseconds to 10 seconds), while Git mirror compaction duration 
+uses 12 exponentially increasing buckets starting at 50 milliseconds. 
+Prometheus exposes histogram data as `_bucket`, `_sum`, and `_count` series.
+
+Each histogram `_bucket` series has an additional Prometheus-generated `le` label for the bucket's inclusive upper bound. Bucket counts are cumulative; for each combination of the listed labels, the `le="+Inf"` bucket has the same count as `_count`. The generated `le` label is not listed in the table and does not appear on `_sum` or `_count` series.
+
+`doco_cd_deployment_stage_duration_seconds` uses only the `repository`, `stage`, and `outcome` labels. 
+This avoids creating a large number of series; use `doco_cd_deployment_duration_seconds` for individual deployment durations.
 
 ## Grafana Dashboard
 
