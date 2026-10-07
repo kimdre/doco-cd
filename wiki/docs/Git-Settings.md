@@ -241,7 +241,7 @@ Phase updates are best-effort: each is sent once without retries, a provider rat
     | Stack | `example-stack` |
     | Target | `example-target` |
     | Docker context | `example-context` |
-    | Reference | `refs/heads/example` |
+    | Reference | `refs/heads/main` |
     | Commit | `abc1234` |
     | Deployment mode | Compose |
     | Trigger | Webhook |
