@@ -6,11 +6,13 @@ The `/wiki` directory contains the versioned documentation site for `doco-cd` bu
 
 Make sure you are in the root of the repository, then run the following commands:
 
-1. Install the docs toolchain (requires Python 3.10+):
+1. Install the docs toolchain (requires Python 3.10+ and Go; use the Go version in [`go.mod`](https://github.com/kimdre/doco-cd/blob/main/go.mod#L3)):
 
-    ```bash
-    make wiki-tools
-    ```
+     1. Install Zensical and its dependencies in a virtual environment:
+        ```bash
+        make wiki-tools
+        ```
+     2. Install Go from the official site (https://go.dev/dl/) or your package manager, and ensure `go` is in your PATH.
 
 2. Start the local docs server:
 
@@ -33,6 +35,7 @@ PYTHONPATH=wiki zensical serve --config-file wiki/zensical.toml
 
 > [!NOTE]
 > `PYTHONPATH=wiki` makes the custom Markdown extensions in `wiki/hooks/` importable. It is required for `zensical build`/`serve` to work correctly.
+> Go is required because the Prometheus metrics table is generated from the collector definitions while Zensical renders the metrics page.
 
 ## Cleaning the build cache
 
