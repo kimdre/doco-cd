@@ -68,11 +68,11 @@ The goal is one written record per stack.
 
 ## 2. Decide the repository layout
 
-| Layout                                                       | Use when                                               | Cost                                                             |
-|--------------------------------------------------------------|--------------------------------------------------------|------------------------------------------------------------------|
-| One repository per host                                      | Hosts are unrelated, blast radius must stay small      | Shared compose snippets get duplicated                           |
-| One repository, one [target](Deploy-Settings.md#multiple-deployment-targets) per host (`.doco-cd.<target>.yml`) | Many hosts, mostly the same stacks | Every host sees every commit, `target` must be set per instance  |
-| One repository per team or per blast radius                   | Access control follows teams                           | A stack that moves between teams moves between repositories      |
+| Layout                                                                                                          | Use when                                          | Cost                                                            |
+|-----------------------------------------------------------------------------------------------------------------|---------------------------------------------------|-----------------------------------------------------------------|
+| One repository per host                                                                                         | Hosts are unrelated, blast radius must stay small | Shared compose snippets get duplicated                          |
+| One repository, one [target](Deploy-Settings.md#multiple-deployment-targets) per host (`.doco-cd.<target>.yml`) | Many hosts, mostly the same stacks                | Every host sees every commit, `target` must be set per instance |
+| One repository per team or per blast radius                                                                     | Access control follows teams                      | A stack that moves between teams moves between repositories     |
 
 Inside a repository, give each stack its own directory and list them as separate YAML documents in one
 [deployment config](Deploy-Settings.md#multiple-service-deployments).
@@ -176,7 +176,16 @@ Move data from a relative bind mount, per service:
     docker run --rm -v /opt/stacks/db/data:/from:ro -v app-db-data:/to alpine cp -a /from/. /to/
     ```
 
-4. Verify the copy: `diff -r /opt/stacks/db/data /srv/db-data`, or for a volume `docker run --rm -v app-db-data:/to alpine ls -la /to`.
+4. Verify the copy: `diff -r /opt/stacks/db/data /srv/db-data`, or compare a named volume recursively:
+
+    ```sh title="Verify a named-volume copy"
+    docker run --rm \
+      -v /opt/stacks/db/data:/from:ro \
+      -v app-db-data:/to:ro \
+      alpine diff -r /from /to
+    ```
+
+    No output and an exit status of `0` mean the directories match.
 5. Point the compose file at the new volume or path, then trigger Doco-CD.
 6. Delete the old directory only after the service ran on the new mount.
 
@@ -241,6 +250,10 @@ One stack at a time, least critical first.
 1. Check the preconditions.
 
     - [ ] The project renders from the repository: `docker compose -f app/docker-compose.yml config`.
+      This local command does not read `.doco-cd.yml`. If its `environment` or
+      `env_files` provide Compose interpolation values, supply the same values
+      in your shell or with Docker Compose's `--env-file` option. Otherwise,
+      this check can resolve values differently from Doco-CD.
     - [ ] `name` equals the running Compose project name.
     - [ ] No `container_name` collides with another project. Container names are unique per Docker host: `docker ps -a --format '{{.Names}}'`.
     - [ ] Data mounts fixed as in [section 3](#3-fix-paths-and-data-before-the-first-deploy).
@@ -249,10 +262,10 @@ One stack at a time, least critical first.
 
 2. Pick the adoption path.
 
-    | Situation                                   | Steps                                                                                                                                                                                     |
-    |---------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-    | Same project name                           | Commit and let Doco-CD deploy. Named volumes and absolute host paths are kept.                                                                                                            |
-    | Different project name                      | Pin every named volume to its existing name with `#!yaml name:` (`docker volume ls`), run `docker compose down` **without** `-v` on the old project, then deploy.                          |
+    | Situation                                     | Steps                                                                                                                                                                                     |
+    |-----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+    | Same project name                             | Commit and let Doco-CD deploy. Named volumes and absolute host paths are kept.                                                                                                            |
+    | Different project name                        | Pin every named volume to its existing name with `#!yaml name:` (`docker volume ls`), run `docker compose down` **without** `-v` on the old project, then deploy.                         |
     | No Compose project, started with `docker run` | There is no project for `docker compose down` to remove. Pin the volumes as above, then `docker stop <container>` and `docker rm <container>` **without** `-v` for each one, then deploy. |
 
     !!! warning
@@ -277,10 +290,12 @@ One stack at a time, least critical first.
       --url 'https://cd.example.com/v1/api/poll/run?wait=true' \
       --header 'content-type: application/json' \
       --header 'x-api-key: your-api-key' \
-      --data '[{"url": "https://git.example.com/example/deployments.git"}]'
+      --data '[{"url": "https://git.example.com/example/deployments.git", "target": "prod"}]'
     ```
 
     See [REST API](Endpoints/REST-API.md#polling) for the request body and [Authentication](Endpoints/REST-API.md#authentication) for `API_SECRET`.
+    The API uses the `target` in this request body and ignores the mounted poll config. 
+    Use the target configured for this host, or omit it only when deploying `.doco-cd.yml`.
 
 4. Verify.
 
