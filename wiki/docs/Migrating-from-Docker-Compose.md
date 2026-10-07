@@ -109,6 +109,23 @@ Image tags:
 
 Keep compose files identical across environments.
 Put the host-specific values in `environment` and `env_files` of the deployment config instead.
+Both only feed Compose variable interpolation, nothing reaches a container by itself.
+The Compose service still needs `environment:` or `env_file:` entries that reference the values:
+
+```yaml title=".doco-cd.yml"
+name: app
+environment:
+  APP_IMAGE_TAG: "1.4.2"
+  APP_LOG_LEVEL: info
+```
+
+```yaml title="app/docker-compose.yml"
+services:
+  app:
+    image: ghcr.io/example/app:${APP_IMAGE_TAG}
+    environment:
+      LOG_LEVEL: ${APP_LOG_LEVEL}
+```
 
 ## 3. Fix paths and data before the first deploy
 
@@ -139,6 +156,29 @@ volumes:
   db-data:
     name: app-db-data
 ```
+
+!!! danger "Copy the data before you change the mount"
+    A new named volume or a new absolute path starts empty.
+    A service deployed against it runs with empty state while the old files stay at the old path.
+
+Move data from a relative bind mount, per service:
+
+1. Stop the service: `docker compose stop db`.
+2. Make a backup and verify it, e.g. `tar -C /opt/stacks/db -czf /srv/backups/db-data.tgz data && tar -tzf /srv/backups/db-data.tgz > /dev/null`.
+3. Copy the data, keeping ownership and permissions.
+
+    ```sh title="Into an absolute host path"
+    cp -a /opt/stacks/db/data/. /srv/db-data/
+    ```
+
+    ```sh title="Into a named volume"
+    docker volume create app-db-data
+    docker run --rm -v /opt/stacks/db/data:/from:ro -v app-db-data:/to alpine cp -a /from/. /to/
+    ```
+
+4. Verify the copy: `diff -r /opt/stacks/db/data /srv/db-data`, or for a volume `docker run --rm -v app-db-data:/to alpine ls -la /to`.
+5. Point the compose file at the new volume or path, then trigger Doco-CD.
+6. Delete the old directory only after the service ran on the new mount.
 
 Env files:
 
@@ -175,7 +215,24 @@ Take the base `docker-compose.yml` from [Getting Started](Getting-Started.md), t
   target: prod # reads .doco-cd.prod.yml
 ```
 
-See [Poll Settings](Poll-Settings.md#configuration) for the full field list, and [Local Filesystem Polling](Advanced/Local-Filesystem-Polling.md) if the repository lives on the same host.
+The file is only read when `POLL_CONFIG_FILE` names it and it is mounted into the container:
+
+```yaml title="docker-compose.yml" hl_lines="5 8"
+services:
+  app:
+    image: ghcr.io/kimdre/doco-cd:latest
+    environment:
+      POLL_CONFIG_FILE: /poll-config.yaml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./poll-config.yaml:/poll-config.yaml:ro
+      - data:/data
+
+volumes:
+  data:
+```
+
+See [With `POLL_CONFIG_FILE`](Poll-Settings.md#with-poll_config_file) for the full example, [Poll Settings](Poll-Settings.md#configuration) for the field list, and [Local Filesystem Polling](Advanced/Local-Filesystem-Polling.md) if the repository lives on the same host.
 
 ## 5. Cut a stack over
 
@@ -200,7 +257,18 @@ One stack at a time, least critical first.
 
     !!! warning
         Skipping the stop and remove in the last two cases leaves two sets of containers that fight over ports, names and volumes.
-        `docker rm` without `-v` keeps named volumes and host paths, only anonymous volumes of that container are lost.
+        `docker rm` without `-v` keeps every volume on disk, named and anonymous, `docker rm -v` removes the anonymous ones.
+
+    !!! warning "Anonymous volumes are not reused"
+        A volume with a 64 character hex name belongs to one container only.
+        The replacement Compose service gets a fresh volume, so the data looks gone.
+        Find them before the cutover:
+
+        ```sh
+        docker inspect <container> --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}} {{.Destination}}{{println}}{{end}}{{end}}'
+        ```
+
+        Then either declare a named volume in the compose file with `#!yaml name:` set to that hex name, or copy the content into a new named volume as in [section 3](#3-fix-paths-and-data-before-the-first-deploy).
 
 3. Trigger the deployment: wait for the poll interval, push a commit to a configured webhook, or call the API.
 
