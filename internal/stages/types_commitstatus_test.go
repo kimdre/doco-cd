@@ -6,13 +6,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/docker"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -98,6 +102,122 @@ func TestPostQueuedCommitStatusUsesDeploymentContext(t *testing.T) {
 	}
 }
 
+func TestPostSuccessfulCommitStatusSummary(t *testing.T) {
+	t.Parallel()
+
+	type checkOutput struct {
+		Title   string `json:"title"`
+		Summary string `json:"summary"`
+	}
+
+	var received []struct {
+		Name       string      `json:"name"`
+		Status     string      `json:"status"`
+		Conclusion string      `json:"conclusion"`
+		Output     checkOutput `json:"output"`
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/repos/owner/repo/check-runs/123" {
+			t.Errorf("unexpected check update: %s %s", r.Method, r.URL.Path)
+		}
+
+		var body struct {
+			Name       string      `json:"name"`
+			Status     string      `json:"status"`
+			Conclusion string      `json:"conclusion"`
+			Output     checkOutput `json:"output"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode check: %v", err)
+		}
+
+		received = append(received, body)
+	}))
+	defer server.Close()
+
+	sm := newSuccessSummaryStageManager()
+	sm.Log = slog.Default()
+	sm.AppConfig = &app.Config{
+		GitCommitStatus: true, GitScmProvider: "github",
+		GitScmApiUrl: config.HttpUrl(server.URL), GitAccessToken: "test-token",
+	}
+	sm.Repository.SourceUrl = "https://github.com/owner/repo"
+	sm.DeployConfig.Internal.ConfigTarget = "homelab"
+	sm.Payload = &webhook.ParsedPayload{
+		Ref: "refs/heads/other", CommitSHA: plumbing.NewHash("fedcba9876543210fedcba9876543210fedcba98"),
+	}
+	sm.commitStatusTarget = &commitstatus.Target{
+		Backend: commitstatus.BackendChecks, CheckRunID: 123, ExternalID: "attempt",
+	}
+
+	if !sm.postStatus(t.Context(), commitstatus.ProgressStatus("pulling images")) {
+		t.Fatal("progress check was not posted")
+	}
+
+	if !sm.postStatus(t.Context(), commitstatus.Status{
+		State: commitstatus.StateSuccess, Description: "Successful in 3s",
+	}) {
+		t.Fatal("success check was not posted")
+	}
+
+	if len(received) != 2 {
+		t.Fatalf("received %d updates, want one phase update and one success", len(received))
+	}
+
+	if got := received[0]; got.Status != "in_progress" || got.Output.Title != "Deploying: pulling images" {
+		t.Fatalf("unexpected progress check: %+v", got)
+	}
+
+	got := received[1]
+	if got.Name != "doco-cd/homelab/web" || got.Status != "completed" ||
+		got.Conclusion != "success" || got.Output.Title != "Deployed" ||
+		got.Output.Summary != strings.TrimSpace(sm.successfulCommitStatusSummary(sm.Repository.Revision)) {
+		t.Fatalf("unexpected successful check: %+v", got)
+	}
+
+	if strings.Contains(got.Output.Summary, "fedcba9") || strings.Contains(got.Output.Summary, "refs/heads/other") {
+		t.Fatalf("summary described the webhook instead of the deployed revision: %s", got.Output.Summary)
+	}
+}
+
+func TestPostSuccessfulCommitStatusPreservesLegacyDescription(t *testing.T) {
+	t.Parallel()
+
+	for _, provider := range []string{"github", "gitea"} {
+		t.Run(provider, func(t *testing.T) {
+			t.Parallel()
+
+			var received map[string]json.RawMessage
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/statuses/deadbeef") {
+					t.Errorf("unexpected legacy status: %s %s", r.Method, r.URL.Path)
+				}
+
+				if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+					t.Errorf("decode status: %v", err)
+				}
+
+				w.WriteHeader(http.StatusCreated)
+			}))
+			defer server.Close()
+
+			sm := newTestStageManagerForCommitStatus(&app.Config{
+				GitCommitStatus: true, GitScmProvider: provider,
+				GitScmApiUrl: config.HttpUrl(server.URL), GitAccessToken: "test-token",
+			}, server.URL+"/owner/repo")
+
+			sm.PostCommitStatus(t.Context(), commitstatus.StateSuccess, "Successful in 3s")
+
+			if string(received["state"]) != `"success"` || string(received["description"]) != `"Successful in 3s"` ||
+				received["summary"] != nil || received["output"] != nil {
+				t.Fatalf("unexpected legacy status: %s", received)
+			}
+		})
+	}
+}
+
 func TestResolveCommitStatusRequest_SkipsWhenDisabled(t *testing.T) {
 	sm := newTestStageManagerForCommitStatus(&app.Config{
 		GitCommitStatus: false,
@@ -168,6 +288,26 @@ func TestSelfUpdateCommitStatusCopiesNativeTarget(t *testing.T) {
 
 	if info.Target == sm.commitStatusTarget {
 		t.Fatal("journal must snapshot the target rather than share mutable reporting state")
+	}
+
+	sm.DeployConfig.Context = "nas"
+	sm.Docker = &Docker{}
+	sm.JobTrigger = JobTriggerPoll
+	sm.DeployState = &DeploymentState{imageChangedServices: []string{"app"}}
+
+	info = sm.selfUpdateCommitStatus()
+
+	want := sm.successfulCommitStatusSummary(sm.Repository.Revision)
+	if info.Summary != want {
+		t.Fatalf("summary = %q, want predecessor deployment details %q", info.Summary, want)
+	}
+
+	sm.DeployConfig.Name = "successor"
+	sm.DeployState.imageChangedServices = append(sm.DeployState.imageChangedServices, "worker")
+	sm.DeployConfig.Context = docker.DefaultContextName
+
+	if info.Summary != want {
+		t.Fatal("journal summary changed with the deployment's mutable state")
 	}
 }
 

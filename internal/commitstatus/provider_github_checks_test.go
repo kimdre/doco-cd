@@ -86,10 +86,13 @@ func TestGitHubCheckLifecycle(t *testing.T) {
 	defer server.Close()
 
 	req := checkTestRequest(server.URL)
+
+	const summary = "Successfully deployed stack `stack`.\n\n| Detail | Value |\n| --- | --- |\n| Commit | `deadbee` |"
+
 	for _, status := range []Status{
 		{State: StatePending, Outcome: OutcomeQueued, Description: "Queued"},
-		{State: StatePending, Description: "In Progress"},
-		{State: StateSuccess, Description: "Successful in 3s", TargetURL: "https://example.com/logs"},
+		ProgressStatus("pulling images"),
+		{State: StateSuccess, Description: "Successful in 3s", Summary: summary, TargetURL: "https://example.com/logs"},
 	} {
 		if err := req.Post(t.Context(), status); err != nil {
 			t.Fatal(err)
@@ -117,10 +120,16 @@ func TestGitHubCheckLifecycle(t *testing.T) {
 	}
 
 	// GitHub renders the state and duration itself; the output must not repeat them.
-	for i, title := range []string{checkTitleQueued, checkTitleDeploying, checkTitleDeployed} {
+	for i, title := range []string{checkTitleQueued, "Deploying: pulling images", checkTitleDeployed} {
 		body := received[i]
+
+		wantSummary := title
+		if i == 2 {
+			wantSummary = summary
+		}
+
 		if body.Name != req.Context || body.ExternalID != "doco-cd:attempt" ||
-			body.Output == nil || body.Output.Title != title || body.Output.Summary != title {
+			body.Output == nil || body.Output.Title != title || body.Output.Summary != wantSummary {
 			t.Fatalf("unexpected check metadata: %+v", body)
 		}
 	}
@@ -220,13 +229,15 @@ func TestGitHubCheckOutputUsesSummary(t *testing.T) {
 
 	long := strings.Repeat("ä", maxCheckSummaryLength+10)
 
-	body, err := checkTestRequest("").checkRequest(Status{State: StateSuccess, Outcome: OutcomeSkipped, Description: "Skipped", Summary: long})
-	if err != nil {
-		t.Fatal(err)
-	}
+	for _, outcome := range []Outcome{"", OutcomeSkipped} {
+		body, err := checkTestRequest("").checkRequest(Status{State: StateSuccess, Outcome: outcome, Description: "Result", Summary: long})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	if got := []rune(body.Output.Summary); len(got) != maxCheckSummaryLength || got[len(got)-1] != '…' {
-		t.Fatalf("summary has %d characters, want %d ending in an ellipsis", len(got), maxCheckSummaryLength)
+		if got := []rune(body.Output.Summary); len(got) != maxCheckSummaryLength || got[len(got)-1] != '…' {
+			t.Fatalf("summary has %d characters, want %d ending in an ellipsis", len(got), maxCheckSummaryLength)
+		}
 	}
 }
 

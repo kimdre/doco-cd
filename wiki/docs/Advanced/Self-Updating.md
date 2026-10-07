@@ -128,6 +128,7 @@ Every handover is journaled on the data volume, so a crash at any point is resol
 whichever instance comes up finishes the handover or reverses it.
 
 The journal preserves the exact [reporting backend](../Git-Settings.md#commit-status-reporting) and, for native GitHub Checks, the original check-run target, without storing credentials.
+For successful native checks, it also preserves the predecessor's deployment summary, so the finishing instance reports the original stack, target, revision, and detected changed services rather than rebuilding those details from its own configuration.
 The finishing instance resolves its credentials and completes that original report even if its configuration sets `#!ini GIT_COMMIT_STATUS=false`.
 It must retain credentials and permissions for that backend. Older journals without a check-run target always finish legacy commit statuses, even when the finishing instance now uses GitHub App authentication; keep the App's **Commit statuses: Read and write** permission until those handovers finish.
 
