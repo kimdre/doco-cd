@@ -187,13 +187,17 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 		statusEnabled bool
 		conclusion    string
 		externalOnly  bool
+		summary       string
 	}{
 		{name: "old journal with App credentials", legacy: true, statusEnabled: true},
 		{name: "old journal after reporting disabled", legacy: true, failure: true},
 		{name: "recorded check success", statusEnabled: true, conclusion: "success"},
+		{name: "recorded check summary", statusEnabled: true, conclusion: "success", summary: "Successfully deployed stack `predecessor`.\n\n| Detail | Value |\n| --- | --- |\n| Target | `original` |"},
 		{name: "recorded check after reporting disabled", conclusion: "success"},
+		{name: "recorded summary after reporting disabled", conclusion: "success", summary: "Successfully deployed stack `predecessor`."},
 		{name: "recorded external identity after reporting disabled", externalOnly: true, conclusion: "success"},
 		{name: "ordinary unhealthy", failure: true, reason: "new reported unhealthy", statusEnabled: true, conclusion: "failure"},
+		{name: "failure omits success summary", failure: true, reason: "new reported unhealthy", statusEnabled: true, conclusion: "failure", summary: "Successfully deployed stack `predecessor`."},
 		{name: "deadline text is not typed timeout", failure: true, reason: "context deadline exceeded", statusEnabled: true, conclusion: "failure"},
 		{name: "structured timeout without deadline text", failure: true, timedOut: true, reason: "health gate expired", statusEnabled: true, conclusion: "timed_out"},
 		{name: "timeout after reporting disabled", failure: true, timedOut: true, conclusion: "timed_out"},
@@ -208,6 +212,10 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 				Conclusion  string    `json:"conclusion"`
 				StartedAt   time.Time `json:"started_at"`
 				CompletedAt time.Time `json:"completed_at"`
+				Output      *struct {
+					Title   string `json:"title"`
+					Summary string `json:"summary"`
+				} `json:"output"`
 			}
 
 			var (
@@ -256,6 +264,7 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 
 			record := handedOverRecord(server.URL, selfupdate.StateFinalising)
 			record.Source.CommitStatus.SourceURL = "https://github.com/owner/infra.git"
+			record.Source.CommitStatus.Summary = tc.summary
 
 			record.Error, record.TimedOut = tc.reason, tc.timedOut
 			if !tc.legacy {
@@ -313,6 +322,23 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 				got.Status != "completed" || got.Conclusion != tc.conclusion ||
 				!got.StartedAt.Equal(target.StartedAt) || got.CompletedAt.IsZero() {
 				t.Errorf("check completion = %+v; want PATCH of the original check with conclusion %s", got, tc.conclusion)
+			}
+
+			if got.Output == nil {
+				t.Fatal("completed check has no output")
+			}
+
+			if !tc.failure {
+				wantSummary := tc.summary
+				if wantSummary == "" {
+					wantSummary = "Deployed"
+				}
+
+				if got.Output.Title != "Deployed" || got.Output.Summary != wantSummary {
+					t.Errorf("successful output = %+v; want the predecessor's summary %q", got.Output, wantSummary)
+				}
+			} else if got.Output.Summary != got.Output.Title {
+				t.Errorf("failure output = %+v; should not publish the success summary", got.Output)
 			}
 		})
 	}

@@ -724,6 +724,7 @@ func (s *StageManager) selfUpdateCommitStatus() *selfupdate.CommitStatusInfo {
 	if s.commitStatusTarget != nil && s.commitStatusTarget.Backend == commitstatus.BackendChecks {
 		target := *s.commitStatusTarget
 		info.Target = &target
+		info.Summary = s.successfulCommitStatusSummary(commitSHA)
 	}
 
 	return info
@@ -775,9 +776,22 @@ func (s *StageManager) PostCommitStatusWithOutcome(ctx context.Context, state co
 // postCommitStatus posts a commit status like PostCommitStatusWithOutcome and
 // reports whether it was posted.
 func (s *StageManager) postCommitStatus(ctx context.Context, state commitstatus.State, description string, outcome commitstatus.Outcome) bool {
+	return s.postStatus(ctx, commitstatus.Status{
+		State:       state,
+		Outcome:     outcome,
+		Description: description,
+	})
+}
+
+func (s *StageManager) postStatus(ctx context.Context, status commitstatus.Status) bool {
 	req, ok := s.resolveCommitStatusRequest()
 	if !ok {
 		return false
+	}
+
+	if status.State == commitstatus.StateSuccess && status.Outcome == "" &&
+		status.Summary == "" && req.Target.Backend == commitstatus.BackendChecks {
+		status.Summary = s.successfulCommitStatusSummary(req.CommitSHA)
 	}
 
 	s.Log.Debug("posting commit status",
@@ -785,15 +799,11 @@ func (s *StageManager) postCommitStatus(ctx context.Context, state commitstatus.
 		slog.String("repository", req.RepoFullName),
 		slog.String("commit_sha", req.CommitSHA),
 		slog.String("context", req.Context),
-		slog.String("state", string(state)),
-		slog.String("description", description),
+		slog.String("state", string(status.State)),
+		slog.String("description", status.Description),
 	)
 
-	err := req.Post(ctx, commitstatus.Status{
-		State:       state,
-		Outcome:     outcome,
-		Description: description,
-	})
+	err := req.Post(ctx, status)
 	if err != nil {
 		if lifecycle.IsCanceled(err) {
 			s.Log.Debug("skipped commit status during application shutdown", slog.String("error", err.Error()))
