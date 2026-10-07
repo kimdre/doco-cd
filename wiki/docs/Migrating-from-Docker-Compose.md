@@ -104,8 +104,18 @@ networks:
 Image tags:
 
 - Doco-CD deploys what Git says.
-- A floating tag such as `latest` in Git does not redeploy when the registry moves, unless you set [`force_image_pull`](Deploy-Settings.md#available-settings).
-- Pin tags (ideally by digest) and let [Renovate](Advanced/Renovate.md) open the bump commits.
+- A floating tag such as `latest` in Git does not redeploy when the registry moves, unless you set [`force_image_pull`](Deploy-Settings.md#available-settings) or you pin it to a digest (see below).
+- A tag such as `1.4.2` is a readable registry label, but a publisher can move it to a different image. A digest is a SHA-256 identifier for an image manifest that selects a specific image.
+- To find a digest, run `docker buildx imagetools inspect ghcr.io/example/app:1.4.2` or copy it from your registry's image details. Add the reported digest after `@` in the Compose `image` value:
+
+    ```yaml title="app/docker-compose.yml"
+    services:
+      app:
+        image: ghcr.io/example/app:1.4.2@sha256:<digest>
+    ```
+
+    Replace `<digest>` with the 64-character value reported after `sha256:`. 
+    Keep the tag and digest together when upgrading. [Renovate](Advanced/Renovate.md) can open pull requests with updated image references.
 
 Keep compose files identical across environments.
 Put the host-specific values in `environment` and `env_files` of the deployment config instead.
