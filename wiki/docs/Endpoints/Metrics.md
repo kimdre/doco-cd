@@ -24,6 +24,8 @@ MCP request duration uses Prometheus' default buckets (5 milliseconds to 10 seco
 uses 12 exponentially increasing buckets starting at 50 milliseconds. 
 Prometheus exposes histogram data as `_bucket`, `_sum`, and `_count` series.
 
+Each histogram `_bucket` series has an additional Prometheus-generated `le` label for the bucket's inclusive upper bound. Bucket counts are cumulative; for each combination of the listed labels, the `le="+Inf"` bucket has the same count as `_count`. The generated `le` label is not listed in the table and does not appear on `_sum` or `_count` series.
+
 `doco_cd_deployment_stage_duration_seconds` uses only the `repository`, `stage`, and `outcome` labels. 
 This avoids creating a large number of series; use `doco_cd_deployment_duration_seconds` for individual deployment durations.
 
