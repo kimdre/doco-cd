@@ -234,7 +234,8 @@ Phase updates are best-effort: each is sent once without retries, a provider rat
 
     The check run of a skipped webhook run also lists every stack with its skip reason and details in its summary, such as the webhook filter that did not match.
 
-    Successful check runs keep the title _Deployed_ and show a summary of the stack, configuration target (when set), Docker context, deployed reference and commit, deployment mode, trigger, and detected changed services. For example:
+    Successful check runs keep the title _Deployed_ and show a summary of the stack, configuration target (when set), Docker context, deployed reference and commit, deployment mode, trigger, and detected changed services. 
+    For example:
 
     | Detail | Value |
     | --- | --- |
