@@ -11,10 +11,6 @@ services:
       # daemon.
       # `:-` keeps the compose renderable when the var is absent.
       API_KEY: ${API_KEY:-}
-    # whoami is a scratch image with no shell, so no healthcheck is possible
-    # here. Give your real app one. `reconciliation: [unhealthy]` in
-    # .doco-cd.yml keys off it. Distroless image -> probe with your own binary:
-    #   test: ["CMD", "/app", "healthcheck"]
 
   caddy:
     image: caddy:2-alpine
