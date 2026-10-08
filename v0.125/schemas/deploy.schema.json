@@ -1,0 +1,639 @@
+{
+  "$comment": "Generated automatically from Doco-CD's Go configuration types. Do not edit manually.",
+  "$id": "https://doco.cd/latest/schemas/deploy.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "description": "One deployment configuration per YAML document. Fields may be omitted in auto-discovery overrides; required fields and deployment-dependent rules are checked by doco-cd at runtime.",
+  "if": {
+    "properties": {
+      "source": {
+        "type": "string",
+        "pattern": "^\\s*([oO][cC][iI])\\s*$"
+      }
+    },
+    "required": [
+      "source"
+    ]
+  },
+  "properties": {
+    "name": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
+      "description": "Name of the docker-compose deployment / stack"
+    },
+    "source": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Source selects the deployment source backend (git or oci)",
+      "default": "git",
+      "examples": [
+        "git",
+        "oci"
+      ],
+      "pattern": "^\\s*([gG][iI][tT]|[oO][cC][iI]|)\\s*$"
+    },
+    "version": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
+      "description": "Version declares the deployment config schema/artifact version for OCI-backed deployments",
+      "default": "doco.v1"
+    },
+    "repository_url": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
+      "description": "RepositoryUrl is the Git clone URL of the repository to deploy",
+      "default": ""
+    },
+    "webhook_filter": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
+      "description": "WebhookEventFilter is a regular expression to whitelist deployment triggers based on the webhook event payload (e.g., branch like \"^refs/heads/main$\" or \"main\", tag like \"^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$\" or \"v[0-9]+\\.[0-9]+\\.[0-9]+\")",
+      "default": ""
+    },
+    "reference": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
+      "description": "Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0",
+      "default": ""
+    },
+    "working_dir": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
+      "description": "WorkingDirectory is the working directory for the deployment",
+      "default": "."
+    },
+    "context": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
+      "description": "Context is the Docker context to use for this deployment (empty uses the default Docker context)",
+      "default": ""
+    },
+    "compose_files": {
+      "type": [
+        "null",
+        "array"
+      ],
+      "items": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      },
+      "description": "ComposeFiles is the list of docker-compose files to use",
+      "default": [
+        "compose.yaml",
+        "compose.yml",
+        "docker-compose.yml",
+        "docker-compose.yaml"
+      ],
+      "minItems": 1
+    },
+    "environment": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Environment is a map of environment variables to use for variable interpolation in the compose files",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "env_files": {
+      "type": [
+        "null",
+        "array"
+      ],
+      "items": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      },
+      "description": "EnvFiles is the list of dotenv files to use for variable interpolation",
+      "default": [
+        ".env"
+      ]
+    },
+    "remove_orphans": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "RemoveOrphans removes containers for services not defined in the Compose file",
+      "default": true
+    },
+    "prune_images": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "PruneImages removes images that are no longer used by any service",
+      "default": true
+    },
+    "swarm": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Enabled explicitly selects Swarm deployment mode. When unset, the Docker context determines the mode."
+        },
+        "config_retention": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "ConfigRetention is the number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_CONFIG_RETENTION is used.",
+          "minimum": -1
+        },
+        "secret_retention": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "SecretRetention is the number of old Swarm secret revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_SECRET_RETENTION is used.",
+          "minimum": -1
+        }
+      },
+      "description": "Swarm contains Docker Swarm-specific deployment settings",
+      "additionalProperties": false
+    },
+    "wait_running_jobs": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "WaitRunningJobs waits for currently running scheduled job containers/services to finish before deployment",
+      "default": true
+    },
+    "force_recreate": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed",
+      "default": false
+    },
+    "force_image_pull": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available",
+      "default": false
+    },
+    "timeout": {
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ],
+      "description": "Timeout is the maximum time to wait for deployment; numeric values are seconds and strings accept Go duration syntax.",
+      "default": "3m"
+    },
+    "build": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "args": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "BuildArgs is a map of build-time arguments to pass to the build process",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "force_image_pull": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "ForceImagePull always attempt to pull a newer version of the image",
+          "default": false
+        },
+        "quiet": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Quiet suppresses the build output",
+          "default": false
+        },
+        "no_cache": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "NoCache disables the use of the cache when building images",
+          "default": false
+        }
+      },
+      "description": "BuildOpts is the build options for the deployment",
+      "additionalProperties": false
+    },
+    "git_depth": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "GitDepth limits the number of commits to fetch. 0 means use global GIT_CLONE_DEPTH. A positive value overrides the global setting.",
+      "default": 0,
+      "minimum": 0
+    },
+    "destroy": {
+      "type": [
+        "boolean",
+        "object",
+        "null"
+      ],
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Enabled removes the deployment and all its resources from the Docker host",
+          "default": false
+        },
+        "remove_volumes": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)",
+          "default": true
+        },
+        "remove_images": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)",
+          "default": true
+        },
+        "remove_dir": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Deprecated: RemoveRepoDir is ignored because the source directory is shared by all stacks of a repository",
+          "default": false,
+          "deprecated": true
+        }
+      },
+      "description": "Destroy configures destruction of the deployment and related resources",
+      "additionalProperties": false
+    },
+    "profiles": {
+      "type": [
+        "null",
+        "array"
+      ],
+      "items": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      },
+      "description": "Profiles is a list of profiles to use for the deployment, e.g., [\"dev\", \"prod\"]. See https://docs.docker.com/compose/how-tos/profiles/",
+      "default": []
+    },
+    "external_secrets": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook store_ref/remote_ref).",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "object"
+        ],
+        "properties": {
+          "store_ref": {
+            "type": "string",
+            "description": "StoreRef is the name of the global webhook secret store to use, as defined\nin the store YAML file (e.g. `store_ref: bitwarden-login`).\nUsed exclusively by the webhook provider.",
+            "minLength": 1
+          },
+          "remote_ref": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "RemoteRef contains the dynamic key/value pairs that are substituted into\nthe store's URL, headers, body and json_path templates at resolution time\n(e.g. `key`, `property`, or any custom field the store templates reference).\nUsed exclusively by the webhook provider.",
+            "additionalProperties": true
+          }
+        },
+        "minLength": 1,
+        "required": [
+          "store_ref"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "external_secrets_files": {
+      "type": [
+        "null",
+        "array"
+      ],
+      "items": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      },
+      "description": "ExternalSecretsFiles is a list of YAML files, each holding a map of env var name to external secret reference (same shape as ExternalSecrets). Files are merged first, then ExternalSecrets entries are applied on top (inline wins on key collision).",
+      "default": []
+    },
+    "auto_discovery": {
+      "type": [
+        "boolean",
+        "object",
+        "null"
+      ],
+      "properties": {
+        "depth": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "ScanDepth is the maximum depth of subdirectories to scan for docker-compose files",
+          "default": 0,
+          "minimum": 0
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Enabled enables autodiscovery of services to deploy in the working directory",
+          "default": false
+        },
+        "delete": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Delete removes obsolete auto-discovered deployments that are no longer present in the repository",
+          "default": false
+        },
+        "remove_volumes": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "RemoveVolumes removes the volumes of an auto-discovered deployment when it is deleted",
+          "default": false
+        },
+        "remove_images": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "RemoveImages removes the images of an auto-discovered deployment when it is deleted",
+          "default": true
+        }
+      },
+      "description": "AutoDiscovery configures autodiscovery of services to deploy in the working directory",
+      "additionalProperties": false
+    },
+    "reconciliation": {
+      "type": [
+        "boolean",
+        "object",
+        "null"
+      ],
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Enabled enables the reconciliation feature",
+          "default": true
+        },
+        "events": {
+          "type": [
+            "null",
+            "array"
+          ],
+          "items": {
+            "type": "string",
+            "examples": [
+              "die",
+              "destroy",
+              "update",
+              "stop",
+              "kill",
+              "oom",
+              "unhealthy",
+              "remove",
+              "delete"
+            ],
+            "pattern": "^\\s*([dD][iI][eE]|[dD][eE][sS][tT][rR][oO][yY]|[uU][pP][dD][aA][tT][eE]|[sS][tT][oO][pP]|[kK][iI][lL][lL]|[oO][oO][mM]|[uU][nN][hH][eE][aA][lL][tT][hH][yY]|[rR][eE][mM][oO][vV][eE]|[dD][eE][lL][eE][tT][eE])\\s*$"
+          },
+          "description": "Events is the list of Docker container actions that trigger reconciliation",
+          "default": [
+            "unhealthy"
+          ]
+        },
+        "restart_timeout": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ],
+          "description": "RestartTimeout is the timeout to wait before killing a container during a restart.",
+          "default": "10s",
+          "minimum": 0
+        },
+        "restart_signal": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "RestartSignal is the signal sent to stop containers during a restart. If not set, the default of the Docker daemon is used (SIGTERM).",
+          "default": ""
+        },
+        "restart_limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "RestartLimit suppresses further unhealthy-triggered restarts after this many restarts in the configured window. Set to 0 to disable suppression.",
+          "default": 5,
+          "minimum": 0
+        },
+        "restart_window": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ],
+          "description": "RestartWindow is the time window used with RestartLimit.",
+          "default": "5m",
+          "minimum": 0
+        }
+      },
+      "description": "Reconciliation is the configuration for the reconciliation feature",
+      "additionalProperties": false
+    },
+    "oci": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "verify": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Verify enables OCI signature verification; it cannot disable verification enabled globally."
+        },
+        "keyless_identities": {
+          "type": [
+            "null",
+            "array"
+          ],
+          "items": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "issuer": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ],
+                "description": "Issuer is the trusted OIDC issuer for a keyless signature."
+              },
+              "subject": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ],
+                "description": "Subject is the exact trusted identity for a keyless signature."
+              },
+              "subject_regexp": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ],
+                "description": "SubjectRegexp matches trusted keyless identities with a regular expression."
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "KeylessIdentities overrides the trusted identities for keyless OCI signatures."
+        },
+        "public_keys": {
+          "type": [
+            "null",
+            "array"
+          ],
+          "items": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          },
+          "description": "PublicKeys overrides the public keys used to verify OCI signatures."
+        },
+        "ignore_tlog": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "IgnoreTlog controls whether transparency log verification is skipped."
+        }
+      },
+      "description": "Oci allows per-target overrides for OCI signature verification policy",
+      "additionalProperties": false
+    }
+  },
+  "then": {
+    "properties": {
+      "version": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^\\s*(doco\\.v1)?\\s*$"
+      }
+    }
+  },
+  "title": "Doco-CD deployment configuration",
+  "type": "object",
+  "x-doco-cd-version": "v0.125.0"
+}
