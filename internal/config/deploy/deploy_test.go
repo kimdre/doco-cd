@@ -16,6 +16,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
@@ -1557,7 +1558,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 		Reference:        "refs/heads/main",
 		RemoveOrphans:    false,
 		ForceRecreate:    true,
-		Timeout:          300,
+		Timeout:          duration.Duration(300 * time.Second),
 		Profiles:         []string{"prod"},
 	}
 
@@ -1586,7 +1587,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 	}
 
 	if cfg.Timeout != baseConfig.Timeout {
-		t.Errorf("expected Timeout to be inherited: %d, got %d", baseConfig.Timeout, cfg.Timeout)
+		t.Errorf("expected Timeout to be inherited: %s, got %s", baseConfig.Timeout, cfg.Timeout)
 	}
 
 	if !reflect.DeepEqual(cfg.Profiles, baseConfig.Profiles) {

@@ -12,6 +12,7 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
@@ -165,7 +166,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 	dc := deployConfig.New(stackName, "main")
 	dc.Reconciliation.Enabled = true
 	dc.Reconciliation.Events = []string{"stop"}
-	dc.Reconciliation.RestartTimeout = 1
+	dc.Reconciliation.RestartTimeout = duration.Duration(time.Second)
 
 	jobLog := logger.New(slog.LevelError).Logger
 	reconcileJob := newJob(newTestManagerWithDependencies(t, Dependencies{DockerCLI: stack.DockerCli}), DeployRequest{

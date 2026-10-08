@@ -9,6 +9,7 @@ import (
 
 	"go.yaml.in/yaml/v4"
 
+	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
@@ -24,12 +25,12 @@ var supportedReconciliationEvents = set.New(
 
 // ReconciliationConfig holds settings for the reconciliation feature.
 type ReconciliationConfig struct {
-	Enabled        bool     `yaml:"enabled" json:"enabled" default:"true"`               // Enabled enables the reconciliation feature
-	Events         []string `yaml:"events" json:"events" default:"[\"unhealthy\"]"`      // Events is the list of Docker container actions that trigger reconciliation
-	RestartTimeout int      `yaml:"restart_timeout" json:"restart_timeout" default:"10"` // RestartTimeout is the timeout in seconds to wait before killing a container during a restart
-	RestartSignal  string   `yaml:"restart_signal" json:"restart_signal" default:""`     // RestartSignal is the signal sent to stop containers during a restart. If not set, the default of the Docker daemon is used (SIGTERM).
-	RestartLimit   int      `yaml:"restart_limit" json:"restart_limit" default:"5"`      // RestartLimit suppresses further unhealthy-triggered restarts after this many restarts in the configured window. Set to 0 to disable suppression.
-	RestartWindow  int      `yaml:"restart_window" json:"restart_window" default:"300"`  // RestartWindow is the time window in seconds used with RestartLimit.
+	Enabled        bool              `yaml:"enabled" json:"enabled" default:"true"`                // Enabled enables the reconciliation feature
+	Events         []string          `yaml:"events" json:"events" default:"[\"unhealthy\"]"`       // Events is the list of Docker container actions that trigger reconciliation
+	RestartTimeout duration.Duration `yaml:"restart_timeout" json:"restart_timeout" default:"10s"` // RestartTimeout is the timeout to wait before killing a container during a restart.
+	RestartSignal  string            `yaml:"restart_signal" json:"restart_signal" default:""`      // RestartSignal is the signal sent to stop containers during a restart. If not set, the default of the Docker daemon is used (SIGTERM).
+	RestartLimit   int               `yaml:"restart_limit" json:"restart_limit" default:"5"`       // RestartLimit suppresses further unhealthy-triggered restarts after this many restarts in the configured window. Set to 0 to disable suppression.
+	RestartWindow  duration.Duration `yaml:"restart_window" json:"restart_window" default:"5m"`    // RestartWindow is the time window used with RestartLimit.
 }
 
 func (c *ReconciliationConfig) UnmarshalYAML(node *yaml.Node) error {
@@ -47,6 +48,7 @@ func (c *ReconciliationConfig) UnmarshalYAML(node *yaml.Node) error {
 		type plain ReconciliationConfig
 
 		decoded := plain(*c)
+
 		if err := node.Decode(&decoded); err != nil {
 			return err
 		}
@@ -74,6 +76,7 @@ func (c *ReconciliationConfig) UnmarshalJSON(data []byte) error {
 	type plain ReconciliationConfig
 
 	decoded := plain(*c)
+
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}

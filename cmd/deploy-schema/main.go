@@ -16,6 +16,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -168,6 +169,13 @@ func describe(schema *jsonschema.Schema, typ reflect.Type, value reflect.Value, 
 		}
 	}
 
+	if typ == reflect.TypeFor[duration.Duration]() {
+		schema.Type = ""
+		schema.Types = []string{"integer", "string", "null"}
+
+		return nil
+	}
+
 	switch typ.Kind() {
 	case reflect.Struct:
 		schema.Type = ""
@@ -204,7 +212,12 @@ func describe(schema *jsonschema.Schema, typ reflect.Type, value reflect.Value, 
 			property.Deprecated = strings.HasPrefix(description, "Deprecated:")
 
 			if _, hasDefault := member.Tag.Lookup("default"); hasDefault {
-				data, err := json.Marshal(value.Field(field).Interface())
+				defaultValue := value.Field(field).Interface()
+				if member.Type == reflect.TypeFor[duration.Duration]() {
+					defaultValue = member.Tag.Get("default")
+				}
+
+				data, err := json.Marshal(defaultValue)
 				if err != nil {
 					return fmt.Errorf("encode default for %s.%s: %w", typ, member.Name, err)
 				}

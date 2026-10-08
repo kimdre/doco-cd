@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +12,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/cronexpr"
 	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -311,82 +310,5 @@ func (c *Config) applyRawConfig(raw rawConfig) error {
 }
 
 func parsePollInterval(v any) (time.Duration, error) {
-	if v == nil {
-		return 0, nil
-	}
-
-	switch value := v.(type) {
-	case time.Duration:
-		return value, nil
-	case string:
-		return parsePollIntervalString(value)
-	case int:
-		return secondsToDuration(int64(value))
-	case int64:
-		return secondsToDuration(value)
-	case uint:
-		if uint64(value) > math.MaxInt64 {
-			return 0, fmt.Errorf("invalid interval value %d: out of range", value)
-		}
-
-		return secondsToDuration(int64(value))
-	case uint64:
-		if value > math.MaxInt64 {
-			return 0, fmt.Errorf("invalid interval value %d: out of range", value)
-		}
-
-		return secondsToDuration(int64(value))
-	case float64:
-		if math.Trunc(value) != value {
-			return 0, fmt.Errorf("invalid interval value %v: must be a whole number of seconds", value)
-		}
-
-		if value > math.MaxInt64 || value < math.MinInt64 {
-			return 0, fmt.Errorf("invalid interval value %v: out of range", value)
-		}
-
-		return secondsToDuration(int64(value))
-	case json.Number:
-		seconds, err := value.Int64()
-		if err != nil {
-			return 0, fmt.Errorf("invalid interval value %q: %w", value.String(), err)
-		}
-
-		return secondsToDuration(seconds)
-	default:
-		return 0, fmt.Errorf("invalid interval type %T: expected number or string", v)
-	}
-}
-
-func secondsToDuration(seconds int64) (time.Duration, error) {
-	maxSeconds := math.MaxInt64 / int64(time.Second)
-	minSeconds := math.MinInt64 / int64(time.Second)
-
-	if seconds > maxSeconds || seconds < minSeconds {
-		return 0, fmt.Errorf("invalid interval value %d: out of range", seconds)
-	}
-
-	return time.Duration(seconds) * time.Second, nil
-}
-
-func parsePollIntervalString(raw string) (time.Duration, error) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return 0, errors.New("invalid interval value: must not be empty")
-	}
-
-	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil {
-		return secondsToDuration(seconds)
-	}
-
-	duration, err := time.ParseDuration(value)
-	if err != nil {
-		return 0, fmt.Errorf("invalid interval value %q: must be seconds or a Go duration", raw)
-	}
-
-	if duration%time.Second != 0 {
-		return 0, fmt.Errorf("invalid interval duration %q: must resolve to full seconds", raw)
-	}
-
-	return duration, nil
+	return duration.ParseSeconds("interval", v)
 }

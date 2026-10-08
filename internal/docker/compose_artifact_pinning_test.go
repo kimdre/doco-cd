@@ -18,6 +18,7 @@ import (
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/source/store"
@@ -504,7 +505,7 @@ services:
 		}},
 	}
 
-	deployConfig := &deploy.Config{Name: stackName, Timeout: 60}
+	deployConfig := &deploy.Config{Name: stackName, Timeout: duration.Duration(60 * time.Second)}
 	payload := &webhook.ParsedPayload{CommitSHA: plumbing.ZeroHash, FullName: "kimdre/doco-cd_tests"}
 
 	t.Cleanup(func() {

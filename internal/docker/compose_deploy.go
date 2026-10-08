@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
@@ -277,7 +276,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		setDeploymentPhase(setPhase, "waiting for services to start")
 
 		err = waitForStartedServices(ctx, dockerCli, project.Name, startServices, jobServices, oneShotServices,
-			time.Duration(deployConfig.Timeout)*time.Second)
+			deployConfig.Timeout.Duration())
 		if err != nil {
 			return err
 		}
