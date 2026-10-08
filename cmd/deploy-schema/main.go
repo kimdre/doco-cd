@@ -3,6 +3,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -148,7 +149,7 @@ func docoCDVersion(root string) (string, error) {
 
 	version := strings.TrimSpace(string(output))
 	if version == "" {
-		return "", fmt.Errorf("determine Doco-CD version: git describe returned an empty version")
+		return "", errors.New("determine Doco-CD version: git describe returned an empty version")
 	}
 
 	return version, nil
