@@ -229,10 +229,11 @@
     "timeout": {
       "type": [
         "integer",
+        "string",
         "null"
       ],
-      "description": "Timeout is the time in seconds to wait for the deployment to finish before timing out",
-      "default": 180
+      "description": "Timeout is the maximum time to wait for deployment; numeric values are seconds and strings accept Go duration syntax.",
+      "default": "3m"
     },
     "build": {
       "type": [
@@ -498,10 +499,11 @@
         "restart_timeout": {
           "type": [
             "integer",
+            "string",
             "null"
           ],
-          "description": "RestartTimeout is the timeout in seconds to wait before killing a container during a restart",
-          "default": 10,
+          "description": "RestartTimeout is the timeout to wait before killing a container during a restart.",
+          "default": "10s",
           "minimum": 0
         },
         "restart_signal": {
@@ -526,10 +528,11 @@
         "restart_window": {
           "type": [
             "integer",
+            "string",
             "null"
           ],
-          "description": "RestartWindow is the time window in seconds used with RestartLimit.",
-          "default": 300,
+          "description": "RestartWindow is the time window used with RestartLimit.",
+          "default": "5m",
           "minimum": 0
         }
       },
@@ -632,5 +635,5 @@
   },
   "title": "Doco-CD deployment configuration",
   "type": "object",
-  "x-doco-cd-version": "ede515feb11aec988c59e22d352dc50d53c98522"
+  "x-doco-cd-version": "da66046363165f98059763da78602007b88fc8f6"
 }
