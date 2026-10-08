@@ -11,9 +11,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"go.yaml.in/yaml/v4"
+
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -58,6 +61,17 @@ func TestGeneratedSchema(t *testing.T) {
 
 	if !schema.Properties["destroy"].Properties["remove_dir"].Deprecated {
 		t.Error("destroy.remove_dir must be marked deprecated")
+	}
+
+	durationFields := []*jsonschema.Schema{
+		schema.Properties["timeout"],
+		schema.Properties["reconciliation"].Properties["restart_timeout"],
+		schema.Properties["reconciliation"].Properties["restart_window"],
+	}
+	for _, field := range durationFields {
+		if !reflect.DeepEqual(field.Types, []string{"integer", "string", "null"}) {
+			t.Errorf("duration field types = %v, want integer, string, and null", field.Types)
+		}
 	}
 }
 
@@ -121,7 +135,24 @@ func checkFields(t *testing.T, schema *jsonschema.Schema, typ reflect.Type, valu
 			}
 
 			if _, hasDefault := member.Tag.Lookup("default"); hasDefault {
-				expected, err := json.Marshal(value.Field(field).Interface())
+				defaultValue := value.Field(field).Interface()
+
+				if member.Type == reflect.TypeFor[duration.Duration]() {
+					rawDefault := member.Tag.Get("default")
+
+					parsedDefault, err := time.ParseDuration(rawDefault)
+					if err != nil {
+						t.Fatalf("invalid duration default for %s.%s: %v", typ, member.Name, err)
+					}
+
+					if got := value.Field(field).Interface().(duration.Duration).Duration(); got != parsedDefault {
+						t.Errorf("default for %s.%s: got %s, want %s", typ, member.Name, got, parsedDefault)
+					}
+
+					defaultValue = rawDefault
+				}
+
+				expected, err := json.Marshal(defaultValue)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -168,6 +199,7 @@ func TestSchemaAuthoring(t *testing.T) {
 		{"destroy options", "destroy: {enabled: true, remove_volumes: false, remove_images: false, remove_dir: true}", true},
 		{"reconciliation shorthand", "reconciliation: false", true},
 		{"reconciliation options", "reconciliation: {enabled: true, events: [unhealthy, die, remove, ' DELETE '], restart_timeout: 10, restart_signal: SIGTERM, restart_limit: 0, restart_window: 0}", true},
+		{"duration settings", "name: app\ntimeout: 3m\nreconciliation: {restart_timeout: 15s, restart_window: 1m30s}", true},
 		{"scalar string coercion", "name: 123\nreference: 123\nenvironment: {COUNT: 2, DEBUG: true, EMPTY: null}\nbuild: {args: {VERSION: 12, ENABLED: false}}", true},
 		{"deployment options", "name: app\nsource: git\nversion: custom\nrepository_url: https://github.com/example/app.git\nreference: main\nworking_dir: deploy\ncontext: remote\ncompose_files: [compose.yml]\nenv_files: [.env, 'remote:prod.env']\nprofiles: [prod]\nwebhook_filter: '^refs/heads/main$'\nremove_orphans: true\nprune_images: false\nwait_running_jobs: false\nforce_recreate: true\nforce_image_pull: true\ntimeout: 180\ngit_depth: 0\nbuild: {quiet: false, no_cache: true, force_image_pull: true}", true},
 		{"legacy secret references", "external_secrets: {PASSWORD: 'op://vault/item/password', NUMERIC: 123, BOOLEAN: true}\nexternal_secrets_files: [secrets.yaml]", true},

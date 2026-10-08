@@ -18,6 +18,8 @@ import (
 	"github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/source/store"
@@ -371,7 +373,7 @@ services:
 		}
 	}
 
-	deployConfig := &deploy.Config{Name: stackName, Timeout: 120}
+	deployConfig := &deploy.Config{Name: stackName, Timeout: duration.Duration(120 * time.Second)}
 	payload := &webhook.ParsedPayload{CommitSHA: plumbing.ZeroHash, FullName: "kimdre/doco-cd_tests"}
 
 	t.Cleanup(func() {

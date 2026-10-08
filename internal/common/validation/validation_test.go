@@ -9,6 +9,54 @@ import (
 	"time"
 )
 
+type selfValidatedScalar int
+
+func (v selfValidatedScalar) ValidateValue() error {
+	if v < 0 {
+		return errors.New("value must not be negative")
+	}
+
+	return nil
+}
+
+func TestValidateSelfValidatedScalars(t *testing.T) {
+	t.Parallel()
+
+	type child struct {
+		Value selfValidatedScalar
+	}
+
+	negative := selfValidatedScalar(-1)
+	for _, test := range []struct {
+		name  string
+		value any
+		path  string
+	}{
+		{name: "root", value: negative},
+		{name: "field", value: child{Value: negative}, path: "Value"},
+		{name: "pointer", value: struct{ Child *child }{Child: &child{Value: negative}}, path: "Child.Value"},
+		{name: "slice", value: struct{ Values []selfValidatedScalar }{Values: []selfValidatedScalar{negative}}, path: "Values[0]"},
+		{name: "map", value: struct {
+			Values map[string]selfValidatedScalar
+		}{Values: map[string]selfValidatedScalar{"bad": negative}}, path: "Values"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := Validate(test.value)
+			if err == nil || !strings.Contains(err.Error(), "must not be negative") || !strings.Contains(err.Error(), test.path) {
+				t.Fatalf("expected scalar validation error with path %q, got %v", test.path, err)
+			}
+		})
+	}
+
+	for _, value := range []any{selfValidatedScalar(1), child{}, struct{ Child *child }{}, (*selfValidatedScalar)(nil)} {
+		if err := Validate(value); err != nil {
+			t.Fatalf("valid scalar or nil pointer was rejected: %v", err)
+		}
+	}
+}
+
 func TestTextError(t *testing.T) {
 	inner := errors.New("boom")
 	err := TextError{Err: inner}
