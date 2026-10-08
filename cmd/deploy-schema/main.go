@@ -96,10 +96,10 @@ func generate(root string) ([]byte, error) {
 	schema.ID = schemaURL
 	schema.Title = "Doco-CD deployment configuration"
 	schema.Schema = "http://json-schema.org/draft-07/schema#"
-	schema.Type = "object"
-	schema.Types = nil
 	schema.Description = "One deployment configuration per YAML document. Fields may be omitted in auto-discovery overrides; required fields and deployment-dependent rules are checked by doco-cd at runtime."
 	schema.Comment = "Generated automatically from Doco-CD's Go configuration types. Do not edit manually."
+	schema.Type = "object"
+	schema.Types = nil
 
 	events, err := readReconciliationEvents(root)
 	if err != nil {
