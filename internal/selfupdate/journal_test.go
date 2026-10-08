@@ -321,6 +321,7 @@ func TestStoreKeepsCommitStatusTarget(t *testing.T) {
 		CommitSHA: "0123456789abcdef",
 		Context:   "doco-cd/nas/doco-cd",
 		StartedAt: startedAt,
+		Summary:   "Successfully deployed stack `doco-cd`.\n\n| Detail | Value |\n| --- | --- |\n| Docker context | `nas` |",
 		Target: &commitstatus.Target{
 			Backend:    commitstatus.BackendChecks,
 			ExternalID: "doco-cd:original-attempt",
@@ -415,7 +416,8 @@ func TestLegacyJournalDefaultsReportingFields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if record.Source.CommitStatus == nil || record.Source.CommitStatus.Target != nil || record.TimedOut {
+	if record.Source.CommitStatus == nil || record.Source.CommitStatus.Target != nil ||
+		record.Source.CommitStatus.Summary != "" || record.TimedOut {
 		t.Fatalf("legacy journal changed reporting defaults: %+v", record)
 	}
 
@@ -424,7 +426,8 @@ func TestLegacyJournalDefaultsReportingFields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(string(raw), `"target"`) || strings.Contains(string(raw), `"timed_out"`) {
+	if strings.Contains(string(raw), `"target"`) || strings.Contains(string(raw), `"timed_out"`) ||
+		strings.Contains(string(raw), `"summary"`) {
 		t.Errorf("legacy journal roundtrip wrote optional fields: %s", raw)
 	}
 }

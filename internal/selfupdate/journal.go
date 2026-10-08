@@ -110,6 +110,8 @@ type CommitStatusInfo struct {
 	Context   string               `json:"context"`
 	StartedAt time.Time            `json:"started_at,omitzero"`
 	Target    *commitstatus.Target `json:"target,omitempty"`
+	// Summary preserves the predecessor's deployment details for successful Checks.
+	Summary string `json:"summary,omitempty"`
 }
 
 // DeployInfo carries the deploy parameters the applier must reproduce.

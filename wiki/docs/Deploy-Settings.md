@@ -45,6 +45,82 @@ When using a custom target (for example `nas`), the file name must match `.doco-
 If you use polling, you can also specify inline deployment configurations in the poll configuration file.
 See [Poll Settings](Poll-Settings.md) and this [example](Poll-Settings.md#inline-deploy-configs) for more information.
 
+### Editor autocomplete and validation
+
+Doco-CD provides a [JSON Schema](schemas/deploy.schema.json) for deployment YAML files.
+Compatible editors can suggest settings and values, display descriptions and defaults on hover, and flag unknown settings or incorrect value types.
+The schema is generated from the deployment configuration's Go types, field descriptions, and defaults.
+Its `x-doco-cd-version` metadata identifies the Doco-CD release or source revision used to generate it.
+
+=== "VS Code and YAML language-server clients"
+
+    In VS Code, install the [YAML extension by Red Hat](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml).
+    Add this comment at the top of your deployment file:
+
+    ```yaml title=".doco-cd.yml" hl_lines="1"
+    # yaml-language-server: $schema=https://doco.cd/latest/schemas/deploy.schema.json
+    name: my-app
+    working_dir: deploy
+    ```
+
+    This also works in other editors configured to use [yaml-language-server](https://github.com/redhat-developer/yaml-language-server).
+    Alternatively, associate the schema with all supported deployment filenames in your editor settings:
+
+    ```json title=".vscode/settings.json"
+    {
+      "yaml.schemas": {
+        "https://doco.cd/latest/schemas/deploy.schema.json": [
+          "**/.doco-cd.yml",
+          "**/.doco-cd.yaml",
+          "**/.doco-cd.*.yml",
+          "**/.doco-cd.*.yaml"
+        ]
+      }
+    }
+    ```
+
+=== "JetBrains IDEs"
+
+    Add the JetBrains schema comment at the top of your deployment file:
+
+    ```yaml title=".doco-cd.yml"
+    # $schema: https://doco.cd/latest/schemas/deploy.schema.json
+    name: my-app
+    ```
+
+    Alternatively, open **Settings > Languages & Frameworks > Schemas and DTDs > JSON Schema Mappings**.
+    Add the schema URL and map it to `.doco-cd.yml`, `.doco-cd.yaml`, `.doco-cd.*.yml`, and `.doco-cd.*.yaml`.
+    Use this explicit mapping if your IDE version does not recognize the comment.
+
+Schema association comments are ignored by doco-cd and do not change deployment behavior.
+The schema describes one deployment mapping per YAML document, including files that separate deployments with `---`.
+
+#### Choosing a schema version
+
+| Schema URL                                                    | Use                                               |
+|---------------------------------------------------------------|---------------------------------------------------|
+| `https://doco.cd/latest/schemas/deploy.schema.json`           | The latest stable release                         |
+| `https://doco.cd/v<major>.<minor>/schemas/deploy.schema.json` | Settings for a specific release series            |
+| `https://doco.cd/next/schemas/deploy.schema.json`             | Unreleased/development version from `main` branch |
+
+??? example "Schema versioning example"
+
+    If you are using doco-cd v0.125.1, use the schema URL `https://doco.cd/v0.125/schemas/deploy.schema.json` to match the release series.
+    If you are using doco-cd v0.126.0, use the schema URL `https://doco.cd/v0.126/schemas/deploy.schema.json`.
+
+Choose the release-series URL matching your doco-cd version when using an older release.
+Documentation URLs are versioned by major/minor series, not immutable patch releases.
+The `next` schema becomes available when these changes are published to the development docs;
+`latest` and release-series URLs become available with releases that include the schema.
+For offline use, download the schema and associate a local file instead of the URL.
+
+!!! note "Editor validation does not replace runtime validation"
+
+    The same filenames are used for full deployments and partial [auto-discovery overrides](#auto-discovery).
+    Therefore, the schema allows omitted fields, including `name`; doco-cd still checks required fields at runtime.
+    Editor diagnostics also cannot check repository files, remote Docker contexts, secret-store availability, inherited cross-field constraints, or duplicate stack names across YAML documents.
+    Fixed settings objects reject unknown keys in the editor, while environment variables, build arguments, and secret maps allow custom keys.
+
 ## Available Settings
 
 The docker compose deployment can be configured inside the [deployment configuration file](#deployment-configuration-file) using the following settings:

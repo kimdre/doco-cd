@@ -204,7 +204,10 @@ func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmi
 	}
 
 	if !s.DeployConfig.Destroy.Enabled {
-		s.PostCommitStatus(ctx, commitstatus.StateSuccess, commitstatus.SuccessDescription(s.Stages.Init.StartedAt, finishedAt))
+		s.postStatus(ctx, commitstatus.Status{
+			State:       commitstatus.StateSuccess,
+			Description: commitstatus.SuccessDescription(s.Stages.Init.StartedAt, finishedAt),
+		})
 	}
 
 	// Success (deploy or destroy) closes any recorded failure, retries stop.

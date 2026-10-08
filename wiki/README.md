@@ -35,7 +35,7 @@ PYTHONPATH=wiki zensical serve --config-file wiki/zensical.toml
 
 > [!NOTE]
 > `PYTHONPATH=wiki` makes the custom Markdown extensions in `wiki/hooks/` importable. It is required for `zensical build`/`serve` to work correctly.
-> Go is required because the Prometheus metrics table is generated from the collector definitions while Zensical renders the metrics page.
+> Go is required because the Markdown extensions generate the deployment configuration schema and Prometheus metrics table from their Go source files.
 
 ## Cleaning the build cache
 

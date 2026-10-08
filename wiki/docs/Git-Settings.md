@@ -234,6 +234,10 @@ Phase updates are best-effort: each is sent once without retries, a provider rat
 
     The check run of a skipped webhook run also lists every stack with its skip reason and details in its summary, such as the webhook filter that did not match.
 
+    Successful check runs keep the title _Deployed_ and show a summary of the stack, configuration target (when set), Docker context, deployed reference and commit, deployment mode, trigger, and detected changed services.
+
+    The reference and commit describe the revision actually deployed, which can differ from the triggering webhook. Service names reflect detected changes, including image changes; they are not an exhaustive list of recreated services. When no individual names were recorded, such as for a first deployment or a whole-stack recreation, the summary shows _Not individually tracked_. Unavailable optional metadata is omitted. Token-only GitHub authentication and other providers retain their short commit-status descriptions.
+
     Native `timed_out` is reserved for an actual deployment deadline or readiness timeout, not errors whose text merely mentions a timeout. A deployment deferred by a [sync window](Advanced/Sync-Windows.md) resumes its original check run on retry.
 
     !!! note "Skipped checks and branch protection"

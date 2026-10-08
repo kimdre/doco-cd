@@ -10,9 +10,9 @@ import (
 )
 
 type OciKeylessIdentity struct {
-	Issuer        string `yaml:"issuer" json:"issuer"`
-	Subject       string `yaml:"subject" json:"subject"`
-	SubjectRegexp string `yaml:"subject_regexp" json:"subject_regexp"`
+	Issuer        string `yaml:"issuer" json:"issuer"`                 // Issuer is the trusted OIDC issuer for a keyless signature.
+	Subject       string `yaml:"subject" json:"subject"`               // Subject is the exact trusted identity for a keyless signature.
+	SubjectRegexp string `yaml:"subject_regexp" json:"subject_regexp"` // SubjectRegexp matches trusted keyless identities with a regular expression.
 }
 
 type OciTrustPolicy struct {
@@ -23,10 +23,10 @@ type OciTrustPolicy struct {
 }
 
 type OciTrustPolicyOverride struct {
-	Verify            *bool                `yaml:"verify" json:"verify"`
-	KeylessIdentities []OciKeylessIdentity `yaml:"keyless_identities" json:"keyless_identities"`
-	PublicKeys        []string             `yaml:"public_keys" json:"public_keys"`
-	IgnoreTlog        *bool                `yaml:"ignore_tlog" json:"ignore_tlog"`
+	Verify            *bool                `yaml:"verify" json:"verify"`                         // Verify enables OCI signature verification; it cannot disable verification enabled globally.
+	KeylessIdentities []OciKeylessIdentity `yaml:"keyless_identities" json:"keyless_identities"` // KeylessIdentities overrides the trusted identities for keyless OCI signatures.
+	PublicKeys        []string             `yaml:"public_keys" json:"public_keys"`               // PublicKeys overrides the public keys used to verify OCI signatures.
+	IgnoreTlog        *bool                `yaml:"ignore_tlog" json:"ignore_tlog"`               // IgnoreTlog controls whether transparency log verification is skipped.
 }
 
 func NormalizeOciTrustPolicy(p OciTrustPolicy) OciTrustPolicy {

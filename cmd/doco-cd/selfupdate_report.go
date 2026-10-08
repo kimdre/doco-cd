@@ -55,14 +55,20 @@ func (r *selfUpdateReporter) reportSuccess(ctx context.Context, log *logger.Logg
 		}
 	}
 
-	var startedAt time.Time
+	var (
+		startedAt time.Time
+		summary   string
+	)
+
 	if record.Source.CommitStatus != nil {
 		startedAt = record.Source.CommitStatus.StartedAt
+		summary = record.Source.CommitStatus.Summary
 	}
 
 	r.postCommitStatus(ctx, log, record, commitstatus.Status{
 		State:       commitstatus.StateSuccess,
 		Description: commitstatus.SuccessDescription(startedAt, time.Now()),
+		Summary:     summary,
 	})
 }
 

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://doco.cd/latest/schemas/deploy.schema.json
 # PROD deploy config. Selected by the prod doco-cd instance's poll
 # `target: prod`: a targeted daemon reads ONLY this file, never the bare
 # .doco-cd.yml.

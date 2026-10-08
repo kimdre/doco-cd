@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://doco.cd/latest/schemas/deploy.schema.json
 # The shop-dev host polls this repo with `target: shop-dev` and reads only this file.
 # It lists the stacks the host runs and pins every version they use.
 name: app
