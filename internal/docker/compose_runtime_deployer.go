@@ -108,7 +108,7 @@ func (req runtimeDeployRequest) selfDeployInput() *SelfDeployInput {
 		ConfigTarget:   req.request.DeployConfig.Internal.ConfigTarget,
 		CommitSHA:      req.request.LatestCommit,
 		ProjectHash:    req.projectHash,
-		TimeoutSeconds: req.request.DeployConfig.Timeout,
+		TimeoutSeconds: req.request.DeployConfig.Timeout.Seconds(),
 		CommitStatus:   req.request.CommitStatus,
 		Log:            req.stackLog,
 	}

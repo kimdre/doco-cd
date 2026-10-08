@@ -44,7 +44,7 @@ type selfUpdatePlan struct {
 // applier's freshly loaded deploy config takes precedence over the journal.
 func selfHealthTimeout(record selfupdate.Record, deployConfig *deploy.Config) time.Duration {
 	if deployConfig != nil && deployConfig.Timeout > 0 {
-		return selfupdate.HealthTimeout(deployConfig.Timeout)
+		return selfupdate.HealthTimeout(deployConfig.Timeout.Seconds())
 	}
 
 	return record.Deploy.HealthTimeout()
@@ -173,7 +173,7 @@ func runSelfUpdate(
 		},
 		Source: selfSourceInfo(self),
 		Deploy: selfupdate.DeployInfo{
-			TimeoutSeconds: deployConfig.Timeout,
+			TimeoutSeconds: deployConfig.Timeout.Seconds(),
 			RecreateMode:   api.RecreateForce,
 			Services:       []string{target.Service},
 			NetworkDrift:   drift,
@@ -480,7 +480,7 @@ func selfUpdateScaleOut(
 
 	log.Info("self-update: successor started, waiting for health",
 		slog.String("successor_id", successor.ID),
-		slog.Int("timeout_seconds", deployConfig.Timeout),
+		slog.Int("timeout_seconds", deployConfig.Timeout.Seconds()),
 	)
 
 	if err = selfupdate.WaitHealthy(ctx, apiClient, successor.ID, selfHealthTimeout(*record, deployConfig), log); err != nil {

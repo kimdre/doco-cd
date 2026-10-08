@@ -16,6 +16,8 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
@@ -590,7 +592,7 @@ func TestRestartOptionsFromDeployConfig(t *testing.T) {
 		t.Parallel()
 
 		dc := deployConfig.New("stack-a", "main")
-		dc.Reconciliation.RestartTimeout = 30
+		dc.Reconciliation.RestartTimeout = duration.Duration(30 * time.Second)
 		dc.Reconciliation.RestartSignal = "SIGQUIT"
 
 		opts := restartOptionsFromDeployConfig(dc)

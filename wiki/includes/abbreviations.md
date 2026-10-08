@@ -1,5 +1,6 @@
 [This is the global docs glossary]: <> (https://zensical.org/docs/authoring/tooltips/?h=glos#add-a-glossary)
 
+*[Go duration]: A possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as "10s", "2h45m", or "-1.5h". Some commonly used valid time units are "h", "m", "s" and "ms".
 *[AWS]: Amazon Web Services
 *[ARN]: Amazon Resource Name: A unique identifier for a resource within Amazon Web Services (AWS).
 *[TTL]: Time To Live: The period for which a cached item remains valid before doco-cd refreshes or retrieves it again from the source.

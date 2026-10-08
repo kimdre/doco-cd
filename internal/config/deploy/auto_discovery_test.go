@@ -22,6 +22,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/encryption"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -242,13 +244,13 @@ func TestMergeConfig(t *testing.T) {
 	t.Run("MergeScalar_Timeout", func(t *testing.T) {
 		t.Parallel()
 
-		base := &Config{Timeout: 180}
-		override := &Config{Timeout: 60}
+		base := &Config{Timeout: duration.Duration(180 * time.Second)}
+		override := &Config{Timeout: duration.Duration(60 * time.Second)}
 
 		mergeConfig(base, override)
 
-		if base.Timeout != 60 {
-			t.Errorf("timeout should be overridden to 60, got %d", base.Timeout)
+		if base.Timeout.Duration() != 60*time.Second {
+			t.Errorf("timeout should be overridden to 60s, got %s", base.Timeout)
 		}
 	})
 
@@ -306,7 +308,7 @@ func TestMergeConfig(t *testing.T) {
 
 		base := &Config{}
 		base.Reconciliation.RestartLimit = 5
-		base.Reconciliation.RestartWindow = 300
+		base.Reconciliation.RestartWindow = duration.Duration(300 * time.Second)
 
 		override := &Config{}
 		override.Reconciliation.RestartLimit = 10
@@ -317,8 +319,8 @@ func TestMergeConfig(t *testing.T) {
 			t.Errorf("RestartLimit should be overridden to 10, got %d", base.Reconciliation.RestartLimit)
 		}
 
-		if base.Reconciliation.RestartWindow != 300 {
-			t.Errorf("RestartWindow should remain 300, got %d", base.Reconciliation.RestartWindow)
+		if base.Reconciliation.RestartWindow.Duration() != 300*time.Second {
+			t.Errorf("RestartWindow should remain 5m, got %s", base.Reconciliation.RestartWindow)
 		}
 	})
 
@@ -516,7 +518,7 @@ func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
 		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
-		Timeout:          300,
+		Timeout:          duration.Duration(300 * time.Second),
 	}
 
 	configs, err := autoDiscoverDeployments(os.DirFS(repoRoot), repoRoot, revisionKeyForRepoRoot(repoRoot), baseConfig)
@@ -528,8 +530,8 @@ func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T
 		t.Fatalf("expected 1 config, got %d", len(configs))
 	}
 
-	if configs[0].Timeout != 300 {
-		t.Errorf("expected timeout 300 from base config, got %d", configs[0].Timeout)
+	if configs[0].Timeout.Duration() != 300*time.Second {
+		t.Errorf("expected timeout 5m from base config, got %s", configs[0].Timeout)
 	}
 
 	if configs[0].Name != "myservice" {
