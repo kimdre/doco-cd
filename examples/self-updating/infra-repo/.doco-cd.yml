@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://doco.cd/latest/schemas/deploy.schema.json
 # doco-cd deploys itself from this repo. The stack name and the service name
 # must match the container doco-cd already runs in, or it will not recognise
 # the stack as its own.
