@@ -61,6 +61,29 @@ func TestGeneratedSchema(t *testing.T) {
 	}
 }
 
+func TestGeneratedSchemaVersionOverride(t *testing.T) {
+	t.Setenv("DOCO_CD_VERSION", " v1.2.3 ")
+
+	data, err := generate("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+
+	var version string
+	if err := json.Unmarshal(document["x-doco-cd-version"], &version); err != nil {
+		t.Fatalf("decode Doco-CD version: %v", err)
+	}
+
+	if version != "v1.2.3" {
+		t.Errorf("Doco-CD version = %q, want v1.2.3", version)
+	}
+}
+
 func checkFields(t *testing.T, schema *jsonschema.Schema, typ reflect.Type, value reflect.Value) {
 	t.Helper()
 

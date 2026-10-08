@@ -50,6 +50,7 @@ See [Poll Settings](Poll-Settings.md) and this [example](Poll-Settings.md#inline
 Doco-CD provides a [JSON Schema](schemas/deploy.schema.json) for deployment YAML files.
 Compatible editors can suggest settings and values, display descriptions and defaults on hover, and flag unknown settings or incorrect value types.
 The schema is generated from the deployment configuration's Go types, field descriptions, and defaults.
+Its `x-doco-cd-version` metadata identifies the Doco-CD release or source revision used to generate it.
 
 === "VS Code and YAML language-server clients"
 

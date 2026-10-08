@@ -67,6 +67,13 @@ class DeploySchemaTests(unittest.TestCase):
                 (root / "go.sum").write_text("changed dependency\n")
                 self.assertNotEqual(changed, deploy_schema._source_fingerprint())
 
+    def test_fingerprint_tracks_doco_cd_version(self) -> None:
+        with patch.dict("os.environ", {"DOCO_CD_VERSION": "v1.2.3"}):
+            first = deploy_schema._source_fingerprint()
+        with patch.dict("os.environ", {"DOCO_CD_VERSION": "v1.2.4"}):
+            second = deploy_schema._source_fingerprint()
+        self.assertNotEqual(first, second)
+
     def test_extension_updates_source_and_built_asset_without_rewriting(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

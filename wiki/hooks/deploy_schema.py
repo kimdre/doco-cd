@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from functools import lru_cache
 from hashlib import sha256
@@ -24,6 +25,7 @@ GENERATOR_DIRECTORIES = (
 
 def _source_fingerprint() -> str:
     digest = sha256()
+    digest.update(os.environ.get("DOCO_CD_VERSION", "").encode())
     inputs = [REPOSITORY_ROOT / name for name in ("go.mod", "go.sum")]
     for directory in GENERATOR_DIRECTORIES:
         inputs.extend(
