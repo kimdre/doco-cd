@@ -12,9 +12,15 @@ on:
       - main
     paths:
       - 'wiki/**'
+      - 'cmd/deploy-schema/**'
       - 'cmd/metrics-docs/**'
+      - 'internal/config/**'
+      - 'internal/secretprovider/types/**'
+      - 'internal/common/defaults/**'
       - 'internal/prometheus/**'
       - '.github/workflows/docs.yaml'
+      - 'go.mod'
+      - 'go.sum'
       - '*.md'
       - 'LICENSE'
   release:

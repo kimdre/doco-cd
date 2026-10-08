@@ -60,3 +60,6 @@ test/e2e/.work/
 # Python cache
 __pycache__/
 *.pyc
+
+# Generated documentation schema
+/wiki/docs/schemas/deploy.schema.json
