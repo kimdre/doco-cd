@@ -2,12 +2,12 @@ services:
   doco-cd:
     # Pin by tag + digest and let Renovate open the bump PR. A moving tag turns
     # every restart into an unreviewed upgrade.
-    image: ghcr.io/kimdre/doco-cd:0.121.0@sha256:c07f6d0b0df5026ce67708bfda7ff26e0e645c284914dd8be3a9b8277375603b
+    image: ghcr.io/kimdre/doco-cd:0.124.0@sha256:31d3755a206ba5c7bc2d12752a9170edf327b2f36f815a8bc992753434f04676
     restart: unless-stopped
 
-    # No container_name and no host ports: both force the applier strategy,
-    # which restarts doco-cd instead of handing over without downtime.
-    # Reach the API through a reverse proxy on this network instead.
+    # No container_name or host ports lets auto use scale_out for a
+    # zero-downtime handover. If either is required, auto uses applier instead.
+    # Reach the API through a reverse proxy on this network.
 
     environment:
       TZ: Europe/Berlin

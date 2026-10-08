@@ -36,7 +36,7 @@ More resources:
 1. [Core Concepts](Core-Concepts.md) - Learn about the core concepts of Doco-CD.
 2. [Known Limitations](Known-Limitations.md) - Learn about the limitations of the application.
 3. [Tips and Tricks](Advanced/Tips-and-Tricks.md) - Some tips and tricks for using the application.
-4. [Self-Updating](Advanced/Self-Updating.md) - Run two Doco-CD instances that manage each other for self-updating.
+4. [Self-Updating](Advanced/Self-Updating.md) - Bootstrap a single instance to manage and update its own stack.
 
 ## Supported Git Providers
 

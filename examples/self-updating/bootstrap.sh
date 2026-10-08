@@ -4,9 +4,9 @@
 # so run it once per host and never again.
 set -eu
 
-# replace with the latest version of doco-cd, also set that version it in your deploy repo.
+# Use the same release version as infra-repo/doco-cd/compose.yaml.
 # https://github.com/kimdre/doco-cd/releases
-IMAGE="ghcr.io/kimdre/doco-cd:0.122"
+IMAGE="ghcr.io/kimdre/doco-cd:0.124.0"
 DATA_VOLUME="doco-cd_data"
 REPO_URL="https://github.com/example/infra.git"
 
