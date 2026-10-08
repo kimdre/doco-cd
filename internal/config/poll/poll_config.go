@@ -10,9 +10,10 @@ import (
 
 	"github.com/go-co-op/gocron/v2"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/common/cronexpr"
 	"github.com/kimdre/doco-cd/internal/common/defaults"
-	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"

@@ -22,7 +22,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/kimdre/doco-cd/internal/common/duration"
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/encryption"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"

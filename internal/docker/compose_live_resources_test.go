@@ -17,7 +17,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
 
-	"github.com/kimdre/doco-cd/internal/common/duration"
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/source/store"

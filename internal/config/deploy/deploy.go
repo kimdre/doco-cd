@@ -20,8 +20,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/common/defaults"
-	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 

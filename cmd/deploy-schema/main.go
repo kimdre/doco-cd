@@ -15,8 +15,9 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/common/defaults"
-	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"

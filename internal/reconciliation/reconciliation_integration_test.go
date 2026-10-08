@@ -12,7 +12,8 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/common/duration"
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"

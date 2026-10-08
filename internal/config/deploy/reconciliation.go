@@ -9,7 +9,8 @@ import (
 
 	"go.yaml.in/yaml/v4"
 
-	"github.com/kimdre/doco-cd/internal/common/duration"
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 

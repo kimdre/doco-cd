@@ -16,8 +16,9 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/common/defaults"
-	"github.com/kimdre/doco-cd/internal/common/duration"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 )
 

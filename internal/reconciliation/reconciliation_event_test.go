@@ -16,7 +16,8 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/common/duration"
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
