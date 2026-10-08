@@ -71,6 +71,7 @@ The source directory is organized by source type and source name, and contains t
               <revision>.publish.lock  # Lock file for publishing the artifact
               <revision>.published  # Identity of the published artifact directory
               <revision>.published-at  # Time of the last artifact publication
+              <revision>.decrypted.json  # Which files were decrypted, for plaintext reuse
               ...
             mirror/  # Bare Git repository mirror
               HEAD
@@ -128,6 +129,7 @@ The source directory is organized by source type and source name, and contains t
               sha256-<digest>.publish.lock  # Lock file for publishing the artifact
               sha256-<digest>.published  # Identity of the published artifact directory
               sha256-<digest>.published-at  # Time of the last artifact publication
+              sha256-<digest>.decrypted.json  # Which files were decrypted, for plaintext reuse
               ...
             live/  # Mutable live files of stacks
               <context>/

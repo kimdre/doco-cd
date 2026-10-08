@@ -90,16 +90,30 @@ func (s *OCIStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 		return existing, nil
 	}
 
-	return publishDir(s.opts.BaseDir, revision, func(dir string) error {
+	var record decryptRecord
+
+	artifact, published, err := publishDir(s.opts.BaseDir, revision, func(dir string) (err error) {
 		pinnedRef := oci.RepositoryNameFromArtifact(s.opts.ArtifactRef) + "@" + string(revision)
-		if _, err := oci.PullAndExtract(ctx,
+		if _, err = oci.PullAndExtract(ctx,
 			pinnedRef, string(revision), config.OciArtifactLayoutV1,
 			dir, s.opts.CustomTarget); err != nil {
 			return err
 		}
 
-		return decryptArtifact(s.opts.Log, dir)
+		record, err = decryptArtifact(s.opts.Log, s.opts.BaseDir, dir)
+
+		return err
 	})
+	if err != nil {
+		return Artifact{}, err
+	}
+
+	// The loser's record would describe files that were just discarded.
+	if published {
+		writeDecryptRecord(s.opts.Log, artifact, record)
+	}
+
+	return artifact, nil
 }
 
 // Lookup returns the already-published artifact for revision, if any.

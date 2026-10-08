@@ -173,13 +173,27 @@ func (s *GitStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 		exportOpts.SubmoduleCacheDir = filepath.Join(s.opts.BaseDir, SubmodulesSubdir)
 	}
 
-	return publishDir(s.opts.BaseDir, revision, func(dir string) error {
-		if err := git.ExportTree(dir, repo, hash, exportOpts); err != nil {
+	var record decryptRecord
+
+	artifact, published, err := publishDir(s.opts.BaseDir, revision, func(dir string) (err error) {
+		if err = git.ExportTree(dir, repo, hash, exportOpts); err != nil {
 			return err
 		}
 
-		return decryptArtifact(s.opts.Log, dir)
+		record, err = decryptArtifact(s.opts.Log, s.opts.BaseDir, dir)
+
+		return err
 	})
+	if err != nil {
+		return Artifact{}, err
+	}
+
+	// The loser's record would describe files that were just discarded.
+	if published {
+		writeDecryptRecord(s.opts.Log, artifact, record)
+	}
+
+	return artifact, nil
 }
 
 // Lookup returns the already-published artifact for revision, if any.

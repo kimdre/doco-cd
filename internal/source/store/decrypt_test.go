@@ -5,7 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/getsops/sops/v3/age"
 
@@ -105,6 +108,218 @@ func TestGitStore_PublishKeepsUndecryptableFileAsCiphertext(t *testing.T) {
 
 	if _, err := os.ReadFile(filepath.Join(artifact.Path, "compose.yaml")); err != nil {
 		t.Fatalf("read unrelated published file: %v", err)
+	}
+}
+
+// publishRevision resolves and publishes ref with s, failing the test on error.
+func publishRevision(t *testing.T, s store.Store, ref string) store.Artifact {
+	t.Helper()
+
+	rev, err := s.Resolve(t.Context(), ref)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+
+	artifact, err := s.Publish(t.Context(), rev)
+	if err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+
+	return artifact
+}
+
+// readArtifactFile returns the content of rel inside artifact.
+func readArtifactFile(t *testing.T, artifact store.Artifact, rel string) string {
+	t.Helper()
+
+	content, err := os.ReadFile(filepath.Join(artifact.Path, rel)) // #nosec G304 -- test path
+	if err != nil {
+		t.Fatalf("read %s: %v", rel, err)
+	}
+
+	return string(content)
+}
+
+// TestGitStore_PublishReusesPlaintextOfUnchangedCiphertext publishes a second
+// revision without any SOPS key and expects the unchanged secret decrypted,
+// which proves the plaintext came from the first artifact and not from a key service.
+func TestGitStore_PublishReusesPlaintextOfUnchangedCiphertext(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
+	const want = "this.is.encrypted: \"yes\"\n"
+
+	fixture := readEncryptionFixture(t, "encrypted.yaml")
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+	commitTestFile(t, repo, repoPath, "secret.yaml", fixture, "add encrypted file")
+
+	baseDir := t.TempDir()
+
+	newStore := func() *store.GitStore {
+		s, err := store.NewGitStore(store.GitStoreOptions{CloneURL: "file://" + repoPath, BaseDir: baseDir})
+		if err != nil {
+			t.Fatalf("NewGitStore() error = %v", err)
+		}
+
+		return s
+	}
+
+	first := publishRevision(t, newStore(), "main")
+
+	if got := readArtifactFile(t, first, "secret.yaml"); got != want {
+		t.Fatalf("first artifact = %q, want %q", got, want)
+	}
+
+	if _, err := os.Stat(first.Path + ".decrypted.json"); err != nil {
+		t.Fatalf("decrypt record: %v", err)
+	}
+
+	commitTestFile(t, repo, repoPath, "compose.yaml", "services: {}\n", "unrelated change")
+	t.Setenv(age.SopsAgeKeyEnv, "")
+	t.Setenv(age.SopsAgeKeyFileEnv, "")
+
+	second := publishRevision(t, newStore(), "main")
+
+	if got := readArtifactFile(t, second, "secret.yaml"); got != want {
+		t.Fatalf("second artifact = %q, want reused plaintext %q", got, want)
+	}
+
+	// A plaintext that changed after it was recorded must not be reused,
+	// even with the original size and timestamps.
+	tampered := filepath.Join(second.Path, "secret.yaml")
+
+	info, err := os.Stat(tampered)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	forged := []byte(strings.Repeat("x", int(info.Size())))
+	if err = os.WriteFile(tampered, forged, 0o600); err != nil {
+		t.Fatalf("tamper: %v", err)
+	}
+
+	if err = os.Chtimes(tampered, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	commitTestFile(t, repo, repoPath, "compose.yaml", "services: {} # v2\n", "another unrelated change")
+
+	third := publishRevision(t, newStore(), "main")
+
+	if got := readArtifactFile(t, third, "secret.yaml"); got != want {
+		t.Fatalf("third artifact = %q, want plaintext of the older untouched artifact %q", got, want)
+	}
+
+	// With no trusted copy left, the file stays ciphertext since no key is set.
+	if err := os.Remove(first.Path + ".decrypted.json"); err != nil {
+		t.Fatalf("remove first record: %v", err)
+	}
+
+	if err := os.Remove(third.Path + ".decrypted.json"); err != nil {
+		t.Fatalf("remove third record: %v", err)
+	}
+
+	commitTestFile(t, repo, repoPath, "compose.yaml", "services: {} # v3\n", "yet another unrelated change")
+
+	fourth := publishRevision(t, newStore(), "main")
+
+	if got := readArtifactFile(t, fourth, "secret.yaml"); got != fixture {
+		t.Fatalf("fourth artifact = %q, want ciphertext (no key, no trusted plaintext)", got)
+	}
+}
+
+// TestGitStore_PublishSkipsIrregularPlaintextSource replaces a cached plaintext
+// with a FIFO, as a container with a writable bind mount could. The next publish
+// must neither block on it nor reuse it.
+func TestGitStore_PublishSkipsIrregularPlaintextSource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mkfifo is not available on windows")
+	}
+
+	encryption.SetupAgeKeyEnvVar(t)
+
+	const want = "this.is.encrypted: \"yes\"\n"
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+	commitTestFile(t, repo, repoPath, "secret.yaml", readEncryptionFixture(t, "encrypted.yaml"), "add encrypted file")
+
+	baseDir := t.TempDir()
+
+	newStore := func() *store.GitStore {
+		s, err := store.NewGitStore(store.GitStoreOptions{CloneURL: "file://" + repoPath, BaseDir: baseDir})
+		if err != nil {
+			t.Fatalf("NewGitStore() error = %v", err)
+		}
+
+		return s
+	}
+
+	first := publishRevision(t, newStore(), "main")
+
+	cached := filepath.Join(first.Path, "secret.yaml")
+	if err := os.Remove(cached); err != nil {
+		t.Fatalf("remove cached plaintext: %v", err)
+	}
+
+	if err := syscall.Mkfifo(cached, 0o600); err != nil {
+		t.Fatalf("mkfifo: %v", err)
+	}
+
+	commitTestFile(t, repo, repoPath, "compose.yaml", "services: {}\n", "unrelated change")
+
+	done := make(chan store.Artifact, 1)
+
+	go func() { done <- publishRevision(t, newStore(), "main") }()
+
+	select {
+	case second := <-done:
+		if got := readArtifactFile(t, second, "secret.yaml"); got != want {
+			t.Fatalf("second artifact = %q, want fresh decryption %q", got, want)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Publish() blocked on the FIFO in the earlier artifact")
+	}
+}
+
+// TestGitStore_PublishDoesNotReusePlaintextAcrossFormats renames identical
+// ciphertext from a binary file to a JSON file. The format comes from the
+// extension, so the plaintext differs and must not be reused.
+func TestGitStore_PublishDoesNotReusePlaintextAcrossFormats(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
+	fixture := readEncryptionFixture(t, "encrypted")
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+	commitTestFile(t, repo, repoPath, "secret", fixture, "add binary secret")
+
+	baseDir := t.TempDir()
+
+	newStore := func() *store.GitStore {
+		s, err := store.NewGitStore(store.GitStoreOptions{CloneURL: "file://" + repoPath, BaseDir: baseDir})
+		if err != nil {
+			t.Fatalf("NewGitStore() error = %v", err)
+		}
+
+		return s
+	}
+
+	first := publishRevision(t, newStore(), "main")
+	binary := readArtifactFile(t, first, "secret")
+
+	commitTestFile(t, repo, repoPath, "secret.json", fixture, "same ciphertext as json")
+
+	second := publishRevision(t, newStore(), "main")
+	asJSON := readArtifactFile(t, second, "secret.json")
+
+	if asJSON == binary || asJSON == fixture {
+		t.Fatalf("secret.json = %q, want a fresh JSON decryption, binary plaintext is %q", asJSON, binary)
+	}
+
+	if !strings.HasPrefix(asJSON, "{") {
+		t.Fatalf("secret.json = %q, want JSON plaintext", asJSON)
 	}
 }
 
