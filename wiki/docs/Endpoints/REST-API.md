@@ -76,7 +76,7 @@ If the application is not healthy, the endpoint returns a `503` status code and 
 
 ### Deployment Runs
 
-The API tracks deployment-related runs (for example webhook-triggered deployments and API-triggered poll runs) in memory.
+The API tracks deployment-related runs (for example webhook-triggered deployments, API-triggered poll runs, and automatic, manual, or recovered scheduled-job executions) in memory.
 Use these endpoints to inspect the current status and recent history by `job_id`.
 Each run's `deployments` collection reports the resolved stack and Docker context targets. A single poll or webhook run can contain targets from multiple contexts.
 
@@ -84,6 +84,11 @@ Each run's `deployments` collection reports the resolved stack and Docker contex
 |-----------------------|--------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `/v1/api/runs`        | GET    | List recent tracked deployment runs   | - `limit` (integer, default: `50`, max: `200`)<br/>- `status` (string, optional): `accepted`, `running`, `succeeded`, `failed`, `skipped`<br/>- `trigger` (string, optional): `webhook`, `poll`, `scheduled_job`, `mirror_compaction` |
 | `/v1/api/run/{jobID}` | GET    | Get details for a specific run/job ID |                                                                                                                                                                                                                                       |
+
+History is bounded by the configured per-trigger limit (currently 50 runs in the application) and a seven-day TTL.
+All run timestamps use doco-cd's configured timezone (`TZ`), including the UTC offset for each timestamp.
+Accepted and running records are protected from eviction until they become terminal. History is not persisted across
+doco-cd restarts; retained `one_off` scheduled executions can be reconstructed during recovery.
 
 #### Example Requests
 
@@ -158,6 +163,13 @@ curl --request POST \
 |-----------------------------|--------|----------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `/v1/api/jobs`              | GET    | List all discovered [scheduled jobs](../Advanced/Job-Scheduling.md)              | - `stack` (string, optional): Return scheduled jobs only for one stack/project.                                                                                            |
 | `/v1/api/job/{jobName}/run` | POST   | Trigger a configured [scheduled job](../Advanced/Job-Scheduling.md) immediately. | - `stack` (string, optional): Limit matching to a specific stack/project.<br/>- `wait` (boolean, default: `true`): Wait for the triggered run to finish before responding. |
+
+For Compose `one_off` jobs, `status` is `running` while an execution is active. Otherwise, if the source service
+container is inactive (`created`, `exited`, or `dead`), `status` shows the most recent recorded one-off exit status,
+such as `exited (0)` or `exited (7)`, instead of an older exit status of the source container. An active source
+container keeps its own state. Exit results are kept in memory. If no result is available, `status` falls back to the
+source container's state. This occurs after a doco-cd restart without a recovered execution, or after a run that failed
+without an exit code, for example because the image pull failed. Compose `restart` jobs use the source container's state.
 
 ??? question "What is the `jobName` for a scheduled job?"
     `jobName` is the runtime name of the scheduled target:

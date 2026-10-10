@@ -2,9 +2,12 @@ package docker
 
 import (
 	"testing"
+	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/compose"
+
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
@@ -122,6 +125,31 @@ func TestScaleDoesNotChangeServiceHash(t *testing.T) {
 	}
 }
 
+func TestSelfHealthTimeout(t *testing.T) {
+	t.Parallel()
+
+	record := selfupdate.Record{Deploy: selfupdate.DeployInfo{TimeoutSeconds: 60}}
+
+	for _, test := range []struct {
+		name string
+		cfg  *deploy.Config
+		want time.Duration
+	}{
+		{name: "nil config", want: time.Minute},
+		{name: "unset timeout", cfg: &deploy.Config{}, want: time.Minute},
+		{name: "configured timeout", cfg: &deploy.Config{Timeout: duration.Duration(90 * time.Second)}, want: 90 * time.Second},
+		{name: "negative timeout", cfg: &deploy.Config{Timeout: duration.Duration(-time.Second)}, want: time.Minute},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := selfHealthTimeout(record, test.cfg); got != test.want {
+				t.Fatalf("health timeout = %s, want %s", got, test.want)
+			}
+		})
+	}
+}
+
 func TestSelfDeployInputFromLabels(t *testing.T) {
 	t.Parallel()
 
@@ -160,7 +188,7 @@ func TestSelfDeployInputCarriesCommitStatus(t *testing.T) {
 	}
 
 	req := runtimeDeployRequest{request: DeployRequest{
-		DeployConfig: &deploy.Config{Name: "doco-cd"},
+		DeployConfig: &deploy.Config{Name: "doco-cd", Timeout: duration.Duration(90 * time.Second)},
 		LatestCommit: "abc123",
 		CommitStatus: status,
 	}}
@@ -168,6 +196,10 @@ func TestSelfDeployInputCarriesCommitStatus(t *testing.T) {
 	in := req.selfDeployInput()
 	if in.CommitStatus != status {
 		t.Fatalf("selfDeployInput().CommitStatus = %v, want %v", in.CommitStatus, status)
+	}
+
+	if in.TimeoutSeconds != 90 {
+		t.Fatalf("selfDeployInput().TimeoutSeconds = %d, want 90", in.TimeoutSeconds)
 	}
 
 	if got := selfSourceInfo(in).CommitStatus; got != status {

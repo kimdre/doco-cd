@@ -40,7 +40,7 @@ func TestArtifactPath_RejectsRevisionsOutsideArtifactsDir(t *testing.T) {
 			t.Errorf("lookupArtifact(%q) error = %v, want %v", revision, err, ErrInvalidRevision)
 		}
 
-		_, err := publishDir(baseDir, revision, func(string) error {
+		_, _, err := publishDir(baseDir, revision, func(string) error {
 			t.Errorf("publishDir(%q) wrote an artifact for an invalid revision", revision)
 			return nil
 		})
@@ -65,7 +65,7 @@ func TestPublishDir_CreatesReadableArtifact(t *testing.T) {
 
 	baseDir := t.TempDir()
 
-	artifact, err := publishDir(baseDir, "rev1", func(dir string) error {
+	artifact, _, err := publishDir(baseDir, "rev1", func(dir string) error {
 		return os.WriteFile(filepath.Join(dir, "file.txt"), []byte("content"), 0o600)
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func TestPublishDir_WriteFailure_LeavesNoArtifactAndCleansUpTemp(t *testing.T) {
 	baseDir := t.TempDir()
 	wantErr := errors.New("simulated crash during export")
 
-	_, err := publishDir(baseDir, "rev1", func(dir string) error {
+	_, _, err := publishDir(baseDir, "rev1", func(dir string) error {
 		// Simulate a crash partway through writing the artifact: some
 		// content is written before the failure.
 		_ = os.WriteFile(filepath.Join(dir, "partial.txt"), []byte("partial"), 0o600)
@@ -148,7 +148,7 @@ func TestPublishDir_ConcurrentDifferentRevisions_BothSucceedIndependently(t *tes
 		go func(rev Revision) {
 			defer wg.Done()
 
-			_, err := publishDir(baseDir, rev, func(dir string) error {
+			_, _, err := publishDir(baseDir, rev, func(dir string) error {
 				return os.WriteFile(filepath.Join(dir, "marker.txt"), []byte(rev), 0o600)
 			})
 
@@ -191,11 +191,12 @@ func TestPublishDir_ConcurrentSameRevision_IsIdempotent(t *testing.T) {
 		mu      sync.Mutex
 		results []Artifact
 		errs    []error
+		winners int
 	)
 
 	for range attempts {
 		wg.Go(func() {
-			artifact, err := publishDir(baseDir, "rev1", func(dir string) error {
+			artifact, published, err := publishDir(baseDir, "rev1", func(dir string) error {
 				return os.WriteFile(filepath.Join(dir, "marker.txt"), []byte("content"), 0o600)
 			})
 
@@ -205,6 +206,10 @@ func TestPublishDir_ConcurrentSameRevision_IsIdempotent(t *testing.T) {
 			if err != nil {
 				errs = append(errs, err)
 				return
+			}
+
+			if published {
+				winners++
 			}
 
 			results = append(results, artifact)
@@ -219,6 +224,10 @@ func TestPublishDir_ConcurrentSameRevision_IsIdempotent(t *testing.T) {
 
 	if len(results) != attempts {
 		t.Fatalf("got %d successful results, want %d", len(results), attempts)
+	}
+
+	if winners != 1 {
+		t.Errorf("publishDir() published = %d callers, want exactly 1", winners)
 	}
 
 	want := mustArtifactPath(t, baseDir, "rev1")
@@ -251,7 +260,7 @@ func TestSweepOrphanedTemp_RemovesOnlyTmpEntries(t *testing.T) {
 
 	baseDir := t.TempDir()
 
-	if _, err := publishDir(baseDir, "rev1", func(dir string) error {
+	if _, _, err := publishDir(baseDir, "rev1", func(dir string) error {
 		return os.WriteFile(filepath.Join(dir, "file.txt"), []byte("content"), 0o600)
 	}); err != nil {
 		t.Fatalf("publishDir() error = %v", err)
@@ -334,7 +343,7 @@ func TestLookupArtifact_NotFoundVsFound(t *testing.T) {
 		t.Fatalf("lookupArtifact() before publish = (found=%v, err=%v), want (false, nil)", found, err)
 	}
 
-	if _, err := publishDir(baseDir, "rev1", func(_ string) error {
+	if _, _, err := publishDir(baseDir, "rev1", func(_ string) error {
 		return nil
 	}); err != nil {
 		t.Fatalf("publishDir() error = %v", err)
@@ -355,7 +364,7 @@ func TestPublishDir_RecordsPublishedIdentity(t *testing.T) {
 
 	baseDir := t.TempDir()
 
-	artifact, err := publishDir(baseDir, "rev1", func(_ string) error { return nil })
+	artifact, _, err := publishDir(baseDir, "rev1", func(_ string) error { return nil })
 	if err != nil {
 		t.Fatalf("publishDir() error = %v", err)
 	}
@@ -412,7 +421,7 @@ func TestLookupArtifact_RejectsRecreatedDirectory(t *testing.T) {
 
 			baseDir := t.TempDir()
 
-			artifact, err := publishDir(baseDir, "rev1", func(dir string) error {
+			artifact, _, err := publishDir(baseDir, "rev1", func(dir string) error {
 				return os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("v1"), 0o600)
 			})
 			if err != nil {
@@ -425,7 +434,7 @@ func TestLookupArtifact_RejectsRecreatedDirectory(t *testing.T) {
 				t.Fatalf("lookupArtifact() of re-created directory = (found=%v, err=%v), want (false, nil)", found, err)
 			}
 
-			republished, err := publishDir(baseDir, "rev1", func(dir string) error {
+			republished, _, err := publishDir(baseDir, "rev1", func(dir string) error {
 				return os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("v1"), 0o600)
 			})
 			if err != nil {
@@ -504,7 +513,7 @@ func TestListArtifacts_SkipsNonDirectoryEntries(t *testing.T) {
 	baseDir := t.TempDir()
 
 	for _, rev := range []Revision{"rev1", "rev2"} {
-		if _, err := publishDir(baseDir, rev, func(_ string) error { return nil }); err != nil {
+		if _, _, err := publishDir(baseDir, rev, func(_ string) error { return nil }); err != nil {
 			t.Fatalf("publishDir(%s) error = %v", rev, err)
 		}
 	}
@@ -542,7 +551,7 @@ func TestListArtifacts_SkipsTempArtifactDirectories(t *testing.T) {
 
 	baseDir := t.TempDir()
 
-	if _, err := publishDir(baseDir, "rev1", func(_ string) error { return nil }); err != nil {
+	if _, _, err := publishDir(baseDir, "rev1", func(_ string) error { return nil }); err != nil {
 		t.Fatalf("publishDir() error = %v", err)
 	}
 

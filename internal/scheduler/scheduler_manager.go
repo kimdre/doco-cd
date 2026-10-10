@@ -39,9 +39,18 @@ type Manager struct {
 	// projects (see docker.ScheduledComposeOptions), resolved explicitly at composition time.
 	composeOptions docker.ScheduledComposeOptions
 
-	mu      sync.Mutex
-	workers map[string]managedWorker // key = normalized context name + runtime mode
-	nextID  uint64
+	mu          sync.Mutex
+	workers     map[string]managedWorker // key = normalized context name + runtime mode
+	nextID      uint64
+	runReporter RunReporter
+}
+
+// SetRunReporter configures run reporting before workers start.
+func (m *Manager) SetRunReporter(reporter RunReporter) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.runReporter = reporter
 }
 
 type managedWorker struct {
@@ -149,6 +158,7 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 			}
 
 			worker := newSchedulerForMode(result.ContextClient, mode, m.log, m.wg, m.secretProvider, m.notifier, m.stopHoldTracker, m.runtime, m.composeOptions)
+			worker.runReporter = m.runReporter
 			workerCtx, cancel := context.WithCancel(ctx)
 			m.nextID++
 			workerID := m.nextID
@@ -200,7 +210,7 @@ func (m *Manager) ListJobs(ctx context.Context, contextName, stackName string) (
 // TriggerNow executes one configured scheduled job immediately on the given
 // Docker context. Job selection matches by container/service name and
 // optional stack name.
-func (m *Manager) TriggerNow(ctx context.Context, contextName, jobName, stackName string, secretProvider secretprovider.SecretProvider) (string, error) {
+func (m *Manager) TriggerNow(ctx context.Context, runID, contextName, jobName, stackName string, secretProvider secretprovider.SecretProvider) (string, error) {
 	if m == nil || m.registry == nil {
 		return "", errors.New("scheduler manager is not configured with a docker context registry")
 	}
@@ -210,7 +220,11 @@ func (m *Manager) TriggerNow(ctx context.Context, contextName, jobName, stackNam
 		return "", fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
 	}
 
-	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, jobName, stackName, secretProvider, m.notifier, m.stopHoldTracker, m.runtime, m.composeOptions)
+	m.mu.Lock()
+	reporter := m.runReporter
+	m.mu.Unlock()
+
+	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, runID, jobName, stackName, secretProvider, m.notifier, m.stopHoldTracker, m.runtime, m.composeOptions, reporter)
 }
 
 // stopWorkers requests cancellation for every managed worker. Each worker

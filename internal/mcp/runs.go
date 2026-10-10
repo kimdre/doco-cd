@@ -36,15 +36,17 @@ func (h *Handler) addRunTools(server *sdkmcp.Server) {
 	listSchema.Properties["limit"].Minimum = new(1.0)
 
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "list_deployment_runs",
-		Description: "List recent deployment runs, optionally filtered by status and trigger.",
-		Annotations: readOnly,
-		InputSchema: listSchema,
+		Name:         "list_deployment_runs",
+		Description:  "List recent deployment runs, optionally filtered by status and trigger.",
+		Annotations:  readOnly,
+		InputSchema:  listSchema,
+		OutputSchema: mustRunToolOutputSchema[listDeploymentRunsOutput]("list_deployment_runs"),
 	}, instrumentTool(h.log, "list_deployment_runs", h.listDeploymentRuns))
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "get_deployment_run",
-		Description: "Get one deployment run by job ID.",
-		Annotations: readOnly,
+		Name:         "get_deployment_run",
+		Description:  "Get one deployment run by job ID.",
+		Annotations:  readOnly,
+		OutputSchema: mustRunToolOutputSchema[getDeploymentRunOutput]("get_deployment_run"),
 	}, instrumentTool(h.log, "get_deployment_run", h.getDeploymentRun))
 }
 

@@ -30,7 +30,7 @@ jobs:
         with:
           check_filenames: true
           skip: ./.git,go.mod,go.sum,./wiki/docs/index.md
-          ignore_words_list: AtLeast,AtMost
+          ignore_words_list: AtLeast,AtMost,HashReference
 
   lint:
     name: Lint

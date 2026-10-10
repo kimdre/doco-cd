@@ -215,13 +215,13 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 
 	limit := dc.Reconciliation.RestartLimit
 
-	windowSeconds := dc.Reconciliation.RestartWindow
-	if limit <= 0 || windowSeconds <= 0 {
+	window := dc.Reconciliation.RestartWindow.Duration()
+	if limit <= 0 || window <= 0 {
 		return false
 	}
 
+	windowSeconds := int64(window / time.Second)
 	now := time.Now()
-	window := time.Duration(windowSeconds) * time.Second
 
 	j.restartStateMu.Lock()
 	history := j.unhealthyRestartHistory[containerID]
@@ -236,7 +236,7 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 	msg := fmt.Sprintf("suppressed unhealthy auto-restart after %d restarts in %s", limit, window)
 	jobLog.Warn(msg,
 		slog.Int("restart_limit", limit),
-		slog.Int("restart_window_seconds", windowSeconds),
+		slog.Int64("restart_window_seconds", windowSeconds),
 	)
 
 	actorKind := restartNotificationActorKind(swarmMode)
@@ -257,7 +257,7 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 func restartOptionsFromDeployConfig(dc *deployConfig.Config) client.ContainerRestartOptions {
 	timeout := 10
 	if dc != nil && dc.Reconciliation.RestartTimeout > 0 {
-		timeout = dc.Reconciliation.RestartTimeout
+		timeout = dc.Reconciliation.RestartTimeout.Seconds()
 	}
 
 	opts := client.ContainerRestartOptions{Timeout: &timeout}

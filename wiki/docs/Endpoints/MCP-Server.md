@@ -111,8 +111,8 @@ x-api-key: your-api-key
 | `get_health`            | None                                                                                           | Verify access to the Docker API.                                                                                     |
 | `list_deployment_runs`  | `limit` (default 50, max 200), `status` (accepted/running/succeeded/failed/skipped), `trigger` | List recent deployment runs, optionally filtered by status and trigger.                                              |
 | `get_deployment_run`    | `job_id`                                                                                       | Get a deployment run by job ID.                                                                                      |
-| `list_scheduled_jobs`   | `stack` (filter), `context`                                                                    | List scheduler-managed jobs, optionally filtered by stack or Compose project.                                        |
-| `list_sync_windows`     | `repository`, `deployment`, `context`, `manual`                                                | List [sync windows](../Advanced/Sync-Windows.md) and, if a target is given, whether it may be deployed right now.   |
+| `list_scheduled_jobs`   | `stack` (filter), `context`                                                                    | List scheduler-managed jobs and their latest tracked run, optionally filtered by stack or Compose project.           |
+| `list_sync_windows`     | `repository`, `deployment`, `context`, `manual`                                                | List [sync windows](../Advanced/Sync-Windows.md) and, if a target is given, whether it may be deployed right now.    |
 | `list_projects`         | `all` (include stopped), `context`                                                             | List Docker Compose projects.                                                                                        |
 | `get_project`           | `project_name`, `context`                                                                      | Get the containers of one Docker Compose project.                                                                    |
 | `control_project`       | `project_name`, `action` (start/stop/restart), `context`, `timeout`                            | Start, stop, or restart a Docker Compose project.                                                                    |
@@ -191,6 +191,7 @@ All configs in one request run with bounded concurrency controlled by `MAX_CONCU
 
 - The server is stateless. Clients must not depend on server-side MCP sessions between requests.
 - Request bodies are limited by `MAX_PAYLOAD_SIZE`.
-- Deployment run history is stored in memory and is lost when doco-cd restarts.
+- Deployment run history is bounded and stored in memory; after a restart, only recoverable retained scheduled
+  `one_off` executions can be reconstructed, not completed API history.
 - Tool errors can include structured output such as a `job_id`; clients should inspect both the MCP error flag and the structured result fields.
 - MCP tool request, error, and duration metrics are exposed by the [Prometheus endpoint](Metrics.md): `doco_cd_mcp_requests_total`, `doco_cd_mcp_errors_total`, and `doco_cd_mcp_request_duration_seconds`.

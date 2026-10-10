@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"go.yaml.in/yaml/v4"
 )
@@ -36,8 +37,8 @@ compose_files: ["compose.yaml"]
 		t.Fatalf("expected reconciliation events %v, got %v", want, configs[0].Reconciliation.Events)
 	}
 
-	if configs[0].Reconciliation.RestartTimeout != 10 {
-		t.Fatalf("expected default reconciliation restart_timeout 10, got %d", configs[0].Reconciliation.RestartTimeout)
+	if configs[0].Reconciliation.RestartTimeout.Duration() != 10*time.Second {
+		t.Fatalf("expected default reconciliation restart_timeout 10s, got %s", configs[0].Reconciliation.RestartTimeout)
 	}
 
 	if configs[0].Reconciliation.RestartSignal != "" {
@@ -48,8 +49,8 @@ compose_files: ["compose.yaml"]
 		t.Fatalf("expected default restart_limit 5, got %d", configs[0].Reconciliation.RestartLimit)
 	}
 
-	if configs[0].Reconciliation.RestartWindow != 300 {
-		t.Fatalf("expected default restart_window 300, got %d", configs[0].Reconciliation.RestartWindow)
+	if configs[0].Reconciliation.RestartWindow.Duration() != 5*time.Minute {
+		t.Fatalf("expected default restart_window 5m, got %s", configs[0].Reconciliation.RestartWindow)
 	}
 }
 
@@ -306,8 +307,8 @@ reconciliation:
 		t.Errorf("expected reconciliation.enabled to be true, got false")
 	}
 
-	if cfg.Reconciliation.RestartTimeout != 30 {
-		t.Errorf("expected restart_timeout 30, got %d", cfg.Reconciliation.RestartTimeout)
+	if cfg.Reconciliation.RestartTimeout.Duration() != 30*time.Second {
+		t.Errorf("expected restart_timeout 30s, got %s", cfg.Reconciliation.RestartTimeout)
 	}
 
 	if cfg.Reconciliation.RestartSignal != "SIGQUIT" {
@@ -384,8 +385,8 @@ func TestReconciliationConfig_UnmarshalJSON_Object(t *testing.T) {
 		t.Errorf("expected reconciliation.enabled to be true, got false")
 	}
 
-	if cfg.Reconciliation.RestartTimeout != 30 {
-		t.Errorf("expected restart_timeout 30, got %d", cfg.Reconciliation.RestartTimeout)
+	if cfg.Reconciliation.RestartTimeout.Duration() != 30*time.Second {
+		t.Errorf("expected restart_timeout 30s, got %s", cfg.Reconciliation.RestartTimeout)
 	}
 
 	if cfg.Reconciliation.RestartSignal != "SIGQUIT" {

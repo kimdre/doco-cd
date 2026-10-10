@@ -20,6 +20,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/common/defaults"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/common/validation"
@@ -79,7 +81,7 @@ type Config struct {
 	WaitRunningJobs      bool                                     `yaml:"wait_running_jobs" json:"wait_running_jobs" default:"true" doco:"allowOverride"`                                                                         // WaitRunningJobs waits for currently running scheduled job containers/services to finish before deployment
 	ForceRecreate        bool                                     `yaml:"force_recreate" json:"force_recreate" default:"false" doco:"allowOverride"`                                                                              // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
 	ForceImagePull       bool                                     `yaml:"force_image_pull" json:"force_image_pull" default:"false" doco:"allowOverride"`                                                                          // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
-	Timeout              int                                      `yaml:"timeout" json:"timeout" default:"180" doco:"allowOverride"`                                                                                              // Timeout is the time in seconds to wait for the deployment to finish before timing out
+	Timeout              duration.Duration                        `yaml:"timeout" json:"timeout" default:"3m" doco:"allowOverride"`                                                                                               // Timeout is the maximum time to wait for deployment; numeric values are seconds and strings accept Go duration syntax.
 	BuildOpts            BuildConfig                              `yaml:"build" json:"build" doco:"allowOverride"`                                                                                                                // BuildOpts is the build options for the deployment
 	GitDepth             int                                      `yaml:"git_depth" json:"git_depth" default:"0"`                                                                                                                 // GitDepth limits the number of commits to fetch. 0 means use global GIT_CLONE_DEPTH. A positive value overrides the global setting.
 	Destroy              DestroyConfig                            `yaml:"destroy" json:"destroy" doco:"allowOverride"`                                                                                                            // Destroy configures destruction of the deployment and related resources
@@ -198,6 +200,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: name", ErrKeyNotFound)
 	}
 
+	if err := validation.Validate(c); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+
 	if c.GitDepth < 0 {
 		return fmt.Errorf("%w: git_depth must be >= 0", ErrInvalidConfig)
 	}
@@ -279,32 +285,38 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
-	err := defaults.Set(c)
-	if err != nil {
+func (c *Config) UnmarshalYAML(node *yaml.Node) error {
+	if err := defaults.Set(c); err != nil {
 		return err
 	}
 
-	type Plain Config
+	type plain Config
 
-	if err := unmarshal((*Plain)(c)); err != nil {
+	decoded := plain(*c)
+
+	if err := node.Decode(&decoded); err != nil {
 		return err
 	}
+
+	*c = Config(decoded)
 
 	return nil
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
-	err := defaults.Set(c)
-	if err != nil {
+	if err := defaults.Set(c); err != nil {
 		return err
 	}
 
-	type Plain Config
+	type plain Config
 
-	if err := json.Unmarshal(data, (*Plain)(c)); err != nil {
+	decoded := plain(*c)
+
+	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
+
+	*c = Config(decoded)
 
 	return nil
 }
@@ -341,8 +353,7 @@ func getConfigFromYAMLBytes(contents []byte, fileName string, applyDefaults bool
 		err     error
 	)
 
-	// Use a type alias to bypass the UnmarshalYAML hook (which injects defaults)
-	// when the caller explicitly does not want defaults applied.
+	// Bypass Config's defaults while retaining field-level duration codecs.
 	type configNoDefaults Config
 
 	for {

@@ -42,7 +42,7 @@ func waitForRunningJobs(
 		return nil
 	}
 
-	timeout := time.Duration(deployConfig.Timeout) * time.Second
+	timeout := deployConfig.Timeout.Duration()
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}

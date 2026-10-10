@@ -112,6 +112,7 @@ func (f testScheduledJobOperations) ListJobs(ctx context.Context, contextName, s
 
 func (f testScheduledJobOperations) TriggerNow(
 	ctx context.Context,
+	_ string,
 	contextName string,
 	jobName string,
 	stackName string,

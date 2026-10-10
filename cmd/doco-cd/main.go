@@ -467,6 +467,7 @@ func run() error {
 			},
 		},
 	)
+	schedulerManager.SetRunReporter(controlPlaneRuns)
 
 	defer reconciliationManager.Close()
 	defer wg.Wait()

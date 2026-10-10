@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -20,7 +21,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/git"
-	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -571,7 +571,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 		return nil, err
 	}
 
-	jobsResponse, err := jsonResponseFor[successEnvelope[[]scheduler.JobInfo]](builder, "ScheduledJobsResponse", "Scheduled jobs.")
+	jobsResponse, err := jsonResponseFor[successEnvelope[[]controlplane.ScheduledJobInfo]](builder, "ScheduledJobsResponse", "Scheduled jobs, including the most recently started tracked run or null when unavailable.")
 	if err != nil {
 		return nil, err
 	}
@@ -611,6 +611,10 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 	}
 
 	if err = customizeRunSchema(builder.components.Schemas[componentTypeName(reflect.TypeFor[controlplane.Run]())]); err != nil {
+		return nil, err
+	}
+
+	if err = customizeScheduledJobSchema(builder.components.Schemas[componentTypeName(reflect.TypeFor[controlplane.ScheduledJobInfo]())]); err != nil {
 		return nil, err
 	}
 
@@ -998,6 +1002,30 @@ func customizeRunSchema(schema *openapi3.SchemaRef) error {
 	}
 	schema.Value.Properties["status"] = &openapi3.SchemaRef{
 		Value: openapi3.NewStringSchema().WithEnum("accepted", "running", "succeeded", "failed", "skipped"),
+	}
+
+	return nil
+}
+
+func customizeScheduledJobSchema(schema *openapi3.SchemaRef) error {
+	if schema == nil || schema.Value == nil || schema.Value.Properties["last_run"] == nil {
+		return errors.New("generated scheduled job last-run schema is missing")
+	}
+
+	// Keep nullability on the job field rather than on the shared run component.
+	// OpenAPI 3.1 and later use a "null" type instead of the removed nullable keyword.
+	run := schema.Value.Properties["last_run"]
+	schema.Value.Properties["last_run"] = &openapi3.SchemaRef{
+		Value: &openapi3.Schema{
+			OneOf: openapi3.SchemaRefs{
+				run,
+				{Value: &openapi3.Schema{Type: &openapi3.Types{openapi3.TypeNull}}},
+			},
+		},
+	}
+
+	if !slices.Contains(schema.Value.Required, "last_run") {
+		schema.Value.Required = append(schema.Value.Required, "last_run")
 	}
 
 	return nil

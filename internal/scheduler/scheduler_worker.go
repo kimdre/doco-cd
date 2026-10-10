@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -72,6 +73,8 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 		s.log.Error("failed to discover scheduled jobs", logger.ErrAttr(err))
 		return now.Add(schedulerRefreshRetryDelay), true
 	}
+
+	s.runtime.pruneLatestRuns(s.contextName, s.mode, jobs, now)
 
 	active := set.New[string]()
 	discoveredByKey := make(map[string]scheduledJob, len(jobs))
@@ -276,6 +279,14 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		defer s.setRunInProgress(job.key, false)
 
 		runStart := time.Now()
+		runID := id.New()
+		s.startTrackedRun(job, runID, runStart)
+
+		var runErr error
+		defer func() {
+			s.finishTrackedRun(runID, &runErr, recover())
+		}()
+
 		runFailed := false
 
 		prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Inc()
@@ -289,8 +300,6 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 				prometheus.ScheduledRunErrorsTotal.WithLabelValues(metricLabels...).Inc()
 			}
 		}()
-
-		runID := id.New()
 
 		runLog := s.log.With(
 			slog.String("job_id", runID),
@@ -320,6 +329,7 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		if cfg.ExecutionMode == docker.JobExecutionModeOneOff {
 			if !s.claimRecovery(runID) {
 				runFailed = true
+				runErr = fmt.Errorf("scheduled run %s is already active", runID)
 
 				runLog.Error("scheduled run ID is already active")
 
@@ -332,6 +342,7 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 			if err := s.executions.create(&newRecord); err != nil {
 				runFailed = true
 				err = fmt.Errorf("persist scheduled execution before launch: %w", err)
+				runErr = err
 				s.runtime.updateRunStatus(job, cfg, err)
 				runLog.Error("scheduled run failed", logger.ErrAttr(err))
 				s.sendRunNotification(job, cfg, runID, false, "Scheduled job failed", fmt.Sprintf("scheduled job '%s' failed to run: %v", job.name, err))
@@ -343,7 +354,10 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		}
 
 		err := s.executeScheduledRun(ctx, job, cfg, record, now, runStart)
+
+		runErr = err
 		if ctx.Err() != nil {
+			runErr = errors.Join(err, ctx.Err())
 			return
 		}
 
@@ -360,7 +374,7 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 			return
 		}
 
-		runLog.Info("scheduled run completed", slog.String("next_run", s.states[job.key].nextRun.Format(time.RFC3339)))
+		runLog.Info("scheduled run completed", slog.String("next_run", s.runtime.statesSnapshot()[job.key].nextRun.Format(time.RFC3339)))
 		s.sendRunNotification(job, cfg, runID, true, "Scheduled job completed", fmt.Sprintf("scheduled job '%s' completed successfully", job.name))
 
 		s.completeExecutionRecord(ctx, record)

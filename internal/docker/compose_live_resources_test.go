@@ -17,6 +17,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/source/store"
@@ -591,7 +593,7 @@ configs:
 	const ignoreLabels = `      cd.doco.deployment.recreate.ignore: "{bindMounts: [/conf, /single.conf], configs: [app]}"
       cd.doco.deployment.recreate.ignore.signal: SIGHUP`
 
-	deployConfig := &deploy.Config{Name: stackName, Timeout: 60}
+	deployConfig := &deploy.Config{Name: stackName, Timeout: duration.Duration(60 * time.Second)}
 	payload := &webhook.ParsedPayload{CommitSHA: plumbing.ZeroHash, FullName: "kimdre/doco-cd_tests"}
 
 	t.Cleanup(func() {

@@ -19,6 +19,13 @@ Decryption happens in doco-cd's own copy of the source, never in your repository
 Files and directories matched by `.gitignore` are skipped.
 The following directories are always excluded: `.git`, `.github`, `.vscode`, `.idea`, and `node_modules`.
 
+An encrypted file whose content did not change since an earlier revision takes the plaintext of that revision, as long as it is still present in the [artifact storage](../Reference/Artifact-Storage.md).
+The key service is therefore only called for files that actually changed, which keeps the cost of a cloud key service low.
+
+!!! note "Revoking a key does not take effect for unchanged files"
+    A host that lost its key, or its access to the key service, still produces plaintext for files whose encrypted content did not change, from the copies it already holds.
+    Re-encrypt the files, e.g. with `sops rotate` or `sops updatekeys`, so their content changes and the next revision needs the key again.
+
 If doco-cd has no key for a file, it's left encrypted and logged instead of failing the entire deployment.
 This is intentional: a repository may legitimately contain secrets encrypted for someone else.
 If a deployment actually uses an encrypted file, the deployment fails at that point, naming the file.

@@ -24,7 +24,7 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 				return os.WriteFile(filepath.Join(dir, "config"), []byte("intact"), 0o600)
 			}
 
-			artifact, err := publishDir(base, "rev", write)
+			artifact, _, err := publishDir(base, "rev", write)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -82,7 +82,7 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 				t.Fatalf("restored artifact accepted: found=%v, err=%v", found, err)
 			}
 
-			if _, err := publishDir(base, "rev", write); err != nil {
+			if _, _, err := publishDir(base, "rev", write); err != nil {
 				t.Fatal(err)
 			}
 
@@ -97,7 +97,7 @@ func TestArtifactRepublicationRecoveryWithoutBirthTime(t *testing.T) {
 					t.Fatalf("recovery without birth time = %q, %v", reason, err)
 				}
 
-				if _, err := publishDir(base, "rev", write); err != nil {
+				if _, _, err := publishDir(base, "rev", write); err != nil {
 					t.Fatal(err)
 				}
 
@@ -196,7 +196,7 @@ func TestPublishDirReplacementRecordFailureLeavesOldDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := publishDir(base, "rev", func(path string) error {
+	_, _, err := publishDir(base, "rev", func(path string) error {
 		return os.WriteFile(filepath.Join(path, "config"), []byte("new"), 0o600)
 	})
 	if err == nil {

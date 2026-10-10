@@ -12,9 +12,15 @@ on:
       - main
     paths:
       - 'wiki/**'
+      - 'cmd/deploy-schema/**'
       - 'cmd/metrics-docs/**'
+      - 'internal/config/**'
+      - 'internal/secretprovider/types/**'
+      - 'internal/common/defaults/**'
       - 'internal/prometheus/**'
       - '.github/workflows/docs.yaml'
+      - 'go.mod'
+      - 'go.sum'
       - '*.md'
       - 'LICENSE'
   release:
@@ -32,6 +38,8 @@ jobs:
   build:
     name: Build documentation
     runs-on: ubuntu-latest
+    env:
+      DOCO_CD_VERSION: ${{ github.event.release.tag_name || github.event.inputs.version || github.sha }}
     permissions:
       contents: write
     steps:

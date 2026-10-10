@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -26,6 +27,28 @@ func mustToolInputSchema[T any](tool string) *jsonschema.Schema {
 	return schema
 }
 
+// mustRunToolOutputSchema derives a tool schema and panics on programmer configuration errors.
+func mustRunToolOutputSchema[T any](tool string) *jsonschema.Schema {
+	schema, err := jsonschema.For[T](&jsonschema.ForOptions{
+		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+			reflect.TypeFor[controlplane.RunStatus](): {
+				Type: "string",
+				Enum: []any{"accepted", "running", "succeeded", "failed", "skipped"},
+			},
+			reflect.TypeFor[controlplane.RunTrigger](): {
+				Type: "string",
+				Enum: []any{"webhook", "poll", "scheduled_job", "mirror_compaction"},
+			},
+		},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("infer %s output schema: %v", tool, err))
+	}
+
+	return schema
+}
+
+// valueOr returns the value of a pointer or a default value if the pointer is nil.
 func valueOr[T any](p *T, def T) T {
 	if p != nil {
 		return *p

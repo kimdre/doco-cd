@@ -123,6 +123,10 @@ be created for each scheduled run and removed after completion and reporting.
     so make sure to configure appropriate logging (e.g., log to a persistent file or logging service like [Loki](https://grafana.com/docs/loki/latest/)) 
     if you need to keep track of job runs and [notifications](Notifications.md) if needed.
 
+For Compose jobs, the [scheduled-jobs API](../Endpoints/REST-API.md#scheduled-jobs) reports the active execution or
+the most recent recorded one-off exit status, not an older exit status of the stopped source service container.
+Exit results are kept in memory. When no result is available, the API falls back to the source container's state.
+
 ??? info "Recovery after forced termination"
     For `one_off` jobs, doco-cd labels the temporary container or Swarm service with the execution identity
     and retains it until its result has been reported, and it has been cleaned up. 
@@ -329,6 +333,6 @@ When DST changes occur in the configured [timezone](#timezone), scheduled jobs w
 - If a scheduled time is skipped due to DST (e.g., clocks move forward), the job will not run at that time.
 - If a scheduled time occurs twice due to DST (e.g., clocks move backward), the job will run at both occurrences of that time.
 
-## Manual execution via Job API
+## Manual job execution
 
-Configured jobs can also be triggered manually outside their scheduled intervals by using the [Run Job API endpoint](../Endpoints/REST-API.md#scheduled-jobs).
+Scheduled jobs can also be triggered manually outside their schedule by using the [`Run Job` API endpoint](../Endpoints/REST-API.md#scheduled-jobs) or the [MCP server `trigger_scheduled_job` tool](../Endpoints/MCP-Server.md#available-tools)

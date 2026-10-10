@@ -128,7 +128,7 @@ sops:
 			}
 
 			if format != test.format {
-				t.Errorf("Expected format %s, got %s", formatName(test.format), formatName(format))
+				t.Errorf("Expected format %s, got %s", FormatName(test.format), FormatName(format))
 			}
 		})
 	}
@@ -156,7 +156,7 @@ func TestDetectFormat_PathExtension(t *testing.T) {
 			}
 
 			if format != test.format {
-				t.Errorf("Expected format %s, got %s", formatName(test.format), formatName(format))
+				t.Errorf("Expected format %s, got %s", FormatName(test.format), FormatName(format))
 			}
 		})
 	}
@@ -401,7 +401,7 @@ func TestDecryptFilesInDirectoryTolerant_SkipsUndecryptableFiles(t *testing.T) {
 
 	var reported []string
 
-	decrypted, err := DecryptFilesInDirectoryTolerant(dir, dir, func(path string, _ error) {
+	decrypted, err := DecryptFilesInDirectoryTolerant(dir, dir, nil, func(path string, _ error) {
 		reported = append(reported, path)
 	})
 	if err != nil {

@@ -33,6 +33,11 @@ func (e TextError) Unwrap() error {
 // Func adapts custom field validation to the tag+parameter shape used in struct tags.
 type Func func(v any, param string) error
 
+// ValueValidator lets scalar configuration types validate themselves without a struct tag.
+type ValueValidator interface {
+	ValidateValue() error
+}
+
 var (
 	engine = playgroundvalidator.New(playgroundvalidator.WithRequiredStructEnabled())
 
@@ -94,7 +99,7 @@ func lookupValidationFunc(tag string) (Func, bool) {
 	return fn, ok
 }
 
-// Validate applies validator rules and this package's custom tag handlers.
+// Validate applies validator rules, custom tag handlers, and scalar value validation.
 func Validate(v any) error {
 	return validateValue(reflect.ValueOf(v))
 }
@@ -104,6 +109,10 @@ func validateValue(value reflect.Value) error {
 	value = dereference(value)
 	if !value.IsValid() {
 		return nil
+	}
+
+	if err := validateSelf(value, ""); err != nil {
+		return err
 	}
 
 	switch value.Kind() {
@@ -177,6 +186,10 @@ func walkNestedCustomTags(value reflect.Value, path string, standardTags bool) e
 		return nil
 	}
 
+	if err := validateSelf(value, path); err != nil {
+		return err
+	}
+
 	switch value.Kind() {
 	case reflect.Struct:
 		if standardTags {
@@ -204,6 +217,28 @@ func walkNestedCustomTags(value reflect.Value, path string, standardTags bool) e
 		}
 	default:
 		return nil
+	}
+
+	return nil
+}
+
+// validateSelf applies a scalar's own validation and adds the enclosing field path.
+func validateSelf(value reflect.Value, path string) error {
+	if !value.CanInterface() {
+		return nil
+	}
+
+	validator, ok := value.Interface().(ValueValidator)
+	if !ok {
+		return nil
+	}
+
+	if err := validator.ValidateValue(); err != nil {
+		if path == "" {
+			return err
+		}
+
+		return fmt.Errorf("%s: %w", path, err)
 	}
 
 	return nil

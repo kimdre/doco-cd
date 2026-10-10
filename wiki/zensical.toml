@@ -210,7 +210,8 @@ custom_checkbox = true
 auto_append = ["wiki/includes/abbreviations.md"]
 check_paths = true
 
-# zensical
+# Markdown extension hooks
+[project.markdown_extensions."hooks.deploy_schema"]
 [project.markdown_extensions."hooks.metrics_table"]
 
 # Must be listed before "zensical.extensions.preview": it ensures a LinksTreeprocessor
