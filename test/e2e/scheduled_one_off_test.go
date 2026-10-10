@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -222,11 +223,7 @@ func TestScheduledOneOff_RecoversAfterForcedDaemonTermination(t *testing.T) {
 	h.WaitFor(30*time.Second, "dependency restored by recovered one-off job", func() bool {
 		return h.RemoteComposeContainerID(scheduledOneOffRecoveryStack, scheduledOneOffAppService) != ""
 	})
-	h.WaitFor(30*time.Second, "recovered one-off run succeeded", func() bool {
-		job = getScheduledOneOffJob(t, h, "remote", scheduledOneOffRecoveryStack)
-		return job.LastRun != nil && job.LastRun.JobID == runID && job.LastRun.Status == controlplane.RunStatusSucceeded
-	})
-	assertScheduledOneOffRunDetail(t, h, job, runID)
+	waitForRecoveredScheduledRun(t, h, runID, *startedAt)
 }
 
 func TestScheduledOneOff_SwarmRecoversAfterForcedDaemonTermination(t *testing.T) {
@@ -285,11 +282,32 @@ func TestScheduledOneOff_SwarmRecoversAfterForcedDaemonTermination(t *testing.T)
 	h.WaitFor(30*time.Second, "Swarm dependency restored by recovered one-off job", func() bool {
 		return h.SwarmContainerID(scheduledOneOffSwarmRecoveryStack, scheduledOneOffAppService) != ""
 	})
-	h.WaitFor(30*time.Second, "recovered Swarm one-off run succeeded", func() bool {
-		job = getScheduledOneOffJob(t, h, "default", scheduledOneOffSwarmRecoveryStack)
-		return job.LastRun != nil && job.LastRun.JobID == runID && job.LastRun.Status == controlplane.RunStatusSucceeded
+	waitForRecoveredScheduledRun(t, h, runID, *startedAt)
+}
+
+func waitForRecoveredScheduledRun(t *testing.T, h *Harness, runID string, startedAt time.Time) {
+	t.Helper()
+
+	h.WaitFor(30*time.Second, "recovered scheduled run succeeded", func() bool {
+		var detail struct {
+			Content controlplane.Run `json:"content"`
+		}
+		if err := json.Unmarshal(h.APIRequest(http.MethodGet, "/v1/api/run/"+url.PathEscape(runID), http.StatusOK), &detail); err != nil {
+			t.Fatalf("decode recovered run detail: %v", err)
+		}
+
+		run := detail.Content
+		if run.JobID != runID || run.Trigger != controlplane.RunTriggerScheduledJob ||
+			run.StartedAt == nil || !run.StartedAt.Equal(startedAt) {
+			t.Fatalf("recovered run identity or start time changed: %#v", run)
+		}
+
+		if run.Status == controlplane.RunStatusFailed {
+			t.Fatalf("recovered scheduled run failed: %s", run.Message)
+		}
+
+		return run.Status == controlplane.RunStatusSucceeded && run.FinishedAt != nil
 	})
-	assertScheduledOneOffRunDetail(t, h, job, runID)
 }
 
 type scheduledOneOffJob struct {
@@ -309,17 +327,18 @@ func getScheduledOneOffJob(t *testing.T, h *Harness, contextName, stack string) 
 		t.Fatalf("decode job API response: %v", err)
 	}
 
-	if len(response.Content) != 1 {
-		t.Fatalf("expected one scheduled job for %s/%s, got %s", contextName, stack, response.Content)
+	jobJSON, err := selectScheduledOneOffJob(response.Content, stack)
+	if err != nil {
+		t.Fatalf("select scheduled job for %s/%s: %v", contextName, stack, err)
 	}
 
 	var job scheduledOneOffJob
-	if err := json.Unmarshal(response.Content[0], &job.ScheduledJobInfo); err != nil {
+	if err := json.Unmarshal(jobJSON, &job.ScheduledJobInfo); err != nil {
 		t.Fatalf("decode scheduled job: %v", err)
 	}
 
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(response.Content[0], &fields); err != nil {
+	if err := json.Unmarshal(jobJSON, &fields); err != nil {
 		t.Fatalf("decode scheduled job fields: %v", err)
 	}
 
@@ -331,6 +350,67 @@ func getScheduledOneOffJob(t *testing.T, h *Harness, contextName, stack string) 
 	}
 
 	return job
+}
+
+func selectScheduledOneOffJob(jobs []json.RawMessage, stack string) (json.RawMessage, error) {
+	var selected json.RawMessage
+
+	for _, data := range jobs {
+		var job controlplane.ScheduledJobInfo
+		if err := json.Unmarshal(data, &job); err != nil {
+			return nil, fmt.Errorf("decode scheduled job: %w", err)
+		}
+
+		name := stack + "-" + scheduledOneOffJobService + "-1"
+		if job.Mode == "swarm" {
+			name = stack + "_" + scheduledOneOffJobService
+		}
+
+		if job.Stack != stack || job.Name != name {
+			continue
+		}
+
+		if selected != nil {
+			return nil, fmt.Errorf("multiple backup jobs for %s: %s", stack, jobs)
+		}
+
+		selected = data
+	}
+
+	if selected == nil {
+		return nil, fmt.Errorf("backup job not found for %s: %s", stack, jobs)
+	}
+
+	return selected, nil
+}
+
+func TestSelectScheduledOneOffJob(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []string{"container", "swarm"} {
+		t.Run(mode, func(t *testing.T) {
+			name := "stack-backup-1"
+			if mode == "swarm" {
+				name = "stack_backup"
+			}
+
+			backup := json.RawMessage(fmt.Sprintf(`{"name":%q,"stack":"stack","mode":%q,"last_run":null}`, name, mode))
+			app := json.RawMessage(`{"name":"stack_app","stack":"stack","mode":"swarm","last_run":null}`)
+
+			for _, jobs := range [][]json.RawMessage{{backup}, {app, backup}, {backup, app}} {
+				selected, err := selectScheduledOneOffJob(jobs, "stack")
+				if err != nil || string(selected) != string(backup) {
+					t.Fatalf("selected = %s, error = %v", selected, err)
+				}
+			}
+
+			for _, jobs := range [][]json.RawMessage{nil, {app}, {backup, backup}, {json.RawMessage(`invalid`)}} {
+				if _, err := selectScheduledOneOffJob(jobs, "stack"); err == nil {
+					t.Fatalf("invalid job list accepted: %s", jobs)
+				}
+			}
+		})
+	}
 }
 
 func assertScheduledOneOffRunDetail(t *testing.T, h *Harness, job scheduledOneOffJob, runID string) {
