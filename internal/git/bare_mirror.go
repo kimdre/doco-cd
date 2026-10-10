@@ -125,7 +125,7 @@ func cloneOrFetchBareMirrorLocked(
 	}
 
 	if err := fetchRepositoryLocked(repo, cloneURL, ref, skipTLSVerify, proxyOpts, auth, depth); err != nil {
-		if IsCorruptionError(err) {
+		if !isRefNamespaceError(err) && IsCorruptionError(err) {
 			return repairBareMirrorLocked(path, cloneURL, ref, skipTLSVerify, proxyOpts, auth, depth, log)
 		}
 
@@ -282,7 +282,7 @@ func deepenBareMirror(repo *git.Repository, url, ref string, skipTLSVerify bool,
 
 	for _, newDepth := range steps {
 		if err := fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, newDepth); err != nil {
-			if isNonRecoverableError(err) {
+			if isRefNamespaceError(err) || isNonRecoverableError(err) {
 				return fmt.Errorf("non-recoverable error during deepen: %w", err)
 			}
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v5"
+	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -140,14 +141,12 @@ func effectiveDepth(url string, depth int) int {
 
 // FetchRepository fetches updates from the remote repository, including all branches and tags, and prunes deleted references.
 // If depth > 0, a shallow fetch is performed with the specified number of commits.
+// It acquires the repository lock; already-locked callers use fetchRepositoryLocked.
 func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
-	worktree, err := repo.Worktree()
+	unlock, err := acquireFetchLock(repo)
 	if err != nil {
-		// Bare repositories have no worktree path to use as a lock key.
-		return fetchRepositoryLocked(repo, url, "", skipTLSVerify, proxyOpts, auth, depth)
+		return err
 	}
-
-	unlock := sourcecache.AcquirePathLock(worktree.Filesystem.Root())
 	defer unlock()
 
 	return fetchRepositoryLocked(repo, url, "", skipTLSVerify, proxyOpts, auth, depth)
@@ -155,16 +154,36 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 
 // FetchRepositoryReference fetches the requested reference using focused refspecs
 // where possible and falls back to the compatibility all-refs transfer as needed.
+// It acquires the repository lock; already-locked callers use fetchRepositoryLocked.
 func FetchRepositoryReference(repo *git.Repository, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
-	worktree, err := repo.Worktree()
+	unlock, err := acquireFetchLock(repo)
 	if err != nil {
-		return fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, depth)
+		return err
 	}
-
-	unlock := sourcecache.AcquirePathLock(worktree.Filesystem.Root())
 	defer unlock()
 
 	return fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, depth)
+}
+
+// acquireFetchLock acquires a lock for the repository to prevent concurrent fetches.
+// It returns a function to release the lock and any error encountered while acquiring it.
+func acquireFetchLock(repo *git.Repository) (func(), error) {
+	worktree, err := repo.Worktree()
+	if err == nil {
+		return sourcecache.AcquirePathLock(worktree.Filesystem.Root()), nil
+	}
+
+	if !errors.Is(err, git.ErrIsBareRepository) {
+		return nil, fmt.Errorf("locate repository for fetch lock: %w", err)
+	}
+
+	filesystemStorage, ok := repo.Storer.(interface{ Filesystem() billy.Filesystem })
+	if !ok {
+		// In-memory repositories have no shared on-disk mirror to lock.
+		return func() {}, nil
+	}
+
+	return AcquireExclusiveMirrorLock(filesystemStorage.Filesystem().Root()), nil
 }
 
 // fetchRepositoryLocked fetches a repository while the caller holds its path lock.
@@ -203,31 +222,51 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 		}
 	}
 
-	fetchWithRetry := func(opts *git.FetchOptions) error {
-		return retrier.Do(
-			func() error {
-				err := repo.Fetch(opts)
-				if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-					return err
-				}
-
-				return nil
-			})
-	}
-
-	fetch := func(opts *git.FetchOptions) error {
-		err := fetchWithRetry(opts)
+	withRetry := func(operation func() error) error {
+		err := retrier.Do(operation)
 		if err != nil && IsSSH(url) && ssh.IsHostKeyMismatchError(err) {
 			if refreshErr := ssh.RefreshKnownHost(url); refreshErr != nil {
 				if !errors.Is(refreshErr, ssh.ErrKnownHostsUserManaged) {
 					return fmt.Errorf("failed to refresh host key after mismatch: %w", refreshErr)
 				}
 			} else {
-				err = fetchWithRetry(opts)
+				err = retrier.Do(operation)
 			}
 		}
 
 		return err
+	}
+
+	// fetchWithRefNamespaceRecovery attempts a fetch and recovers from a ref namespace error by removing the namespace and retrying.
+	fetch := func(opts *git.FetchOptions) error {
+		return fetchWithRefNamespaceRecovery(repo, opts, func() error {
+			return withRetry(func() error {
+				err := repo.Fetch(opts)
+				if errors.Is(err, git.NoErrAlreadyUpToDate) {
+					return nil
+				}
+
+				return err
+			})
+		}, func() ([]*plumbing.Reference, error) {
+			remote := git.NewRemote(repo.Storer, &config.RemoteConfig{Name: opts.RemoteName, URLs: []string{opts.RemoteURL}})
+
+			var refs []*plumbing.Reference
+
+			err := withRetry(func() error {
+				var err error
+
+				refs, err = remote.List(&git.ListOptions{
+					Auth: opts.Auth, InsecureSkipTLS: opts.InsecureSkipTLS,
+					ClientCert: opts.ClientCert, ClientKey: opts.ClientKey,
+					CABundle: opts.CABundle, ProxyOptions: opts.ProxyOptions,
+				})
+
+				return err
+			})
+
+			return refs, err
+		})
 	}
 
 	if ref == "" {
@@ -368,7 +407,7 @@ func removeReferenceIfExists(repo *git.Repository, name plumbing.ReferenceName) 
 
 // isFocusedFetchFallbackError determines if a fetch error should trigger a fallback to the compatibility all-refs fetch.
 func isFocusedFetchFallbackError(err error) bool {
-	return err != nil && !isNonRecoverableError(err) &&
+	return err != nil && !isRefNamespaceError(err) && !isNonRecoverableError(err) &&
 		!errors.Is(err, transport.ErrRepositoryNotFound) &&
 		!errors.Is(err, transport.ErrEmptyRemoteRepository)
 }
