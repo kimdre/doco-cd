@@ -1,8 +1,11 @@
 package store_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,6 +97,141 @@ func TestNewGitStore_RequiresCloneURLAndBaseDir(t *testing.T) {
 
 	if _, err := store.NewGitStore(store.GitStoreOptions{CloneURL: "file:///tmp/repo"}); err == nil {
 		t.Fatal("expected an error for missing BaseDir")
+	}
+}
+
+func TestGitStore_ResolveAfterRefNamespaceChange(t *testing.T) {
+	var logBuf bytes.Buffer
+
+	log := slog.New(slog.NewTextHandler(&logBuf, nil))
+	previousLog := slog.Default()
+
+	slog.SetDefault(log)
+	t.Cleanup(func() { slog.SetDefault(previousLog) })
+
+	srcPath := filepath.Join(t.TempDir(), "src")
+	origin := initLocalTestRepo(t, srcPath)
+
+	head, err := origin.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldRef := plumbing.NewBranchReferenceName("release/old")
+	if err := origin.Storer.SetReference(plumbing.NewHashReference(oldRef, head.Hash())); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := store.NewGitStore(store.GitStoreOptions{
+		Log: log, CloneURL: "file://" + srcPath, BaseDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldRevision, err := s.Resolve(t.Context(), oldRef.String())
+	if err != nil || oldRevision != store.Revision(head.Hash().String()) {
+		t.Fatalf("initial resolution = %s, %v", oldRevision, err)
+	}
+
+	oldArtifact, err := s.Publish(t.Context(), oldRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unlock := git.AcquireExclusiveMirrorLock(s.MirrorDir())
+
+	mirror, err := git.OpenRepository(s.MirrorDir())
+	if err != nil {
+		unlock()
+		t.Fatal(err)
+	}
+
+	var blob plumbing.MemoryObject
+	blob.SetType(plumbing.BlobObject)
+
+	writer, err := blob.Writer()
+	if err != nil {
+		unlock()
+		t.Fatal(err)
+	}
+
+	_, writeErr := writer.Write([]byte("object that exists only in this mirror\n"))
+	if err := errors.Join(writeErr, writer.Close()); err != nil {
+		unlock()
+		t.Fatal(err)
+	}
+
+	mirrorOnlyHash, err := mirror.Storer.SetEncodedObject(&blob)
+
+	unlock()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := origin.Storer.RemoveReference(oldRef); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Remove(filepath.Join(srcPath, ".git", "refs", "heads", "release")); err != nil {
+		t.Fatal(err)
+	}
+
+	newHash := commitTestFile(t, origin, srcPath, "README.md", "replacement\n", "replacement branch")
+	if err := origin.Storer.SetReference(plumbing.NewHashReference("refs/heads/release", newHash)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := origin.Storer.SetReference(plumbing.NewHashReference("refs/tags/release", head.Hash())); err != nil {
+		t.Fatal(err)
+	}
+
+	revision, err := s.Resolve(t.Context(), "release")
+	if err != nil || revision != store.Revision(newHash.String()) {
+		t.Fatalf("replacement resolution = %s, %v; want %s", revision, err, newHash)
+	}
+
+	artifact, err := s.Publish(t.Context(), revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, expected := range []struct {
+		artifact store.Artifact
+		content  string
+	}{{oldArtifact, "initial\n"}, {artifact, "replacement\n"}} {
+		content, err := os.ReadFile(filepath.Join(expected.artifact.Path, "README.md"))
+		if err != nil || string(content) != expected.content {
+			t.Fatalf("artifact %s content = %q, %v; want %q", expected.artifact.Path, content, err, expected.content)
+		}
+	}
+
+	previous, ok, err := s.Lookup(oldRevision)
+	if err != nil || !ok || previous.Path != oldArtifact.Path {
+		t.Fatalf("previous artifact changed: %v, %t, %v", previous, ok, err)
+	}
+
+	if err := git.WithMirrorRead(s.MirrorDir(), func(repo *gogit.Repository) error {
+		if _, err := repo.Worktree(); !errors.Is(err, gogit.ErrIsBareRepository) {
+			return fmt.Errorf("mirror is no longer bare: %v", err)
+		}
+
+		return repo.Storer.HasEncodedObject(mirrorOnlyHash)
+	}); err != nil {
+		t.Fatalf("existing mirror object store was not preserved: %v", err)
+	}
+
+	if got, err := s.Resolve(t.Context(), "release"); err != nil || got != revision {
+		t.Fatalf("repeat resolution = %s, %v", got, err)
+	}
+
+	if count := strings.Count(logBuf.String(), "repairing git reference namespace"); count != 1 {
+		t.Fatalf("repair count = %d, want 1; logs: %s", count, logBuf.String())
+	}
+
+	if strings.Contains(logBuf.String(), "re-cloning") {
+		t.Fatalf("namespace recovery re-cloned the mirror: %s", logBuf.String())
 	}
 }
 
