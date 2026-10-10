@@ -159,6 +159,13 @@ curl --request POST \
 | `/v1/api/jobs`              | GET    | List all discovered [scheduled jobs](../Advanced/Job-Scheduling.md)              | - `stack` (string, optional): Return scheduled jobs only for one stack/project.                                                                                            |
 | `/v1/api/job/{jobName}/run` | POST   | Trigger a configured [scheduled job](../Advanced/Job-Scheduling.md) immediately. | - `stack` (string, optional): Limit matching to a specific stack/project.<br/>- `wait` (boolean, default: `true`): Wait for the triggered run to finish before responding. |
 
+For Compose `one_off` jobs, `status` is `running` while an execution is active. Otherwise, if the source service
+container is inactive (`created`, `exited`, or `dead`), `status` shows the most recent recorded one-off exit status,
+such as `exited (0)` or `exited (7)`, instead of an older exit status of the source container. An active source
+container keeps its own state. Exit results are kept in memory. If no result is available, `status` falls back to the
+source container's state. This occurs after a doco-cd restart without a recovered execution, or after a run that failed
+without an exit code, for example because the image pull failed. Compose `restart` jobs use the source container's state.
+
 ??? question "What is the `jobName` for a scheduled job?"
     `jobName` is the runtime name of the scheduled target:
 
