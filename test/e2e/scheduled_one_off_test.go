@@ -3,8 +3,16 @@
 package e2e
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/url"
 	"testing"
 	"time"
+
+	"github.com/moby/moby/client"
+
+	"github.com/kimdre/doco-cd/internal/scheduler"
 )
 
 const (
@@ -40,6 +48,114 @@ func TestScheduledOneOff(t *testing.T) {
 	h.WaitFor(30*time.Second, "dependency restored after one-off job", func() bool {
 		return h.RemoteComposeContainerID(scheduledOneOffStack, scheduledOneOffAppService) != ""
 	})
+}
+
+func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
+	t.Parallel()
+
+	const stack = "e2e-scheduled-one-off-status"
+
+	h := NewHarness(t, "scheduled-one-off-status")
+	h.EnableRemoteContext()
+	h.EnableAPI("e2e-scheduled-job-api-key")
+	h.SetPollInterval(time.Minute)
+	h.Start()
+	h.WaitForLog(deployCompletedLog, 2*time.Minute)
+
+	query := url.Values{"context": {"remote"}, "stack": {stack}}
+	getJob := func() scheduler.JobInfo {
+		t.Helper()
+
+		var response struct {
+			Content []scheduler.JobInfo `json:"content"`
+		}
+
+		body := h.APIRequest(http.MethodGet, "/v1/api/jobs?"+query.Encode(), http.StatusOK)
+		if err := json.Unmarshal(body, &response); err != nil {
+			t.Fatalf("decode job API response: %v", err)
+		}
+
+		if len(response.Content) != 1 {
+			t.Fatalf("expected one scheduled job, got %#v", response.Content)
+		}
+
+		return response.Content[0]
+	}
+
+	remoteDocker := h.remoteDockerClient()
+	sourceName := getJob().Name
+
+	if _, err := remoteDocker.ContainerStart(h.ctx, sourceName, client.ContainerStartOptions{}); err != nil {
+		t.Fatalf("start source job container: %v", err)
+	}
+
+	sourceFailed := func() bool {
+		t.Helper()
+
+		result, err := remoteDocker.ContainerInspect(h.ctx, sourceName, client.ContainerInspectOptions{})
+		if err != nil {
+			t.Fatalf("inspect source job container: %v", err)
+		}
+
+		state := result.Container.State
+
+		return state != nil && !state.Running && state.ExitCode == 7
+	}
+	h.WaitFor(10*time.Second, "source job container exited with code 7", sourceFailed)
+
+	if got := getJob().Status; got != "exited (7)" {
+		t.Fatalf("job status before one-off execution = %q, want exited (7)", got)
+	}
+
+	appID := h.RemoteComposeContainerID(stack, scheduledOneOffAppService)
+
+	exitCode, output, err := h.remoteDaemon.Exec(h.ctx, []string{"docker", "exec", appID, "touch", "/state/ready"})
+	if err != nil {
+		t.Fatalf("restore job dependency: %v", err)
+	}
+
+	body, err := io.ReadAll(output)
+	if err != nil {
+		t.Fatalf("read dependency command output: %v", err)
+	}
+
+	if exitCode != 0 {
+		t.Fatalf("restore job dependency exited with code %d: %s", exitCode, body)
+	}
+
+	var job scheduler.JobInfo
+
+	h.WaitFor(90*time.Second, "scheduled one-off execution reported as running", func() bool {
+		return getJob().Status == "running"
+	})
+	h.WaitFor(30*time.Second, "successful scheduled one-off result reported by job API", func() bool {
+		job = getJob()
+
+		return job.Status == "exited (0)" && job.LastRunAt != nil &&
+			h.RemoteOneOffContainerID(stack, scheduledOneOffJobService) == ""
+	})
+
+	scheduledLastRun := *job.LastRunAt
+
+	if !sourceFailed() {
+		t.Fatal("scheduled one-off execution changed the source container's exit status")
+	}
+
+	runQuery := url.Values{"context": {"remote"}, "stack": {stack}, "wait": {"false"}}
+	h.APIRequest(http.MethodPost, "/v1/api/job/"+url.PathEscape(sourceName)+"/run?"+runQuery.Encode(), http.StatusAccepted)
+	h.WaitFor(10*time.Second, "manual one-off execution reported as running", func() bool {
+		return getJob().Status == "running"
+	})
+	h.WaitFor(30*time.Second, "successful manual one-off result reported by job API", func() bool {
+		job = getJob()
+
+		return job.Status == "exited (0)" && job.LastRunAt != nil && job.LastRunAt.After(scheduledLastRun) &&
+			h.RemoteOneOffContainerID(stack, scheduledOneOffJobService) == ""
+	})
+
+	if !sourceFailed() {
+		t.Fatal("manual one-off execution changed the source container's exit status")
+	}
 }
 
 func TestScheduledOneOff_RecoversAfterForcedDaemonTermination(t *testing.T) {

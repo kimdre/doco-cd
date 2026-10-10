@@ -123,6 +123,10 @@ be created for each scheduled run and removed after completion and reporting.
     so make sure to configure appropriate logging (e.g., log to a persistent file or logging service like [Loki](https://grafana.com/docs/loki/latest/)) 
     if you need to keep track of job runs and [notifications](Notifications.md) if needed.
 
+For Compose jobs, the [scheduled-jobs API](../Endpoints/REST-API.md#scheduled-jobs) reports the active execution or
+the most recent recorded one-off exit status, not an older exit status of the stopped source service container.
+Exit results are kept in memory. When no result is available, the API falls back to the source container's state.
+
 ??? info "Recovery after forced termination"
     For `one_off` jobs, doco-cd labels the temporary container or Swarm service with the execution identity
     and retains it until its result has been reported, and it has been cleaned up. 

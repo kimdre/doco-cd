@@ -81,7 +81,10 @@ func statusForScheduledJob(job scheduledJob, cfg docker.JobScheduleConfig, runti
 		return status
 	}
 
-	if strings.TrimSpace(job.containerState) != string(container.StateCreated) {
+	// One-off runs use temporary containers, so the recorded result is newer than
+	// the exit state of an inactive source container. A live source state is
+	// current, so it stays visible.
+	if !isInactiveContainerState(job.containerState) {
 		return status
 	}
 
@@ -93,6 +96,18 @@ func statusForScheduledJob(job scheduledJob, cfg docker.JobScheduleConfig, runti
 	return runtimeStatus
 }
 
+// isInactiveContainerState returns true if the given container state is considered inactive (i.e., not running).
+func isInactiveContainerState(state string) bool {
+	switch container.ContainerState(strings.TrimSpace(state)) {
+	case container.StateCreated, container.StateExited, container.StateDead:
+		return true
+	default:
+		return false
+	}
+}
+
+// parseRFC3339Time parses a string in RFC3339 format and returns a pointer to the corresponding time.Time value.
+// If the input string is empty or cannot be parsed, it returns nil.
 func parseRFC3339Time(raw string) *time.Time {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -231,6 +246,19 @@ func (s *runtimeStore) setRunStatus(key, status string) {
 	s.runStatuses[key] = strings.TrimSpace(status)
 }
 
+// clearRunStatus removes the run status for the given key, if it exists.
+func (s *runtimeStore) clearRunStatus(key string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.runStatuses, key)
+}
+
 func (s *runtimeStore) runningStatesSnapshot() map[string]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -299,7 +327,12 @@ func (s *runtimeStore) updateRunStatus(job scheduledJob, cfg docker.JobScheduleC
 
 	if exitErr, ok := errors.AsType[*docker.ContainerExitError](runErr); ok {
 		s.setRunStatus(job.key, formatExitStatus(exitErr.ExitCode))
+		return
 	}
+
+	// The run failed without an exit code. Remove the previous result, so the
+	// status cannot show an older run as the latest result.
+	s.clearRunStatus(job.key)
 }
 
 func copyMap[K comparable, V any](m map[K]V) map[K]V {

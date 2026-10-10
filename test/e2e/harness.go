@@ -89,6 +89,9 @@ type Harness struct {
 	remoteDaemon     testcontainers.Container
 	remoteDocker     *client.Client
 
+	// apiKey enables the daemon REST API and publishes its HTTP port.
+	apiKey string
+
 	// lastCommitTime keeps commit times strictly increasing, git only stores seconds.
 	lastCommitTime time.Time
 	// notificationsSeen is the per-stack cursor of NextNotification.
@@ -149,6 +152,19 @@ func NewHarness(t *testing.T, scenario string) *Harness {
 func (h *Harness) EnableRemoteContext() {
 	h.t.Helper()
 	h.remoteContext = true
+}
+
+// EnableAPI enables the daemon REST API with apiKey and publishes the daemon
+// HTTP port to the host for APIRequest. Call before Start.
+func (h *Harness) EnableAPI(apiKey string) {
+	h.t.Helper()
+
+	if apiKey == "" {
+		h.t.Fatal("REST API key must not be empty")
+	}
+
+	h.apiKey = apiKey
+	h.SetEnv("API_SECRET", apiKey)
 }
 
 // TrackVolume registers a scenario-owned named volume for teardown.
@@ -420,12 +436,18 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 
 	h.logf("waiting for daemon healthcheck")
 
+	var exposedPorts []string
+	if h.apiKey != "" {
+		exposedPorts = []string{"80/tcp"}
+	}
+
 	daemon, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:    image,
-			Name:     h.containerName("doco-cd"),
-			Networks: []string{h.net.Name},
-			Env:      h.daemonEnv(),
+			Image:        image,
+			Name:         h.containerName("doco-cd"),
+			Networks:     []string{h.net.Name},
+			Env:          h.daemonEnv(),
+			ExposedPorts: exposedPorts,
 			Mounts: testcontainers.ContainerMounts{
 				{Source: testcontainers.GenericVolumeMountSource{Name: h.dataVolume}, Target: "/data"},
 			},

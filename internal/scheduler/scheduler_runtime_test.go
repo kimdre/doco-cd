@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -39,14 +40,100 @@ func TestStatusForScheduledJob(t *testing.T) {
 			want:          "exited (143)",
 		},
 		{
+			name: "container one_off success overrides source failure",
+			job: scheduledJob{
+				mode:            scheduledJobModeContainer,
+				containerState:  "exited",
+				containerStatus: "Exited (7) 2 hours ago",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (0)",
+			want:          "exited (0)",
+		},
+		{
+			name: "container one_off failure overrides source success",
+			job: scheduledJob{
+				mode:            scheduledJobModeContainer,
+				containerState:  "exited",
+				containerStatus: "Exited (0) 2 hours ago",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (143)",
+			want:          "exited (143)",
+		},
+		{
+			name: "container one_off running source keeps docker state",
+			job: scheduledJob{
+				mode:            scheduledJobModeContainer,
+				containerState:  "running",
+				containerStatus: "Up 5 seconds",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (0)",
+			want:          "running",
+		},
+		{
+			name: "container one_off restarting source keeps docker state",
+			job: scheduledJob{
+				mode:            scheduledJobModeContainer,
+				containerState:  "restarting",
+				containerStatus: "Restarting (1) 2 seconds ago",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (0)",
+			want:          "restarting",
+		},
+		{
+			name: "container one_off runtime status overrides dead source",
+			job: scheduledJob{
+				mode:           scheduledJobModeContainer,
+				containerState: "dead",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (0)",
+			want:          "exited (0)",
+		},
+		{
+			name: "container one_off without runtime status keeps source failure",
+			job: scheduledJob{
+				mode:            scheduledJobModeContainer,
+				containerState:  "exited",
+				containerStatus: "Exited (7) 2 hours ago",
+			},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			want: "exited (7)",
+		},
+		{
+			name: "container one_off blank runtime status keeps source failure",
+			job: scheduledJob{
+				mode:            scheduledJobModeContainer,
+				containerState:  "exited",
+				containerStatus: "Exited (7) 2 hours ago",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: " \t ",
+			want:          "exited (7)",
+		},
+		{
+			name: "container one_off trims runtime status",
+			job: scheduledJob{
+				mode:           scheduledJobModeContainer,
+				containerState: "created",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: " exited (0) \t",
+			want:          "exited (0)",
+		},
+		{
 			name: "container restart keeps docker state",
 			job: scheduledJob{
 				mode:            scheduledJobModeContainer,
 				containerState:  "exited",
 				containerStatus: "Exited (0) 2 seconds ago",
 			},
-			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeRestart},
-			want: "exited (0)",
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeRestart},
+			runtimeStatus: "exited (143)",
+			want:          "exited (0)",
 		},
 		{
 			name: "swarm one_off not rewritten",
@@ -60,8 +147,9 @@ func TestStatusForScheduledJob(t *testing.T) {
 		{
 			name: "running state has priority",
 			job: scheduledJob{
-				mode:           scheduledJobModeContainer,
-				containerState: "created",
+				mode:            scheduledJobModeContainer,
+				containerState:  "exited",
+				containerStatus: "Exited (7) 2 hours ago",
 			},
 			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
 			runtimeStatus: "exited (0)",
@@ -235,6 +323,20 @@ func TestUpdateRuntimeRunStatus(t *testing.T) {
 
 	if got := runtime.runStatusesSnapshot()[job.key]; got != "exited (143)" {
 		t.Fatalf("updateRuntimeRunStatus() error status=%q want=%q", got, "exited (143)")
+	}
+
+	runtime.updateRunStatus(job, cfg, nil)
+	runtime.updateRunStatus(job, cfg, errors.New("pull image: unauthorized"))
+
+	if got, ok := runtime.runStatusesSnapshot()[job.key]; ok {
+		t.Fatalf("updateRuntimeRunStatus() kept status %q after a failure without an exit code", got)
+	}
+
+	restartCfg := docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeRestart}
+	runtime.updateRunStatus(job, restartCfg, nil)
+
+	if got, ok := runtime.runStatusesSnapshot()[job.key]; ok {
+		t.Fatalf("updateRuntimeRunStatus() recorded status %q for a restart job", got)
 	}
 }
 

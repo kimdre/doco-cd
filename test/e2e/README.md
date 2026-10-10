@@ -76,6 +76,8 @@ by reading the stack name(s) straight from the fixture's `.doco-cd.yml`
    every `.doco-cd.yml` under `scenarios/<name>/`, so stacks added that way are
    torn down too. `SetEnv` adds environment variables to the daemon before
    `Start`, e.g. `SOPS_AGE_KEY` for a scenario with encrypted fixtures.
+   `EnableAPI` enables the REST API before `Start` and publishes the daemon
+   HTTP port, so `APIRequest` can call the API from the test.
 4. Scenarios asserting on notifications call `CaptureNotifications` before
    `Start`: the gitserver also answers as the Apprise API and logs every
    request, and `NextNotification` returns them per stack with the commit

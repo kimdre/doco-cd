@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
 // deployCompletedLog is logged once a deployment of a stack completed. Unlike
@@ -443,6 +445,49 @@ func (h *Harness) WaitFor(timeout time.Duration, desc string, check func() bool)
 
 		time.Sleep(time.Second)
 	}
+}
+
+// APIRequest sends a REST API request to the daemon and returns the response
+// body. It fails the test if the response status is not wantStatus. Call
+// EnableAPI before Start to use it.
+func (h *Harness) APIRequest(method, path string, wantStatus int) []byte {
+	h.t.Helper()
+
+	if h.apiKey == "" || h.daemon == nil {
+		h.t.Fatal("REST API is not enabled; call EnableAPI before Start")
+	}
+
+	endpoint, err := h.daemon.Endpoint(h.ctx, "http")
+	if err != nil {
+		h.t.Fatalf("get daemon API endpoint: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(h.ctx, 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint+path, nil)
+	if err != nil {
+		h.t.Fatalf("create API request %s %s: %v", method, path, err)
+	}
+
+	req.Header.Set(restapi.KeyHeader, h.apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatalf("send API request %s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		h.t.Fatalf("read API response %s %s: %v", method, path, err)
+	}
+
+	if resp.StatusCode != wantStatus {
+		h.t.Fatalf("API request %s %s: status = %d, want %d; body = %s", method, path, resp.StatusCode, wantStatus, body)
+	}
+
+	return body
 }
 
 // WaitForLog waits until the daemon's logs contain substr, mirroring
