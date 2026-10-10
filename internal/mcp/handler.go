@@ -19,7 +19,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/restapi"
-	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
@@ -27,7 +26,7 @@ import (
 type RunOperations interface {
 	List(limit int, trigger, status string) []controlplane.Run
 	Get(jobID string) (controlplane.Run, bool)
-	ListScheduledJobs(ctx context.Context, contextName, stackName string) ([]scheduler.JobInfo, error)
+	ListScheduledJobs(ctx context.Context, contextName, stackName string) ([]controlplane.ScheduledJobInfo, error)
 	TriggerScheduledJob(ctx context.Context, jobID, contextName, jobName, stackName string, wait bool) (string, error)
 	TriggerPoll(ctx context.Context, configs []poll.Config, wait bool, log *slog.Logger) (string, error)
 	TriggerMirrorCompaction(ctx context.Context, jobID string, req controlplane.MirrorCompactionRequest, wait bool) (string, error)

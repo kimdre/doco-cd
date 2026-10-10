@@ -2,22 +2,168 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/controlplane"
+	"github.com/kimdre/doco-cd/internal/docker"
 
 	"github.com/kimdre/doco-cd/internal/logger"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
+
+func TestGetScheduledJobsLastRunContract(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		status controlplane.RunStatus
+		runID  string
+		evict  bool
+	}{
+		{name: "never run"},
+		{name: "unavailable history", runID: "missing-run"},
+		{name: "evicted history", status: controlplane.RunStatusSucceeded, runID: "evicted-run", evict: true},
+		{name: "running", status: controlplane.RunStatusRunning, runID: "running-run"},
+		{name: "succeeded", status: controlplane.RunStatusSucceeded, runID: "successful-run"},
+		{name: "failed", status: controlplane.RunStatusFailed, runID: "failed-run"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			startedAt := time.Now().In(time.Local).Add(-time.Minute)
+			nextRunAt := startedAt.Add(time.Hour)
+			job := scheduler.JobInfo{
+				LatestRunID: tc.runID, Name: "backup", Context: "default", Stack: "prod", Mode: "container",
+				Schedule: "@every 1h", ExecutionMode: docker.JobExecutionModeOneOff, NotifyOn: docker.JobNotifyAll,
+				Status: "exited (0)", Repository: "owner/repo", StopServices: []string{"app"}, Replicas: 1,
+				Enabled: true, SkipRunning: true, Valid: true, LastRunAt: &startedAt,
+				NextRunAt: &nextRunAt, LabelNextRunAt: &nextRunAt,
+			}
+
+			runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+				maxRunsPerTrigger: map[controlplane.RunTrigger]int{controlplane.RunTriggerScheduledJob: 1},
+				scheduledJobs: testScheduledJobOperations{listJobs: func(_ context.Context, contextName, stackName string) ([]scheduler.JobInfo, error) {
+					if contextName != "default" || stackName != "prod" {
+						t.Errorf("list filters = %q, %q", contextName, stackName)
+					}
+
+					return []scheduler.JobInfo{job}, nil
+				}},
+			})
+			if tc.status != "" {
+				runs.ScheduledRunStarted(scheduler.RunExecution{
+					RunID: tc.runID, JobName: job.Name, Context: job.Context, Stack: job.Stack, Mode: job.Mode, StartedAt: startedAt,
+				})
+				runs.SetMetadata(tc.runID, controlplane.RunMetadata{Repository: job.Repository, Target: job.Stack, Revision: "main"})
+
+				switch tc.status {
+				case controlplane.RunStatusSucceeded:
+					runs.ScheduledRunFinished(tc.runID, nil)
+				case controlplane.RunStatusFailed:
+					runs.ScheduledRunFinished(tc.runID, errors.New("exit code 7"))
+				}
+			}
+
+			if tc.evict {
+				runs.ScheduledRunStarted(scheduler.RunExecution{RunID: "newer-run", JobName: "other", StartedAt: time.Now().UTC()})
+				runs.ScheduledRunFinished("newer-run", nil)
+
+				if _, ok := runs.Get(tc.runID); ok {
+					t.Fatal("eviction fixture still has the original run")
+				}
+			}
+
+			h := Handler{appConfig: &app.Config{ApiSecret: "test-api-secret"}, log: logger.New(logger.LevelCritical), controlPlaneRuns: runs}
+			mux := http.NewServeMux()
+			mux.HandleFunc(APIPath+"/jobs", h.GetScheduledJobsHandler)
+			mux.HandleFunc(APIPath+"/run/{jobID}", h.GetDeploymentRunHandler)
+
+			get := func(endpoint string) map[string]json.RawMessage {
+				t.Helper()
+
+				req := httptest.NewRequest(http.MethodGet, endpoint, nil)
+				req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+
+				response := httptest.NewRecorder()
+				mux.ServeHTTP(response, req)
+
+				if response.Code != http.StatusOK {
+					t.Fatalf("GET %s: status %d, body %s", endpoint, response.Code, response.Body.String())
+				}
+
+				if endpoint == APIPath+"/jobs?context=default&stack=prod" && response.Header().Get(dockerContextHeader) != "default" {
+					t.Fatalf("context header = %q", response.Header().Get(dockerContextHeader))
+				}
+
+				var envelope map[string]json.RawMessage
+				if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+					t.Fatal(err)
+				}
+
+				if len(envelope["job_id"]) == 0 {
+					t.Fatal("response lost its request job_id envelope")
+				}
+
+				return envelope
+			}
+			envelope := get(APIPath + "/jobs?context=default&stack=prod")
+
+			var jobs []map[string]json.RawMessage
+			if err := json.Unmarshal(envelope["content"], &jobs); err != nil || len(jobs) != 1 {
+				t.Fatalf("decode jobs: %v, content %s", err, envelope["content"])
+			}
+
+			lastRun, present := jobs[0]["last_run"]
+			if !present {
+				t.Fatal("last_run must always be serialized")
+			}
+
+			if tc.status == "" || tc.evict {
+				if string(lastRun) != "null" {
+					t.Fatalf("last_run = %s, want null even when last_run_at exists", lastRun)
+				}
+			} else {
+				detail := get(APIPath + "/run/" + tc.runID)
+				if !reflect.DeepEqual(lastRun, detail["content"]) {
+					t.Fatalf("last_run %s differs from complete run detail %s", lastRun, detail["content"])
+				}
+			}
+
+			delete(jobs[0], "last_run")
+
+			encodedJob, err := json.Marshal(job)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var original map[string]json.RawMessage
+			if err := json.Unmarshal(encodedJob, &original); err != nil {
+				t.Fatal(err)
+			}
+
+			if !reflect.DeepEqual(jobs[0], original) {
+				t.Fatalf("existing flat job fields changed: got %#v, want %#v", jobs[0], original)
+			}
+
+			for _, hidden := range []string{"LatestRunID", "latest_run_id", "last_run_id", "JobInfo"} {
+				if _, ok := jobs[0][hidden]; ok {
+					t.Fatalf("job leaked internal or redundant field %q", hidden)
+				}
+			}
+		})
+	}
+}
 
 func TestHandler_TriggerScheduledJobHandlerValidation(t *testing.T) {
 	t.Parallel()

@@ -19,10 +19,14 @@ import (
 // listJobs returns all jobs discovered on this worker's Docker context,
 // optionally filtered by stack name.
 func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, error) {
+	discoveredAt := time.Now()
+
 	jobs, err := s.discoverJobs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover scheduled jobs: %w", err)
 	}
+
+	s.runtime.pruneLatestRuns(s.contextName, s.mode, jobs, discoveredAt)
 
 	now := schedulerNow()
 	stackName = strings.TrimSpace(stackName)
@@ -30,6 +34,7 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 	states := s.runtime.statesSnapshot()
 	runStatuses := s.runtime.runStatusesSnapshot()
 	runningStates := s.runtime.runningStatesSnapshot()
+	latestRuns := s.runtime.latestRunsSnapshot()
 
 	for _, job := range jobs {
 		stack := getJobStackName(job)
@@ -38,12 +43,13 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 		}
 
 		info := JobInfo{
-			Name:       job.name,
-			Context:    docker.DisplayContextName(job.context),
-			Stack:      stack,
-			Mode:       string(job.mode),
-			Repository: job.labels[docker.DocoCDLabels.Source.Name],
-			Valid:      true,
+			LatestRunID: latestRuns[job.key].id,
+			Name:        job.name,
+			Context:     docker.DisplayContextName(job.context),
+			Stack:       stack,
+			Mode:        string(job.mode),
+			Repository:  job.labels[docker.DocoCDLabels.Source.Name],
+			Valid:       true,
 
 			LastRunAt:      parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun]),
 			LabelNextRunAt: parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun]),
@@ -113,7 +119,7 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 // triggerNow executes one configured scheduled job immediately on this
 // worker's Docker context. Job selection matches by container/service name
 // and optional stack name.
-func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (string, error) {
+func (s *scheduler) triggerNow(ctx context.Context, runID, jobName, stackName string) (string, error) {
 	if strings.TrimSpace(jobName) == "" {
 		return "", errors.New("job name is required")
 	}
@@ -128,7 +134,11 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 		return "", err
 	}
 
-	runID := id.New()
+	ownsRun := runID == ""
+	if ownsRun {
+		runID = id.New()
+	}
+
 	stack := getJobStackName(job)
 	metricLabels := getScheduledRunMetricLabels(job, cfg, stack)
 
@@ -143,6 +153,16 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 	runLog.Info("triggered scheduled job now")
 
 	runStart := time.Now()
+	s.startTrackedRun(job, runID, runStart)
+
+	var runErr error
+
+	if ownsRun {
+		defer func() {
+			s.finishTrackedRun(runID, &runErr, recover())
+		}()
+	}
+
 	runFailed := false
 	recordTerminalMetrics := true
 
@@ -176,24 +196,30 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 
 	if cfg.ExecutionMode == docker.JobExecutionModeOneOff {
 		if !s.claimRecovery(runID) {
-			return runID, fmt.Errorf("scheduled run %s is already active", runID)
+			runErr = fmt.Errorf("scheduled run %s is already active", runID)
+			return runID, runErr
 		}
 
 		defer s.releaseRecovery(runID)
 
 		newRecord := s.newExecutionRecord(runID, job, cfg)
 		if err := s.executions.create(&newRecord); err != nil {
-			return runID, fmt.Errorf("persist scheduled execution before launch: %w", err)
+			runErr = fmt.Errorf("persist scheduled execution before launch: %w", err)
+			return runID, runErr
 		}
 
 		record = &newRecord
 	}
 
 	err = s.executeScheduledRun(ctx, job, cfg, record, schedulerNow(), runStart)
+	runErr = err
+
 	if ctx.Err() != nil {
 		recordTerminalMetrics = false
 
-		return runID, errors.Join(err, ctx.Err())
+		runErr = errors.Join(err, ctx.Err())
+
+		return runID, runErr
 	}
 
 	s.runtime.updateRunStatus(job, cfg, err)
@@ -218,6 +244,7 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 	return runID, nil
 }
 
+// listJobsForModes lists all jobs for the given modes across the provided Docker context client.
 func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, secretProvider secretprovider.SecretProvider, notifier notification.Sender, runtime *runtimeStore, stackName string, composeOptions docker.ScheduledComposeOptions) ([]JobInfo, error) {
 	var result []JobInfo
 
@@ -233,13 +260,15 @@ func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.C
 	return result, nil
 }
 
-func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions) (string, error) {
+// triggerNowForModes triggers a scheduled job immediately for the given modes across the provided Docker context client.
+func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, runID, jobName, stackName string, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions, reporter RunReporter) (string, error) {
 	workers := make(map[scheduledJobMode]*scheduler, len(modes))
 
 	var jobs []scheduledJob
 
 	for _, mode := range modes {
 		worker := newSchedulerForMode(cc, mode, log, nil, secretProvider, notifier, stopHoldTracker, runtime, composeOptions)
+		worker.runReporter = reporter
 
 		discovered, err := worker.discoverJobs(ctx)
 		if err != nil {
@@ -261,9 +290,10 @@ func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker
 		return "", fmt.Errorf("%w: %s", ErrScheduledJobNotFound, jobName)
 	}
 
-	return worker.triggerNow(ctx, jobName, stackName)
+	return worker.triggerNow(ctx, runID, jobName, stackName)
 }
 
+// findRunnableJob searches for a scheduled job by name and optional stack name, returning the job and its configuration if found and enabled.
 func findRunnableJob(jobs []scheduledJob, jobName, stackName string) (scheduledJob, docker.JobScheduleConfig, error) {
 	var (
 		matchedJob scheduledJob

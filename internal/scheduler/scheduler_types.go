@@ -68,6 +68,7 @@ type scheduler struct {
 	startedAt       time.Time
 	runtime         *runtimeStore
 	executions      *executionStore
+	runReporter     RunReporter
 	runs            sync.WaitGroup
 	// composeOptions bundles the Docker-owned settings needed to reload the compose project for
 	// a scheduled run (see docker.ScheduledComposeOptions), resolved explicitly by the caller
@@ -118,6 +119,7 @@ type stopHoldState struct {
 
 // JobInfo describes one scheduler-managed target and its runtime scheduling status.
 type JobInfo struct {
+	LatestRunID    string                  `json:"-"`
 	LastRunAt      *time.Time              `json:"last_run_at,omitempty"`
 	NextRunAt      *time.Time              `json:"next_run_at,omitempty"`
 	LabelNextRunAt *time.Time              `json:"label_next_run_at,omitempty"`

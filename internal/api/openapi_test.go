@@ -13,8 +13,93 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/logger"
 )
+
+func TestOpenAPIScheduledJobsLastRunSchema(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{appConfig: &app.Config{}, log: logger.New(logger.LevelCritical)}
+	builder := newSchemaBuilder()
+
+	routes, err := createRouteCatalog(h, Mounts{}, builder)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, data, err := buildOpenAPIDocument(routes, builder.components)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	document, err := openapi3.NewLoader().LoadFromData(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	job := document.Components.Schemas["ScheduledJobsResponse"].Value.Properties["content"].Value.Items.Value
+	for _, name := range []string{"name", "context", "stack", "mode", "enabled", "valid", "last_run_at", "next_run_at", "last_run"} {
+		if job.Properties[name] == nil {
+			t.Errorf("flat job schema missing %q", name)
+		}
+	}
+
+	lastRun := job.Properties["last_run"]
+	runRef := "#/components/schemas/" + componentTypeName(reflect.TypeFor[controlplane.Run]())
+
+	if lastRun == nil || lastRun.Value == nil {
+		t.Fatal("last_run schema is missing")
+	}
+
+	if lastRun.Value.Nullable {
+		t.Fatal("last_run must not use the OpenAPI 3.0 nullable keyword in an OpenAPI 3.2 document")
+	}
+
+	if len(lastRun.Value.OneOf) != 2 || lastRun.Value.OneOf[0].Ref != runRef ||
+		lastRun.Value.OneOf[1].Value == nil || !lastRun.Value.OneOf[1].Value.Type.Is(openapi3.TypeNull) {
+		t.Fatalf("last_run must be one of the shared run reference %q or null: %#v", runRef, lastRun)
+	}
+
+	sharedRun := lastRun.Value.OneOf[0]
+
+	detail := document.Components.Schemas["RunResponse"].Value.Properties["content"]
+	if detail.Ref != runRef || !reflect.DeepEqual(sharedRun.Value.Properties, detail.Value.Properties) {
+		t.Fatal("last_run must share the complete run-detail schema")
+	}
+
+	if !slices.Contains(job.Required, "last_run") {
+		t.Fatal("last_run must be required, including when null")
+	}
+
+	if err := lastRun.Value.VisitJSON(nil); err != nil {
+		t.Fatalf("last_run schema must accept null: %v", err)
+	}
+
+	if err := lastRun.Value.VisitJSON(map[string]any{
+		"job_id":     "run-1",
+		"trigger":    "scheduled_job",
+		"status":     "succeeded",
+		"created_at": "2026-10-10T12:00:00Z",
+		"updated_at": "2026-10-10T12:00:10Z",
+	}); err != nil {
+		t.Fatalf("last_run schema must accept a run object: %v", err)
+	}
+
+	if !slices.Equal(sharedRun.Value.Properties["status"].Value.Enum, []any{"accepted", "running", "succeeded", "failed", "skipped"}) {
+		t.Fatalf("run status enum = %#v", sharedRun.Value.Properties["status"].Value.Enum)
+	}
+
+	if !slices.Equal(sharedRun.Value.Properties["trigger"].Value.Enum, []any{"webhook", "poll", "scheduled_job", "mirror_compaction"}) {
+		t.Fatalf("run trigger enum = %#v", sharedRun.Value.Properties["trigger"].Value.Enum)
+	}
+
+	for _, hidden := range []string{"LatestRunID", "latest_run_id", "last_run_id", "JobInfo"} {
+		if job.Properties[hidden] != nil {
+			t.Errorf("job schema leaked internal or redundant field %q", hidden)
+		}
+	}
+}
 
 func TestOpenAPIDocumentMatchesRouteCatalog(t *testing.T) {
 	t.Parallel()

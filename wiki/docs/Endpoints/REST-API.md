@@ -76,7 +76,7 @@ If the application is not healthy, the endpoint returns a `503` status code and 
 
 ### Deployment Runs
 
-The API tracks deployment-related runs (for example webhook-triggered deployments and API-triggered poll runs) in memory.
+The API tracks deployment-related runs (for example webhook-triggered deployments, API-triggered poll runs, and automatic, manual, or recovered scheduled-job executions) in memory.
 Use these endpoints to inspect the current status and recent history by `job_id`.
 Each run's `deployments` collection reports the resolved stack and Docker context targets. A single poll or webhook run can contain targets from multiple contexts.
 
@@ -84,6 +84,11 @@ Each run's `deployments` collection reports the resolved stack and Docker contex
 |-----------------------|--------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `/v1/api/runs`        | GET    | List recent tracked deployment runs   | - `limit` (integer, default: `50`, max: `200`)<br/>- `status` (string, optional): `accepted`, `running`, `succeeded`, `failed`, `skipped`<br/>- `trigger` (string, optional): `webhook`, `poll`, `scheduled_job`, `mirror_compaction` |
 | `/v1/api/run/{jobID}` | GET    | Get details for a specific run/job ID |                                                                                                                                                                                                                                       |
+
+History is bounded by the configured per-trigger limit (currently 50 runs in the application) and a seven-day TTL.
+All run timestamps use doco-cd's configured timezone (`TZ`), including the UTC offset for each timestamp.
+Accepted and running records are protected from eviction until they become terminal. History is not persisted across
+doco-cd restarts; retained `one_off` scheduled executions can be reconstructed during recovery.
 
 #### Example Requests
 
