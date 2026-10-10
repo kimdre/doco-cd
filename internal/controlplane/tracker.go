@@ -162,6 +162,84 @@ func (t *deploymentRunTracker) TrackAccepted(jobID string, trigger deploymentRun
 	})
 }
 
+// TrackScheduledRunStarted creates or updates a resolved execution, preserving admission timestamps.
+func (t *deploymentRunTracker) TrackScheduledRunStarted(jobID, jobName, contextName, stackName string, startedAt time.Time) {
+	if t == nil || jobID == "" {
+		return
+	}
+
+	now := time.Now().UTC()
+	if startedAt.IsZero() {
+		startedAt = now
+	}
+
+	startedAt = startedAt.UTC()
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	run, exists := t.runs[jobID]
+	if exists && isTerminalDeploymentRunStatus(run.Status) {
+		return
+	}
+
+	t.cleanupLocked(now)
+
+	if !exists {
+		run = deploymentRun{
+			JobID:     jobID,
+			Trigger:   deploymentRunTriggerScheduledJob,
+			CreatedAt: startedAt,
+		}
+		t.orderByTrigger[run.Trigger] = append(t.orderByTrigger[run.Trigger], jobID)
+	}
+
+	run.Status = deploymentRunStatusRunning
+	run.Repository = "scheduled:" + strings.TrimSpace(jobName)
+	run.Target = strings.TrimSpace(stackName)
+	run.Deployments = []deploymentRunTarget{{
+		Stack:   run.Target,
+		Context: docker.DisplayContextName(contextName),
+	}}
+
+	run.UpdatedAt = now
+	if run.StartedAt == nil {
+		run.StartedAt = &startedAt
+	}
+
+	t.runs[jobID] = run
+	t.pruneTerminalRuns(run.Trigger)
+}
+
+// MarkScheduledRunFinished leaves already-terminal records unchanged, including during recovery retries.
+func (t *deploymentRunTracker) MarkScheduledRunFinished(jobID string, err error) {
+	if t == nil {
+		return
+	}
+
+	t.update(jobID, func(run *deploymentRun) {
+		if isTerminalDeploymentRunStatus(run.Status) {
+			return
+		}
+
+		now := time.Now().UTC()
+		run.Status = deploymentRunStatusSucceeded
+
+		run.Message = "scheduled job run completed"
+		if err != nil {
+			run.Status = deploymentRunStatusFailed
+			run.Message = strings.TrimSpace(err.Error())
+		}
+
+		run.UpdatedAt = now
+
+		run.FinishedAt = &now
+		if run.StartedAt == nil {
+			run.StartedAt = &now
+		}
+	})
+}
+
 // MarkRunning updates a run to running state and records the start time.
 func (t *deploymentRunTracker) MarkRunning(jobID string) {
 	if t == nil {
@@ -435,11 +513,20 @@ func NormalizeRunTrigger(value string) (string, error) {
 }
 
 // cleanup removes runs that have exceeded their 7-day TTL.
-// Called during TrackAccepted and List operations to enforce time-based expiration.
+// Called during run admission and listing to enforce time-based expiration.
 func (t *deploymentRunTracker) cleanup(now time.Time) {
+	if t == nil {
+		return
+	}
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	t.cleanupLocked(now)
+}
+
+// cleanupLocked performs the actual cleanup of expired runs. Assumes the caller holds the write lock.
+func (t *deploymentRunTracker) cleanupLocked(now time.Time) {
 	cutoffTime := now.Add(-t.ttl)
 
 	for trigger, jobIDs := range t.orderByTrigger {
@@ -517,12 +604,27 @@ func (t *deploymentRunTracker) update(jobID string, fn func(*deploymentRun)) {
 	t.pruneTerminalRuns(run.Trigger)
 }
 
+// isTerminalDeploymentRunStatus checks if a run status is terminal (succeeded, failed, or skipped).
 func isTerminalDeploymentRunStatus(status deploymentRunStatus) bool {
 	return status == deploymentRunStatusSucceeded || status == deploymentRunStatusFailed || status == deploymentRunStatusSkipped
 }
 
+// cloneDeploymentRun creates a deep copy of a deployment run, converting timestamps to local time.
 func cloneDeploymentRun(run deploymentRun) deploymentRun {
 	run.Deployments = slices.Clone(run.Deployments)
+	run.CreatedAt = run.CreatedAt.In(time.Local)
+	run.UpdatedAt = run.UpdatedAt.In(time.Local)
+	run.StartedAt = localTimestamp(run.StartedAt)
+	run.FinishedAt = localTimestamp(run.FinishedAt)
 
 	return run
+}
+
+// localTimestamp converts a timestamp to local time. Returns nil if the input is nil.
+func localTimestamp(timestamp *time.Time) *time.Time {
+	if timestamp == nil {
+		return nil
+	}
+
+	return new(timestamp.In(time.Local))
 }

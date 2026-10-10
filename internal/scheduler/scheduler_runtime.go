@@ -22,6 +22,7 @@ type runtimeStore struct {
 	states        map[string]scheduledJobState
 	runStatuses   map[string]string
 	runningStates map[string]int
+	latestRuns    map[string]latestRun
 	clearing      set.Set[string]
 	cond          *sync.Cond
 }
@@ -31,6 +32,7 @@ func newRuntimeStore() *runtimeStore {
 		states:        map[string]scheduledJobState{},
 		runStatuses:   map[string]string{},
 		runningStates: map[string]int{},
+		latestRuns:    map[string]latestRun{},
 		clearing:      set.New[string](),
 	}
 	store.cond = sync.NewCond(&store.mu)
@@ -203,6 +205,12 @@ func (s *runtimeStore) clearContextMode(contextName string, mode scheduledJobMod
 		}
 	}
 
+	for key := range s.latestRuns {
+		if runtimeKeyInContextMode(contextName, mode, key) {
+			delete(s.latestRuns, key)
+		}
+	}
+
 	delete(s.clearing, partition)
 	s.cond.Broadcast()
 }
@@ -212,6 +220,52 @@ func (s *runtimeStore) statesSnapshot() map[string]scheduledJobState {
 	defer s.mu.RUnlock()
 
 	return copyMap(s.states)
+}
+
+// latestRun represents the most recent run of a scheduled job, including its ID and start time.
+type latestRun struct {
+	id        string
+	startedAt time.Time
+}
+
+// setLatestRun updates the latest run for a given key if the new run is more recent than the existing one.
+func (s *runtimeStore) setLatestRun(key, runID string, startedAt time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if current, ok := s.latestRuns[key]; ok {
+		if current.startedAt.After(startedAt) || (current.startedAt.Equal(startedAt) && current.id >= runID) {
+			return
+		}
+	}
+
+	s.latestRuns[key] = latestRun{id: runID, startedAt: startedAt}
+}
+
+// latestRunsSnapshot returns a copy of the latest runs map, allowing safe concurrent access without exposing the internal state.
+func (s *runtimeStore) latestRunsSnapshot() map[string]latestRun {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return copyMap(s.latestRuns)
+}
+
+// pruneLatestRuns retains disabled sources and executions started during discovery.
+func (s *runtimeStore) pruneLatestRuns(contextName string, mode scheduledJobMode, jobs []scheduledJob, discoveredAt time.Time) {
+	keys := set.New[string]()
+	for _, job := range jobs {
+		keys.Add(job.key)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for key, run := range s.latestRuns {
+		if runtimeKeyInContextMode(contextName, mode, key) && !keys.Contains(key) &&
+			s.runningStates[key] == 0 && !run.startedAt.After(discoveredAt) {
+			delete(s.latestRuns, key)
+		}
+	}
 }
 
 func (s *runtimeStore) setLastRun(key string, lastRun time.Time) {

@@ -8,7 +8,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/kimdre/doco-cd/internal/scheduler"
+	"github.com/kimdre/doco-cd/internal/controlplane"
 )
 
 type listScheduledJobsInput struct {
@@ -17,7 +17,7 @@ type listScheduledJobsInput struct {
 }
 
 type listScheduledJobsOutput struct {
-	Jobs []scheduler.JobInfo `json:"jobs"`
+	Jobs []controlplane.ScheduledJobInfo `json:"jobs"`
 }
 
 type triggerScheduledJobInput struct {
@@ -35,9 +35,10 @@ type triggerScheduledJobOutput struct {
 // addScheduledJobReadTool registers scheduled-job discovery.
 func (h *Handler) addScheduledJobReadTool(server *sdkmcp.Server) {
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "list_scheduled_jobs",
-		Description: "List scheduler-managed jobs, optionally filtered by stack or Compose project.",
-		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
+		Name:         "list_scheduled_jobs",
+		Description:  "List scheduler-managed jobs, optionally filtered by stack or Compose project, including the most recently started tracked run or null when unavailable.",
+		Annotations:  &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
+		OutputSchema: mustRunToolOutputSchema[listScheduledJobsOutput]("list_scheduled_jobs"),
 	}, instrumentTool(h.log, "list_scheduled_jobs", h.listScheduledJobs))
 }
 

@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -119,24 +120,37 @@ func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecor
 	cfg := record.Finalization.scheduleConfig()
 	metricLabels := getScheduledRunMetricLabels(job, cfg, stackName)
 
-	unlockStacks := lockStacks(s.contextName, append([]string{stackName}, resolveStopServiceStacks(cfg.StopServices, stackName)...)...)
-	defer unlockStacks()
-
 	var (
 		runErr   error
 		runStart *time.Time
 	)
 
 	if !record.Reported {
-		// Extract original start time from artifact labels for accurate metrics.
-		// If artifact was removed, use current time instead.
-		runStart = s.recoveredExecutionStartedAt(ctx, record)
+		startedAt, err := s.recoveredExecutionStartedAt(ctx, record)
+		if err != nil {
+			// Recovery must still restore stopped services and finalize the record.
+			// Only the run history entry is lost.
+			s.log.Warn("failed to read recovered execution start time", slog.String("run_id", record.RunID), logger.ErrAttr(err))
+		}
 
-		if runStart == nil {
+		if startedAt != nil {
+			runStart = startedAt
+			s.startTrackedRun(job, record.RunID, *runStart)
+
+			defer func() {
+				s.finishTrackedRun(record.RunID, &runErr, recover())
+			}()
+		} else {
+			// Without the original time, recovery cannot order this run against newer executions.
 			now := time.Now()
 			runStart = &now
 		}
+	}
 
+	unlockStacks := lockStacks(s.contextName, append([]string{stackName}, resolveStopServiceStacks(cfg.StopServices, stackName)...)...)
+	defer unlockStacks()
+
+	if !record.Reported {
 		prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Inc()
 
 		runErr = s.waitForRecoveredArtifact(ctx, record)
@@ -146,19 +160,24 @@ func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecor
 		// Leave ownership and finalization state untouched on worker shutdown so
 		// the next process can adopt the same retained artifact.
 		if ctx.Err() != nil {
+			runErr = errors.Join(runErr, ctx.Err())
 			return
 		}
 	}
 
 	if len(cfg.StopServices) > 0 && !record.Restored {
 		if err := s.startServicesForJob(context.WithoutCancel(ctx), job.mode, getJobStackName(job), cfg.StopServices); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("restore services after recovered execution: %w", err))
 			s.log.Error("failed to restore services for recovered scheduled execution", slog.String("run_id", record.RunID), logger.ErrAttr(err))
+
 			return
 		}
 
 		record.Restored = true
 		if err := s.executions.update(*record); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("persist recovered execution restoration: %w", err))
 			s.log.Error("failed to persist recovered scheduled execution restoration state", slog.String("run_id", record.RunID), logger.ErrAttr(err))
+
 			return
 		}
 	}
@@ -184,38 +203,52 @@ func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecor
 }
 
 // recoveredExecutionStartedAt reads the start time from Docker artifact labels.
-// Returns nil if artifact or label is missing.
-func (s *scheduler) recoveredExecutionStartedAt(ctx context.Context, record *executionRecord) *time.Time {
+// Returns nil if the artifact or label is missing.
+func (s *scheduler) recoveredExecutionStartedAt(ctx context.Context, record *executionRecord) (*time.Time, error) {
 	var labels map[string]string
 
 	switch record.Mode {
 	case scheduledJobModeContainer:
 		containerID, err := docker.FindOneOffContainer(ctx, s.dockerCli.Client(), record.RunID)
-		if err != nil || containerID == "" {
-			return nil
+		if err != nil {
+			return nil, err
+		}
+
+		if containerID == "" {
+			return nil, nil
 		}
 
 		result, err := s.dockerCli.Client().ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
-		if err != nil || result.Container.Config == nil {
-			return nil
+		if err != nil {
+			return nil, err
+		}
+
+		if result.Container.Config == nil {
+			return nil, errors.New("recovered container configuration is missing")
 		}
 
 		labels = result.Container.Config.Labels
 	case scheduledJobModeSwarm:
 		serviceID, err := docker.FindSwarmOneOffService(ctx, s.dockerCli, record.RunID)
-		if err != nil || serviceID == "" {
-			return nil
+		if err != nil {
+			return nil, err
+		}
+
+		if serviceID == "" {
+			return nil, nil
 		}
 
 		result, err := s.dockerCli.Client().ServiceInspect(ctx, serviceID, client.ServiceInspectOptions{})
 		if err != nil {
-			return nil
+			return nil, err
 		}
 
 		labels = docker.SwarmJobLabels(result.Service)
+	default:
+		return nil, fmt.Errorf("unsupported scheduled execution mode %q", record.Mode)
 	}
 
-	return parseRFC3339Time(labels[docker.DocoCDJobLabels.JobStartedAt])
+	return parseRFC3339Time(labels[docker.DocoCDJobLabels.JobStartedAt]), nil
 }
 
 // claimRecovery acquires exclusive local ownership of a run to prevent
