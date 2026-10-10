@@ -14,6 +14,6 @@ Full working setups for common doco-cd scenarios. Each example replicates every 
 
 Notes that apply to all examples:
 
-- All examples poll. Polling needs no inbound port, so the host firewall stays closed. Webhooks work the same way: set `WEBHOOK_SECRET` and publish the port.
+- All examples use polling. Doco-CD itself needs no inbound port, but deployed app stacks may publish ports for user traffic. To adapt an example for webhooks, set `WEBHOOK_SECRET`, enable a reachable HTTP listener, and configure the Git provider to send requests through an HTTPS reverse proxy; see [Setup Webhook](../wiki/docs/Setup-Webhook.md).
 - Examples use the `latest` image tag to stay copy-pasteable. In real use pin the doco-cd image by tag + digest.
 - The `server/` compose is the one thing the other examples do not GitOps: it is copied to the host by hand. To put it under GitOps too, see [self-updating](self-updating/) and [Self-Updating](https://doco.cd/latest/Advanced/Self-Updating/).

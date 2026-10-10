@@ -33,7 +33,7 @@ bootstrap.sh              # run once per host, then never again
 
 1. Set the repository URL in `bootstrap.sh` and
    `infra-repo/doco-cd/compose.yaml`.
-2. The example pins `0.122.0` by tag in `bootstrap.sh` and by tag and digest
+2. The example pins `0.124.0` by tag in `bootstrap.sh` and by tag and digest
    in `infra-repo/doco-cd/compose.yaml`. To use another version, run
    `docker buildx imagetools inspect ghcr.io/kimdre/doco-cd:<version>`, then
    update the tag in both files and the digest in `compose.yaml`.
@@ -43,7 +43,8 @@ bootstrap.sh              # run once per host, then never again
 The bootstrap container clones the repo, deploys both stacks and exits. What is
 left is a doco-cd container carrying the full `com.docker.compose.*` and
 `cd.doco.*` label set, which is what lets the next poll recognise the stack as
-its own.
+its own. The sample Nginx app is reachable from the Docker host at
+`http://127.0.0.1:8080`; it is bound to loopback and is not exposed to the LAN.
 
 From here, bump the pinned image in `doco-cd/compose.yaml`, push, and doco-cd
 replaces itself.
