@@ -9,7 +9,7 @@ Settings to configure Git authentication, clone behavior, and deployment reporti
 
 ## Supported transports
 
-Doco-CD accepts HTTP(S), SSH, native Git (`git://host/path`), and [local filesystem](Advanced/Local-Filesystem-Polling.md) repository URLs.
+Doco-CD accepts HTTP(S), SSH, [native Git](Advanced/Tips-and-Tricks.md#polling-via-native-git) (`git://host/path`), and [local filesystem](Advanced/Local-Filesystem-Polling.md) repository URLs.
 
 !!! tip "HTTPS and SSH are recommended for remote repositories."
 
