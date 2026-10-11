@@ -84,6 +84,7 @@ With `project_directory: .`, any `.env` file you place in your repository root (
 Doco-CD does not need a Git hosting platform (forge) like GitHub, GitLab or Forgejo. 
 It only needs a clone URL it can reach, so it also works with bare Git repositories served by a plain Git server, 
 e.g. via SSH, smart HTTP (`git http-backend`) or the [local filesystem](#repository-on-the-same-host).
+The native `git://` protocol is not supported.
 
 Plain Git servers do not send webhook payloads, so use [polling](../Poll-Settings.md) or 
 use a [`post-receive`](#deploy-on-push-with-a-post-receive-hook) hook to trigger deployments after a push via the REST API for [webhook](../Endpoints/Webhook-Listener.md)-like behavior.

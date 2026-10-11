@@ -159,7 +159,9 @@ See the [Bootstrap section](Advanced/Self-Updating.md#bootstrap) of the Self-Upd
     `bootstrap.sh` is a one-time script. Keep it outside the repository and run it later on the Docker host.
     You can delete the `doco-cd-src` folder after the copy.
 
-    Now create an empty repository at your Git provider (do not add a README file) and note its clone URL.
+    Now create an empty repository at your Git provider and note its clone URL. Do not add a README, license, or `.gitignore` yet.
+    The first commit comes from the files you copied. If the provider creates a commit first, Git treats it as a separate history and rejects the initial push.
+    You can add a README after the first push.
 
 2. **Set your values.** Edit these settings:
 
@@ -168,6 +170,7 @@ See the [Bootstrap section](Advanced/Self-Updating.md#bootstrap) of the Self-Upd
     | `bootstrap.sh`                          | `REPO_URL`                                 | The clone URL of your deployment repository                                                                 |
     | `bootstrap.sh`                          | `reference: main` inside `POLL_CONFIG`     | Your branch, if it is not `main`                                                                            |
     | `your-deploy-repo/doco-cd/compose.yaml` | `url` and `reference` inside `POLL_CONFIG` | The same URL and branch as in `bootstrap.sh`                                                                |
+    | `your-deploy-repo/doco-cd/compose.yaml` | `interval` inside `POLL_CONFIG`            | The example uses 300 seconds (5 minutes). Change it if you prefer another interval (minimum 10 seconds).    |
     | `your-deploy-repo/doco-cd/compose.yaml` | `TZ`                                       | Your [time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones), for example `Europe/Berlin` |
 
     Leave the rest as it is. The example already pins the Doco-CD version with a digest in both files.
@@ -469,6 +472,7 @@ See [Deploy Settings](Deploy-Settings.md) for all deployment options and [Core C
 ### Git servers and authentication
 
 Doco-CD works with GitHub, GitLab, Gitea, Forgejo, and other Git remotes. A hosting forge is not required; see [Using a plain Git server](Advanced/Tips-and-Tricks.md#using-a-plain-git-server-no-forge). For all authentication options, see [Git Settings](Git-Settings.md).
+The native `git://` protocol is not supported. Use HTTP(S), SSH, or a local filesystem repository.
 
 If the clone URL advertised by your Git server is not reachable from the Doco-CD container, see [Source URL Rewrites](Advanced/Source-URL-Rewrites.md).
 
