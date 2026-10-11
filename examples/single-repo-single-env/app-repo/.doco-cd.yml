@@ -12,9 +12,5 @@
 name: app
 working_dir: deploy
 environment:
-  APP_DOMAIN: app.example.com
+  APP_DOMAIN: app.example.com # Replace with a domain configured for your host
   APP_TAG: "v1.10.1" # pin exact tags; a floating `latest` never auto-deploys
-# Runtime self-healing: doco-cd watches Docker events on this stack. A failing
-# healthcheck -> in-place container restart (redeploy fallback if gone).
-reconciliation:
-  events: [unhealthy]

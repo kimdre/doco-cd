@@ -209,13 +209,13 @@ Secrets, never commit plaintext:
 
 | Option                                                                                   | Notes                                                                                          |
 |------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
-| [SOPS with age](Advanced/Encryption.md#usage-with-sops-and-age)                           | One key on the controller, files encrypted in Git.                                             |
+| [SOPS with age](Advanced/Encryption.md#usage-with-sops-and-age)                           | One key on the Doco-CD host, files encrypted in Git.                                             |
 | [SOPS with a cloud key service](Advanced/Encryption.md#usage-with-sops-and-cloud-key-services) | No key on disk. At least one `SOPS_*` environment variable must still be set as a marker.  |
 | [External secret providers](External-Secrets/index.md)                                    | Values are fetched at deployment time and never stored in Git.                                  |
-| `PASS_ENV`                                                                                | Passes the controller's own environment into interpolation, see [App Configuration](Deploy-Settings.md#app-configuration). Use with care. |
+| `PASS_ENV`                                                                                | Passes Doco-CD's own environment into interpolation, see [App Configuration](Deploy-Settings.md#app-configuration). Use with care. |
 | A file under an absolute host path outside the repository                                 | Simplest, but not covered by Git history.                                                      |
 
-## 4. Install the controller
+## 4. Install Doco-CD
 
 Take the base `docker-compose.yml` from [Getting Started](Getting-Started.md), then decide:
 
@@ -267,7 +267,7 @@ One stack at a time, least critical first.
     - [ ] `name` equals the running Compose project name.
     - [ ] No `container_name` collides with another project. Container names are unique per Docker host: `docker ps -a --format '{{.Names}}'`.
     - [ ] Data mounts fixed as in [section 3](#3-fix-paths-and-data-before-the-first-deploy).
-    - [ ] Secrets reachable by the controller.
+    - [ ] Secrets reachable by Doco-CD.
     - [ ] `remove_orphans` defaults to `true`, so containers of that project which are not in the compose files are removed.
 
 2. Pick the adoption path.
@@ -312,7 +312,7 @@ One stack at a time, least critical first.
     - [ ] `docker compose ls` shows the project.
     - [ ] The containers carry the Doco-CD labels: `docker inspect <container> --format '{{index .Config.Labels "cd.doco.deployment.name"}}'`.
     - [ ] `cd.doco.deployment.target.sha` matches the commit you pushed.
-    - [ ] The controller log shows the deployment finishing.
+    - [ ] The Doco-CD log shows the deployment finishing.
     - [ ] A [notification](Advanced/Notifications.md) arrived, if configured.
 
     !!! note "What gets recreated on adoption"
@@ -380,10 +380,10 @@ Scheduled jobs have rules worth knowing before you convert a cron:
 - [ ] Turn on [notifications](Advanced/Notifications.md) so a failed deployment is not silent.
 - [ ] Scrape the [Prometheus metrics](Endpoints/Metrics.md) endpoint.
 - [ ] Enable [`GIT_COMMIT_STATUS`](Git-Settings.md#commit-status-reporting) so a commit shows whether it is deployed.
-- [ ] Restrict production with [sync windows](Advanced/Sync-Windows.md), configured on the controller, not in the deploy config.
+- [ ] Restrict production with [sync windows](Advanced/Sync-Windows.md), configured on Doco-CD itself, not in the deploy config.
 - [ ] Enable [reconciliation](Deploy-Settings.md#reconciliation-settings) per stack, starting with the `unhealthy` event.
 - [ ] Review the [artifact garbage collection](Reference/Artifact-Storage.md#garbage-collection) defaults against your disk budget.
-- [ ] Upgrade the controller by bumping the pinned tag and reading the release notes first. Some releases change on-disk layout, for example [v0.120.0](Reference/Artifact-Storage.md#upgrading-from-v0119x-or-earlier).
+- [ ] Upgrade Doco-CD by bumping the pinned tag and reading the release notes first. Some releases change on-disk layout, for example [v0.120.0](Reference/Artifact-Storage.md#upgrading-from-v0119x-or-earlier).
 
 ## 8. Migration checklist
 
@@ -396,7 +396,7 @@ Scheduled jobs have rules worth knowing before you convert a cron:
 - [ ] Pin image tags and set up Renovate.
 - [ ] Move host-specific values into `environment` and `env_files`.
 - [ ] Encrypt or externalize every secret, remove plaintext from the repository.
-- [ ] Install the controller with a persistent `/data` mount and a pinned tag.
+- [ ] Install Doco-CD with a persistent `/data` mount and a pinned tag.
 - [ ] Choose polling, webhooks or both, and set `target` per host.
 - [ ] Start with `#!yaml LOG_LEVEL: debug`.
 - [ ] Per stack: check preconditions, including `container_name` collisions.

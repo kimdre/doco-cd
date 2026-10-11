@@ -2,3 +2,5 @@ services:
   app:
     image: nginx:1.29-alpine
     restart: unless-stopped
+    ports:
+      - "8080:80"

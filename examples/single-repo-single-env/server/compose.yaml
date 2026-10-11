@@ -1,15 +1,15 @@
 # doco-cd itself. This file lives on the host (e.g. /opt/doco-cd/), NOT in
 # the app repo because the controller cannot GitOps itself.
 #
-# Poll-only setup: no published ports, webhook/API endpoints stay disabled
-# (their secrets are unset), the host firewall stays closed.
+# The Doco-CD controller uses polling and publishes no ports. The deployed
+# example app has a separate Caddy service that publishes ports 80 and 443.
 services:
   doco-cd:
     image: ghcr.io/kimdre/doco-cd:latest # pin tag+digest in real use
     restart: unless-stopped
-    # secrets.env holds the app stack's secrets. PASS_ENV forwards the daemon's
-    # own env into every deployment's compose interpolation, so ${API_KEY} in
-    # the app compose resolves here. Secrets stay on the host, never in git.
+    # secrets.env stays on the host, never in Git. PASS_ENV forwards all of
+    # this container's environment into deployment Compose interpolation; only
+    # use it with trusted deployment repositories.
     env_file:
       - secrets.env
     environment:

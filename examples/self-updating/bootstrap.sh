@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
 # One-shot bootstrap: creates the doco-cd stack from the repo and exits.
-# After this the instance is a normal member of a stack it reconciles itself,
-# so run it once per host and never again.
+# After this, doco-cd manages its own stack like any other application.
+# Run this script once per host and never again.
 set -eu
 
-# replace with the latest version of doco-cd, also set that version it in your deploy repo.
+# Use the same release version as infra-repo/doco-cd/compose.yaml.
 # https://github.com/kimdre/doco-cd/releases
-IMAGE="ghcr.io/kimdre/doco-cd:0.122"
+IMAGE="ghcr.io/kimdre/doco-cd:0.125.1"
 DATA_VOLUME="doco-cd_data"
 REPO_URL="https://github.com/example/infra.git"
 

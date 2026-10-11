@@ -1,31 +1,30 @@
-## Uncomment the poll configuration section here and in the service `environment:` section if you want to enable polling of a repository.
-#x-poll-config: &poll-config
-#  POLL_CONFIG: |
-#    - url: https://github.com/kimdre/doco-cd.git  # This is the repository to poll
-#      reference: main  # Optional: specify the branch or tag to poll, defaults to 'main'
-#      interval: 180  # Optional: specify the interval in seconds to poll the repository, defaults to 180 seconds (3 minutes)
-#      target: ""  # Optional: use to target a specific deployment config file, e.g., "test" -> .doco-cd.test.y(a)ml
-#      # Repository-based deployments require .doco-cd.y(a)ml (or .doco-cd.<target>.y(a)ml when target is set).
-
 services:
   app:
-    # container_name and published ports both rule out the zero-downtime
-    # self-update strategy: two containers cannot share either. Drop them and
-    # use a reverse proxy if you enable SELF_UPDATE_ENABLED.
+    # For zero-downtime scale_out self-updates, omit container_name and host
+    # ports. The auto strategy can use applier instead, with a brief restart.
     container_name: doco-cd
     # You can also pin to a specific tag (version)
     # Available tags can be found here: https://github.com/kimdre/doco-cd/pkgs/container/doco-cd
     image: ghcr.io/kimdre/doco-cd:latest
     restart: unless-stopped
-    ports:
-      - "80:80" # Webhook endpoint
-      - "9120:9120" # Prometheus metrics
+    # Polling needs no published ports. For webhooks, publish HTTP_PORT only
+    # to a trusted HTTPS reverse proxy. This loopback example assumes the proxy
+    # runs on the Docker host. Keep metrics private if publishing them.
+    # ports:
+    #   - "127.0.0.1:8080:80"
+    #   - "127.0.0.1:9120:9120"
     # For all available environment variables and explanations, see https://doco.cd/latest/App-Settings/
     environment:
+      # Use an IANA time zone, for example Etc/UTC or Europe/Berlin.
       TZ: Europe/Berlin
-      GIT_ACCESS_TOKEN: xxx
-      # WEBHOOK_SECRET: xxx  # Uncomment this line and the webhook port above and set a secure secret if you want to use webhooks.
-      # <<: *poll-config  # Uncomment this line to use the poll configuration from above (the `x-poll-config` section).
+      GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
+      # Add WEBHOOK_SECRET to .env and uncomment to enable webhooks:
+      # WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET in .env}
+      # Uncomment and replace the URL to enable polling:
+      # POLL_CONFIG: |
+      #   - url: https://github.com/your-user/your-deploy-repo.git
+      #     reference: main
+      #     interval: 180
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # The data volume (left side) can also be replaced with a bind mount to a local directory, for example:

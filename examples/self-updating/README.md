@@ -3,9 +3,9 @@
 doco-cd deploys the stack that contains its own container. One instance, no
 updater sidecar. A push that bumps the doco-cd image is a deploy like any other.
 
-Requires doco-cd with `SELF_UPDATE_ENABLED=true`. Off by default: an
-auto-updating controller that upgrades itself unattended is a decision you
-make, not a default you inherit.
+Requires doco-cd with `SELF_UPDATE_ENABLED=true`. Off by default: 
+a doco-cd instance that upgrades itself unattended is a decision you make, not a
+default you inherit.
 
 ## What this example shows
 
@@ -31,9 +31,12 @@ bootstrap.sh              # run once per host, then never again
 
 ## Try it
 
+New to doco-cd? The [Getting Started guide](https://doco.cd/latest/Getting-Started/#option-a-self-updating-install)
+walks through these steps in more detail.
+
 1. Set the repository URL in `bootstrap.sh` and
    `infra-repo/doco-cd/compose.yaml`.
-2. The example pins `0.122.0` by tag in `bootstrap.sh` and by tag and digest
+2. The example pins `0.125.1` by tag in `bootstrap.sh` and by tag and digest
    in `infra-repo/doco-cd/compose.yaml`. To use another version, run
    `docker buildx imagetools inspect ghcr.io/kimdre/doco-cd:<version>`, then
    update the tag in both files and the digest in `compose.yaml`.
@@ -42,8 +45,9 @@ bootstrap.sh              # run once per host, then never again
 
 The bootstrap container clones the repo, deploys both stacks and exits. What is
 left is a doco-cd container carrying the full `com.docker.compose.*` and
-`cd.doco.*` label set, which is what lets the next poll recognise the stack as
-its own.
+`cd.doco.*` label set, which is what lets the next poll recognize the stack as
+its own. The sample Nginx app is reachable from the Docker host at
+port `8080`.
 
 From here, bump the pinned image in `doco-cd/compose.yaml`, push, and doco-cd
 replaces itself.
@@ -99,8 +103,8 @@ restart policy after an API stop, which is exactly why the successor removing
 the predecessor does not bring it back.
 
 **Pin the image.** doco-cd changes quickly. `image: ...:<version>@sha256:<digest>`
-plus Renovate keeps a human in the loop per release. With a moving tag the
-controller upgrades itself whenever the tag moves, and a breaking change lands
+plus Renovate keeps a human in the loop per release. With a moving tag
+doco-cd upgrades itself whenever the tag moves, and a breaking change lands
 unreviewed.
 
 **Private repositories need credentials in both containers.** Pass access

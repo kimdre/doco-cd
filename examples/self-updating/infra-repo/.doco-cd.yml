@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://doco.cd/latest/schemas/deploy.schema.json
 # doco-cd deploys itself from this repo. The stack name and the service name
-# must match the container doco-cd already runs in, or it will not recognise
-# the stack as its own.
+# must match the managed Compose project and service so doco-cd recognises
+# the stack as its own after the bootstrap.
 name: doco-cd
 working_dir: doco-cd
 compose_files: [compose.yaml]
