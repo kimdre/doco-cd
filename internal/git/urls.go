@@ -26,6 +26,7 @@ func ConvertSSHUrl(url string) string {
 // Supports:
 //   - https://github.com/owner/repo(.git)
 //   - http://github.com/owner/repo(.git)
+//   - git://host/owner/repo(.git)
 //   - ssh://github.com/owner/repo(.git)
 //   - git@github.com:owner/repo(.git)
 //   - token-injected https like https://oauth2:TOKEN@github.com/owner/repo(.git)

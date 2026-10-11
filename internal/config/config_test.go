@@ -94,6 +94,16 @@ func TestGitUrlValidate(t *testing.T) {
 		want bool
 	}{
 		{name: "valid https", in: "https://example.com/repo.git", want: true},
+		{name: "valid native git", in: "git://example.com/repo.git", want: true},
+		{name: "valid native git custom port", in: "git://example.com:19418/repo.git", want: true},
+		{name: "valid native git uppercase scheme", in: "GIT://example.com/repo.git", want: true},
+		{name: "valid native git IPv6", in: "git://[::1]:19418/repo.git", want: true},
+		{name: "native git missing host", in: "git:///repo.git", want: false},
+		{name: "native git missing path", in: "git://example.com", want: false},
+		{name: "native git empty host", in: "git://[]/repo.git", want: false},
+		{name: "native git invalid port", in: "git://example.com:invalid/repo.git", want: false},
+		{name: "native git username is rejected", in: "git://user@example.com/repo.git", want: false},
+		{name: "native git password is rejected", in: "git://user:password@example.com/repo.git", want: false}, // #nosec G101 -- Invalid URL fixture, not credentials.
 		{name: "valid ssh", in: "ssh://git@example.com/repo.git", want: true},
 		{name: "valid scp style", in: "git@example.com:owner/repo.git", want: true},
 		{name: "empty is allowed", in: "", want: true},
@@ -129,13 +139,19 @@ func TestGitURLValidationErrorDoesNotExposeCredentials(t *testing.T) {
 
 	const secret = "sentinel-secret"
 
-	err := GitUrl("ftp://user:" + secret + "@example.com/repo.git").Validate()
-	if err == nil {
-		t.Fatal("GitUrl.Validate() = nil, want error")
-	}
+	for _, scheme := range []string{"ftp", "git"} {
+		t.Run(scheme, func(t *testing.T) {
+			t.Parallel()
 
-	if strings.Contains(err.Error(), secret) {
-		t.Fatalf("GitUrl.Validate() exposed credentials: %v", err)
+			err := GitUrl(scheme + "://user:" + secret + "@example.com/repo.git").Validate()
+			if err == nil {
+				t.Fatal("GitUrl.Validate() = nil, want error")
+			}
+
+			if strings.Contains(err.Error(), secret) {
+				t.Fatalf("GitUrl.Validate() exposed credentials: %v", err)
+			}
+		})
 	}
 }
 

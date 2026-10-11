@@ -28,6 +28,30 @@ func TestIsLocalFile(t *testing.T) {
 	}
 }
 
+func TestIsNativeGit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{"git://example.com/repo.git", true},
+		{"GIT://example.com/repo.git", true},
+		{"git://", true},
+		{"git:/example.com/repo.git", false},
+		{"git@example.com:owner/repo.git", false},
+		{"https://example.com/repo.git", false},
+		{"ssh://git@example.com/repo.git", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		if got := IsNativeGit(tt.url); got != tt.want {
+			t.Errorf("IsNativeGit(%q) = %v, want %v", tt.url, got, tt.want)
+		}
+	}
+}
+
 func TestGetAuthMethod_LocalFileNeedsNoCredentials(t *testing.T) {
 	ConfigureAuthResolver(nil, "", "", "global-token", "", GitHubAppConfig{})
 	t.Cleanup(func() {
@@ -41,6 +65,74 @@ func TestGetAuthMethod_LocalFileNeedsNoCredentials(t *testing.T) {
 
 	if auth != nil {
 		t.Fatalf("GetAuthMethod() = %v, want nil auth for local file URL", auth)
+	}
+}
+
+func TestGetAuthMethod_NativeGitNeedsNoCredentials(t *testing.T) {
+	providerCalls := 0
+	restoreProvider := SwapGitHubAppTokenProviderForTest(func(string, GitHubAppConfig) (string, error) {
+		providerCalls++
+
+		return "", errors.New("native Git must not resolve a GitHub App token")
+	})
+	t.Cleanup(restoreProvider)
+	t.Cleanup(func() {
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
+	})
+
+	tests := []struct {
+		name       string
+		scoped     []ScopedAuthConfig
+		global     ResolvedAuthConfig
+		privateKey string
+		token      string
+	}{
+		{name: "no credentials"},
+		{name: "explicit credentials", privateKey: "explicit-key", token: "explicit-token"},
+		{
+			name:   "global credentials",
+			global: ResolvedAuthConfig{SSHPrivateKey: "global-key", GitAccessToken: "global-token"},
+		},
+		{
+			name: "scoped credentials",
+			scoped: []ScopedAuthConfig{{
+				Domains:        []string{"example.com"},
+				GitAccessToken: "scoped-token",
+				SSHPrivateKey:  "scoped-key",
+			}},
+		},
+		{
+			name: "global GitHub App",
+			global: ResolvedAuthConfig{GitHubApp: GitHubAppConfig{
+				ID: "global-app", PrivateKey: "global-app-key",
+			}},
+		},
+		{
+			name: "scoped GitHub App",
+			scoped: []ScopedAuthConfig{{
+				Domains:             []string{"example.com"},
+				GitHubAppID:         "scoped-app",
+				GitHubAppPrivateKey: "scoped-app-key",
+			}},
+		},
+		{name: "SSH key", global: ResolvedAuthConfig{SSHPrivateKey: "global-key"}},
+	}
+
+	for _, tt := range tests {
+		for _, url := range []string{"git://example.com:19418/repo.git", "GIT://example.com/repo.git"} {
+			t.Run(tt.name+"/"+url, func(t *testing.T) {
+				ConfigureAuthResolver(tt.scoped, tt.global.SSHPrivateKey, "", tt.global.GitAccessToken, "", tt.global.GitHubApp)
+
+				auth, err := GetAuthMethod(url, tt.privateKey, "", tt.token)
+				if err != nil || auth != nil {
+					t.Fatalf("GetAuthMethod() = %v, %v, want nil auth and error", auth, err)
+				}
+
+				if providerCalls != 0 {
+					t.Fatalf("GitHub App token provider called %d times", providerCalls)
+				}
+			})
+		}
 	}
 }
 

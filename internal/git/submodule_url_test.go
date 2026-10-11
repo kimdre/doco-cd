@@ -25,6 +25,18 @@ func TestResolveSubmoduleURL(t *testing.T) {
 			expected:  "ssh://git@github.com/example/periphery.git",
 		},
 		{
+			name:      "resolve relative native Git sibling",
+			parentURL: "git://example.com:19418/org/app.git",
+			subURL:    "../periphery.git",
+			expected:  "git://example.com:19418/org/periphery.git",
+		},
+		{
+			name:      "keep absolute native Git URL unchanged",
+			parentURL: "https://example.com/org/app.git",
+			subURL:    "git://example.com/org/periphery.git",
+			expected:  "git://example.com/org/periphery.git",
+		},
+		{
 			name:      "resolve host absolute path",
 			parentURL: "https://github.com/example/app.git",
 			subURL:    "/other-org/periphery.git",
@@ -80,6 +92,7 @@ func TestIsRelativeSubmoduleURL(t *testing.T) {
 		{name: "relative current", value: "./repo.git", expected: true},
 		{name: "host absolute path", value: "/org/repo.git", expected: true},
 		{name: "https absolute", value: "https://github.com/org/repo.git", expected: false},
+		{name: "native Git absolute", value: "git://example.com/org/repo.git", expected: false},
 		{name: "https absolute without protocol schema", value: "github.com/org/repo.git", expected: false},
 		{name: "ssh absolute", value: "git@github.com:org/repo.git", expected: false},
 	}

@@ -332,8 +332,8 @@ func wildcardMatches(host, suffix string) bool {
 
 // GetAuthMethod determines the appropriate authentication method based on the URL and provided credentials.
 func GetAuthMethod(url, privateKey, keyPassphrase, token string) (transport.AuthMethod, error) {
-	// Local filesystem repositories (file:// URLs) need no credentials.
-	if IsLocalFile(url) {
+	// Local and native Git transports cannot use HTTP or SSH credentials.
+	if IsLocalFile(url) || IsNativeGit(url) {
 		return nil, nil
 	}
 
@@ -385,6 +385,15 @@ func IsSSH(url string) bool {
 // IsLocalFile checks if a given URL points to a local filesystem Git repository (file:// scheme).
 func IsLocalFile(url string) bool {
 	return strings.HasPrefix(url, "file://")
+}
+
+// nativeGitScheme is the URL prefix of the native Git protocol.
+const nativeGitScheme = "git://"
+
+// IsNativeGit checks if a given URL uses the native Git protocol (git:// scheme).
+// The scheme check ignores case because URL parsers and go-git accept schemes such as GIT://.
+func IsNativeGit(url string) bool {
+	return len(url) >= len(nativeGitScheme) && strings.EqualFold(url[:len(nativeGitScheme)], nativeGitScheme)
 }
 
 // SSHAuth creates an SSH authentication method using the provided private key.

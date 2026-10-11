@@ -36,6 +36,16 @@ Two match strategies are supported:
 
 Rules are matched in order of specificity (longest key first).
 
+??? warning "Native Git transport security risks"
+    An explicit prefix rule can select a native Git daemon, for example
+    ```json
+    "https://git.example.com/": "git://git.internal:19418/"
+    ```
+    This removes transport encryption and authentication. Use such a rule only when you accept the
+    [native Git security risks](../Git-Settings.md#supported-transports); no automatic downgrade is performed.
+    Webhook events for private repositories require credentials but the native Git protocol cannot send credentials,
+    so these events fail with a `missing access token` error after a rewrite to `git://`.
+
 !!! example
 
     ```yaml title="Some possible examples"
