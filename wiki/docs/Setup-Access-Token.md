@@ -124,7 +124,7 @@ The right way depends on where the Compose file of Doco-CD lives.
         1. Create an age key on the Docker host. The command prints the public key. Note it.
     
             ```sh
-            sudo install -d -m 700 /opt/doco-cd
+            sudo mkdir -p /opt/doco-cd
             sudo age-keygen -o /opt/doco-cd/sops_age_key.txt
             ```
     
