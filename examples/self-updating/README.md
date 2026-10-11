@@ -45,9 +45,9 @@ walks through these steps in more detail.
 
 The bootstrap container clones the repo, deploys both stacks and exits. What is
 left is a doco-cd container carrying the full `com.docker.compose.*` and
-`cd.doco.*` label set, which is what lets the next poll recognise the stack as
+`cd.doco.*` label set, which is what lets the next poll recognize the stack as
 its own. The sample Nginx app is reachable from the Docker host at
-`http://127.0.0.1:8080`; it is bound to loopback and is not exposed to the LAN.
+port `8080`.
 
 From here, bump the pinned image in `doco-cd/compose.yaml`, push, and doco-cd
 replaces itself.

@@ -300,11 +300,8 @@ services:
   hello:
     image: traefik/whoami:v1.10.1
     ports:
-      - "127.0.0.1:8080:80" # (1)!
+      - "8080:80"
 ```
-
-1. This makes the test service reachable only from the Docker host. To open it from another computer in your network,
-   use `"8080:80"` and visit `http://<server-ip>:8080`. Change the port only if you want that.
 
 If Docker Compose is installed on this machine, check the Compose file with `docker compose config --quiet`.
 Then commit and push both files:
