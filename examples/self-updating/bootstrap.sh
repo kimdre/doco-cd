@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # One-shot bootstrap: creates the doco-cd stack from the repo and exits.
-# After this the instance is a normal member of a stack it reconciles itself,
-# so run it once per host and never again.
+# After this, doco-cd manages its own stack like any other application.
+# Run this script once per host and never again.
 set -eu
 
 # Use the same release version as infra-repo/doco-cd/compose.yaml.

@@ -17,6 +17,9 @@ services:
         - url: https://github.com/example/infra.git
           reference: main
           interval: 300
+      # Private repository: uncomment this line, the "secrets" lines below
+      # and the top-level "secrets" block. See the Getting Started guide.
+      # GIT_ACCESS_TOKEN_FILE: /run/secrets/git_access_token
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -31,5 +34,13 @@ services:
       start_period: 15s
       retries: 3
 
+    # secrets:
+    #   - git_access_token
+
 volumes:
   data:
+
+# Path of the token file.
+# secrets:
+#   git_access_token:
+#     file: /opt/doco-cd/git-access-token

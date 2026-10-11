@@ -3,9 +3,9 @@
 doco-cd deploys the stack that contains its own container. One instance, no
 updater sidecar. A push that bumps the doco-cd image is a deploy like any other.
 
-Requires doco-cd with `SELF_UPDATE_ENABLED=true`. Off by default: an
-auto-updating controller that upgrades itself unattended is a decision you
-make, not a default you inherit.
+Requires doco-cd with `SELF_UPDATE_ENABLED=true`. Off by default: a
+doco-cd instance that upgrades itself unattended is a decision you make, not a
+default you inherit.
 
 ## What this example shows
 
@@ -30,6 +30,9 @@ bootstrap.sh              # run once per host, then never again
 ```
 
 ## Try it
+
+New to doco-cd? The [Getting Started guide](https://doco.cd/latest/Getting-Started/#option-a-self-updating-install)
+walks through these steps in more detail.
 
 1. Set the repository URL in `bootstrap.sh` and
    `infra-repo/doco-cd/compose.yaml`.
@@ -100,8 +103,8 @@ restart policy after an API stop, which is exactly why the successor removing
 the predecessor does not bring it back.
 
 **Pin the image.** doco-cd changes quickly. `image: ...:<version>@sha256:<digest>`
-plus Renovate keeps a human in the loop per release. With a moving tag the
-controller upgrades itself whenever the tag moves, and a breaking change lands
+plus Renovate keeps a human in the loop per release. With a moving tag
+doco-cd upgrades itself whenever the tag moves, and a breaking change lands
 unreviewed.
 
 **Private repositories need credentials in both containers.** Pass access
