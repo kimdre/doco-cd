@@ -71,6 +71,14 @@ func TestGetRepoName(t *testing.T) {
 			cloneURL: "http://git.example.com/doco-cd.git",
 			expected: "git.example.com/doco-cd",
 		},
+		{
+			cloneURL: "git://git.example.com/owner/repo.git",
+			expected: "git.example.com/owner/repo",
+		},
+		{
+			cloneURL: "git://git.example.com:19418/owner/repo.git",
+			expected: "git.example.com:19418/owner/repo",
+		},
 		// SSH SCP-like
 		{
 			cloneURL: "git@github.com:kimdre/doco-cd_tests.git",

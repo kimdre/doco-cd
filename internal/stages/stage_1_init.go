@@ -475,15 +475,15 @@ func servicesBelongToRepository(serviceLabels map[docker.Service]docker.Labels, 
 }
 
 // destroySourceIdentity validates rather than applying cache/name aliases, which deliberately
-// erase distinctions that matter when authorizing destruction. Parse OCI first so valid digest
-// references cannot be mistaken for scp-style Git URLs.
+// erase distinctions that matter when authorizing destruction. Native Git URLs are not OCI
+// references. Parse OCI before other Git forms so digests cannot be mistaken for scp-style URLs.
 func destroySourceIdentity(sourceURL string) (config.SourceType, string) {
 	sourceURL = strings.TrimSpace(sourceURL)
 	if sourceURL == "" {
 		return "", ""
 	}
 
-	if config.OciUrl(sourceURL).Validate() == nil {
+	if !git.IsNativeGit(sourceURL) && config.OciUrl(sourceURL).Validate() == nil {
 		return config.SourceTypeOCI, oci.RepositoryNameFromArtifact(sourceURL)
 	}
 

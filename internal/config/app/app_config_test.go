@@ -345,6 +345,7 @@ func TestGetConfig_OpenAPIEnabled(t *testing.T) {
 			t.Setenv("WEBHOOK_SECRET", "secret")
 			t.Setenv("API_SECRET", "")
 			t.Setenv("API_SECRET_FILE", "")
+			t.Setenv("MCP_ENABLED", "")
 
 			cfg, err := GetConfig()
 			if err != nil {
@@ -1169,6 +1170,9 @@ func TestGetConfig_PollConfigExplicitZeroDisablesPolling(t *testing.T) {
 }
 
 func TestGetConfig_ArtifactGCDefaults(t *testing.T) {
+	t.Setenv("ARTIFACT_GC_RETENTION_TTL", "")
+	t.Setenv("ARTIFACT_GC_RETENTION_RECORDS", "")
+	t.Setenv("ARTIFACT_GC_INTERVAL", "")
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")
 	t.Setenv("WEBHOOK_SECRET", "secret")

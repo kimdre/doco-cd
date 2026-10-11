@@ -175,6 +175,40 @@ func TestConfig_Validate_RepositoryURLAbsolutePathNormalization(t *testing.T) {
 	}
 }
 
+func TestConfig_Validate_NativeGitRepositoryURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		url     config.GitUrl
+		wantErr bool
+	}{
+		{url: "git://example.com/repo.git"},
+		{url: "git://example.com:19418/repo.git"},
+		{url: "git://example.com", wantErr: true},
+		{url: "git:///repo.git", wantErr: true},
+		{url: "git://user:password@example.com/repo.git", wantErr: true}, // #nosec G101 -- Invalid URL fixture, not credentials.
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.url), func(t *testing.T) {
+			t.Parallel()
+
+			dc := Config{Name: "test", RepositoryUrl: tt.url}
+			if err := defaults.Set(&dc); err != nil {
+				t.Fatalf("defaults: %v", err)
+			}
+
+			if err := dc.Validate(); (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() = %v, wantErr %t", err, tt.wantErr)
+			}
+
+			if dc.RepositoryUrl != tt.url {
+				t.Fatalf("repository URL changed to %q, want %q", dc.RepositoryUrl, tt.url)
+			}
+		})
+	}
+}
+
 func TestConfig_Validate_SwarmRetention(t *testing.T) {
 	t.Parallel()
 

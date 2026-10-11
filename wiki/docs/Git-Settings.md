@@ -7,6 +7,26 @@ tags:
 
 Settings to configure Git authentication, clone behavior, and deployment reporting.
 
+## Supported transports
+
+Doco-CD accepts HTTP(S), SSH, native Git (`git://host/path`), and [local filesystem](Advanced/Local-Filesystem-Polling.md) repository URLs.
+
+!!! tip "HTTPS and SSH are recommended for remote repositories."
+
+??? note "Native Git (`git://`) transport"
+
+    Native Git uses anonymous access. HTTP tokens, SSH keys, and GitHub App credentials are not sent over this transport,
+    even when configured for other repositories. It cannot authenticate access to private repositories,
+    so webhook events for private repositories fail when their clone URL is [rewritten](Advanced/Source-URL-Rewrites.md) to `git://`.
+    The default TCP port is `9418`; use `git://host:port/path` for a custom port.
+    Native Git connects directly and does not use `HTTP_PROXY` or TLS verification settings.
+    
+    !!! warning "Native Git does not protect deployment content"
+        The `git://` protocol has no encryption or authentication. An attacker on the network can replace repository
+        content before doco-cd deploys it. Plain `http://` has the same transport-integrity risk.
+        Use HTTPS or SSH unless you accept this risk. A private network alone does not provide cryptographic protection.
+        Doco-CD does not automatically downgrade HTTPS or SSH URLs to native Git.
+
 ## General
 
 | Key                     | Type    | Description                                                                                                                                                                                                                                    | Default |
