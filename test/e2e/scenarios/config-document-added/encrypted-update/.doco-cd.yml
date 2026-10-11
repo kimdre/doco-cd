@@ -1,0 +1,11 @@
+name: e2e-config-document-added-first
+working_dir: deploy/first
+---
+name: e2e-config-document-added-second
+working_dir: deploy/second
+---
+name: e2e-config-document-added-encrypted-first
+working_dir: deploy/encrypted-first
+---
+name: e2e-config-document-added-encrypted-second
+working_dir: deploy/encrypted-second

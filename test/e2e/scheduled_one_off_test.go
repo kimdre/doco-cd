@@ -3,6 +3,8 @@
 package e2e
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,44 +17,19 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/controlplane"
+	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
 const (
-	scheduledOneOffStack              = "e2e-scheduled-one-off"
 	scheduledOneOffRecoveryStack      = "e2e-scheduled-one-off-recovery"
 	scheduledOneOffSwarmRecoveryStack = "e2e-scheduled-one-off-swarm-recovery"
 	scheduledOneOffJobService         = "backup"
 	scheduledOneOffAppService         = "app"
 )
 
-func TestScheduledOneOff(t *testing.T) {
-	t.Parallel()
-
-	h := NewHarness(t, "scheduled-one-off")
-	h.EnableRemoteContext()
-	h.SetPollInterval(time.Minute)
-	h.Start()
-
-	h.WaitFor(2*time.Minute, "initial dependency container", func() bool {
-		return h.RemoteComposeContainerID(scheduledOneOffStack, scheduledOneOffAppService) != ""
-	})
-
-	waitForRunningScheduledOneOff(t, h, scheduledOneOffStack)
-
-	h.WaitFor(30*time.Second, "dependency stopped while one-off job runs", func() bool {
-		return h.RemoteComposeContainerID(scheduledOneOffStack, scheduledOneOffAppService) == ""
-	})
-
-	h.WaitFor(2*time.Minute, "one-off job artifact cleanup", func() bool {
-		return h.RemoteOneOffContainerID(scheduledOneOffStack, scheduledOneOffJobService) == ""
-	})
-
-	h.WaitFor(30*time.Second, "dependency restored after one-off job", func() bool {
-		return h.RemoteComposeContainerID(scheduledOneOffStack, scheduledOneOffAppService) != ""
-	})
-}
-
 func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
+	requireStandaloneSuite(t)
 	t.Parallel()
 
 	const stack = "e2e-scheduled-one-off-status"
@@ -63,6 +40,34 @@ func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 	h.SetPollInterval(time.Minute)
 	h.Start()
 	h.WaitForLog(deployCompletedLog, 2*time.Minute)
+
+	// Arm a single calendar occurrence after startup, rather than racing a
+	// repeating timer while checking the automatic result and manual execution.
+	schedule, scheduledAt := scheduledOneOffCalendarSchedule(time.Now())
+	h.ReplaceInWorktree("deploy/compose.yaml", `"@every 24h"`, fmt.Sprintf("%q", schedule))
+	h.RepoPush("e2e: arm one automatic scheduled execution")
+	pollID := triggerScheduledOneOffFixturePoll(t, h)
+	h.WaitFor(2*time.Minute, "calendar schedule deployment completed", func() bool {
+		var response struct {
+			Content controlplane.Run `json:"content"`
+		}
+		if err := json.Unmarshal(h.APIRequest(http.MethodGet, "/v1/api/run/"+url.PathEscape(pollID), http.StatusOK), &response); err != nil {
+			t.Fatalf("decode calendar schedule deployment: %v", err)
+		}
+
+		if response.Content.Status == controlplane.RunStatusFailed || response.Content.Status == controlplane.RunStatusSkipped {
+			t.Fatalf("calendar schedule deployment did not succeed: %#v", response.Content)
+		}
+
+		return response.Content.Status == controlplane.RunStatusSucceeded && response.Content.FinishedAt != nil
+	})
+
+	var appID string
+
+	h.WaitFor(2*time.Minute, "initial dependency container", func() bool {
+		appID = h.RemoteComposeContainerID(stack, scheduledOneOffAppService)
+		return appID != ""
+	})
 
 	getJob := func() scheduledOneOffJob {
 		t.Helper()
@@ -90,24 +95,104 @@ func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 	}
 	h.WaitFor(10*time.Second, "source job container exited with code 7", sourceFailed)
 
+	failedSource, err := remoteDocker.ContainerInspect(h.ctx, sourceName, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatalf("inspect failed source job container: %v", err)
+	}
+
+	assertSourceUnchanged := func() {
+		t.Helper()
+
+		result, inspectErr := remoteDocker.ContainerInspect(h.ctx, sourceName, client.ContainerInspectOptions{})
+		if inspectErr != nil {
+			t.Fatalf("inspect source job container after one-off execution: %v", inspectErr)
+		}
+
+		if result.Container.ID != failedSource.Container.ID || !reflect.DeepEqual(result.Container.State, failedSource.Container.State) {
+			t.Fatalf("one-off execution changed the failed source container: before %#v, after %#v",
+				failedSource.Container.State, result.Container.State)
+		}
+	}
+
 	if got := getJob().Status; got != "exited (7)" {
 		t.Fatalf("job status before one-off execution = %q, want exited (7)", got)
 	}
 
-	appID := h.RemoteComposeContainerID(stack, scheduledOneOffAppService)
-
-	exitCode, output, err := h.remoteDaemon.Exec(h.ctx, []string{"docker", "exec", appID, "touch", "/state/ready"})
+	app, err := remoteDocker.ContainerInspect(h.ctx, appID, client.ContainerInspectOptions{})
 	if err != nil {
-		t.Fatalf("restore job dependency: %v", err)
+		t.Fatalf("inspect job dependency: %v", err)
 	}
 
-	body, err := io.ReadAll(output)
-	if err != nil {
-		t.Fatalf("read dependency command output: %v", err)
+	var gateVolume string
+
+	for _, mount := range app.Container.Mounts {
+		if mount.Destination == "/state" && mount.Name != "" {
+			gateVolume = mount.Name
+			break
+		}
 	}
 
-	if exitCode != 0 {
-		t.Fatalf("restore job dependency exited with code %d: %s", exitCode, body)
+	if gateVolume == "" || app.Container.Config == nil {
+		t.Fatal("job dependency has no shared gate volume or image configuration")
+	}
+
+	// The dependency is stopped during each run, so gate commands need their own container.
+	setGate := func(command string) error {
+		ctx, cancel := context.WithTimeout(h.ctx, 30*time.Second)
+		defer cancel()
+
+		exitCode, output, execErr := h.remoteDaemon.Exec(ctx, []string{
+			"docker", "run", "--rm", "--network=none", "--pull=never",
+			"--mount", "type=volume,src=" + gateVolume + ",dst=/state",
+			app.Container.Config.Image, "sh", "-c", command,
+		})
+		if execErr != nil {
+			return fmt.Errorf("run gate command: %w", execErr)
+		}
+
+		body, readErr := io.ReadAll(output)
+		if readErr != nil {
+			return fmt.Errorf("read gate command output: %w", readErr)
+		}
+
+		if exitCode != 0 {
+			return fmt.Errorf("gate command exited with code %d: %s", exitCode, body)
+		}
+
+		return nil
+	}
+
+	t.Cleanup(func() {
+		if err := setGate("touch /state/complete"); err != nil {
+			t.Errorf("release scheduled job completion gate during cleanup: %v", err)
+		}
+	})
+
+	if err := setGate("rm -f /state/complete && touch /state/ready"); err != nil {
+		t.Fatalf("prepare automatic job completion gate: %v", err)
+	}
+
+	if !time.Now().Before(scheduledAt) {
+		t.Fatalf("missed automatic calendar occurrence at %s while preparing the job", scheduledAt)
+	}
+
+	waitForStoppedDependency := func(oneOffID, phase string) {
+		t.Helper()
+		h.WaitFor(30*time.Second, phase+" dependency stopped while one-off job runs", func() bool {
+			return !h.RemoteContainerRunning(appID) &&
+				h.RemoteComposeContainerID(stack, scheduledOneOffAppService) == "" &&
+				h.RemoteOneOffContainerID(stack, scheduledOneOffJobService) == oneOffID &&
+				h.RemoteContainerRunning(oneOffID)
+		})
+	}
+	waitForCleanupAndRestoration := func(phase string) {
+		t.Helper()
+		h.WaitFor(2*time.Minute, phase+" one-off job artifact cleanup", func() bool {
+			return h.RemoteOneOffContainerID(stack, scheduledOneOffJobService) == ""
+		})
+		h.WaitFor(30*time.Second, phase+" dependency restored after one-off job", func() bool {
+			return h.RemoteComposeContainerID(stack, scheduledOneOffAppService) == appID
+		})
 	}
 
 	var job scheduledOneOffJob
@@ -122,6 +207,20 @@ func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 		t.Fatal("automatic execution has no tracked run ID")
 	}
 
+	automaticOneOffID := waitForRunningScheduledOneOff(t, h, stack)
+	waitForStoppedDependency(automaticOneOffID, "automatic")
+
+	h.WaitFor(30*time.Second, "automatic execution fenced from another timer occurrence", func() bool {
+		job = getJob()
+
+		return job.Schedule == schedule && job.NextRunAt != nil && job.NextRunAt.After(time.Now().Add(24*time.Hour)) &&
+			job.LastRun != nil && job.LastRun.JobID == automaticRunID && job.LastRun.Status == controlplane.RunStatusRunning
+	})
+
+	if err := setGate("touch /state/complete"); err != nil {
+		t.Fatalf("release automatic job completion gate: %v", err)
+	}
+
 	h.WaitFor(30*time.Second, "successful scheduled one-off result reported by job API", func() bool {
 		job = getJob()
 
@@ -129,12 +228,15 @@ func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 			job.LastRun != nil && job.LastRun.JobID == automaticRunID && job.LastRun.Status == controlplane.RunStatusSucceeded &&
 			h.RemoteOneOffContainerID(stack, scheduledOneOffJobService) == ""
 	})
+	waitForCleanupAndRestoration("automatic")
 	assertScheduledOneOffRunDetail(t, h, job, automaticRunID)
 
 	scheduledLastRun := *job.LastRunAt
 
-	if !sourceFailed() {
-		t.Fatal("scheduled one-off execution changed the source container's exit status")
+	assertSourceUnchanged()
+
+	if err := setGate("rm -f /state/complete"); err != nil {
+		t.Fatalf("reset manual job completion gate: %v", err)
 	}
 
 	runQuery := url.Values{"context": {"remote"}, "stack": {stack}, "wait": {"false"}}
@@ -156,6 +258,18 @@ func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 		return job.Status == "running" && job.LastRun != nil &&
 			job.LastRun.JobID == accepted.JobID && job.LastRun.Status == controlplane.RunStatusRunning
 	})
+
+	manualOneOffID := waitForRunningScheduledOneOff(t, h, stack)
+	if manualOneOffID == automaticOneOffID {
+		t.Fatalf("manual one-off container ID = %q, want a new artifact", manualOneOffID)
+	}
+
+	waitForStoppedDependency(manualOneOffID, "manual")
+
+	if err := setGate("touch /state/complete"); err != nil {
+		t.Fatalf("release manual job completion gate: %v", err)
+	}
+
 	h.WaitFor(30*time.Second, "successful manual one-off result reported by job API", func() bool {
 		job = getJob()
 
@@ -163,14 +277,104 @@ func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 			job.LastRun != nil && job.LastRun.JobID == accepted.JobID && job.LastRun.Status == controlplane.RunStatusSucceeded &&
 			h.RemoteOneOffContainerID(stack, scheduledOneOffJobService) == ""
 	})
+	waitForCleanupAndRestoration("manual")
 	assertScheduledOneOffRunDetail(t, h, job, accepted.JobID)
 
-	if !sourceFailed() {
-		t.Fatal("manual one-off execution changed the source container's exit status")
+	assertSourceUnchanged()
+}
+
+func scheduledOneOffCalendarSchedule(now time.Time) (string, time.Time) {
+	scheduledAt := now.UTC().Add(90 * time.Second).Truncate(time.Minute)
+	schedule := fmt.Sprintf("CRON_TZ=UTC %d %d %d %d *",
+		scheduledAt.Minute(), scheduledAt.Hour(), scheduledAt.Day(), scheduledAt.Month())
+
+	return schedule, scheduledAt
+}
+
+func TestScheduledOneOffCalendarSchedule(t *testing.T) {
+	t.Parallel()
+
+	for _, now := range []time.Time{
+		time.Date(2026, time.October, 11, 17, 30, 0, 0, time.UTC),
+		time.Date(2026, time.October, 11, 17, 30, 59, 0, time.FixedZone("offset", -7*60*60)),
+		time.Date(2026, time.December, 31, 23, 59, 0, 0, time.UTC),
+		time.Date(2028, time.February, 29, 12, 0, 0, 0, time.UTC),
+	} {
+		t.Run(now.Format(time.RFC3339), func(t *testing.T) {
+			expression, scheduledAt := scheduledOneOffCalendarSchedule(now)
+
+			schedule, err := docker.ParseJobScheduleExpression(expression)
+			if err != nil {
+				t.Fatalf("parse calendar schedule %q: %v", expression, err)
+			}
+
+			if got := schedule.Next(now); !got.Equal(scheduledAt) {
+				t.Fatalf("first occurrence = %s, want %s", got, scheduledAt)
+			}
+
+			if delay := scheduledAt.Sub(now); delay <= 30*time.Second || delay > 90*time.Second {
+				t.Fatalf("first occurrence delay = %s, want (30s, 90s]", delay)
+			}
+
+			if next := schedule.Next(scheduledAt); !next.After(scheduledAt.Add(24 * time.Hour)) {
+				t.Fatalf("next occurrence = %s, want beyond the test window after %s", next, scheduledAt)
+			}
+		})
 	}
 }
 
+func triggerScheduledOneOffFixturePoll(t *testing.T, h *Harness) string {
+	t.Helper()
+
+	endpoint, err := h.daemon.Endpoint(h.ctx, "http")
+	if err != nil {
+		t.Fatalf("get daemon API endpoint for schedule deployment: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(h.ctx, 15*time.Second)
+	defer cancel()
+
+	body := fmt.Appendf(nil, `[{"url":"http://gitserver/%s.git","reference":"refs/heads/main"}]`, h.scenario)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/v1/api/poll/run?wait=false", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("create calendar schedule deployment request: %v", err)
+	}
+
+	req.Header.Set(restapi.KeyHeader, h.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("trigger calendar schedule deployment: %v", err)
+	}
+	defer response.Body.Close()
+
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read calendar schedule deployment response: %v", err)
+	}
+
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("calendar schedule deployment response = %d, want 202: %s", response.StatusCode, data)
+	}
+
+	var accepted struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.Unmarshal(data, &accepted); err != nil {
+		t.Fatalf("decode calendar schedule deployment response: %v", err)
+	}
+
+	if accepted.JobID == "" {
+		t.Fatal("calendar schedule deployment has no tracked run ID")
+	}
+
+	return accepted.JobID
+}
+
 func TestScheduledOneOff_RecoversAfterForcedDaemonTermination(t *testing.T) {
+	requireStandaloneSuite(t)
 	t.Parallel()
 
 	h := NewHarness(t, "scheduled-one-off-recovery")

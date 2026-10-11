@@ -8,14 +8,15 @@ import (
 	"time"
 )
 
-// TestSelfUpdateBootstrap proves the bootstrap path adopts doco-cd into GitOps:
-// one `apply-self --bootstrap` run leaves exactly one container that carries
-// full compose and doco-cd labels, and the next polls see no drift.
-func TestSelfUpdateBootstrap(t *testing.T) {
+// TestSelfUpdateScaleOut proves stable GitOps adoption and the zero-downtime
+// path: bootstrap leaves one healthy container with full compose and doco-cd
+// labels, then doco-cd starts a healthy successor while still serving and
+// hands over so the successor removes the predecessor.
+func TestSelfUpdateScaleOut(t *testing.T) {
 	t.Parallel()
 
-	h := NewHarness(t, "self-update-bootstrap")
-	h.EnableSelfUpdate("e2e-self-bootstrap", "doco-cd")
+	h := NewHarness(t, "self-update-scaleout")
+	h.EnableSelfUpdate("e2e-scaleout", "doco-cd")
 	h.Start()
 
 	t.Cleanup(func() {
@@ -37,60 +38,43 @@ func TestSelfUpdateBootstrap(t *testing.T) {
 		t.Fatalf("want exactly 1 self container after bootstrap, got %d", len(all))
 	}
 
-	id := all[0].ID
-	labels := h.ContainerLabels(id)
-	head := h.RepoHead()
+	bootstrapID := all[0].ID
+	bootstrapLabels := h.ContainerLabels(bootstrapID)
+	bootstrapHead := h.RepoHead()
 
 	wantLabels := map[string]string{
-		"com.docker.compose.project":          "e2e-self-bootstrap",
+		"com.docker.compose.project":          "e2e-scaleout",
 		"com.docker.compose.service":          "doco-cd",
 		"com.docker.compose.container-number": "1",
-		"cd.doco.deployment.name":             "e2e-self-bootstrap",
-		"cd.doco.deployment.target.sha":       head,
+		"cd.doco.deployment.name":             "e2e-scaleout",
+		"cd.doco.deployment.target.sha":       bootstrapHead,
 		"cd.doco.metadata.manager":            "doco-cd",
 	}
 
 	for key, want := range wantLabels {
-		if got := labels[key]; got != want {
+		if got := bootstrapLabels[key]; got != want {
 			t.Errorf("label %s = %q, want %q", key, got, want)
 		}
 	}
 
-	if labels["com.docker.compose.config-hash"] == "" {
+	if bootstrapLabels["com.docker.compose.config-hash"] == "" {
 		t.Error("container has no compose config-hash label")
 	}
 
-	if !h.ContainerHealthy(id) {
+	if !h.ContainerHealthy(bootstrapID) {
 		t.Error("the managed container is not healthy")
 	}
 
 	// Adoption must be stable: the container the bootstrap created has to match
 	// what the running instance computes, or every poll would hand over.
-	mark := h.LogMark()
-	h.WaitForLogOccurrencesAfter("no changes detected, skipping deployment", mark, 2, 90*time.Second)
+	adoptionMark := h.LogMark()
+	h.WaitForLogOccurrencesAfter("no changes detected, skipping deployment", adoptionMark, 2, 90*time.Second)
 
-	if got := h.SelfContainerID(); got != id {
-		t.Errorf("self container changed without a commit: %s -> %s", id, got)
+	if got := h.SelfContainerID(); got != bootstrapID {
+		t.Errorf("self container changed without a commit: %s -> %s", bootstrapID, got)
 	}
 
 	h.assertNoSelfLeftovers()
-}
-
-// TestSelfUpdateScaleOut proves the zero-downtime path: doco-cd starts a second
-// container from the new config, health-checks it while still serving, then
-// hands over and the successor removes the predecessor.
-func TestSelfUpdateScaleOut(t *testing.T) {
-	t.Parallel()
-
-	h := NewHarness(t, "self-update-scaleout")
-	h.EnableSelfUpdate("e2e-scaleout", "doco-cd")
-	h.Start()
-
-	t.Cleanup(func() {
-		if t.Failed() {
-			h.dumpSelfState()
-		}
-	})
 
 	oldID := h.SelfContainerID()
 	if oldID == "" {

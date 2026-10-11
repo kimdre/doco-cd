@@ -12,6 +12,7 @@ import (
 // TestReconciliation verifies that doco-cd observes a managed Compose
 // container's die event and recreates the missing service.
 func TestReconciliation(t *testing.T) {
+	requireStandaloneSuite(t)
 	t.Parallel()
 
 	h := NewHarness(t, "reconciliation")

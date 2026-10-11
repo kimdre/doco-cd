@@ -43,6 +43,7 @@ func TestDeploymentLifecycle(t *testing.T) {
 	h.ReplaceInWorktree("deploy/compose.yaml", "image: [", "image: "+newImage)
 	h.RepoPush("repair compose configuration")
 
+	h.WaitForLogAfter(`"msg":"service image reference changed"`, recoveryMark, 2*time.Minute)
 	h.WaitForContainerRecreate(stack, service, initialID, 2*time.Minute)
 	h.WaitForLogAfter(`"msg":"job completed successfully"`, recoveryMark, 2*time.Minute)
 

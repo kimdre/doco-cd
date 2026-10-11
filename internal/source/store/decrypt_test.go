@@ -66,6 +66,63 @@ func TestGitStore_PublishDecryptsArtifact(t *testing.T) {
 	}
 }
 
+func TestGitStore_PublishAddedEncryptedFiles(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+	config := "name: first\nworking_dir: first\n"
+	commitTestFile(t, repo, repoPath, ".doco-cd.yaml", config, "initial plain configuration")
+
+	s := newGitStore(t, "file://"+repoPath)
+	initial := publishRevision(t, s, "main")
+
+	fixture := readEncryptionFixture(t, "encrypted.yaml")
+
+	const plaintext = "this.is.encrypted: \"yes\"\n"
+
+	var earlier []store.Artifact
+
+	earlier = append(earlier, initial)
+
+	for _, name := range []string{"second", "third"} {
+		config += "---\nname: " + name + "\nworking_dir: " + name + "\n"
+		commitTestFile(t, repo, repoPath, name+"/secret.yaml", fixture, "add "+name+" secret")
+		commitTestFile(t, repo, repoPath, ".doco-cd.yaml", config, "append "+name+" configuration")
+
+		published := publishRevision(t, s, "main")
+		if got := readArtifactFile(t, published, ".doco-cd.yaml"); got != config {
+			t.Fatalf("published configuration = %q, want %q", got, config)
+		}
+
+		if got := readArtifactFile(t, published, name+"/secret.yaml"); got != plaintext {
+			t.Fatalf("published %s secret = %q, want %q", name, got, plaintext)
+		}
+
+		if name == "third" {
+			if got := readArtifactFile(t, published, "second/secret.yaml"); got != plaintext {
+				t.Fatalf("earlier secret = %q, want %q", got, plaintext)
+			}
+		}
+
+		for _, artifact := range earlier {
+			if artifact.Path == published.Path {
+				t.Fatal("a new revision reused an earlier artifact directory")
+			}
+		}
+
+		earlier = append(earlier, published)
+	}
+
+	if got := readArtifactFile(t, initial, ".doco-cd.yaml"); got != "name: first\nworking_dir: first\n" {
+		t.Fatalf("initial artifact changed: %q", got)
+	}
+
+	if got := readArtifactFile(t, earlier[1], "second/secret.yaml"); got != plaintext {
+		t.Fatalf("earlier artifact plaintext changed: %q", got)
+	}
+}
+
 // TestGitStore_PublishKeepsUndecryptableFileAsCiphertext verifies a file the
 // instance holds no key for does not fail the publish - which would take down
 // every stack in the repository, including those that never read it. It stays

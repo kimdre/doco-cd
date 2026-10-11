@@ -12,6 +12,7 @@ import (
 // outside the working directory, is only recreated once its own files change
 // (#1911).
 func TestComposeUnrelatedChange(t *testing.T) {
+	requireStandaloneSuite(t)
 	t.Parallel()
 
 	const stack = "e2e-compose-unrelated-change"

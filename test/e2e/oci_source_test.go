@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -70,7 +71,8 @@ var ociComposeIncludeArtifactFiles = map[string]string{
 // TestOCISourceDeployment deploys straight from an OCI artifact rather than a
 // git repository: the poll configuration names an OCI source, so the daemon
 // resolves the artifact digest, pulls it, decrypts its SOPS-encrypted env file
-// and deploys the stack it describes.
+// and deploys the stack it describes. Republishing the artifact with destroy
+// enabled must remove the same stack using its OCI ownership labels.
 func TestOCISourceDeployment(t *testing.T) {
 	t.Parallel()
 
@@ -98,6 +100,19 @@ func TestOCISourceDeployment(t *testing.T) {
 	h.WaitFor(time.Minute, "included service from the OCI artifact", func() bool {
 		return h.ContainerID(stack, "included") != ""
 	})
+
+	if got := h.ExecOutput(h.ContainerID(stack, service), "printenv", "THIS_IS_ENCRYPTED"); got != "yes" {
+		t.Fatalf("decrypted environment value = %q, want yes", got)
+	}
+
+	mark := h.LogMark()
+	destroyFiles := maps.Clone(ociSourceArtifactFiles)
+	destroyFiles[".doco-cd.yaml"] += "destroy: true\n"
+	h.PushOCIArtifact("test", destroyFiles)
+
+	h.WaitForLogAfter(`"msg":"destroying stack"`, mark, 2*time.Minute)
+	h.WaitForContainerRemoval(stack, service, 2*time.Minute)
+	h.WaitForContainerRemoval(stack, "included", 2*time.Minute)
 }
 
 // TestOCIComposeInclude checks a git-sourced stack whose compose file pulls in
@@ -128,43 +143,5 @@ func TestOCIComposeInclude(t *testing.T) {
 
 	h.WaitFor(time.Minute, "service included from the OCI artifact", func() bool {
 		return h.ContainerID(stack, remoteService) != ""
-	})
-}
-
-// TestOCISourceDestroy checks that a stack deployed from an OCI artifact is
-// destroyed once a new version of the artifact enables destroy, i.e. that the
-// destroy ownership check matches the stack's OCI source label.
-func TestOCISourceDestroy(t *testing.T) {
-	t.Parallel()
-
-	const (
-		stack   = "e2e-oci-destroy"
-		service = "app"
-		tag     = "app"
-	)
-
-	compose := "services:\n  " + service + ":\n    image: alpine:3.22\n    command: [\"sleep\", \"600\"]\n"
-
-	h := NewHarness(t, "oci-destroy")
-	h.TrackStack(stack)
-
-	ref := h.PushOCIArtifact(tag, map[string]string{
-		".doco-cd.yaml": "name: " + stack + "\n",
-		"compose.yaml":  compose,
-	})
-	h.SetPollDocument("- source: oci\n  url: " + ref + "\n  interval: 10s\n")
-	h.Start()
-
-	h.WaitFor(3*time.Minute, "container deployed from the OCI artifact", func() bool {
-		return h.ContainerID(stack, service) != ""
-	})
-
-	h.PushOCIArtifact(tag, map[string]string{
-		".doco-cd.yaml": "name: " + stack + "\ndestroy: true\n",
-		"compose.yaml":  compose,
-	})
-
-	h.WaitFor(2*time.Minute, "stack destroyed by the new OCI artifact", func() bool {
-		return h.ContainerID(stack, service) == ""
 	})
 }

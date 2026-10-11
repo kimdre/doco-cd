@@ -7,16 +7,27 @@ services:
 
   backup:
     image: alpine:3.22
-    command: ["sh", "-c", "test -f /state/ready || exit 7; sleep 5"]
+    command:
+      - sh
+      - -c
+      - |
+        test -f /state/ready || exit 7
+        remaining=120
+        while ! test -f /state/complete; do
+          test "$$remaining" -gt 0 || exit 8
+          sleep 1
+          remaining=$$((remaining - 1))
+        done
     restart: "no"
     volumes:
       - job-state:/state
     labels:
       cd.doco.job.enabled: "true"
-      cd.doco.job.schedule: "@every 1m"
+      cd.doco.job.schedule: "@every 24h"
       cd.doco.job.execution_mode: "one_off"
       cd.doco.job.skip_running: "true"
       cd.doco.job.notify_on: "none"
+      cd.doco.job.stop_services: "app"
 
 volumes:
   job-state:

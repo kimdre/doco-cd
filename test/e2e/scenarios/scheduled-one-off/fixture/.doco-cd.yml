@@ -1,7 +1,0 @@
-name: e2e-scheduled-one-off
-working_dir: deploy
-compose_files: [compose.yaml]
-context: remote
-swarm:
-  enabled: false
-reconciliation: false

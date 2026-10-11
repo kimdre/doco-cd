@@ -1,4 +1,0 @@
-services:
-  app:
-    image: alpine:3.21
-    command: ["sleep", "600"]

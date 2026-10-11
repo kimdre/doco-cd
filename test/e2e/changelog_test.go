@@ -18,32 +18,6 @@ const changelogTimeout = 120 * time.Second
 func TestChangelog(t *testing.T) {
 	t.Parallel()
 
-	// One stack, its image tag in .doco-cd.yml and bumped by CI. The roll commit touches
-	// nothing but the deploy config, and that is the commit the notification must name.
-	t.Run("deploy_config", func(t *testing.T) {
-		t.Parallel()
-
-		const stack = "e2e-changelog-deploy-config"
-
-		h := NewHarness(t, "changelog-deploy-config")
-		h.CaptureNotifications()
-		h.Start()
-
-		assertChangelog(t, h.NextNotification(stack, changelogTimeout), nil)
-
-		h.ReplaceInWorktree("backend/VERSION", "v1", "v2")
-		h.RepoPush("backend: v2")
-		h.ReplaceInWorktree(".doco-cd.yml", `APP_TAG: "3.21"`, `APP_TAG: "3.22"`)
-		h.RepoPush("deploy: roll app to 3.22")
-
-		assertChangelog(t, h.NextNotification(stack, changelogTimeout), []string{"deploy: roll app to 3.22"})
-
-		h.ReplaceInWorktree("deploy/app/compose.yaml", `["sleep", "infinity"]`, `["sleep", "86400"]`)
-		h.RepoPush("compose: sleep a day")
-
-		assertChangelog(t, h.NextNotification(stack, changelogTimeout), []string{"compose: sleep a day"})
-	})
-
 	// Per-box deploy configs with several stacks each, a stack whose compose is included
 	// from shared/ of the same repository, and tag bumps landing as pull request merges.
 	t.Run("pull_request", func(t *testing.T) {
