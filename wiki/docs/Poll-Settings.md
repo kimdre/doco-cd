@@ -183,11 +183,11 @@ configs:
   poll-config.yml:
     content: |
       - url: https://example.com
-        branch: main
+        reference: main
       - url: https://other-example.com
         interval: 120  # Or as a Go duration: 2m
       - url: https://yet-another-example.com
-        branch: dev
+        reference: dev
 ```
 
 1. Use with the `POLL_CONFIG_FILE` environment variable.
