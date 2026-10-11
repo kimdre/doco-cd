@@ -36,7 +36,7 @@ They must be in the format of a YAML list/array (also called YAML Sequence) and 
 | `watch`       | boolean                                       | For local filesystem `git` sources only: watch the repository for new commits and trigger a poll immediately instead of waiting for `interval`. Set to `false` to disable and rely on `interval` only. Ignored for non-local Git and `oci` sources and when `schedule` is set. See [Polling Local Filesystem Repositories](Advanced/Local-Filesystem-Polling.md)                                                                                            | `true`                              |
 | `deployments` | array of [Deploy Configs](Deploy-Settings.md) | In-line configuration for [deployment settings](Deploy-Settings.md) specific to this poll configuration. Overrides the `.doco-cd.yml` file in the target repository (`url`) if exists.<br>See the [example below](#inline-deploy-configs).                                                                                                                                                                                                                  | `[]`                                |
 
-For Git sources, Doco-CD accepts `http://`, `https://`, `ssh://`, and `file://` URLs, plus absolute local paths. The native `git://` protocol is not supported.
+For Git sources, Doco-CD accepts `http://`, `https://`, `ssh://`, [`git://`](Advanced/Tips-and-Tricks.md#polling-via-native-git)), and [`file://`](Advanced/Local-Filesystem-Polling.md) URLs, plus absolute local paths.
 
 ## Cron schedules
 

@@ -472,7 +472,6 @@ See [Deploy Settings](Deploy-Settings.md) for all deployment options and [Core C
 ### Git servers and authentication
 
 Doco-CD works with GitHub, GitLab, Gitea, Forgejo, and other Git remotes. A hosting forge is not required; see [Using a plain Git server](Advanced/Tips-and-Tricks.md#using-a-plain-git-server-no-forge). For all authentication options, see [Git Settings](Git-Settings.md).
-The native `git://` protocol is not supported. Use HTTP(S), SSH, or a local filesystem repository.
 
 If the clone URL advertised by your Git server is not reachable from the Doco-CD container, see [Source URL Rewrites](Advanced/Source-URL-Rewrites.md).
 
