@@ -5,7 +5,44 @@ tags:
 
 # Application Settings
 
-The settings are grouped below by the part of the application they configure.
+This page describes the settings that can be used to configure the doco-cd application.
+The settings can be set via environment variables, a `.env` file, or Docker secrets.
+
+??? example "Example `docker-compose.yml`"
+
+    ```ini title=".env"
+    GIT_ACCESS_TOKEN=<your Git token>
+    ```
+
+    ```yaml title="docker-compose.yml" hl_lines="8-15 23-28"
+    services:
+      app:
+        container_name: doco-cd
+        image: ghcr.io/kimdre/doco-cd:latest
+        restart: unless-stopped
+        ports:
+          - "80:80"
+        env_file:
+          - .env
+        environment:
+          TZ: Europe/Berlin
+          LOG_LEVEL: INFO
+          WEBHOOK_SECRET_FILE: /run/secrets/webhook_secret #(1)!
+        secrets:
+          - webhook_secret
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - data:/data
+
+    volumes:
+      data:
+
+    secrets:
+      webhook_secret:
+        file: ./webhook_secret.txt
+    ```
+
+    1. The file name after the `/run/secrets/` path is the name of the secret
 
 ## Runtime Settings
 
@@ -18,6 +55,8 @@ The settings are grouped below by the part of the application they configure.
 | `SYNC_WINDOWS`         | list    | A YAML list of [sync windows](Advanced/Sync-Windows.md) that restrict when deployments may change stacks.                                                                                                                   |         |
 | `SYNC_WINDOWS_FILE`    | string  | Path to a file inside the container containing the [sync windows](Advanced/Sync-Windows.md) in YAML format (mutually exclusive with `SYNC_WINDOWS`).                                                                        |         |
 | `TZ`                   | string  | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container.                                                                                                                         | `UTC`   |
+
+!!! question "For Docker-specific settings, see [Docker Settings](Docker-Settings.md)."
 
 ## API and Webhook Settings
 
