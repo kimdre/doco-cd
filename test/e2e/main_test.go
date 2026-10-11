@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -11,6 +12,12 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if _, err := suiteIncludesStandalone(os.Getenv(suiteModeEnv)); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err)
+
+		os.Exit(2)
+	}
+
 	code := m.Run()
 
 	teardownSuiteHarnesses()

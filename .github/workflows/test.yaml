@@ -168,6 +168,7 @@ jobs:
         env:
           E2E_BUILD_CACHE_SCOPE: doco-cd-e2e-${{ matrix.mode }}
           E2E_KEEP_COMPONENTS_RUNNING: "0"
+          E2E_TEST_MODE: ${{ matrix.mode }}
           GOCACHE: ${{ runner.temp }}/e2e-go-build
 
       # Both matrix jobs build the identical binary, so only one of them needs

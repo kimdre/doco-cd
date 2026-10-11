@@ -1,4 +1,0 @@
-services:
-  app:
-    image: alpine:${APP_TAG}
-    command: ["sleep", "infinity"]

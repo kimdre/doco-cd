@@ -15,6 +15,7 @@ import (
 // directory, not from the settings the stack was deployed with, and stopped
 // stacks are removed too.
 func TestAutoDiscoveryCleanup(t *testing.T) {
+	requireStandaloneSuite(t)
 	t.Parallel()
 
 	const (

@@ -16,6 +16,7 @@ import (
 // sources, and checks that the next poll recreates the affected service from a
 // freshly published artifact.
 func TestDestroySharedSource(t *testing.T) {
+	requireStandaloneSuite(t)
 	t.Parallel()
 
 	const (

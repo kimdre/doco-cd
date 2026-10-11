@@ -4,12 +4,15 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	gogit "github.com/go-git/go-git/v5"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -281,6 +284,81 @@ func TestPostDeployReportsShortCommitAndChangelog(t *testing.T) {
 
 	if short, ok := sm.cachedShortCommitSHA(head); !ok || short != head[:7] {
 		t.Fatalf("cachedShortCommitSHA() = %q, %v, want %q memoized", short, ok, head[:7])
+	}
+}
+
+func TestPostDeployFiltersChangelogAcrossMountPaths(t *testing.T) {
+	t.Parallel()
+
+	for _, changedFile := range []string{".doco-cd.box1.yml", "deploy/app/compose.yaml"} {
+		t.Run(changedFile, func(t *testing.T) {
+			t.Parallel()
+
+			originPath, mirrorPath := setupOriginAndMirror(t)
+
+			composePath := filepath.Join(originPath, "deploy", "app", "compose.yaml")
+			if err := os.MkdirAll(filepath.Dir(composePath), 0o755); err != nil {
+				t.Fatalf("create deployment directory: %v", err)
+			}
+
+			const compose = "services:\n  app:\n    image: alpine:3.22\n"
+			writeFile(t, composePath, compose)
+			writeFile(t, filepath.Join(originPath, ".doco-cd.box1.yml"), "name: app\nworking_dir: deploy/app\n")
+			writeFile(t, filepath.Join(originPath, ".doco-cd.box2.yml"), "name: other\n")
+			runGit(t, originPath, "add", ".")
+			runGit(t, originPath, "commit", "-m", "initial deployment")
+			runGitBare(t, mirrorPath, "fetch", "origin", "+refs/heads/*:refs/remotes/origin/*")
+			previous := mirrorHead(t, mirrorPath)
+
+			writeFile(t, filepath.Join(originPath, "README.md"), "unrelated change\n")
+			runGit(t, originPath, "add", ".")
+			runGit(t, originPath, "commit", "-m", "unrelated documentation")
+			writeFile(t, filepath.Join(originPath, ".doco-cd.box2.yml"), "name: other\nreference: develop\n")
+			runGit(t, originPath, "add", ".")
+			runGit(t, originPath, "commit", "-m", "another target")
+
+			content := "name: app\nworking_dir: deploy/app\nenvironment:\n  APP_TAG: '3.21'\n"
+			if changedFile == "deploy/app/compose.yaml" {
+				content = strings.ReplaceAll(compose, "3.22", "3.21")
+			}
+
+			writeFile(t, filepath.Join(originPath, changedFile), content)
+			runGit(t, originPath, "add", ".")
+			runGit(t, originPath, "commit", "-m", "update app")
+			runGitBare(t, mirrorPath, "fetch", "origin", "+refs/heads/*:refs/remotes/origin/*")
+			head := mirrorHead(t, mirrorPath)
+
+			sender := &levelGatedSender{minLevel: notification.Success}
+			sm := newNotifyingStageManager(mirrorPath, head, sender)
+			sm.DeployState.DeployedCommit = previous
+			sm.Repository.PathExternal = originPath
+			sm.Repository.PathInternal = filepath.Join(t.TempDir(), "container-artifact")
+			sm.DeployConfig.Internal.File = filepath.Join(sm.Repository.PathInternal, ".doco-cd.box1.yml")
+			sm.Docker.Project = &types.Project{
+				Name:         "app",
+				WorkingDir:   filepath.Dir(composePath),
+				ComposeFiles: []string{composePath},
+				Services:     types.Services{"app": {Name: "app", Image: "alpine:3.21"}},
+			}
+
+			if err := sm.RunPostDeployStage(t.Context(), sm.Log); err != nil {
+				t.Fatalf("RunPostDeployStage() = %v", err)
+			}
+
+			sent := sender.sentNotifications()
+			if len(sent) != 1 {
+				t.Fatalf("sent %d notifications, want one", len(sent))
+			}
+
+			var subjects []string
+			for _, commit := range sent[0].metadata.Commits {
+				subjects = append(subjects, commit.Subject)
+			}
+
+			if !slices.Equal(subjects, []string{"update app"}) {
+				t.Fatalf("changelog = %q, want only update app", subjects)
+			}
+		})
 	}
 }
 

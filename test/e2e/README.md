@@ -31,6 +31,42 @@ runner's default address pools.
 
 Also runs in CI on pull requests (`.github/workflows/test.yaml`, job `e2e`).
 
+CI sets `E2E_TEST_MODE` to `standalone` or `swarm`. The Swarm selection skips
+scenarios that explicitly force Compose mode and are already covered by the
+standalone job. It retains mode-dependent scenarios, both migration directions,
+mixed-context deployment, and Swarm-specific recovery. The selector does not
+configure Docker or override a scenario's Swarm requirements. Invalid values
+fail before any scenarios start.
+
+Locally, leave `E2E_TEST_MODE` unset to run all compatible scenarios, or use
+`E2E_TEST_MODE=swarm make test-e2e` on a Swarm manager to match that CI selection.
+Explicit Compose-only scenarios call `requireStandaloneSuite(t)` before creating a harness.
+
+## Coverage boundaries
+
+Related checks share a harness through sequential phases, not through mutable
+state shared by parallel tests:
+
+| Scenario              | Coverage                                                                                                                          |
+|-----------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| Deployment lifecycle  | Initial deployment, invalid config preservation, recovery with an image tag change, and destroy                                   |
+| Image bump            | Pinned image digest changes; tag changes are covered by the lifecycle                                                             |
+| OCI source            | Encrypted env file and local include deployment, followed by destroy from a republished artifact                                  |
+| Changelog             | Real notifications, selected-target config changes, and pull-request merge attribution                                            |
+| Appended documents    | Plain additions, first encrypted addition, and later additions after decryption, preserving existing containers                   |
+| Scheduled status      | Uninterrupted automatic execution, dependency stop/restore, cleanup, failed-source isolation, manual execution, and API reporting |
+| Self-update scale-out | Bootstrap adoption and labels, followed by healthy overlap and handover                                                           |
+
+Config decoding, successive artifact decryption, and detailed changelog filtering
+also have lower-level tests in `internal/config/deploy`, `internal/source/store`,
+`internal/stages`, and `internal/docker`. Those checks do not need a daemon
+container. Forced scheduled-job recovery remains separate for Compose and Swarm.
+Self-update strategies, network rollback, cross-stack updates, and all three
+process-crash windows retain their E2E coverage.
+
+Keep Swarm scheduled-job recovery serial: scheduler discovery scans the shared
+cluster, so different stack names do not isolate concurrent schedulers.
+
 ## How it works
 
 ```

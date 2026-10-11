@@ -635,6 +635,35 @@ func TestGetConfigsFromFileCachesDecodedConfigByContent(t *testing.T) {
 	if third[0].Name != "updated" {
 		t.Fatalf("content change did not invalidate cache: got %q, want %q", third[0].Name, "updated")
 	}
+
+	content := "name: updated\ncontext: default\n"
+	previous := third
+
+	for _, name := range []string{"second", "third"} {
+		content += "---\nname: " + name + "\ncontext: default\n"
+		if err := createTestFile(t, fileName, content); err != nil {
+			t.Fatalf("append document: %v", err)
+		}
+
+		appended, err := getConfigsFromFile(dir, files, ".doco-cd.yaml")
+		if err != nil {
+			t.Fatalf("load appended document: %v", err)
+		}
+
+		if len(appended) != len(previous)+1 {
+			t.Fatalf("appended config count = %d, want %d", len(appended), len(previous)+1)
+		}
+
+		if !reflect.DeepEqual(appended[:len(previous)], previous) {
+			t.Fatal("appending a document changed earlier configurations")
+		}
+
+		if appended[len(previous)].Name != name {
+			t.Fatalf("appended name = %q, want %q", appended[len(previous)].Name, name)
+		}
+
+		previous = appended
+	}
 }
 
 func TestCloneConfigSliceDeepCopiesMutableFields(t *testing.T) {
