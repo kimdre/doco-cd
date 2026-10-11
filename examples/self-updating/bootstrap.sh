@@ -6,7 +6,7 @@ set -eu
 
 # Use the same release version as infra-repo/doco-cd/compose.yaml.
 # https://github.com/kimdre/doco-cd/releases
-IMAGE="ghcr.io/kimdre/doco-cd:0.124.0"
+IMAGE="ghcr.io/kimdre/doco-cd:0.125.1"
 DATA_VOLUME="doco-cd_data"
 REPO_URL="https://github.com/example/infra.git"
 
