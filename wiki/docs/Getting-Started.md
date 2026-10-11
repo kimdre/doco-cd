@@ -68,6 +68,8 @@ To convert an existing installation to self-updating, follow [the migration step
   Forgejo, or another Git server. A local repository that you mount into the container also works.
   You need permission to push to it.
 
+- For configuration options see [App Settings](App-Settings.md) and [Deploy Settings](Deploy-Settings.md).
+
 ### Terms used in this guide
 
 - **Deployment repository:** The Git repository that holds your Compose files and the `.doco-cd.yml` file.
