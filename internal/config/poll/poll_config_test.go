@@ -45,6 +45,25 @@ func TestConfig_Validate(t *testing.T) {
 			wantRef:  "main",
 		},
 		{
+			name: "Valid git config - native Git URL",
+			config: Config{
+				Source:    config.SourceTypeGit,
+				SourceUrl: "git://example.com:19418/repo.git",
+				Reference: "main",
+				Interval:  10 * time.Second,
+			},
+			wantRef: "main",
+			wantURL: "git://example.com:19418/repo.git",
+		},
+		{
+			name: "Invalid config - native Git credentials",
+			config: Config{ // #nosec G101 -- Invalid URL fixture, not credentials.
+				SourceUrl: "git://user:password@example.com/repo.git",
+				Interval:  10 * time.Second,
+			},
+			expected: ErrInvalidConfig,
+		},
+		{
 			name: "Valid git config - local filesystem file:// URL",
 			config: Config{
 				Source:    config.SourceTypeGit,
@@ -431,6 +450,46 @@ func TestConfig_UnmarshalJSON_IntervalVariants(t *testing.T) {
 
 			if cfg.Watch != tc.watch {
 				t.Fatalf("expected watch=%t, got %t", tc.watch, cfg.Watch)
+			}
+		})
+	}
+}
+
+func TestConfig_UnmarshalNativeGit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		decode func([]byte, any) error
+		input  string
+	}{
+		{
+			name:   "YAML",
+			decode: yaml.Unmarshal,
+			input:  "url: git://example.com:19418/repo.git\nreference: main\ninterval: 45\n",
+		},
+		{
+			name:   "JSON",
+			decode: json.Unmarshal,
+			input:  `{"url":"git://example.com:19418/repo.git","reference":"main","interval":45}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var cfg Config
+			if err := tt.decode([]byte(tt.input), &cfg); err != nil {
+				t.Fatalf("decode poll config: %v", err)
+			}
+
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("validate poll config: %v", err)
+			}
+
+			if cfg.SourceUrl != "git://example.com:19418/repo.git" || cfg.Reference != "main" {
+				t.Fatalf("unexpected native Git source: %+v", cfg)
 			}
 		})
 	}

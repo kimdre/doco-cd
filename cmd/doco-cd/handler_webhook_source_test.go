@@ -33,6 +33,28 @@ func TestResolveWebhookGitCloneURL(t *testing.T) {
 			expectedApplied: true,
 		},
 		{
+			name: "explicit rewrite to native Git",
+			payload: webhook.ParsedPayload{
+				CloneURL: "https://example.com/org/repo.git",
+			},
+			rewrites: map[string]string{
+				"https://example.com/": "git://git.internal:19418/",
+			},
+			expectedURL:     "git://git.internal:19418/org/repo.git",
+			expectedApplied: true,
+		},
+		{
+			name: "native Git host rewrite preserves protocol",
+			payload: webhook.ParsedPayload{
+				CloneURL: "git://example.com/org/repo.git",
+			},
+			rewrites: map[string]string{
+				"example.com": "git.internal:19418",
+			},
+			expectedURL:     "git://git.internal:19418/org/repo.git",
+			expectedApplied: true,
+		},
+		{
 			name: "rewrites by domain host",
 			payload: webhook.ParsedPayload{
 				CloneURL: "https://forgejo.example.com/org/repo.git",
@@ -139,6 +161,28 @@ func TestRewriteSourceURL_UsedByPollAndWebhook(t *testing.T) {
 	pollURL, pollApplied := rewriteSourceURL("https://forgejo.example.com/org/repo.git", cfg.SourceURLRewrites)
 	if !pollApplied || pollURL != "http://forgejo:3000/org/repo.git" {
 		t.Fatalf("expected poll URL rewrite to apply, got applied=%v url=%q", pollApplied, pollURL)
+	}
+}
+
+func TestRewriteSourceURL_NativeGitUsedByPollAndWebhook(t *testing.T) {
+	t.Parallel()
+
+	cfg := &app.Config{
+		SourceURLRewrites: map[string]string{
+			"https://example.com/": "git://git.internal:19418/",
+		},
+	}
+
+	const (
+		sourceURL   = "https://example.com/org/repo.git"
+		expectedURL = "git://git.internal:19418/org/repo.git"
+	)
+
+	webhookURL, webhookApplied := resolveWebhookGitCloneURL(webhook.ParsedPayload{CloneURL: sourceURL}, cfg)
+
+	pollURL, pollApplied := rewriteSourceURL(sourceURL, cfg.SourceURLRewrites)
+	if !webhookApplied || !pollApplied || webhookURL != expectedURL || pollURL != expectedURL {
+		t.Fatalf("native Git rewrite: webhook=%q (%t), poll=%q (%t)", webhookURL, webhookApplied, pollURL, pollApplied)
 	}
 }
 

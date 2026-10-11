@@ -18,6 +18,8 @@ tags:
 
 For Git sources, poll jobs also honor global source URL rewrites from [`SOURCE_URL_REWRITES`](Advanced/Source-URL-Rewrites.md). This is useful when polling should clone through an internal host/port instead of the public URL.
 
+[Supported Git transports](Git-Settings.md#supported-transports) include HTTP(S), SSH, [native Git](Advanced/Tips-and-Tricks.md#polling-via-native-git) (`git://`), and [local filesystem](Advanced/Local-Filesystem-Polling.md) repositories.
+
 They must be in the format of a YAML list/array (also called YAML Sequence) and can contain the following settings:
 
 !!! note "Settings without a default value are required."

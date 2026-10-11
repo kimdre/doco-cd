@@ -83,7 +83,7 @@ With `project_directory: .`, any `.env` file you place in your repository root (
 
 Doco-CD does not need a Git hosting platform (forge) like GitHub, GitLab or Forgejo. 
 It only needs a clone URL it can reach, so it also works with bare Git repositories served by a plain Git server, 
-e.g. via SSH, smart HTTP (`git http-backend`) or the [local filesystem](#repository-on-the-same-host).
+e.g. via SSH, smart HTTP (`git http-backend`), native Git (`git daemon`), or the [local filesystem](#repository-on-the-same-host).
 
 Plain Git servers do not send webhook payloads, so use [polling](../Poll-Settings.md) or 
 use a [`post-receive`](#deploy-on-push-with-a-post-receive-hook) hook to trigger deployments after a push via the REST API for [webhook](../Endpoints/Webhook-Listener.md)-like behavior.
@@ -108,6 +108,25 @@ services:
     For any other user, use the `ssh://user@host/path` format (e.g. `ssh://me@myserver.org/home/me/myrepo.git`).
 
 For repositories served via HTTP(S), set [`GIT_ACCESS_TOKEN`](../Git-Settings.md#authentication) to the password and [`GIT_ACCESS_TOKEN_USER`](../Git-Settings.md#authentication) to the username required by your server.
+
+### Polling via native Git
+
+For a repository served by `git daemon`, configure an anonymous clone URL:
+
+```yaml title="poll-config.yaml"
+- url: git://git.internal/myrepo.git
+  reference: main
+  interval: 5m
+```
+
+The default port is `9418`. For a custom port, use `git://git.internal:19418/myrepo.git`.
+The daemon must export the repository and be reachable from doco-cd.
+No access token or SSH key is needed. Doco-CD does not send configured Git credentials over native Git.
+
+!!! warning "Prefer HTTPS or SSH"
+    Native Git has no encryption or authentication. An attacker on the network can replace deployment content.
+    Use it only when you accept this risk; a private network alone does not protect the transport.
+    HTTP proxy and TLS verification settings do not apply. See [Supported transports](../Git-Settings.md#supported-transports).
 
 ### Deploy on push with a `post-receive` hook
 

@@ -20,7 +20,7 @@ type UrlValidator interface {
 // HttpUrl is a type for strings that represent plain HTTP or HTTPS URLs (e.g. for API endpoints).
 type HttpUrl string
 
-// GitUrl is a type for strings that represent Git repository URLs (http, https, ssh, or scp-style).
+// GitUrl is a type for strings that represent Git repository URLs (http, https, ssh, git, file, or scp-style).
 type GitUrl string
 
 // OciUrl is a type for strings that represent OCI artifact references (e.g. ghcr.io/org/repo:tag).
@@ -98,6 +98,16 @@ func (g GitUrl) Validate() error {
 		}
 
 		return nil
+	case "git":
+		if u.Hostname() == "" || u.Path == "" {
+			return fmt.Errorf("%w: native Git URL must include host and path", ErrInvalidGitUrl)
+		}
+
+		if u.User != nil {
+			return fmt.Errorf("%w: native Git URLs do not support credentials", ErrInvalidGitUrl)
+		}
+
+		return nil
 	case "file":
 		// A local Git repository on the filesystem, e.g. for polling repositories
 		// mounted into the container instead of hosted on a remote SCM.
@@ -108,7 +118,7 @@ func (g GitUrl) Validate() error {
 
 		return nil
 	default:
-		return fmt.Errorf("%w: URL must start with http, https, ssh or file (or be an absolute local path)", ErrInvalidGitUrl)
+		return fmt.Errorf("%w: URL must start with http, https, ssh, git or file (or be an absolute local path)", ErrInvalidGitUrl)
 	}
 }
 
