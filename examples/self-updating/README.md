@@ -3,8 +3,8 @@
 doco-cd deploys the stack that contains its own container. One instance, no
 updater sidecar. A push that bumps the doco-cd image is a deploy like any other.
 
-Requires doco-cd with `SELF_UPDATE_ENABLED=true`. Off by default: a
-doco-cd instance that upgrades itself unattended is a decision you make, not a
+Requires doco-cd with `SELF_UPDATE_ENABLED=true`. Off by default: 
+a doco-cd instance that upgrades itself unattended is a decision you make, not a
 default you inherit.
 
 ## What this example shows
