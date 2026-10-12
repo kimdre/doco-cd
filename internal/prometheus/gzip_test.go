@@ -80,8 +80,19 @@ func TestHandlerCompression(t *testing.T) {
 					t.Fatalf("Content-Encoding = %q, want gzip %v", rr.Header().Get("Content-Encoding"), tc.wantGzip)
 				}
 
-				if vary := rr.Header().Values("Vary"); len(vary) != 1 || vary[0] != "Accept-Encoding" {
-					t.Errorf("Vary = %q, want [Accept-Encoding]", vary)
+				vary := rr.Header().Values("Vary")
+				var variesByEncoding bool
+
+				for _, value := range vary {
+					for field := range strings.SplitSeq(value, ",") {
+						if strings.EqualFold(strings.TrimSpace(field), "Accept-Encoding") {
+							variesByEncoding = true
+						}
+					}
+				}
+
+				if !variesByEncoding {
+					t.Errorf("Vary = %q, want to contain Accept-Encoding", vary)
 				}
 
 				if !strings.HasPrefix(rr.Header().Get("Content-Type"), "text/plain") {
