@@ -121,6 +121,14 @@ func deploymentRepositoryKey(payload *webhook.ParsedPayload) string {
 	return ""
 }
 
+func deploymentStateRepositoryKey(req DeployRequest) string {
+	if repository := strings.TrimSpace(req.RepositoryName); repository != "" {
+		return normalizeRepositoryForLabelMatch(repository)
+	}
+
+	return gitInternal.GetRepoName(deploymentRepositoryKey(req.Payload))
+}
+
 // resolveDeploymentMetricsRepositoryLabel resolves the repository label for deployment metrics.
 func resolveDeploymentMetricsRepositoryLabel(payload *webhook.ParsedPayload) string {
 	repository := normalizeRepositoryForLabelMatch(deploymentRepositoryKey(payload))
@@ -154,6 +162,10 @@ type DeployRequest struct {
 	InternalRepoPath string
 	DockerCLI        command.Cli `validate:"required,nostructlevel"`
 	Payload          *webhook.ParsedPayload
+	// RepositoryName is the active source identity used by pre-deploy state
+	// lookups, after URL rewrites or repository_url overrides. Optional for
+	// direct callers that rely on the legacy payload-derived identity.
+	RepositoryName string
 	// SourceURL is the resolved URL used to fetch/name the source containing
 	// the deploy config. It may differ from Payload.WebURL when a Git host
 	// serves HTTP(S) and SSH on different hosts/ports, and from the active
@@ -336,7 +348,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	// interrupted self-update is retried instead of being marked deployed.
 	deploymentPhase.Set("finalizing deployment status")
 
-	setDeployStatusToCache(gitInternal.GetRepoName(deploymentRepositoryKey(req.Payload)), req.DeployConfig.Name,
+	setDeployStatusToCache(deploymentStateRepositoryKey(req), req.DeployConfig.Name,
 		deployStatus{
 			CommitSHA:   req.LatestCommit,
 			ComposeHash: projectHash,
