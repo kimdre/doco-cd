@@ -39,6 +39,11 @@ func TestExecutionStoreRoundTrip(t *testing.T) {
 		t.Fatalf("records = %#v, want updated record", records)
 	}
 
+	current, err := store.get(record.RunID)
+	if err != nil || current == nil || !current.Reported {
+		t.Fatalf("get = %#v, %v, want updated record", current, err)
+	}
+
 	if err := store.remove(record.RunID); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
@@ -50,6 +55,64 @@ func TestExecutionStoreRoundTrip(t *testing.T) {
 
 	if len(records) != 0 {
 		t.Fatalf("records after remove = %#v, want none", records)
+	}
+
+	current, err = store.get(record.RunID)
+	if err != nil || current != nil {
+		t.Fatalf("get after remove = %#v, %v, want no record", current, err)
+	}
+}
+
+func TestExecutionStoreGetRejectsInvalidRecords(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name    string
+		content string
+	}{
+		{name: "malformed", content: "{not json"},
+		{name: "unsupported version", content: `{"version":999,"run_id":"run"}`},
+		{name: "mismatched identity", content: `{"version":1,"run_id":"other"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := newExecutionStore(t.TempDir())
+
+			record := executionRecord{RunID: "run"}
+			if err := store.create(&record); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := os.WriteFile(store.path(record.RunID), []byte(test.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			if current, err := store.get(record.RunID); err == nil || current != nil {
+				t.Fatalf("invalid record accepted: %#v, %v", current, err)
+			}
+		})
+	}
+}
+
+func TestExecutionStoreGetSurfacesReadErrors(t *testing.T) {
+	t.Parallel()
+
+	store := newExecutionStore(t.TempDir())
+	if err := os.MkdirAll(store.path("run"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if record, err := store.get("run"); err == nil || record != nil {
+		t.Fatalf("read error not surfaced: %#v, %v", record, err)
+	}
+}
+
+func TestExecutionStoreGetDisabled(t *testing.T) {
+	t.Parallel()
+
+	if record, err := newExecutionStore("").get("run"); err != nil || record != nil {
+		t.Fatalf("disabled lookup = %#v, %v", record, err)
 	}
 }
 

@@ -28,6 +28,124 @@ const (
 	scheduledOneOffAppService         = "app"
 )
 
+func TestScheduledOneOff_ManualRunBeforeFirstSchedule(t *testing.T) {
+	requireStandaloneSuite(t)
+	t.Parallel()
+
+	const stack = "e2e-scheduled-one-off-status"
+
+	h := NewHarness(t, "scheduled-one-off-status")
+	h.EnableRemoteContext()
+	h.EnableAPI("e2e-scheduled-job-api-key")
+	h.SetPollInterval(time.Minute)
+	h.Start()
+	h.WaitForLog(deployCompletedLog, 2*time.Minute)
+
+	var appID string
+
+	h.WaitFor(2*time.Minute, "initial dependency container", func() bool {
+		appID = h.RemoteComposeContainerID(stack, scheduledOneOffAppService)
+		return appID != ""
+	})
+
+	getJob := func() scheduledOneOffJob {
+		t.Helper()
+		return getScheduledOneOffJob(t, h, "remote", stack)
+	}
+
+	initialJob := getJob()
+	if initialJob.Status != "created" || initialJob.LastRun != nil || initialJob.NextRunAt == nil {
+		t.Fatalf("initial job = %#v, want an unexecuted created source with a future schedule", initialJob)
+	}
+
+	source, err := h.remoteDockerClient().ContainerInspect(h.ctx, initialJob.Name, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatalf("inspect created source job: %v", err)
+	}
+
+	setGate := scheduledOneOffCompletionGate(t, h, appID)
+	t.Cleanup(func() {
+		if err := setGate("touch /state/complete"); err != nil {
+			t.Errorf("release manual job completion gate during cleanup: %v", err)
+		}
+	})
+
+	if err := setGate("rm -f /state/complete && touch /state/ready"); err != nil {
+		t.Fatalf("prepare manual job completion gate: %v", err)
+	}
+
+	query := url.Values{"context": {"remote"}, "stack": {stack}, "wait": {"false"}}
+
+	var accepted struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.Unmarshal(h.APIRequest(http.MethodPost,
+		"/v1/api/job/"+url.PathEscape(initialJob.Name)+"/run?"+query.Encode(), http.StatusAccepted), &accepted); err != nil {
+		t.Fatalf("decode manual trigger response: %v", err)
+	}
+
+	h.WaitFor(10*time.Second, "manual-first one-off execution reported as running", func() bool {
+		job := getJob()
+
+		return job.Status == "running" && job.LastRun != nil &&
+			job.LastRun.JobID == accepted.JobID && job.LastRun.Status == controlplane.RunStatusRunning
+	})
+	oneOffID := waitForRunningScheduledOneOff(t, h, stack)
+
+	// Keep the API-owned execution alive through the worker's one-minute recovery sweep.
+	holdUntil := time.Now().Add(65 * time.Second)
+	h.WaitFor(75*time.Second, "manual-first execution survives the recovery sweep", func() bool {
+		job := getJob()
+		if job.Status != "running" || job.LastRun == nil || job.LastRun.JobID != accepted.JobID ||
+			job.LastRun.Status != controlplane.RunStatusRunning || h.RemoteOneOffContainerID(stack, scheduledOneOffJobService) != oneOffID {
+			t.Fatalf("manual execution changed during recovery sweep: %#v", job)
+		}
+
+		return !time.Now().Before(holdUntil)
+	})
+
+	if err := setGate("touch /state/complete"); err != nil {
+		t.Fatalf("release manual job completion gate: %v", err)
+	}
+
+	var completed scheduledOneOffJob
+
+	h.WaitFor(30*time.Second, "manual-first execution completed and cleaned up", func() bool {
+		completed = getJob()
+
+		return completed.Status == "exited (0)" && completed.LastRunAt != nil && completed.LastRun != nil &&
+			completed.LastRun.JobID == accepted.JobID && completed.LastRun.Status == controlplane.RunStatusSucceeded &&
+			completed.LastRun.FinishedAt != nil && h.RemoteOneOffContainerID(stack, scheduledOneOffJobService) == ""
+	})
+	h.WaitFor(30*time.Second, "dependency restored after manual-first execution", func() bool {
+		return h.RemoteComposeContainerID(stack, scheduledOneOffAppService) == appID
+	})
+	assertScheduledOneOffRunDetail(t, h, completed, accepted.JobID)
+
+	stableUntil := time.Now().Add(3 * time.Second)
+	h.WaitFor(10*time.Second, "manual-first terminal status remains stable", func() bool {
+		job := getJob()
+		if job.Status != "exited (0)" || job.LastRun == nil || job.LastRun.Status != controlplane.RunStatusSucceeded {
+			t.Fatalf("completed manual execution lost its result: %#v", job)
+		}
+
+		if job.NextRunAt == nil || !job.NextRunAt.Equal(*initialJob.NextRunAt) {
+			t.Fatalf("manual execution changed its future schedule: %v, want %v", job.NextRunAt, initialJob.NextRunAt)
+		}
+
+		return !time.Now().Before(stableUntil)
+	})
+
+	unchanged, err := h.remoteDockerClient().ContainerInspect(h.ctx, initialJob.Name, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatalf("inspect source after manual-first execution: %v", err)
+	}
+
+	if unchanged.Container.ID != source.Container.ID || !reflect.DeepEqual(unchanged.Container.State, source.Container.State) {
+		t.Fatalf("manual one-off changed created source: before %#v, after %#v", source.Container.State, unchanged.Container.State)
+	}
+}
+
 func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 	requireStandaloneSuite(t)
 	t.Parallel()
@@ -118,49 +236,7 @@ func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 		t.Fatalf("job status before one-off execution = %q, want exited (7)", got)
 	}
 
-	app, err := remoteDocker.ContainerInspect(h.ctx, appID, client.ContainerInspectOptions{})
-	if err != nil {
-		t.Fatalf("inspect job dependency: %v", err)
-	}
-
-	var gateVolume string
-
-	for _, mount := range app.Container.Mounts {
-		if mount.Destination == "/state" && mount.Name != "" {
-			gateVolume = mount.Name
-			break
-		}
-	}
-
-	if gateVolume == "" || app.Container.Config == nil {
-		t.Fatal("job dependency has no shared gate volume or image configuration")
-	}
-
-	// The dependency is stopped during each run, so gate commands need their own container.
-	setGate := func(command string) error {
-		ctx, cancel := context.WithTimeout(h.ctx, 30*time.Second)
-		defer cancel()
-
-		exitCode, output, execErr := h.remoteDaemon.Exec(ctx, []string{
-			"docker", "run", "--rm", "--network=none", "--pull=never",
-			"--mount", "type=volume,src=" + gateVolume + ",dst=/state",
-			app.Container.Config.Image, "sh", "-c", command,
-		})
-		if execErr != nil {
-			return fmt.Errorf("run gate command: %w", execErr)
-		}
-
-		body, readErr := io.ReadAll(output)
-		if readErr != nil {
-			return fmt.Errorf("read gate command output: %w", readErr)
-		}
-
-		if exitCode != 0 {
-			return fmt.Errorf("gate command exited with code %d: %s", exitCode, body)
-		}
-
-		return nil
-	}
+	setGate := scheduledOneOffCompletionGate(t, h, appID)
 
 	t.Cleanup(func() {
 		if err := setGate("touch /state/complete"); err != nil {
@@ -281,6 +357,54 @@ func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 	assertScheduledOneOffRunDetail(t, h, job, accepted.JobID)
 
 	assertSourceUnchanged()
+}
+
+func scheduledOneOffCompletionGate(t *testing.T, h *Harness, appID string) func(string) error {
+	t.Helper()
+
+	app, err := h.remoteDockerClient().ContainerInspect(h.ctx, appID, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatalf("inspect job dependency: %v", err)
+	}
+
+	var gateVolume string
+
+	for _, mount := range app.Container.Mounts {
+		if mount.Destination == "/state" && mount.Name != "" {
+			gateVolume = mount.Name
+			break
+		}
+	}
+
+	if gateVolume == "" || app.Container.Config == nil {
+		t.Fatal("job dependency has no shared gate volume or image configuration")
+	}
+
+	// The dependency is stopped during each run, so gate commands need their own container.
+	return func(command string) error {
+		ctx, cancel := context.WithTimeout(h.ctx, 30*time.Second)
+		defer cancel()
+
+		exitCode, output, execErr := h.remoteDaemon.Exec(ctx, []string{
+			"docker", "run", "--rm", "--network=none", "--pull=never",
+			"--mount", "type=volume,src=" + gateVolume + ",dst=/state",
+			app.Container.Config.Image, "sh", "-c", command,
+		})
+		if execErr != nil {
+			return fmt.Errorf("run gate command: %w", execErr)
+		}
+
+		body, readErr := io.ReadAll(output)
+		if readErr != nil {
+			return fmt.Errorf("read gate command output: %w", readErr)
+		}
+
+		if exitCode != 0 {
+			return fmt.Errorf("gate command exited with code %d: %s", exitCode, body)
+		}
+
+		return nil
+	}
 }
 
 func scheduledOneOffCalendarSchedule(now time.Time) (string, time.Time) {

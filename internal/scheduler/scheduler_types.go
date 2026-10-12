@@ -9,7 +9,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/go-co-op/gocron/v2"
 
-	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -88,8 +87,6 @@ type scheduler struct {
 	// restored when the last holder releases it.
 	stopHoldsMu sync.Mutex
 	stopHolds   map[stopHoldKey]*stopHoldState
-	recoveryMu  sync.Mutex
-	recovering  set.Set[string]
 }
 
 // ServiceStopHoldTracker suppresses reconciliation while scheduled jobs
@@ -169,6 +166,5 @@ func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *sl
 		composeOptions:  composeOptions,
 		states:          map[string]scheduledJobState{},
 		stopHolds:       map[stopHoldKey]*stopHoldState{},
-		recovering:      set.New[string](),
 	}
 }

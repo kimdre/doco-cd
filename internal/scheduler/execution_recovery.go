@@ -94,27 +94,51 @@ func (s *scheduler) recoverExecutions(ctx context.Context) {
 	}
 
 	for _, record := range records {
-		job := record.Job.scheduled()
-		if job.key == "" {
-			continue
-		}
-
-		if !s.claimRecovery(record.RunID) {
-			continue
-		}
-
-		s.seedRecoveredStopHolds(&record, job)
-		s.setRunInProgress(job.key, true)
-
-		s.runs.Go(func() {
-			defer s.setRunInProgress(job.key, false)
-			defer s.releaseRecovery(record.RunID)
-
-			s.recoverExecution(ctx, &record, job)
-		})
+		s.recoverExecutionCandidate(ctx, record)
 	}
 }
 
+// recoverExecutionCandidate attempts to claim ownership of a scheduled execution
+// record and continue monitoring it until completion. If the record is no longer
+// valid or the run has already completed, it is removed from the database.
+func (s *scheduler) recoverExecutionCandidate(ctx context.Context, candidate executionRecord) {
+	if !s.claimRecovery(candidate.RunID) {
+		return
+	}
+
+	// A live owner can finish between the sweep's snapshot and this claim.
+	record, err := s.executions.get(candidate.RunID)
+	if err != nil || record == nil {
+		s.releaseRecovery(candidate.RunID)
+
+		if err != nil {
+			s.log.Error("failed to reload scheduled execution recovery record", slog.String("run_id", candidate.RunID), logger.ErrAttr(err))
+		}
+
+		return
+	}
+
+	job := record.Job.scheduled()
+	if record.Context != s.contextName || record.Mode != s.mode || job.key == "" {
+		s.releaseRecovery(candidate.RunID)
+		s.log.Warn("ignoring scheduled execution recovery record with invalid worker identity", slog.String("run_id", record.RunID))
+
+		return
+	}
+
+	s.seedRecoveredStopHolds(record, job)
+	s.setRunInProgress(job.key, true)
+
+	s.runs.Go(func() {
+		defer s.setRunInProgress(job.key, false)
+		defer s.releaseRecovery(record.RunID)
+
+		s.recoverExecution(ctx, record, job)
+	})
+}
+
+// recoverExecution continues monitoring a claimed scheduled execution record until completion.
+// It restores any stopped services, waits for the recovered artifact, and updates metrics.
 func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecord, job scheduledJob) {
 	stackName := getJobStackName(job)
 	cfg := record.Finalization.scheduleConfig()
@@ -254,23 +278,11 @@ func (s *scheduler) recoveredExecutionStartedAt(ctx context.Context, record *exe
 // claimRecovery acquires exclusive local ownership of a run to prevent
 // duplicate adoption. Returns true if claimed, false if already held.
 func (s *scheduler) claimRecovery(runID string) bool {
-	s.recoveryMu.Lock()
-	defer s.recoveryMu.Unlock()
-
-	if s.recovering.Contains(runID) {
-		return false
-	}
-
-	s.recovering.Add(runID)
-
-	return true
+	return s.runtime.claimRecovery(runID)
 }
 
 func (s *scheduler) releaseRecovery(runID string) {
-	s.recoveryMu.Lock()
-	defer s.recoveryMu.Unlock()
-
-	delete(s.recovering, runID)
+	s.runtime.releaseRecovery(runID)
 }
 
 func (s *scheduler) waitForRecoveredArtifact(ctx context.Context, record *executionRecord) error {

@@ -335,4 +335,6 @@ When DST changes occur in the configured [timezone](#timezone), scheduled jobs w
 
 ## Manual job execution
 
-Scheduled jobs can also be triggered manually outside their schedule by using the [`Run Job` API endpoint](../Endpoints/REST-API.md#scheduled-jobs) or the [MCP server `trigger_scheduled_job` tool](../Endpoints/MCP-Server.md#available-tools)
+Scheduled jobs can also be triggered manually outside their schedule by using the [`Run Job` API endpoint](../Endpoints/REST-API.md#scheduled-jobs) or the [MCP server `trigger_scheduled_job` tool](../Endpoints/MCP-Server.md#available-tools).
+
+Manual execution does not consume or reschedule the next scheduled occurrence. For Compose `one_off` jobs, the job API reports the latest temporary execution's result even when the source container has never started and remains `created`.
