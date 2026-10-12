@@ -266,8 +266,8 @@ later sweeps run at that interval. Successful evictions are logged and counted b
 
 ### Removed artifacts
 
-If an artifact a deployed service uses was removed (e.g. manually or by `destroy.remove_dir` in an older version of doco-cd,
-see [#1962](https://github.com/kimdre/doco-cd/issues/1962)), the service is recreated on the next deployment of its stack,
+If an artifact a deployed service uses was removed manually or by an older version of doco-cd
+(see [#1962](https://github.com/kimdre/doco-cd/issues/1962)), the service is recreated on the next deployment of its stack,
 even if nothing changed. Its containers would otherwise keep using the removed directory, which appears empty to them.
 Publications are recorded in `<revision>.published-at` before replacing the directory, so recovery also works on
 file systems without creation times and survives failed deployments and doco-cd restarts. Deployment timestamps

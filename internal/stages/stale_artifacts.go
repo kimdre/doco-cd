@@ -27,8 +27,8 @@ type staleArtifact struct {
 //
 // A container keeps a removed directory mounted, so it keeps running with an empty directory, even after the
 // artifact was published again under the same path. Artifacts are immutable and only published once, so an artifact
-// created after the deployment that created a service's containers was removed in between (for example by
-// destroy.remove_dir before it was deprecated, see https://github.com/kimdre/doco-cd/issues/1962). Such services
+// created after the deployment that created a service's containers was removed in between (for example by an older
+// destroy implementation; see https://github.com/kimdre/doco-cd/issues/1962). Such services
 // must be recreated even if nothing changed. Republication is recorded durably by the store, independently of
 // filesystem birth-time support. Birth times also detect older, unrecorded replacements where supported.
 func staleArtifactServices(
