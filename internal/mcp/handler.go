@@ -91,20 +91,17 @@ func newHandler(dependencies Dependencies) *Handler {
 		apiSecret:            dependencies.APISecret,
 		trustedProxyHeader:   strings.TrimSpace(dependencies.TrustedProxyHeader),
 		trustedProxyNetworks: append([]netip.Prefix(nil), dependencies.TrustedProxyNetworks...),
-		log:                  dependencies.Logger,
-		dockerCli:            dependencies.DockerCLI,
-		contexts:             dependencies.Contexts,
-		controlPlaneRuns:     dependencies.Runs,
-		syncWindows:          dependencies.SyncWindows,
+		log: &logger.Logger{
+			Logger: dependencies.Logger.With(slog.String("component", "mcp")),
+			Level:  dependencies.Logger.Level,
+		},
+		dockerCli:        dependencies.DockerCLI,
+		contexts:         dependencies.Contexts,
+		controlPlaneRuns: dependencies.Runs,
+		syncWindows:      dependencies.SyncWindows,
 	}
 
-	// Suppress the verbose MCP server connection logs.
-	mcpLogLevel := h.log.Level
-	if h.log.Level == slog.LevelInfo {
-		mcpLogLevel = slog.LevelWarn
-	}
-
-	mcpLogger := h.log.WithLevel(mcpLogLevel)
+	mcpLogger := slog.New(&sdkLogHandler{next: h.log.Handler()})
 	server := sdkmcp.NewServer(
 		&sdkmcp.Implementation{Name: "doco-cd", Version: dependencies.Version},
 		&sdkmcp.ServerOptions{Logger: mcpLogger},
