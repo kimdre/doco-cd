@@ -3,10 +3,16 @@
 package e2e
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"maps"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 // registryHost strips the repository:tag portion off an OCI reference,
@@ -113,6 +119,79 @@ func TestOCISourceDeployment(t *testing.T) {
 	h.WaitForLogAfter(`"msg":"destroying stack"`, mark, 2*time.Minute)
 	h.WaitForContainerRemoval(stack, service, 2*time.Minute)
 	h.WaitForContainerRemoval(stack, "included", 2*time.Minute)
+}
+
+func TestOCISourceDeploymentConfigBaseDir(t *testing.T) {
+	t.Parallel()
+
+	for _, trigger := range []string{"poll", "webhook"} {
+		t.Run(trigger, func(t *testing.T) {
+			t.Parallel()
+
+			const service = "app"
+
+			stack := "e2e-oci-config-base-" + trigger
+			h := NewHarness(t, "oci-source")
+			h.TrackStack(stack)
+			h.SetEnv("DEPLOY_CONFIG_BASE_DIR", "deploy/")
+
+			ref := h.PushOCIArtifact("config-base-"+trigger, map[string]string{
+				"deploy/.doco-cd.yaml": "name: " + stack + "\nworking_dir: .\n",
+				"compose.yaml":         "services:\n  app:\n    image: alpine:3.22\n    command: [\"sleep\", \"600\"]\n",
+			})
+
+			webhookSecret := t.Name()
+
+			if trigger == "poll" {
+				h.SetPollDocument("- source: oci\n  url: " + ref + "\n  interval: 10s\n")
+			} else {
+				h.SetPollDocument("[]\n")
+				// EnableAPI publishes the HTTP port that the webhook request uses.
+				h.EnableAPI("e2e-oci-api-secret")
+				h.SetEnv("WEBHOOK_SECRET", webhookSecret)
+			}
+
+			h.Start()
+
+			if trigger == "webhook" {
+				endpoint, err := h.daemon.Endpoint(h.ctx, "http")
+				if err != nil {
+					t.Fatalf("get webhook endpoint: %v", err)
+				}
+
+				payload := fmt.Appendf(nil, `{"source":"oci","artifact":%q}`, ref)
+
+				req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, endpoint+"/v1/webhook", bytes.NewReader(payload))
+				if err != nil {
+					t.Fatalf("create webhook request: %v", err)
+				}
+
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set(webhook.ScmProviderSecurityHeaders[webhook.OCIRegistry], webhook.GenerateHMAC(payload, webhookSecret))
+
+				httpClient := &http.Client{Timeout: 15 * time.Second}
+
+				response, err := httpClient.Do(req)
+				if err != nil {
+					t.Fatalf("send OCI webhook: %v", err)
+				}
+				defer response.Body.Close()
+
+				body, err := io.ReadAll(response.Body)
+				if err != nil {
+					t.Fatalf("read webhook response: %v", err)
+				}
+
+				if response.StatusCode != http.StatusAccepted {
+					t.Fatalf("webhook status = %d, want %d; body = %s", response.StatusCode, http.StatusAccepted, body)
+				}
+			}
+
+			h.WaitFor(3*time.Minute, "OCI deployment with a nested config and root Compose file", func() bool {
+				return h.ContainerID(stack, service) != ""
+			})
+		})
+	}
 }
 
 // TestOCIComposeInclude checks a git-sourced stack whose compose file pulls in

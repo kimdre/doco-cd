@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestValidateDocoLayoutV1_AcceptsVersionInConfig(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	if err := validateDocoLayoutV1(dir, ""); err != nil {
+	if err := ValidateDocoLayoutV1(dir, "", ""); err != nil {
 		t.Fatalf("validate layout: %v", err)
 	}
 }
@@ -34,7 +35,7 @@ func TestValidateDocoLayoutV1_AcceptsMissingVersion_DefaultsToV1(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	if err := validateDocoLayoutV1(dir, ""); err != nil {
+	if err := ValidateDocoLayoutV1(dir, "", ""); err != nil {
 		t.Fatalf("validate layout: %v", err)
 	}
 }
@@ -47,7 +48,7 @@ func TestValidateDocoLayoutV1_RejectsUnsupportedVersion(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	err := validateDocoLayoutV1(dir, "")
+	err := ValidateDocoLayoutV1(dir, "", "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -61,7 +62,7 @@ func TestValidateDocoLayoutV1_AcceptsCustomTargetConfig(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	if err := validateDocoLayoutV1(dir, "production"); err != nil {
+	if err := ValidateDocoLayoutV1(dir, "", "production"); err != nil {
 		t.Fatalf("validate layout: %v", err)
 	}
 }
@@ -75,7 +76,7 @@ func TestValidateDocoLayoutV1_CustomTargetDoesNotFallBackToDefault(t *testing.T)
 		t.Fatalf("write config: %v", err)
 	}
 
-	err := validateDocoLayoutV1(dir, "production")
+	err := ValidateDocoLayoutV1(dir, "", "production")
 	if err == nil {
 		t.Fatal("expected error when only default config exists and a custom target is set, got nil")
 	}
@@ -86,9 +87,104 @@ func TestValidateDocoLayoutV1_CustomTargetMissingBothFiles(t *testing.T) {
 
 	dir := t.TempDir()
 
-	err := validateDocoLayoutV1(dir, "staging")
+	err := ValidateDocoLayoutV1(dir, "", "staging")
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestValidateDocoLayoutV1_ConfigBaseDir(t *testing.T) {
+	t.Parallel()
+
+	const validConfig = "version: doco.v1\nname: app\n"
+
+	tests := []struct {
+		name         string
+		baseDir      string
+		target       string
+		files        map[string]string
+		wantErr      error
+		wantLocation string
+	}{
+		{name: "empty", files: map[string]string{".doco-cd.yaml": validConfig}},
+		{name: "dot", baseDir: ".", files: map[string]string{".doco-cd.yml": validConfig}},
+		{name: "slash", baseDir: "/", files: map[string]string{".doco-cd.yaml": validConfig}},
+		{name: "directory", baseDir: "deploy", files: map[string]string{"deploy/.doco-cd.yaml": validConfig}},
+		{name: "trailing slash", baseDir: "deploy/", files: map[string]string{"deploy/.doco-cd.yml": validConfig}},
+		{name: "nested", baseDir: "config/deploy", files: map[string]string{"config/deploy/.doco-cd.yaml": validConfig}},
+		{name: "target yaml", baseDir: "deploy", target: "production", files: map[string]string{"deploy/.doco-cd.production.yaml": validConfig}},
+		{name: "target yml", baseDir: "deploy", target: "production", files: map[string]string{"deploy/.doco-cd.production.yml": validConfig}},
+		{
+			name: "no root fallback", baseDir: "deploy/",
+			files:   map[string]string{".doco-cd.yaml": validConfig},
+			wantErr: os.ErrNotExist, wantLocation: `configuration directory "deploy/"`,
+		},
+		{
+			name: "no target fallback", baseDir: "deploy", target: "production",
+			files:   map[string]string{"deploy/.doco-cd.yaml": validConfig, ".doco-cd.production.yaml": validConfig},
+			wantErr: os.ErrNotExist,
+		},
+		{
+			name: "ignores unselected version", baseDir: "deploy",
+			files: map[string]string{".doco-cd.yaml": "version: doco.v2\n", "deploy/.doco-cd.yaml": validConfig},
+		},
+		{
+			name: "rejects selected version", baseDir: "deploy",
+			files:   map[string]string{".doco-cd.yaml": validConfig, "deploy/.doco-cd.yaml": "version: doco.v2\n"},
+			wantErr: ErrInvalidArtifactLayout, wantLocation: "layout=doco.v1 in deploy/.doco-cd.yaml",
+		},
+		{
+			name: "yaml takes precedence", baseDir: "deploy",
+			files:   map[string]string{"deploy/.doco-cd.yaml": "version: doco.v2\n", "deploy/.doco-cd.yml": validConfig},
+			wantErr: ErrInvalidArtifactLayout, wantLocation: "in deploy/.doco-cd.yaml",
+		},
+		{
+			name: "malformed yaml", baseDir: "deploy",
+			files:   map[string]string{"deploy/.doco-cd.yaml": "version: [\n"},
+			wantErr: ErrInvalidArtifactLayout, wantLocation: "read layout from deploy/.doco-cd.yaml:",
+		},
+		{
+			name: "directory is a file", baseDir: "deploy",
+			files:   map[string]string{"deploy": validConfig},
+			wantErr: syscall.ENOTDIR, wantLocation: `failed to find configuration file in configuration directory "deploy"`,
+		},
+		{name: "missing", wantErr: os.ErrNotExist, wantLocation: "at artifact root"},
+		{name: "outside artifact", baseDir: "../", wantErr: filesystem.ErrPathTraversal},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			for file, content := range tt.files {
+				configPath := filepath.Join(dir, file)
+				if err := os.MkdirAll(filepath.Dir(configPath), filesystem.PermDir); err != nil {
+					t.Fatal(err)
+				}
+
+				if err := os.WriteFile(configPath, []byte(content), filesystem.PermOwner); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			err := ValidateDocoLayoutV1(dir, tt.baseDir, tt.target)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("validate layout: %v", err)
+				}
+
+				return
+			}
+
+			if !errors.Is(err, ErrInvalidArtifactLayout) || !errors.Is(err, tt.wantErr) {
+				t.Fatalf("validate layout error = %v, want ErrInvalidArtifactLayout and %v", err, tt.wantErr)
+			}
+
+			if tt.wantLocation != "" && !strings.Contains(err.Error(), tt.wantLocation) {
+				t.Fatalf("validate layout error = %v, want location %q", err, tt.wantLocation)
+			}
+		})
 	}
 }
 

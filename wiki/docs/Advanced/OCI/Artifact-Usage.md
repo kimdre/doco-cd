@@ -65,7 +65,16 @@ The **doco.v1** layout (see `version` in [deploy config](../../Deploy-Settings.m
 
 ### Artifact Structure
 
-A doco.v1 artifact must have a root-level deployment configuration file (`.doco-cd.y(a)ml`) in the root (`/`) of the artifact.
+A doco.v1 artifact must have a deployment configuration file (`.doco-cd.y(a)ml`) in the directory selected by
+[`DEPLOY_CONFIG_BASE_DIR`](../../Deploy-Settings.md#app-configuration). The default is the artifact root (`/`).
+This setting applies to both OCI webhooks and polling.
+
+For example, with `#!ini DEPLOY_CONFIG_BASE_DIR=deploy/`, place the configuration in `deploy/.doco-cd.yaml` or
+`deploy/.doco-cd.yml`. No root-level duplicate is needed. Lookup does not fall back to the artifact root.
+When using a custom target, the selected directory must contain `.doco-cd.<target>.y(a)ml` instead.
+
+`working_dir` remains relative to the artifact root, not the configuration directory.
+Compose file paths remain relative to `working_dir`.
 
 The rest of the artifact can contain any files needed for deployment, as with deployments from Git repository (e.g., compose files, app configuration, assets, scripts), see [Deploy Settings](../../Deploy-Settings.md).
 
@@ -95,11 +104,22 @@ The rest of the artifact can contain any files needed for deployment, as with de
               001-init.sql
         ```
 
+    === "Custom Configuration Directory"
+        With `#!ini DEPLOY_CONFIG_BASE_DIR=deploy/` and `#!yaml working_dir: .`:
+
+        ```tree
+        artifact-root/
+          deploy/
+            .doco-cd.yaml      # Main deployment config
+          docker-compose.yml   # Relative to the artifact root
+          (other files as needed)
+        ```
+
 ### Required Files
 
 - `.doco-cd.y(a)ml`: **Required**
 
-    The main [deployment configuration](../../Deploy-Settings.md) file.
+    The main [deployment configuration](../../Deploy-Settings.md) file, placed in [`DEPLOY_CONFIG_BASE_DIR`](../../Deploy-Settings.md#app-configuration).
     
     ```yaml title=".doco-cd.yaml Example"
     name: production

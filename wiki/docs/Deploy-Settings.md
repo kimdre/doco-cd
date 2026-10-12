@@ -18,7 +18,7 @@ Use the following environment variables to configure the behavior of the doco-cd
 
 | Key                             | Type    | Description                                                                                                                                                                                                                                           | Default |
 |---------------------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| `DEPLOY_CONFIG_BASE_DIR`        | string  | Relative Path to the directory containing the deployment configuration files **in all repositories**. **NOTE**: This does not affect/alter the `working_dir` path in the deploy config. It must still be relative to the repository root.             | `/`     |
+| `DEPLOY_CONFIG_BASE_DIR`        | string  | Directory containing deployment configuration files, relative to the root of every Git repository or OCI artifact. Does not change `working_dir`, which remains relative to the source root.                                                          | `/`     |
 | `MAX_CONCURRENT_DEPLOYMENTS`    | number  | Maximum number of concurrent deployments allowed                                                                                                                                                                                                      | `4`     |
 | `MAX_CONCURRENT_PREDEPLOYMENTS` | number  | Maximum number of concurrent pre-deployment operations (initialization and change detection) allowed                                                                                                                                                  | `8`     |
 | `MAX_DEPLOYMENT_LOOP_COUNT`     | number  | When the deployment loop detection should trigger a forced re-deployment on consecutive deployments for the same commit. Set to `0`, to disable the detection logic.                                                                                  | `2`     |
@@ -35,12 +35,16 @@ Doco-CD supports deploying from the following sources:
 
 ## Deployment Configuration File
 
-The deployment configuration file must be placed in the root/base directory of your repository and named one of the following:
+The deployment configuration file must be placed in `DEPLOY_CONFIG_BASE_DIR`, relative to your Git repository or OCI artifact root, and named one of the following:
 
 - `.doco-cd.yaml`
 - `.doco-cd.yml`
 
 When using a custom target (for example `nas`), the file name must match `.doco-cd.<target>.y(a)ml`.
+
+The default base directory is the source root. With `#!ini DEPLOY_CONFIG_BASE_DIR=deploy/`, place the configuration in
+`deploy/.doco-cd.y(a)ml`. Lookup does not fall back to the root. `working_dir` remains relative to the source root,
+and Compose file paths remain relative to `working_dir`.
 
 If you use polling, you can also specify inline deployment configurations in the poll configuration file.
 See [Poll Settings](Poll-Settings.md) and this [example](Poll-Settings.md#inline-deploy-configs) for more information.

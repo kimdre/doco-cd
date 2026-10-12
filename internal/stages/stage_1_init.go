@@ -159,6 +159,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			ArtifactRef:         s.Repository.SourceUrl,
 			BaseDir:             storeBaseDir,
 			CustomTarget:        s.DeployConfig.Internal.ConfigTarget,
+			DeployConfigBaseDir: s.AppConfig.DeployConfigBaseDir,
 			TrustPolicy:         s.AppConfig.OciTrustPolicy,
 			TrustPolicyOverride: override,
 			VerifyMaxWorkers:    s.AppConfig.OciVerifyMaxWorkers,

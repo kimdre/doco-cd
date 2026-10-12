@@ -22,7 +22,9 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/source/store"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -166,6 +168,88 @@ func TestPrepare_OCISuccess(t *testing.T) {
 
 	if got := result.DeployConfigs[0].Internal.ConfigTarget; got != "" {
 		t.Fatalf("expected no custom target, got %q", got)
+	}
+}
+
+func TestPrepare_OCIConfigBaseDir(t *testing.T) {
+	t.Parallel()
+
+	for _, trigger := range []stages.JobTrigger{stages.JobTriggerWebhook, stages.JobTriggerPoll} {
+		t.Run(string(trigger), func(t *testing.T) {
+			t.Parallel()
+
+			tests := []struct {
+				name    string
+				file    string
+				target  string
+				wantErr bool
+				addRoot bool
+			}{
+				{name: "yaml", file: "deploy/.doco-cd.yaml"},
+				{name: "yml", file: "deploy/.doco-cd.yml"},
+				{name: "custom target", file: "deploy/.doco-cd.production.yaml", target: "production"},
+				{name: "both directories", file: "deploy/.doco-cd.yaml", addRoot: true},
+				{name: "root only", file: ".doco-cd.yaml", wantErr: true},
+			}
+
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
+
+					files := map[string]string{
+						tt.file:             testDeployConfigYAML,
+						"test.compose.yaml": "services: {}\n",
+					}
+					if tt.addRoot {
+						files[".doco-cd.yaml"] = "version: doco.v2\nname: wrong-root\n"
+					}
+
+					ref := newTestOCIRegistryRef(t, "latest")
+					pushOCIFixture(t, ref, files)
+					p := newTestPreparer(t, &app.Config{DeployConfigBaseDir: "deploy/"})
+
+					result, err := p.Prepare(t.Context(), Request{
+						Logger:         logger.New(logger.LevelCritical).Logger,
+						JobTrigger:     trigger,
+						SourceType:     config.SourceTypeOCI,
+						SourceRef:      ref.Name(),
+						CustomTarget:   tt.target,
+						PollConfig:     poll.Config{CustomTarget: tt.target},
+						DataMountPoint: testMountPoint(t),
+					})
+					if tt.wantErr {
+						if !errors.Is(err, oci.ErrInvalidArtifactLayout) {
+							t.Fatalf("Prepare() error = %v, want ErrInvalidArtifactLayout", err)
+						}
+
+						return
+					}
+
+					if err != nil {
+						t.Fatalf("Prepare() error = %v", err)
+					}
+
+					defer result.Release()
+
+					if len(result.DeployConfigs) != 1 {
+						t.Fatalf("DeployConfigs count = %d, want 1", len(result.DeployConfigs))
+					}
+
+					cfg := result.DeployConfigs[0]
+					if want := filepath.Join(result.PathInternal, tt.file); cfg.Internal.File != want {
+						t.Fatalf("config file = %q, want %q", cfg.Internal.File, want)
+					}
+
+					if cfg.WorkingDirectory != "." || cfg.ComposeFiles[0] != "test.compose.yaml" {
+						t.Fatalf("working_dir or Compose path was relocated: %q, %v", cfg.WorkingDirectory, cfg.ComposeFiles)
+					}
+
+					if cfg.Internal.ConfigTarget != tt.target {
+						t.Fatalf("config target = %q, want %q", cfg.Internal.ConfigTarget, tt.target)
+					}
+				})
+			}
+		})
 	}
 }
 
