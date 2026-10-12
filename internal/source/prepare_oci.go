@@ -29,6 +29,7 @@ func (p *Preparer) prepareOCI(ctx context.Context, req Request, storeBaseDir, re
 		ArtifactRef:         req.SourceRef,
 		BaseDir:             storeBaseDir,
 		CustomTarget:        req.CustomTarget,
+		DeployConfigBaseDir: p.appConfig.DeployConfigBaseDir,
 		TrustPolicy:         p.appConfig.OciTrustPolicy,
 		TrustPolicyOverride: config.OciTrustPolicyOverride{},
 		VerifyMaxWorkers:    p.appConfig.OciVerifyMaxWorkers,

@@ -27,6 +27,8 @@ type OCIStoreOptions struct {
 	// CustomTarget selects a non-default ".doco-cd.<target>.y(a)ml" config
 	// inside the artifact, matching the deployment's CustomTarget setting.
 	CustomTarget string
+	// DeployConfigBaseDir is the configuration directory relative to the artifact root.
+	DeployConfigBaseDir string
 
 	TrustPolicy         config.OciTrustPolicy
 	TrustPolicyOverride config.OciTrustPolicyOverride
@@ -87,6 +89,12 @@ func (s *OCIStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 	if existing, ok, err := s.Lookup(revision); err != nil {
 		return Artifact{}, err
 	} else if ok {
+		// The artifact can be cached for another configuration selection. A fresh pull validates the
+		// selection during extraction, so a concurrent publish loser does not need this check.
+		if err := oci.ValidateDocoLayoutV1(existing.Path, s.opts.DeployConfigBaseDir, s.opts.CustomTarget); err != nil {
+			return Artifact{}, err
+		}
+
 		return existing, nil
 	}
 
@@ -96,7 +104,7 @@ func (s *OCIStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 		pinnedRef := oci.RepositoryNameFromArtifact(s.opts.ArtifactRef) + "@" + string(revision)
 		if _, err = oci.PullAndExtract(ctx,
 			pinnedRef, string(revision), config.OciArtifactLayoutV1,
-			dir, s.opts.CustomTarget); err != nil {
+			dir, s.opts.DeployConfigBaseDir, s.opts.CustomTarget); err != nil {
 			return err
 		}
 

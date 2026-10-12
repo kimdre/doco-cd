@@ -3,6 +3,7 @@ package store_test
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 
+	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
@@ -235,6 +237,127 @@ func TestOCIStore_PublishIsIdempotentAndDoesNotRepull(t *testing.T) {
 
 	if second.Path != first.Path {
 		t.Fatalf("Publish() paths differ across calls: %q vs %q", second.Path, first.Path)
+	}
+}
+
+func TestOCIStore_PublishValidatesCachedConfigSelection(t *testing.T) {
+	t.Parallel()
+
+	ref := newTestRegistryRef(t, "latest")
+	digest := pushTestArtifact(t, ref, map[string]string{
+		".doco-cd.yaml":                  "version: doco.v1\n",
+		"deploy/.doco-cd.yaml":           "version: doco.v1\n",
+		"deploy/.doco-cd.production.yml": "version: doco.v1\n",
+		"unsupported/.doco-cd.yaml":      "version: doco.v2\n",
+		"malformed/.doco-cd.yaml":        "version: [\n",
+	})
+	baseDir := t.TempDir()
+
+	s, err := store.NewOCIStore(store.OCIStoreOptions{ArtifactRef: ref.Name(), BaseDir: baseDir, DeployConfigBaseDir: "deploy/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := s.Publish(t.Context(), store.Revision(digest))
+	if err != nil {
+		t.Fatalf("first Publish() error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		dir     string
+		target  string
+		wantErr bool
+	}{
+		{name: "root"},
+		{name: "directory", dir: "deploy/"},
+		{name: "target", dir: "deploy", target: "production"},
+		{name: "missing directory", dir: "missing", wantErr: true},
+		{name: "missing target", dir: "deploy", target: "staging", wantErr: true},
+		{name: "unsupported version", dir: "unsupported", wantErr: true},
+		{name: "malformed yaml", dir: "malformed", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cached, err := store.NewOCIStore(store.OCIStoreOptions{
+				ArtifactRef:         strings.Replace(ref.Name(), "repo", "does-not-exist", 1),
+				BaseDir:             baseDir,
+				DeployConfigBaseDir: tt.dir,
+				CustomTarget:        tt.target,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			artifact, err := cached.Publish(t.Context(), store.Revision(digest))
+			if tt.wantErr {
+				if !errors.Is(err, oci.ErrInvalidArtifactLayout) {
+					t.Fatalf("cached Publish() error = %v, want ErrInvalidArtifactLayout", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("cached Publish() error = %v", err)
+				}
+
+				if artifact.Path != first.Path {
+					t.Fatalf("cached Publish() path = %q, want %q", artifact.Path, first.Path)
+				}
+			}
+
+			if _, ok, err := cached.Lookup(store.Revision(digest)); err != nil || !ok {
+				t.Fatalf("Lookup() after Publish = (ok=%v, err=%v), want cached artifact", ok, err)
+			}
+		})
+	}
+}
+
+func TestOCIStore_PublishConcurrentConfigSelections(t *testing.T) {
+	t.Parallel()
+
+	ref := newTestRegistryRef(t, "latest")
+	digest := pushTestArtifact(t, ref, map[string]string{
+		".doco-cd.yaml":                  "version: doco.v1\n",
+		"deploy/.doco-cd.production.yml": "version: doco.v1\n",
+	})
+	baseDir := t.TempDir()
+
+	type outcome struct {
+		artifact store.Artifact
+		err      error
+	}
+
+	results := make(chan outcome, 2)
+	start := make(chan struct{})
+
+	for _, opts := range []store.OCIStoreOptions{
+		{ArtifactRef: ref.Name(), BaseDir: baseDir},
+		{ArtifactRef: ref.Name(), BaseDir: baseDir, DeployConfigBaseDir: "deploy/", CustomTarget: "production"},
+	} {
+		s, err := store.NewOCIStore(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		go func() {
+			<-start
+
+			artifact, err := s.Publish(t.Context(), store.Revision(digest))
+			results <- outcome{artifact: artifact, err: err}
+		}()
+	}
+
+	close(start)
+
+	first, second := <-results, <-results
+	if first.err != nil || second.err != nil {
+		t.Fatalf("concurrent Publish() errors = %v, %v", first.err, second.err)
+	}
+
+	if first.artifact.Path != second.artifact.Path {
+		t.Fatalf("concurrent Publish() paths = %q, %q, want identical", first.artifact.Path, second.artifact.Path)
 	}
 }
 

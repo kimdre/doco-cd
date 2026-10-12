@@ -89,7 +89,7 @@ func ResolveDigest(ctx context.Context, artifactRef, expectedDigest string) (str
 	return digest, nil
 }
 
-func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, destination, customTarget string) (PullResult, error) {
+func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, destination, configBaseDir, customTarget string) (PullResult, error) {
 	if strings.TrimSpace(layout) != config.OciArtifactLayoutV1 {
 		return PullResult{}, fmt.Errorf("%w: %s", ErrUnsupportedLayout, layout)
 	}
@@ -151,7 +151,7 @@ func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, de
 		}
 	}
 
-	if err := validateDocoLayoutV1(tmpDir, customTarget); err != nil {
+	if err := ValidateDocoLayoutV1(tmpDir, configBaseDir, customTarget); err != nil {
 		return PullResult{}, err
 	}
 
@@ -292,23 +292,46 @@ func extractTarStream(destination string, reader io.Reader, budget *extractionBu
 	}
 }
 
-func validateDocoLayoutV1(destination, customTarget string) error {
-	configFile, err := findArtifactConfigFile(destination, customTarget)
+// ValidateDocoLayoutV1 checks the selected deployment configuration inside an artifact.
+// configBaseDir is relative to destination. An empty value or "/" selects the artifact root.
+// The lookup does not fall back to the artifact root, and a directory outside destination is rejected.
+func ValidateDocoLayoutV1(destination, configBaseDir, customTarget string) error {
+	configDir := filepath.Join(destination, configBaseDir)
+	if !filesystem.InBasePath(destination, configDir) {
+		return fmt.Errorf("%w: configuration directory %q: %w", ErrInvalidArtifactLayout, configBaseDir, filesystem.ErrPathTraversal)
+	}
+
+	configFile, err := findArtifactConfigFile(configDir, customTarget)
 	if err != nil {
-		if customTarget != "" {
-			return fmt.Errorf("%w: expected .doco-cd.%s.y(a)ml or .doco-cd.y(a)ml at artifact root", ErrInvalidArtifactLayout, customTarget)
+		location := "at artifact root"
+		if filepath.Clean(configDir) != filepath.Clean(destination) {
+			location = fmt.Sprintf("in configuration directory %q", configBaseDir)
 		}
 
-		return fmt.Errorf("%w: expected .doco-cd.yml or .doco-cd.yaml at artifact root", ErrInvalidArtifactLayout)
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("%w: failed to find configuration file %s: %w", ErrInvalidArtifactLayout, location, err)
+		}
+
+		if customTarget != "" {
+			return fmt.Errorf("%w: expected .doco-cd.%s.y(a)ml %s: %w", ErrInvalidArtifactLayout, customTarget, location, err)
+		}
+
+		return fmt.Errorf("%w: expected .doco-cd.yml or .doco-cd.yaml %s: %w", ErrInvalidArtifactLayout, location, err)
+	}
+
+	// Show the artifact-relative path. The extraction directory is temporary.
+	displayFile := filepath.Base(configFile)
+	if rel, relErr := filepath.Rel(destination, configFile); relErr == nil {
+		displayFile = filepath.ToSlash(rel)
 	}
 
 	layoutVersion, err := readLayoutVersionFromConfig(configFile)
 	if err != nil {
-		return fmt.Errorf("%w: failed to read layout from %s", ErrInvalidArtifactLayout, filepath.Base(configFile))
+		return fmt.Errorf("%w: failed to read layout from %s: %w", ErrInvalidArtifactLayout, displayFile, err)
 	}
 
 	if layoutVersion != config.OciArtifactLayoutV1 {
-		return fmt.Errorf("%w: expected layout=%s in %s", ErrInvalidArtifactLayout, config.OciArtifactLayoutV1, filepath.Base(configFile))
+		return fmt.Errorf("%w: expected layout=%s in %s", ErrInvalidArtifactLayout, config.OciArtifactLayoutV1, displayFile)
 	}
 
 	return nil
@@ -330,6 +353,8 @@ func findArtifactConfigFile(destination, customTarget string) (string, error) {
 		cfgPath := filepath.Join(destination, cfg)
 		if _, err := os.Stat(cfgPath); err == nil {
 			return cfgPath, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
 		}
 	}
 
