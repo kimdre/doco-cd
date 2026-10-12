@@ -130,6 +130,120 @@ func TestMCPServerAuthentication(t *testing.T) {
 	}
 }
 
+func TestMCPServerLogging(t *testing.T) {
+	t.Parallel()
+
+	for _, level := range []slog.Level{slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError} {
+		t.Run(level.String(), func(t *testing.T) {
+			t.Parallel()
+
+			var output mcpLogBuffer
+
+			parent := &logger.Logger{
+				Logger: slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: level})).
+					With(slog.String("deployment", "test-deployment")),
+				Level: level,
+			}
+
+			handler := newHandler(Dependencies{
+				Version:        "test",
+				APISecret:      testMCPAPIKey,
+				MaxPayloadSize: 1024,
+				Logger:         parent,
+			})
+			if handler.log.Level != level {
+				t.Fatalf("MCP application logger level = %v, want %v", handler.log.Level, level)
+			}
+
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, testMCPPath,
+				strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
+			request.Header.Set(restapi.KeyHeader, testMCPAPIKey)
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Accept", "application/json, text/event-stream")
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("tools/list status = %d, body = %s", response.Code, response.Body.String())
+			}
+
+			unauthorized := httptest.NewRecorder()
+			handler.ServeHTTP(unauthorized, httptest.NewRequestWithContext(t.Context(), http.MethodPost, testMCPPath, nil))
+
+			if unauthorized.Code != http.StatusUnauthorized {
+				t.Fatalf("unauthorized status = %d, want %d", unauthorized.Code, http.StatusUnauthorized)
+			}
+
+			handler.log.Info("MCP operation")
+			parent.Info("parent operation")
+
+			entries := output.entries(t)
+			messages := make(map[string]int)
+
+			for _, entry := range entries {
+				message, ok := entry["msg"].(string)
+				if !ok {
+					t.Fatalf("log entry has no message: %v", entry)
+				}
+
+				messages[message]++
+
+				if entry["deployment"] != "test-deployment" {
+					t.Errorf("parent logger attributes were not preserved: %v", entry)
+				}
+
+				if message == "parent operation" {
+					if _, exists := entry["component"]; exists {
+						t.Errorf("MCP component changed the parent logger: %v", entry)
+					}
+				} else if entry["component"] != "mcp" {
+					t.Errorf("MCP log has no component: %v", entry)
+				}
+
+				wantLevel := slog.LevelDebug
+
+				switch message {
+				case "MCP operation", "parent operation":
+					wantLevel = slog.LevelInfo
+				case restapi.ErrInvalidApiKey.Error():
+					wantLevel = slog.LevelError
+				}
+
+				if entry["level"] != wantLevel.String() {
+					t.Errorf("%q level = %v, want %v", message, entry["level"], wantLevel)
+				}
+			}
+
+			wantLifecycleCount := 0
+			if level == slog.LevelDebug {
+				wantLifecycleCount = 1
+			}
+
+			for _, message := range []string{"server connecting", "server session connected", "server session disconnected"} {
+				if got := messages[message]; got != wantLifecycleCount {
+					t.Errorf("%q count = %d, want %d", message, got, wantLifecycleCount)
+				}
+			}
+
+			wantOperationCount := 0
+			if level <= slog.LevelInfo {
+				wantOperationCount = 1
+			}
+
+			for _, message := range []string{"MCP operation", "parent operation"} {
+				if got := messages[message]; got != wantOperationCount {
+					t.Errorf("%q count = %d, want %d", message, got, wantOperationCount)
+				}
+			}
+
+			if got := messages[restapi.ErrInvalidApiKey.Error()]; got != 1 {
+				t.Errorf("authentication error count = %d, want one", got)
+			}
+		})
+	}
+}
+
 func TestMCPServerRouteRegistration(t *testing.T) {
 	t.Run("disabled route is absent", func(t *testing.T) {
 		server, enabledEndpoints := newMCPTestServer(t, false, testMCPAPIKey, 1024)
@@ -596,7 +710,13 @@ func TestInstrumentMCPToolLogsHandlerFailure(t *testing.T) {
 				Logger: slog.New(slog.NewTextHandler(&logOutput, nil)),
 				Level:  slog.LevelDebug,
 			}
-			handler := instrumentTool(log, "test_failure", func(context.Context, *sdkmcp.CallToolRequest, struct{}) (*sdkmcp.CallToolResult, struct{}, error) {
+			mcpHandler := newHandler(Dependencies{
+				Version:        "test",
+				APISecret:      testMCPAPIKey,
+				MaxPayloadSize: 1024,
+				Logger:         log,
+			})
+			handler := instrumentTool(mcpHandler.log, "test_failure", func(context.Context, *sdkmcp.CallToolRequest, struct{}) (*sdkmcp.CallToolResult, struct{}, error) {
 				return testCase.result, struct{}{}, testCase.err
 			})
 
@@ -609,6 +729,10 @@ func TestInstrumentMCPToolLogsHandlerFailure(t *testing.T) {
 
 			if count := strings.Count(logged, "MCP tool call failed"); count != 1 {
 				t.Fatalf("expected one failure log entry, got %d in %q", count, logged)
+			}
+
+			if !strings.Contains(logged, "level=ERROR") || !strings.Contains(logged, "component=mcp") {
+				t.Fatalf("expected MCP error level and component, got %q", logged)
 			}
 		})
 	}
