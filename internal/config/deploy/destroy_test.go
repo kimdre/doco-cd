@@ -34,10 +34,6 @@ destroy: true
 		if !configs[0].Destroy.RemoveVolumes || !configs[0].Destroy.RemoveImages {
 			t.Fatalf("expected destroy defaults to stay true, got %+v", configs[0].Destroy)
 		}
-
-		if configs[0].Destroy.RemoveRepoDir {
-			t.Fatalf("expected deprecated destroy.remove_dir to default to false, got %+v", configs[0].Destroy)
-		}
 	})
 
 	t.Run("yaml object still works", func(t *testing.T) {
@@ -51,7 +47,6 @@ destroy:
   enabled: true
   remove_volumes: false
   remove_images: false
-  remove_dir: false
 `)
 		if err != nil {
 			t.Fatal(err)
@@ -66,7 +61,7 @@ destroy:
 			t.Fatal("expected destroy.enabled to be true")
 		}
 
-		if configs[0].Destroy.RemoveVolumes || configs[0].Destroy.RemoveImages || configs[0].Destroy.RemoveRepoDir {
+		if configs[0].Destroy.RemoveVolumes || configs[0].Destroy.RemoveImages {
 			t.Fatalf("expected destroy object values to be respected, got %+v", configs[0].Destroy)
 		}
 	})
@@ -93,7 +88,7 @@ destroy: true
 			t.Fatal("expected destroy.enabled to be true")
 		}
 
-		if configs[0].Destroy.RemoveVolumes || configs[0].Destroy.RemoveImages || configs[0].Destroy.RemoveRepoDir {
+		if configs[0].Destroy.RemoveVolumes || configs[0].Destroy.RemoveImages {
 			t.Fatalf("expected no-default decode to leave destroy option flags unset, got %+v", configs[0].Destroy)
 		}
 	})
@@ -112,10 +107,6 @@ destroy: true
 
 		if !cfg.Destroy.RemoveVolumes || !cfg.Destroy.RemoveImages {
 			t.Fatalf("expected destroy defaults to stay true, got %+v", cfg.Destroy)
-		}
-
-		if cfg.Destroy.RemoveRepoDir {
-			t.Fatalf("expected deprecated destroy.remove_dir to default to false, got %+v", cfg.Destroy)
 		}
 	})
 }

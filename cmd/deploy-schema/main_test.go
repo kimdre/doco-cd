@@ -59,8 +59,8 @@ func TestGeneratedSchema(t *testing.T) {
 
 	checkFields(t, &schema, reflect.TypeFor[deploy.Config](), reflect.ValueOf(defaultConfig))
 
-	if !schema.Properties["destroy"].Properties["remove_dir"].Deprecated {
-		t.Error("destroy.remove_dir must be marked deprecated")
+	if _, exists := schema.Properties["destroy"].Properties["remove_dir"]; exists {
+		t.Error("removed destroy.remove_dir must not appear in the generated schema")
 	}
 
 	durationFields := []*jsonschema.Schema{
@@ -196,7 +196,7 @@ func TestSchemaAuthoring(t *testing.T) {
 		{"auto-discovery without name", "auto_discovery: true", true},
 		{"auto-discovery options", "auto_discovery: {enabled: true, depth: 2, delete: true, remove_images: false, remove_volumes: false}", true},
 		{"destroy shorthand", "name: app\ndestroy: true", true},
-		{"destroy options", "destroy: {enabled: true, remove_volumes: false, remove_images: false, remove_dir: true}", true},
+		{"destroy options", "destroy: {enabled: true, remove_volumes: false, remove_images: false}", true},
 		{"reconciliation shorthand", "reconciliation: false", true},
 		{"reconciliation options", "reconciliation: {enabled: true, events: [unhealthy, die, remove, ' DELETE '], restart_timeout: 10, restart_signal: SIGTERM, restart_limit: 0, restart_window: 0}", true},
 		{"duration settings", "name: app\ntimeout: 3m\nreconciliation: {restart_timeout: 15s, restart_window: 1m30s}", true},
@@ -219,6 +219,7 @@ func TestSchemaAuthoring(t *testing.T) {
 		{"unknown deployment option", "name: app\nworkng_dir: deploy", false},
 		{"internal field", "name: app\nInternal: {}", false},
 		{"unknown nested option", "build: {no_cach: true}", false},
+		{"removed destroy option", "destroy: {remove_dir: true}", false},
 		{"invalid shorthand", "destroy: []", false},
 		{"invalid boolean", "force_image_pull: 1", false},
 		{"invalid source", "source: hg", false},

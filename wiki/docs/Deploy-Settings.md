@@ -498,7 +498,6 @@ hostless names alone are ambiguous. Missing, conflicting, or ambiguous ownership
 | `enabled`        | boolean | Enable destructive removal of the deployment and its resources.                                                                                                                                                                                                                                            | `false`       |
 | `remove_volumes` | boolean | Remove all volumes used by the deployment (in docker swarm mode only the volumes on the node doco-cd is connected to)                                                                                                                                                                                       | `true`        |
 | `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                                                                                                                                                    | `true`        |
-| `remove_dir`     | boolean | **Deprecated** and ignored. All stacks deployed from a repository share its source directory in the data directory, so destroying a stack keeps it. [Artifact garbage collection](Reference/Artifact-Storage.md#garbage-collection) only removes unreferenced immutable artifacts; mirrors and mutable `live/` data are not removed by the sweeper. | `false`       |
 
 !!! example
 
