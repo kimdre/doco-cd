@@ -23,6 +23,7 @@ type runtimeStore struct {
 	runStatuses   map[string]string
 	runningStates map[string]int
 	latestRuns    map[string]latestRun
+	recovering    set.Set[string]
 	clearing      set.Set[string]
 	cond          *sync.Cond
 }
@@ -33,6 +34,7 @@ func newRuntimeStore() *runtimeStore {
 		runStatuses:   map[string]string{},
 		runningStates: map[string]int{},
 		latestRuns:    map[string]latestRun{},
+		recovering:    set.New[string](),
 		clearing:      set.New[string](),
 	}
 	store.cond = sync.NewCond(&store.mu)
@@ -367,6 +369,26 @@ func (s *runtimeStore) endRun(key string) {
 	}
 
 	s.cond.Broadcast()
+}
+
+func (s *runtimeStore) claimRecovery(runID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.recovering.Contains(runID) {
+		return false
+	}
+
+	s.recovering.Add(runID)
+
+	return true
+}
+
+func (s *runtimeStore) releaseRecovery(runID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.recovering, runID)
 }
 
 func (s *runtimeStore) updateRunStatus(job scheduledJob, cfg docker.JobScheduleConfig, runErr error) {

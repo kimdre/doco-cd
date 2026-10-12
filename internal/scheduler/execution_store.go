@@ -176,6 +176,39 @@ func (s *executionStore) remove(runID string) error {
 	return nil
 }
 
+func (s *executionStore) get(runID string) (*executionRecord, error) {
+	if !s.enabled() {
+		return nil, nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, err := os.ReadFile(s.path(runID))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("read execution record %s: %w", runID, err)
+	}
+
+	var record executionRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return nil, fmt.Errorf("decode execution record %s: %w", runID, err)
+	}
+
+	if record.Version != executionRecordVersion {
+		return nil, fmt.Errorf("unsupported execution record version %d for %s", record.Version, runID)
+	}
+
+	if record.RunID != runID {
+		return nil, fmt.Errorf("execution record %s contains run ID %q", runID, record.RunID)
+	}
+
+	return &record, nil
+}
+
 func (s *executionStore) list(contextName string, mode scheduledJobMode) ([]executionRecord, error) {
 	if !s.enabled() {
 		return nil, nil
@@ -202,6 +235,10 @@ func (s *executionStore) list(contextName string, mode scheduledJobMode) ([]exec
 		path := filepath.Join(s.root, entry.Name())
 
 		data, readErr := os.ReadFile(path)
+		if errors.Is(readErr, os.ErrNotExist) {
+			continue
+		}
+
 		if readErr != nil {
 			return nil, fmt.Errorf("read execution record %s: %w", entry.Name(), readErr)
 		}
