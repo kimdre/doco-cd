@@ -69,7 +69,7 @@ A doco.v1 artifact must have a deployment configuration file (`.doco-cd.y(a)ml`)
 [`DEPLOY_CONFIG_BASE_DIR`](../../Deploy-Settings.md#app-configuration). The default is the artifact root (`/`).
 This setting applies to both OCI webhooks and polling.
 
-For example, with `DEPLOY_CONFIG_BASE_DIR=deploy/`, place the configuration in `deploy/.doco-cd.yaml` or
+For example, with `#!ini DEPLOY_CONFIG_BASE_DIR=deploy/`, place the configuration in `deploy/.doco-cd.yaml` or
 `deploy/.doco-cd.yml`. No root-level duplicate is needed. Lookup does not fall back to the artifact root.
 When using a custom target, the selected directory must contain `.doco-cd.<target>.y(a)ml` instead.
 
