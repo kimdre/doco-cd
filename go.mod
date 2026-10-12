@@ -44,7 +44,7 @@ require (
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/openbao/openbao/api/v2 v2.7.0
+	github.com/openbao/openbao/api/v2 v2.7.1
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/client_golang v1.24.1
