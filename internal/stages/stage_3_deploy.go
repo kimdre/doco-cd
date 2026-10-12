@@ -67,6 +67,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		InternalRepoPath: s.Repository.PathInternal,
 		DockerCLI:        s.Docker.Cmd,
 		Payload:          s.Payload,
+		RepositoryName:   s.Repository.Name,
 		SourceURL:        sourceURLForLabels(s.Repository),
 		DeployConfig:     s.DeployConfig,
 		DetectedChanges:  s.DeployState.changedServices,
