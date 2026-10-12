@@ -105,7 +105,7 @@ The rest of the artifact can contain any files needed for deployment, as with de
         ```
 
     === "Custom Configuration Directory"
-        With `DEPLOY_CONFIG_BASE_DIR=deploy/` and `working_dir: .`:
+        With `#!ini DEPLOY_CONFIG_BASE_DIR=deploy/` and `#!yaml working_dir: .`:
 
         ```tree
         artifact-root/
@@ -119,7 +119,7 @@ The rest of the artifact can contain any files needed for deployment, as with de
 
 - `.doco-cd.y(a)ml`: **Required**
 
-    The main [deployment configuration](../../Deploy-Settings.md) file, placed in `DEPLOY_CONFIG_BASE_DIR`.
+    The main [deployment configuration](../../Deploy-Settings.md) file, placed in [`DEPLOY_CONFIG_BASE_DIR`](../../Deploy-Settings.md#app-configuration).
     
     ```yaml title=".doco-cd.yaml Example"
     name: production
