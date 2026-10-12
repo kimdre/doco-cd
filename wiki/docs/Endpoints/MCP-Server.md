@@ -189,7 +189,7 @@ All configs in one request run with bounded concurrency controlled by `MAX_CONCU
 
 ## Logging
 
-MCP SDK, authentication, and tool logs include the JSON field `component: "mcp"`.
+MCP SDK, authentication, and tool logs include the JSON field `#!yaml component: "mcp"`.
 Operation logs also include this field when they use the MCP handler's logger.
 
 Routine MCP SDK messages, including session connections and disconnections, use the `debug` level.
@@ -197,7 +197,7 @@ Set `LOG_LEVEL` to `debug` to see them. These messages are hidden at `info` and 
 Warnings, errors, and application operation logs keep their original levels.
 
 To filter MCP logs in Loki, parse the JSON field:
-`{service_name="doco-cd"} | json | component="mcp"`.
+`#!json {service_name="doco-cd"} | json | component="mcp"`.
 Replace the `service_name` value with your deployment's label value. The `component` field does not need to be an indexed Loki label.
 
 ## Operational Notes
