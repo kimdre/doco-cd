@@ -81,6 +81,7 @@ func TestHandlerCompression(t *testing.T) {
 				}
 
 				vary := rr.Header().Values("Vary")
+
 				var variesByEncoding bool
 
 				for _, value := range vary {
