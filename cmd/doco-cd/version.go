@@ -80,8 +80,23 @@ func getLatestAppReleaseVersionFromURL(releaseApiURL string, httpClient *http.Cl
 	return "", errors.New("no stable release found")
 }
 
-func notificationForNewAppVersion(log *slog.Logger, notifier notification.Sender) {
-	latestVersion, err := getLatestAppReleaseVersion()
+// notificationForNewAppVersion sends a notification if a new version of the application is available.
+func notificationForNewAppVersion(log *slog.Logger, notifier notification.Sender, enabled bool) {
+	notificationForNewAppVersionWithLookup(log, notifier, enabled, getLatestAppReleaseVersion)
+}
+
+// notificationForNewAppVersionWithLookup sends a notification if a new version of the application is available.
+func notificationForNewAppVersionWithLookup(
+	log *slog.Logger,
+	notifier notification.Sender,
+	enabled bool,
+	lookup func() (string, error),
+) {
+	if !enabled {
+		return
+	}
+
+	latestVersion, err := lookup()
 	if err != nil {
 		log.Error("failed to get latest application release version", logger.ErrAttr(err))
 	} else {

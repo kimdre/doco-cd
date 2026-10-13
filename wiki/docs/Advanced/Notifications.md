@@ -12,17 +12,22 @@ For that, specify the required settings in the app `environment` section and add
 
 ## Settings
 
-| Key                        | Type   | Description                                                                                                                                                                                                 | Default value |
-|----------------------------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `APPRISE_API_URL`          | string | The URL of the Apprise API to send notifications to (e.g. `http://apprise:8000/notify`)                                                                                                                     |               |
-| `APPRISE_NOTIFY_URLS`      | string | A comma-separated list of Apprise-URLs to send notifications to the [supported services/platforms](https://appriseit.com/services/) (e.g. `pover://{user_key}@{token},mailto://{user}:{password}@{domain}`) |               |
-| `APPRISE_NOTIFY_URLS_FILE` | string | Path to the file inside the container containing the Apprise-URLs (see `APPRISE_NOTIFY_URLS`). Mutually exclusive with `APPRISE_NOTIFY_URLS`.                                                               |               |
-| `APPRISE_NOTIFY_LEVEL`     | string | The minimum level of notifications to send. Possible values: `info`, `success`, `warning`, `failure`                                                                                                        | `success`     |
-| `APPRISE_NOTIFY_REPEAT_INTERVAL` | duration | How long an unchanged failure notification is suppressed before it is sent again as a reminder (see [Repeated failures](#repeated-failures)). `0` sends every failure.                                        | `1h`          |
-| `APPRISE_NOTIFY_BODY_TEMPLATE`  | string | Optional [Go `text/template`](https://pkg.go.dev/text/template) rendering the notification body (see [Custom notification body](#custom-notification-body)). Empty uses the built-in format.                  |               |
-| `APPRISE_NOTIFY_BODY_TEMPLATE_FILE` | string | Path to a file inside the container containing the template (see `APPRISE_NOTIFY_BODY_TEMPLATE`). Mutually exclusive with `APPRISE_NOTIFY_BODY_TEMPLATE`.                                                          |               |
+| Key                                 | Type     | Description                                                                                                                                                                                                 | Default value |
+|-------------------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `APPRISE_API_URL`                   | string   | The URL of the Apprise API to send notifications to (e.g. `http://apprise:8000/notify`)                                                                                                                     |               |
+| `APPRISE_NOTIFY_URLS`               | string   | A comma-separated list of Apprise-URLs to send notifications to the [supported services/platforms](https://appriseit.com/services/) (e.g. `pover://{user_key}@{token},mailto://{user}:{password}@{domain}`) |               |
+| `APPRISE_NOTIFY_URLS_FILE`          | string   | Path to the file inside the container containing the Apprise-URLs (see `APPRISE_NOTIFY_URLS`). Mutually exclusive with `APPRISE_NOTIFY_URLS`.                                                               |               |
+| `APPRISE_NOTIFY_LEVEL`              | string   | The minimum level of notifications to send. Possible values: `info`, `success`, `warning`, `failure`                                                                                                        | `success`     |
+| `APPRISE_NOTIFY_REPEAT_INTERVAL`    | duration | How long an unchanged failure notification is suppressed before it is sent again as a reminder (see [Repeated failures](#repeated-failures)). `0` sends every failure.                                      | `1h`          |
+| `APPRISE_NOTIFY_BODY_TEMPLATE`      | string   | Optional [Go `text/template`](https://pkg.go.dev/text/template) rendering the notification body (see [Custom notification body](#custom-notification-body)). Empty uses the built-in format.                |               |
+| `APPRISE_NOTIFY_BODY_TEMPLATE_FILE` | string   | Path to a file inside the container containing the template (see `APPRISE_NOTIFY_BODY_TEMPLATE`). Mutually exclusive with `APPRISE_NOTIFY_BODY_TEMPLATE`.                                                   |               |
 
 A request to the Apprise API fails if Apprise does not answer within 30 seconds, so an unresponsive Apprise server cannot hold up deployments.
+
+## Release announcements
+
+Doco-CD checks for new releases once at startup.
+Set [`VERSION_CHECK_ENABLED`](../App-Settings.md#runtime-settings) to `false` to skip the GitHub release lookup, new-version warning, and Apprise release announcement.
 
 ## Example `docker-compose.yml`
 
