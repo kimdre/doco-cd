@@ -24,7 +24,7 @@ func TestDeploymentRetryBudgetCompose(t *testing.T) {
 	h.EnableAPI("retry-budget-test-key")
 	h.TrackVolume(stack + "_state")
 	h.Start()
-	h.WaitForLog(`"reason":"cooldown"`, 2*time.Minute)
+	h.WaitForLog(`"reason":"delay"`, 2*time.Minute)
 
 	containerID := func() string { return h.ComposeContainerID(stack, "app") }
 

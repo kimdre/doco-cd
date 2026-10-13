@@ -12,7 +12,7 @@ func TestSummarizeDeployResultsPreservesRetrySuppression(t *testing.T) {
 	t.Parallel()
 
 	suppressed := &stages.RetrySuppressedError{Stacks: []stages.RetrySuppressedStack{{
-		Name: "web", Context: "remote", Revision: "failed", Reason: "cooldown",
+		Name: "web", Context: "remote", Revision: "failed", Reason: "delay",
 		NextRetry: time.Unix(100, 0).UTC(),
 	}}}
 	failed := errors.New("another stack failed")

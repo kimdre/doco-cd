@@ -92,7 +92,7 @@ type DeploymentRetrySuppression struct {
 }
 
 const (
-	RetryReasonCooldown        = "cooldown"
+	RetryReasonDelay           = "delay"
 	RetryReasonBudgetExhausted = "budget_exhausted"
 )
 
@@ -245,7 +245,7 @@ func (s *DeploymentFailureStore) Admit(target DeploymentTarget, desired Deployme
 	if policy.MaxRetries != nil && state.failure.RetriesUsed >= *policy.MaxRetries {
 		decision.Reason = RetryReasonBudgetExhausted
 	} else if deadline := state.failure.FailedAt.Add(time.Duration(policy.Delay)); policy.Delay > 0 && s.now().Before(deadline) {
-		decision.Reason = RetryReasonCooldown
+		decision.Reason = RetryReasonDelay
 		decision.NextRetry = deadline
 	} else {
 		return attempt, nil

@@ -76,7 +76,7 @@ func TestDeploymentRetryBudgets(t *testing.T) {
 	}
 }
 
-func TestDeploymentRetryCooldownUsesActualFailure(t *testing.T) {
+func TestDeploymentRetryDelayUsesActualFailure(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
@@ -90,7 +90,7 @@ func TestDeploymentRetryCooldownUsesActualFailure(t *testing.T) {
 		now = deadline.Add(delta - 5*time.Minute)
 
 		_, suppressed := store.Admit(target, desired, policy, false)
-		if suppressed == nil || suppressed.Reason != RetryReasonCooldown || !suppressed.NextRetry.Equal(deadline) {
+		if suppressed == nil || suppressed.Reason != RetryReasonDelay || !suppressed.NextRetry.Equal(deadline) {
 			t.Fatalf("before deadline: %+v", suppressed)
 		}
 	}
@@ -107,11 +107,11 @@ func TestDeploymentRetryCooldownUsesActualFailure(t *testing.T) {
 
 	_, suppressed := store.Admit(target, desired, policy, false)
 	if suppressed == nil || suppressed.Reason != RetryReasonBudgetExhausted || !suppressed.NextRetry.IsZero() {
-		t.Fatalf("cooldown must not refill exhausted budget: %+v", suppressed)
+		t.Fatalf("delay must not refill exhausted budget: %+v", suppressed)
 	}
 }
 
-func TestDeploymentRetryCooldownOnlyIsUnlimited(t *testing.T) {
+func TestDeploymentRetryDelayOnlyIsUnlimited(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
@@ -123,8 +123,8 @@ func TestDeploymentRetryCooldownOnlyIsUnlimited(t *testing.T) {
 		failRetryAttempt(t, store, target, desired, policy, false, "failed")
 
 		_, suppressed := store.Admit(target, desired, policy, false)
-		if suppressed == nil || suppressed.Reason != RetryReasonCooldown || suppressed.RetryLimit != nil {
-			t.Fatalf("expected unlimited cooldown: %+v", suppressed)
+		if suppressed == nil || suppressed.Reason != RetryReasonDelay || suppressed.RetryLimit != nil {
+			t.Fatalf("expected unlimited delayed retries: %+v", suppressed)
 		}
 
 		now = now.Add(time.Minute)
@@ -233,7 +233,7 @@ func TestDeploymentRetryManualFailurePreservesAutomaticBudget(t *testing.T) {
 	}
 }
 
-func TestDeploymentRetryManualBypassesCooldownWithoutSpending(t *testing.T) {
+func TestDeploymentRetryManualBypassesDelayWithoutSpending(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
@@ -253,7 +253,7 @@ func TestDeploymentRetryManualBypassesCooldownWithoutSpending(t *testing.T) {
 
 	_, suppressed := store.Admit(target, desired, policy, false)
 	if suppressed == nil || !suppressed.NextRetry.Equal(now.Add(time.Hour)) {
-		t.Fatalf("manual actual failure must update cooldown: %+v", suppressed)
+		t.Fatalf("manual actual failure must update retry delay: %+v", suppressed)
 	}
 }
 

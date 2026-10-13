@@ -60,15 +60,15 @@ func TestRetrySuppressedErrorContractAndMerge(t *testing.T) {
 	t.Parallel()
 
 	deadline := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
-	cooldown := &RetrySuppressedError{Stacks: []RetrySuppressedStack{{
-		Name: "web", Context: "remote", Revision: "sha256:broken", Reason: "cooldown",
+	delay := &RetrySuppressedError{Stacks: []RetrySuppressedStack{{
+		Name: "web", Context: "remote", Revision: "sha256:broken", Reason: "delay",
 		NextRetry: deadline, FailedStage: "deploy", FailureReason: "bad hook", RetriesUsed: 1, RetryLimit: new(2),
 	}}}
 	exhausted := &RetrySuppressedError{Stacks: []RetrySuppressedStack{{
 		Name: "db", Reason: "budget_exhausted", RetriesUsed: 2, RetryLimit: new(2),
 	}}}
 
-	merged := MergeRetrySuppressed([]*RetrySuppressedError{cooldown, nil, exhausted})
+	merged := MergeRetrySuppressed([]*RetrySuppressedError{delay, nil, exhausted})
 	if !errors.Is(merged, ErrRetrySuppressed) || !errors.Is(merged, ErrSkipDeployment) {
 		t.Fatal("retry suppression must remain distinct and participate in skip flow")
 	}
@@ -221,9 +221,9 @@ func TestRetryFailedManualBranchAliasDoesNotRefillBudget(t *testing.T) {
 	}
 }
 
-func TestRetryBranchAliasPreservesManualFailureCooldown(t *testing.T) {
+func TestRetryBranchAliasPreservesManualFailureDelay(t *testing.T) {
 	t.Parallel()
-	sm := newRetryTestManager(t, "retry-manual-alias-cooldown")
+	sm := newRetryTestManager(t, "retry-manual-alias-delay")
 	sm.Repository.Source = config.SourceTypeGit
 	sm.DeployConfig.Reference = "refs/heads/main"
 	sm.DeployConfig.Retry.MaxRetries = new(2)
@@ -239,9 +239,9 @@ func TestRetryBranchAliasPreservesManualFailureCooldown(t *testing.T) {
 	var suppressed *RetrySuppressedError
 
 	err := sm.prepareDeploymentRetry(t.Context(), sm.Log)
-	if !errors.As(err, &suppressed) || suppressed.Stacks[0].Reason != "cooldown" ||
+	if !errors.As(err, &suppressed) || suppressed.Stacks[0].Reason != "delay" ||
 		!suppressed.Stacks[0].NextRetry.Equal(failure.FailedAt.Add(time.Hour)) {
-		t.Fatalf("equivalent alias lost manual actual-failure cooldown: %v", err)
+		t.Fatalf("equivalent alias lost manual actual-failure delay: %v", err)
 	}
 }
 
@@ -437,12 +437,12 @@ func TestRetryStageRunnerSuppressesBeforeAdmissionAndNotifications(t *testing.T)
 func TestRetrySuppressedPreDeployDoesNotAnnounceRetry(t *testing.T) {
 	t.Parallel()
 
-	for _, reason := range []string{"budget_exhausted", "cooldown"} {
+	for _, reason := range []string{"budget_exhausted", "delay"} {
 		t.Run(reason, func(t *testing.T) {
 			t.Parallel()
 
 			sm := newRetryTestManager(t, "retry-suppression-log-"+reason)
-			if reason == "cooldown" {
+			if reason == "delay" {
 				sm.DeployConfig.Retry.MaxRetries = new(2)
 				sm.DeployConfig.Retry.Delay = duration.Duration(time.Hour)
 			}
@@ -645,7 +645,7 @@ func TestRetryStageRunnerPreDeploySkipsLeaveBudgetUntouched(t *testing.T) {
 
 			after, _ := sm.lastDeploymentFailure()
 			if before != after {
-				t.Fatal("skip consumed retry or changed cooldown")
+				t.Fatal("skip consumed retry or changed delay")
 			}
 		})
 	}
@@ -723,10 +723,10 @@ func TestRetryMergeRetainsMixedReasons(t *testing.T) {
 	t.Parallel()
 
 	merged := MergeRetrySuppressed([]*RetrySuppressedError{
-		{Stacks: []RetrySuppressedStack{{Name: "same", Context: "a", Reason: "cooldown"}}},
+		{Stacks: []RetrySuppressedStack{{Name: "same", Context: "a", Reason: "delay"}}},
 		{Stacks: []RetrySuppressedStack{{Name: "same", Context: "b", Reason: "budget_exhausted"}}},
 	})
-	if len(merged.Stacks) != 2 || !slices.Equal([]string{merged.Stacks[0].Reason, merged.Stacks[1].Reason}, []string{"cooldown", "budget_exhausted"}) {
+	if len(merged.Stacks) != 2 || !slices.Equal([]string{merged.Stacks[0].Reason, merged.Stacks[1].Reason}, []string{"delay", "budget_exhausted"}) {
 		t.Fatalf("mixed reasons merged incorrectly: %+v", merged)
 	}
 }

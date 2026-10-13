@@ -80,7 +80,7 @@ The API tracks deployment-related runs (for example webhook-triggered deployment
 Use these endpoints to inspect the current status and recent history by `job_id`.
 Each run's `deployments` collection reports the resolved stack and Docker context targets. A single poll or webhook run can contain targets from multiple contexts.
 Automatic attempts suppressed by a [deployment retry policy](../Deploy-Settings.md#retry-settings) are skipped, not successful.
-The per-target reason distinguishes `cooldown` (the retry delay) from `budget_exhausted`; suppression retains the failed desired release's state.
+The per-target reason distinguishes `delay` from `budget_exhausted`; suppression retains the failed desired release's state.
 
 | Endpoint              | Method | Description                           | Query Parameters                                                                                                                                                                                                                      |
 |-----------------------|--------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
