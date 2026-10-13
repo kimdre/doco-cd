@@ -282,6 +282,35 @@ func TestWithNormalizedEnvValues_ReplacesConfigContent(t *testing.T) {
 	}
 }
 
+// Secrets must be normalized even when the project has no top-level configs.
+func TestWithNormalizedEnvValues_ReplacesSecretContentWithoutConfigs(t *testing.T) {
+	t.Parallel()
+
+	certPEM := "-----BEGIN CERTIFICATE-----\nMIIFake...\n-----END CERTIFICATE-----\n"
+	refString := "pki-role:pki:my-role:app.example.com"
+
+	p := &types.Project{
+		Secrets: map[string]types.SecretConfig{
+			"app-cert": {Content: certPEM},
+			"static":   {Content: "static content"},
+		},
+	}
+
+	got := WithNormalizedEnvValues(p, map[string]string{certPEM: refString})
+
+	if got.Secrets["app-cert"].Content != refString {
+		t.Errorf("secret content: want %q, got %q", refString, got.Secrets["app-cert"].Content)
+	}
+
+	if got.Secrets["static"].Content != "static content" {
+		t.Errorf("static secret modified unexpectedly: %q", got.Secrets["static"].Content)
+	}
+
+	if p.Secrets["app-cert"].Content != certPEM {
+		t.Error("original project secret modified")
+	}
+}
+
 func TestWithNormalizedEnvValues_EmptyNormMap_ReturnsOriginal(t *testing.T) {
 	t.Parallel()
 

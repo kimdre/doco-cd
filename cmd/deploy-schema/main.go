@@ -278,6 +278,11 @@ func addConstraints(schema *jsonschema.Schema, supportedEvents []string) {
 		schema.Properties["swarm"].Properties[field].Minimum = new(-1.0)
 	}
 
+	retry := schema.Properties["retry"]
+	retry.Properties["max_retries"].Minimum = new(0.0)
+	retry.Properties["cooldown"].Minimum = new(0.0)
+	retry.Properties["cooldown"].Pattern = `^[^-]+$`
+
 	reconciliation := schema.Properties["reconciliation"]
 	for _, field := range []string{"restart_timeout", "restart_limit", "restart_window"} {
 		reconciliation.Properties[field].Minimum = new(0.0)

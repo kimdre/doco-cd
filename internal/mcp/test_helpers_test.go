@@ -241,7 +241,12 @@ func callMCPTool(
 	}
 
 	if result.IsError {
-		t.Fatalf("%s returned a tool error: %#v", name, result.Content)
+		encoded, err := json.Marshal(result.Content)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Fatalf("%s returned a tool error: %s", name, encoded)
 	}
 
 	return result

@@ -1,0 +1,8 @@
+name: e2e-retry-budget
+swarm:
+  enabled: false
+retry:
+  max_retries: 1
+  cooldown: 20s
+reconciliation:
+  enabled: false

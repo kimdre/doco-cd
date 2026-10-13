@@ -649,7 +649,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 		req.Origin = syncwindow.OriginReconciliation
 
 		err := j.manager.handleDeploy(ctx, req)
-		if errors.Is(err, stages.ErrSyncWindowBlocked) {
+		if errors.Is(err, stages.ErrSyncWindowBlocked) || errors.Is(err, stages.ErrRetrySuppressed) {
 			// The gate already logged the deferral.
 			continue
 		}

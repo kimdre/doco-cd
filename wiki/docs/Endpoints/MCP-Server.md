@@ -185,6 +185,11 @@ Each item in `configs` accepts these fields:
 
 The `interval`, `schedule` and `run_once` fields are not accepted; MCP-triggered polls always run once immediately.
 MCP-triggered polls count as manual deployments for [sync windows](../Advanced/Sync-Windows.md#manual-deployments).
+They also bypass [deployment retry cooldown and exhausted-budget pause](../Deploy-Settings.md#manual-retry) for that attempt only,
+including `max_retries: 0`, with either `wait: true` or `wait: false`.
+A failed manual deployment neither consumes nor refills the automatic retry budget; complete success clears the failure and retry state.
+Other deployment safety checks, including source trust and sync windows, still apply.
+Webhooks and redeploy reconciliation remain automatic and do not receive this bypass.
 All configs in one request run with bounded concurrency controlled by `MAX_CONCURRENT_DEPLOYMENTS` (default: 4).
 
 ## Logging

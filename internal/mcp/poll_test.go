@@ -2,14 +2,18 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -161,5 +165,81 @@ func TestTriggerRunToolResultReportsSyncWindowDeferralAsSkipped(t *testing.T) {
 	result, status := triggerRunToolResult(true, &stages.SyncWindowBlockedError{Stacks: []string{"web"}, Windows: []string{"freeze"}})
 	if status != string(controlplane.RunStatusSkipped) || result == nil || result.IsError {
 		t.Fatalf("triggerRunToolResult() = %#v, %q, want a non-error skipped result", result, status)
+	}
+}
+
+func TestTriggerRunToolResultReportsRetrySuppressionAsSkipped(t *testing.T) {
+	t.Parallel()
+
+	result, status := triggerRunToolResult(true, &stages.RetrySuppressedError{Stacks: []stages.RetrySuppressedStack{{
+		Name: "web", Reason: "budget_exhausted",
+	}}})
+	if status != string(controlplane.RunStatusSkipped) || result == nil || result.IsError {
+		t.Fatalf("result = %#v, status = %q, want a non-error skip", result, status)
+	}
+}
+
+func TestMCPTriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
+	for _, wait := range []bool{true, false} {
+		t.Run(strconv.FormatBool(wait), func(t *testing.T) {
+			origin := make(chan syncwindow.Origin, 1)
+			log := logger.New(logger.LevelCritical)
+			h := &Handler{log: log}
+			h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+				appConfig: &app.Config{},
+				log:       log,
+				pollRunner: func(ctx context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
+					_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
+				) error {
+					if len(cfg.Deployments) != 1 || cfg.Deployments[0].Retry.MaxRetries == nil ||
+						*cfg.Deployments[0].Retry.MaxRetries != 0 {
+						t.Errorf("manual poll lost retry configuration: %#v", cfg)
+					}
+
+					origin <- controlplane.DeploymentOrigin(ctx)
+
+					return nil
+				},
+			})
+			server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 4096, h)
+			session := connectMCPTestClient(t, server)
+
+			deployment := &deploy.Config{
+				Name: "web",
+				Retry: deploy.RetryConfig{
+					MaxRetries: new(0),
+					Cooldown:   duration.Duration(time.Hour),
+				},
+			}
+			if err := json.Unmarshal([]byte(`{"environment":{},"external_secrets":{},"build":{"args":{}}}`), deployment); err != nil {
+				t.Fatal(err)
+			}
+
+			result := callMCPTool(t, session, "trigger_poll", triggerPollInput{
+				Configs: []triggerPollConfig{{
+					SourceURL:   validPollSourceURL,
+					Deployments: []*deploy.Config{deployment},
+				}},
+				Wait: new(wait),
+			})
+
+			var output triggerPollOutput
+			decodeMCPStructuredContent(t, result, &output)
+
+			if output.JobID == "" || result.IsError {
+				t.Fatalf("manual MCP trigger failed: %#v, %#v", output, result)
+			}
+
+			select {
+			case got := <-origin:
+				if got != syncwindow.OriginManual {
+					t.Fatalf("origin = %s, want manual", got)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("manual MCP trigger did not execute")
+			}
+
+			waitForDeploymentRunStatus(t, h.controlPlaneRuns, output.JobID, controlplane.RunStatusSucceeded)
+		})
 	}
 }

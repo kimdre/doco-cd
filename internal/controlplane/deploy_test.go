@@ -508,6 +508,25 @@ func TestDeploy_ReportsPollSyncWindowDeferral(t *testing.T) {
 	}
 }
 
+func TestDeploy_PreservesRetrySuppression(t *testing.T) {
+	t.Parallel()
+
+	for _, trigger := range []stages.JobTrigger{stages.JobTriggerPoll, stages.JobTriggerWebhook} {
+		preparer := &fakeSourcePreparer{result: source.Result{DeployConfigs: []*deploy.Config{{Name: "stack"}}}}
+		suppressed := &stages.RetrySuppressedError{Stacks: []stages.RetrySuppressedStack{{
+			Name: "stack", Revision: "failed", Reason: "budget_exhausted",
+		}}}
+		d := newTestDeployment(t, preparer, &fakeReconciler{err: suppressed})
+		req := validDeploymentRequest()
+		req.JobTrigger = trigger
+
+		err := d.Deploy(t.Context(), req)
+		if err != suppressed {
+			t.Fatalf("%s: Deploy() = %v, want original suppression", trigger, err)
+		}
+	}
+}
+
 func TestDeploy_PassesDeploymentOrigin(t *testing.T) {
 	t.Parallel()
 

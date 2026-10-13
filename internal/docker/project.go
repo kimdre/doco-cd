@@ -49,7 +49,7 @@ func shouldIgnoreLabelInProjectHash(label string) bool {
 }
 
 // WithNormalizedEnvValues returns a copy of the project where any service
-// environment value or top-level config content matching a key in normMap is
+// environment value or top-level config/secret content matching a key in normMap is
 // replaced with the corresponding placeholder. Use this to produce a stable
 // project hash when secrets are re-issued on every resolution (e.g. pki-role certs),
 // so the hash only changes when the ref itself changes.
@@ -84,6 +84,13 @@ func WithNormalizedEnvValues(p *types.Project, normMap map[string]string) *types
 		if placeholder, ok := normMap[cfg.Content]; ok {
 			cfg.Content = placeholder
 			pCopy.Configs[cfgName] = cfg
+		}
+	}
+
+	for secretName, secret := range pCopy.Secrets {
+		if placeholder, ok := normMap[secret.Content]; ok {
+			secret.Content = placeholder
+			pCopy.Secrets[secretName] = secret
 		}
 	}
 

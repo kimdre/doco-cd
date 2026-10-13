@@ -229,6 +229,7 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 		var (
 			lifecycleErr error
 			deferred     []*stages.SyncWindowBlockedError
+			suppressed   []*stages.RetrySuppressedError
 		)
 
 		for runErr := range errs {
@@ -236,9 +237,17 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 				continue
 			}
 
-			if blocked, ok := errors.AsType[*stages.SyncWindowBlockedError](runErr); ok {
-				deferred = append(deferred, blocked)
+			retryErr, retrySuppressed := errors.AsType[*stages.RetrySuppressedError](runErr)
+			if retrySuppressed {
+				suppressed = append(suppressed, retryErr)
+			}
 
+			blocked, windowBlocked := errors.AsType[*stages.SyncWindowBlockedError](runErr)
+			if windowBlocked {
+				deferred = append(deferred, blocked)
+			}
+
+			if retrySuppressed || windowBlocked {
 				continue
 			}
 
@@ -253,6 +262,17 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 			err := &PollRunsFailedError{Failed: failedRuns, Total: len(configs), Cause: lifecycleErr}
 
 			return FailedRun(err.Error()), err
+		}
+
+		if len(suppressed) > 0 {
+			retryErr := stages.MergeRetrySuppressed(suppressed)
+			if len(deferred) > 0 {
+				err := errors.Join(retryErr, stages.MergeSyncWindowBlocked(deferred))
+
+				return SkippedRun(err.Error()), err
+			}
+
+			return SkippedRun(retryErr.Error()), retryErr
 		}
 
 		// The error tells synchronous callers that nothing was deployed; the
@@ -306,7 +326,7 @@ func (c *Runs) RunConfiguredPoll(
 			c.poll.secretProvider,
 			triggerReason,
 		)
-		if errors.Is(err, stages.ErrSyncWindowBlocked) {
+		if errors.Is(err, stages.ErrSyncWindowBlocked) || errors.Is(err, stages.ErrRetrySuppressed) {
 			return SkippedRun(err.Error()), nil
 		}
 

@@ -155,6 +155,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `git_depth`         | number                | Limits the number of commits fetched during clone/fetch (shallow clone). `0` means use the global [`GIT_CLONE_DEPTH`](Git-Settings.md#general) value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.                                                                                                                                                                               | `0` (use global)                                                                                                       |
 | `destroy`           | boolean \| object     | (⚠️ Destructive) Configure stack/project destruction behavior. Use `destroy: true` as shorthand to enable destruction with default options, or use `destroy.enabled: true` inside the object form to customize removal behavior. See [Destroy settings](#destroy-settings).                                                                                                                                                                                                                                                                                                                                                    | see [Destroy settings](#destroy-settings)                                                                              |
 | `auto_discovery`    | boolean \| object     | Enables [autodiscovery](#auto-discovery) of services to deploy in the working directory by scanning for subdirectories with Docker Compose files (see the `compose_files` setting). Use `auto_discovery: true` as shorthand to enable it with default options, or use the object form to customize settings such as `depth` and `delete`. See [Auto-Discovery Settings](#auto-discovery-settings).                                                                                                                                                                                                                             | see [Auto-Discovery Settings](#auto-discovery-settings)                                                                |
+| `retry`             | object                | Limits automatic retries of a failed desired revision/configuration and optionally delays retries. See [Retry settings](#retry-settings). | Unlimited retries, no delay |
 | `reconciliation`    | boolean \| object     | Enables event-driven reconciliation for deployments. Use `reconciliation: true` as shorthand to enable reconciliation with default options, or use the object form to customize settings. See [reconciliation settings](#reconciliation-settings).                                                                                                                                                                                                                                                                                                                                                                             | see [Reconciliation Settings](#reconciliation-settings)                                                                |
 
 
@@ -390,7 +391,7 @@ When using [custom webhook targets](Endpoints/Webhook-Listener.md#with-custom-ta
 - Slices replace the base value when the nested value is non-empty
 - Scalar values override the base value when the key is set in the nested config, even to `false`, `0` or an empty string.
   Keys set to `null` keep the base value.
-- Nested objects (such as `build`, `destroy`, `reconciliation`) are merged recursively. The boolean shorthand of an object
+- Nested objects (such as `build`, `destroy`, `retry`, `reconciliation`) are merged recursively. The boolean shorthand of an object
   (e.g. `destroy: false`) only sets its `enabled` field.
 - YAML merge keys (`<<`) are resolved before these overrides are applied: explicit keys replace merged values,
   and earlier entries in a merge sequence take precedence over later ones. A replacement does not retain the
@@ -404,6 +405,10 @@ When using [custom webhook targets](Endpoints/Webhook-Listener.md#with-custom-ta
     ```
 
     1. Keeps the volumes of this stack, even if the base config removes them.
+
+The `retry` object inherits omitted settings from the base config. For example, a nested
+`retry: {max_retries: 0}` disables automatic retries for that discovered deployment while retaining the base cooldown.
+An explicit `cooldown: 0` removes the inherited delay. `retry` has no boolean shorthand.
 
 ##### Non-overridable Fields
 
@@ -520,10 +525,67 @@ hostless names alone are ambiguous. Missing, conflicting, or ambiguous ownership
           remove_images: false
         ```
 
+### Retry Settings
+
+`retry` controls automatic retries after a failure in the deploy, post-deploy, or cleanup stage for both Compose projects and Swarm stacks.
+Omitting `retry` preserves unlimited automatic retries without an additional delay.
+
+| Key | Type | Description | Default value |
+|-----|------|-------------|---------------|
+| `max_retries` | integer | Maximum number of automatic retries after the original attempt. `0` disables automatic retries; a negative value is invalid. | Omitted (unlimited) |
+| `cooldown` | number \| Go duration | Fixed minimum delay since the preceding actual failure. Numeric values are seconds; Go duration strings must resolve to whole seconds. Omitted or `0` means no delay; a negative value is invalid. | `0` |
+
+Use a finite budget together with a positive cooldown to limit repeated interruptions from a broken release.
+For example, this allows the original attempt plus at most two automatic retries:
+
+`.doco-cd.yml` (YAML)
+
+```
+name: example
+retry:
+  max_retries: 2
+  cooldown: 5m
+```
+
+Each automatic retry is eligible five minutes after the preceding actual failure, on the next existing trigger.
+The cooldown does not schedule a retry itself, and skipped or deferred triggers do not move its deadline or consume retries.
+A cooldown with an omitted budget is valid for unlimited, delayed retries; a finite budget with zero cooldown is also valid.
+
+Once the budget is exhausted, automatic deployment attempts for that same desired revision/configuration remain paused.
+The budget does not refill after another cooldown period.
+Doco-CD continues resolving the source so a new Git revision, OCI digest, effective configuration, or desired image identity can receive a fresh budget without the old cooldown.
+A different error message does not reset the budget. Complete deployment success clears the failure and retry state.
+
+#### Manual retry
+
+An explicit deployment trigger through the [REST polling endpoint](Endpoints/REST-API.md#polling) or the
+[MCP `trigger_poll` tool](Endpoints/MCP-Server.md#poll-input) bypasses both cooldown and exhaustion for that attempt only,
+including when `max_retries: 0`. This applies with either `wait: true` or `wait: false`.
+A failed manual attempt updates the failure details and cooldown timestamp but neither consumes nor refills the automatic retry budget;
+an exhausted budget stays exhausted. A successful manual attempt clears the state.
+Manual retries still obey sync windows, source trust checks, and other deployment safety checks.
+
+Polling, webhooks, local watcher triggers, and full redeploy reconciliation share the automatic budget for the affected target.
+Webhooks and reconciliation are not manual retries. Setting `force_recreate: true` does not bypass the policy.
+While an automatic retry is suppressed, the desired release remains failed even if Swarm has rolled back to a healthy older release.
+
+!!! warning "In-memory retry state"
+    The retry budget, cooldown, and automatic pause exist only in memory. Restarting Doco-CD resets them.
+    Regular change detection then applies again; a restart does not guarantee that another deployment will occur.
+
+#### Scope
+
+Source-fetch, initialization, and pre-deploy failures retain their existing retry behavior and do not consume this budget.
+Direct container restarts, scheduled jobs, and destroy operations are outside this policy.
+In particular, `retry.max_retries` is separate from reconciliation's container `restart_limit` and `restart_window`.
+There are no global retry settings, exponential backoff, periodic budget refill, or persistent retry storage.
+The same object is supported in inline poll deployments and [nested auto-discovery overrides](#nested-config-overrides).
+
 ### Reconciliation Settings
 
 Reconciliation is an optional event-driven check that compares the currently running Docker services/containers with the expected deployment state.
 When configured container events occur, doco-cd either reapplies the deployment or directly restarts the affected container, depending on the event type.
+Full redeploy reconciliation obeys the deployment's [retry policy](#retry-settings); direct container restarts do not.
 
 !!! warning
     The currently implemented state will be lost when doco-cd gets restarted and will be restored in the next poll or webhook event.

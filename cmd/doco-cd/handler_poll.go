@@ -459,6 +459,8 @@ func reportPollOutcome(
 		// The successor reports the result once it has proven itself healthy,
 		// so this run is neither a success nor a failure.
 		jobLog.Info("self-update handover in progress", elapsed, slog.String("next_run", nextRun))
+	case errors.Is(deployErr, stages.ErrRetrySuppressed):
+		jobLog.Debug("job skipped by deployment retry policy", slog.String("reason", deployErr.Error()), elapsed, slog.String("next_run", nextRun))
 	case errors.Is(deployErr, stages.ErrSyncWindowBlocked):
 		// An intentional no-op: the next poll inside a window deploys the
 		// latest revision.

@@ -513,6 +513,21 @@ func TestMCPServerListsTools(t *testing.T) {
 			if toolSchemaHasProperty(deploymentItems, "Internal") || toolSchemaHasProperty(deploymentItems, "internal") {
 				t.Fatalf("trigger_poll deployment schema exposes internal state: %#v", deploymentItems)
 			}
+
+			retrySchema := resolveToolSchemaRef(t, tool.InputSchema, toolSchemaProperty(t, deploymentItems, "retry"))
+			if toolSchemaRequiresProperty(deploymentItems, "retry") ||
+				toolSchemaRequiresProperty(retrySchema, "max_retries") ||
+				toolSchemaRequiresProperty(retrySchema, "cooldown") {
+				t.Fatal("deployment retry policy and its fields must be optional")
+			}
+
+			if limit := toolSchemaProperty(t, retrySchema, "max_retries"); limit["minimum"] != float64(0) {
+				t.Fatalf("retry limit minimum = %#v, want 0", limit["minimum"])
+			}
+
+			if cooldown := toolSchemaProperty(t, retrySchema, "cooldown"); len(cooldown["oneOf"].([]any)) != 2 {
+				t.Fatalf("retry cooldown must support seconds and duration strings: %#v", cooldown)
+			}
 		}
 
 		for _, property := range wantInputProperties[tool.Name] {
