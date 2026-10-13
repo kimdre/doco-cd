@@ -626,5 +626,5 @@
   },
   "title": "Doco-CD deployment configuration",
   "type": "object",
-  "x-doco-cd-version": "90aa41251af21db674be8ac66be7ba44c0ab6e4b"
+  "x-doco-cd-version": "07057114ce70c2fb9610672a29c15fb517e6e0f7"
 }
