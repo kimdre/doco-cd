@@ -227,7 +227,7 @@ func TestRetryBranchAliasPreservesManualFailureCooldown(t *testing.T) {
 	sm.Repository.Source = config.SourceTypeGit
 	sm.DeployConfig.Reference = "refs/heads/main"
 	sm.DeployConfig.Retry.MaxRetries = new(2)
-	sm.DeployConfig.Retry.Cooldown = duration.Duration(time.Hour)
+	sm.DeployConfig.Retry.Delay = duration.Duration(time.Hour)
 	recordRetryTestFailure(t, sm, StageDeploy)
 	sm.Origin = syncwindow.OriginManual
 	sm.DeployConfig.Reference = "main"
@@ -444,7 +444,7 @@ func TestRetrySuppressedPreDeployDoesNotAnnounceRetry(t *testing.T) {
 			sm := newRetryTestManager(t, "retry-suppression-log-"+reason)
 			if reason == "cooldown" {
 				sm.DeployConfig.Retry.MaxRetries = new(2)
-				sm.DeployConfig.Retry.Cooldown = duration.Duration(time.Hour)
+				sm.DeployConfig.Retry.Delay = duration.Duration(time.Hour)
 			}
 
 			sm.Docker.Cmd = destroyOwnershipTestCli{apiClient: &destroyOwnershipTestClient{}}

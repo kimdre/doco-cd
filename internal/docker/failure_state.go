@@ -205,7 +205,7 @@ type DeploymentAttempt struct {
 	completed   bool
 }
 
-// Admit checks exhaustion before cooldown. The caller must hold Acquire's
+// Admit checks exhaustion before retry delay. The caller must hold Acquire's
 // target lock for configured policies until this attempt finishes.
 func (s *DeploymentFailureStore) Admit(target DeploymentTarget, desired DeploymentDesiredState, policy deploy.RetryConfig, manual bool) (*DeploymentAttempt, *DeploymentRetrySuppression) {
 	s.mu.Lock()
@@ -244,7 +244,7 @@ func (s *DeploymentFailureStore) Admit(target DeploymentTarget, desired Deployme
 	decision := &DeploymentRetrySuppression{Failure: state.failure}
 	if policy.MaxRetries != nil && state.failure.RetriesUsed >= *policy.MaxRetries {
 		decision.Reason = RetryReasonBudgetExhausted
-	} else if deadline := state.failure.FailedAt.Add(time.Duration(policy.Cooldown)); policy.Cooldown > 0 && s.now().Before(deadline) {
+	} else if deadline := state.failure.FailedAt.Add(time.Duration(policy.Delay)); policy.Delay > 0 && s.now().Before(deadline) {
 		decision.Reason = RetryReasonCooldown
 		decision.NextRetry = deadline
 	} else {

@@ -36,7 +36,7 @@ func (h *Handler) addPollTool(server *sdkmcp.Server) {
 
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "trigger_poll",
-		Description: "Trigger one or more poll configurations immediately. Manual deployment retries bypass cooldown and exhausted budgets. Prefer wait=false and poll get_deployment_run - long wait=true calls are cancelled if the server shuts down (10s grace).",
+		Description: "Trigger one or more poll configurations immediately. Manual deployment retries bypass retry delay and exhausted budgets. Prefer wait=false and poll get_deployment_run - long wait=true calls are cancelled if the server shuts down (10s grace).",
 		Annotations: destructiveAnnotations(false),
 		InputSchema: inputSchema,
 	}, instrumentTool(h.log, "trigger_poll", h.triggerPoll))

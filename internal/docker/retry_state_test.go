@@ -82,7 +82,7 @@ func TestDeploymentRetryCooldownUsesActualFailure(t *testing.T) {
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 	store := NewDeploymentFailureStore(func() time.Time { return now })
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(2), Cooldown: duration.Duration(5 * time.Minute)}
+	policy := deploy.RetryConfig{MaxRetries: new(2), Delay: duration.Duration(5 * time.Minute)}
 	failRetryAttempt(t, store, target, desired, policy, false, "first")
 
 	deadline := now.Add(5 * time.Minute)
@@ -118,7 +118,7 @@ func TestDeploymentRetryCooldownOnlyIsUnlimited(t *testing.T) {
 	store := NewDeploymentFailureStore(func() time.Time { return now })
 	target, desired := retryTestState()
 
-	policy := deploy.RetryConfig{Cooldown: duration.Duration(time.Minute)}
+	policy := deploy.RetryConfig{Delay: duration.Duration(time.Minute)}
 	for range 10 {
 		failRetryAttempt(t, store, target, desired, policy, false, "failed")
 
@@ -149,7 +149,7 @@ func TestDeploymentRetryDesiredStateChangesResetBudget(t *testing.T) {
 
 			store := NewDeploymentFailureStore(nil)
 			target, desired := retryTestState()
-			policy := deploy.RetryConfig{MaxRetries: new(0), Cooldown: duration.Duration(time.Hour)}
+			policy := deploy.RetryConfig{MaxRetries: new(0), Delay: duration.Duration(time.Hour)}
 			failRetryAttempt(t, store, target, desired, policy, false, "broken")
 			tc.change(&desired)
 			failRetryAttempt(t, store, target, desired, policy, false, "still broken")
@@ -202,7 +202,7 @@ func TestDeploymentRetryManualFailurePreservesAutomaticBudget(t *testing.T) {
 			store := NewDeploymentFailureStore(func() time.Time { return now })
 			target, desired := retryTestState()
 
-			policy := deploy.RetryConfig{MaxRetries: &limit, Cooldown: duration.Duration(time.Hour)}
+			policy := deploy.RetryConfig{MaxRetries: &limit, Delay: duration.Duration(time.Hour)}
 			for range limit + 1 {
 				failRetryAttempt(t, store, target, desired, policy, false, "automatic")
 
@@ -239,7 +239,7 @@ func TestDeploymentRetryManualBypassesCooldownWithoutSpending(t *testing.T) {
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 	store := NewDeploymentFailureStore(func() time.Time { return now })
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(2), Cooldown: duration.Duration(time.Hour)}
+	policy := deploy.RetryConfig{MaxRetries: new(2), Delay: duration.Duration(time.Hour)}
 	failRetryAttempt(t, store, target, desired, policy, false, "original")
 
 	now = now.Add(time.Minute)

@@ -4,6 +4,6 @@ swarm:
   enabled: true
 retry:
   max_retries: 0
-  cooldown: 20s
+  delay: 20s
 reconciliation:
   enabled: false

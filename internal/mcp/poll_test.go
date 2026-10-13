@@ -208,7 +208,7 @@ func TestMCPTriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
 				Name: "web",
 				Retry: deploy.RetryConfig{
 					MaxRetries: new(0),
-					Cooldown:   duration.Duration(time.Hour),
+					Delay:      duration.Duration(time.Hour),
 				},
 			}
 			if err := json.Unmarshal([]byte(`{"environment":{},"external_secrets":{},"build":{"args":{}}}`), deployment); err != nil {

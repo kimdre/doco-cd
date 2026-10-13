@@ -80,7 +80,7 @@ The API tracks deployment-related runs (for example webhook-triggered deployment
 Use these endpoints to inspect the current status and recent history by `job_id`.
 Each run's `deployments` collection reports the resolved stack and Docker context targets. A single poll or webhook run can contain targets from multiple contexts.
 Automatic attempts suppressed by a [deployment retry policy](../Deploy-Settings.md#retry-settings) are skipped, not successful.
-The per-target reason distinguishes `cooldown` from `budget_exhausted`; suppression retains the failed desired release's state.
+The per-target reason distinguishes `cooldown` (the retry delay) from `budget_exhausted`; suppression retains the failed desired release's state.
 
 | Endpoint              | Method | Description                           | Query Parameters                                                                                                                                                                                                                      |
 |-----------------------|--------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -119,7 +119,7 @@ They are still validated when the request is parsed: a configuration that sets b
 
 Poll runs triggered via the API count as manual deployments for [sync windows](../Advanced/Sync-Windows.md#manual-deployments). If a sync window defers every deployment of the run, the run status is `skipped` and, with `wait=true`, the endpoint responds with `202 Accepted` and a message like `deployment of my-app deferred by sync window business-hours until 2026-01-05T08:00:00+01:00`.
 
-API-triggered polls also bypass the deployment's [retry cooldown and exhausted-budget pause](../Deploy-Settings.md#manual-retry)
+API-triggered polls also bypass the deployment's [retry delay and exhausted-budget pause](../Deploy-Settings.md#manual-retry)
 for that attempt only, including `max_retries: 0`. This applies to both synchronous (`wait=true`) and asynchronous (`wait=false`) runs.
 A failed manual deployment does not consume or refill the automatic retry budget; a complete success clears the failure and retry state.
 Source trust checks, sync windows, and other safety checks still apply. Automatic webhooks and redeploy reconciliation do not receive this bypass.

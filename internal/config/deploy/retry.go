@@ -10,10 +10,10 @@ import (
 // RetryConfig controls automatic retries of a failed deployment's desired state.
 type RetryConfig struct {
 	MaxRetries *int              `yaml:"max_retries,omitempty" json:"max_retries,omitempty" validate:"omitempty,min=0"` // MaxRetries limits automatic retries after the original attempt. Omitted means unlimited; zero disables automatic retries. Negative values are invalid.
-	Cooldown   duration.Duration `yaml:"cooldown,omitempty" json:"cooldown,omitempty" validate:"min=0"`                 // Cooldown is the fixed minimum delay after an actual failure before another automatic retry; numeric values are seconds and strings accept Go duration syntax. Omitted or zero means no delay. Negative values are invalid.
+	Delay      duration.Duration `yaml:"delay,omitempty" json:"delay,omitempty" validate:"min=0"`                       // Delay is the fixed minimum wait after an actual failure before another automatic retry; numeric values are seconds and strings accept Go duration syntax. Omitted or zero means no delay. Negative values are invalid.
 }
 
-// Validate checks retry limits and cooldown values.
+// Validate checks retry limits and delay values.
 func (c RetryConfig) Validate() error {
 	if err := validation.Validate(c); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
@@ -22,7 +22,7 @@ func (c RetryConfig) Validate() error {
 	return nil
 }
 
-// Configured reports whether the policy limits retries or adds a cooldown.
+// Configured reports whether the policy limits retries or adds a delay.
 func (c RetryConfig) Configured() bool {
-	return c.MaxRetries != nil || c.Cooldown > 0
+	return c.MaxRetries != nil || c.Delay > 0
 }

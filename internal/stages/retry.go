@@ -33,7 +33,7 @@ type RetrySuppressedStack struct {
 	RetryLimit    *int
 }
 
-// RetrySuppressedError is returned when a deployment retry is suppressed due to cooldown or budget limits.
+// RetrySuppressedError is returned when a deployment retry is suppressed due to retry delay or budget limits.
 type RetrySuppressedError struct {
 	Stacks []RetrySuppressedStack
 }
@@ -209,7 +209,7 @@ func (s *StageManager) prepareDeploymentRetry(ctx context.Context, stageLog *slo
 		s.retryAttempt = attempt
 		if manual {
 			if failure, failed := s.lastDeploymentFailure(); failed {
-				stageLog.Info("manual deployment bypasses retry cooldown and budget",
+				stageLog.Info("manual deployment bypasses retry delay and budget",
 					slog.String("origin", string(s.Origin)), slog.Int("retries_used", failure.RetriesUsed))
 			}
 		}
@@ -242,7 +242,7 @@ func (s *StageManager) prepareDeploymentRetry(ctx context.Context, stageLog *slo
 
 	if !suppressed.NextRetry.IsZero() {
 		attrs = append(attrs, slog.Time("retry_after", suppressed.NextRetry))
-		message = "automatic deployment retry cooling down"
+		message = "automatic deployment retry delayed"
 	}
 
 	stageLog.LogAttrs(ctx, level, message, attrs...)

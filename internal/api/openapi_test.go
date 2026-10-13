@@ -315,8 +315,8 @@ func TestOpenAPIDocumentDescribesSecurityParametersAndSchemas(t *testing.T) {
 
 	for _, value := range []any{
 		map[string]any{},
-		map[string]any{"max_retries": 0, "cooldown": "5m"},
-		map[string]any{"max_retries": nil, "cooldown": 0},
+		map[string]any{"max_retries": 0, "delay": "5m"},
+		map[string]any{"max_retries": nil, "delay": 0},
 	} {
 		if err := retry.Value.VisitJSON(value); err != nil {
 			t.Fatalf("retry schema rejected valid policy %#v: %v", value, err)
@@ -325,7 +325,7 @@ func TestOpenAPIDocumentDescribesSecurityParametersAndSchemas(t *testing.T) {
 
 	for _, value := range []any{
 		map[string]any{"max_retries": -1},
-		map[string]any{"cooldown": -1},
+		map[string]any{"delay": -1},
 	} {
 		if err := retry.Value.VisitJSON(value); err == nil {
 			t.Fatalf("retry schema accepted negative policy: %#v", value)

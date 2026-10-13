@@ -517,7 +517,7 @@ func TestMCPServerListsTools(t *testing.T) {
 			retrySchema := resolveToolSchemaRef(t, tool.InputSchema, toolSchemaProperty(t, deploymentItems, "retry"))
 			if toolSchemaRequiresProperty(deploymentItems, "retry") ||
 				toolSchemaRequiresProperty(retrySchema, "max_retries") ||
-				toolSchemaRequiresProperty(retrySchema, "cooldown") {
+				toolSchemaRequiresProperty(retrySchema, "delay") {
 				t.Fatal("deployment retry policy and its fields must be optional")
 			}
 
@@ -525,8 +525,8 @@ func TestMCPServerListsTools(t *testing.T) {
 				t.Fatalf("retry limit minimum = %#v, want 0", limit["minimum"])
 			}
 
-			if cooldown := toolSchemaProperty(t, retrySchema, "cooldown"); len(cooldown["oneOf"].([]any)) != 2 {
-				t.Fatalf("retry cooldown must support seconds and duration strings: %#v", cooldown)
+			if delay := toolSchemaProperty(t, retrySchema, "delay"); len(delay["oneOf"].([]any)) != 2 {
+				t.Fatalf("retry delay must support seconds and duration strings: %#v", delay)
 			}
 		}
 

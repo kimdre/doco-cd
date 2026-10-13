@@ -65,10 +65,10 @@ A failure in the deploy, post-deploy, or cleanup stage (for example a failed lif
 By default, Doco-CD retries on every following automatic trigger until the deployment succeeds, without an additional delay.
 A retry of a failed deploy stage recreates the whole stack, so partially applied changes like never-finished hooks run again.
 The optional [retry policy](Deploy-Settings.md#retry-settings) limits attempts to the original attempt plus `max_retries` automatic retries
-and adds a fixed `cooldown` measured from the preceding actual failure.
+and adds a fixed `delay` measured from the preceding actual failure.
 An exhausted budget pauses automatic attempts for the same desired revision/configuration without periodic refill.
 A new desired revision or effective configuration starts a fresh budget; success clears the failure and retry state.
-Manual deployment triggers through the REST API or MCP bypass cooldown and pause for that attempt only, including with `max_retries: 0`.
+Manual deployment triggers through the REST API or MCP bypass delay and pause for that attempt only, including with `max_retries: 0`.
 Failed manual attempts neither consume nor refill the automatic budget.
 Webhooks and redeploy reconciliation are automatic, and `force_recreate` is not a bypass.
 The record and retry state live in memory: a restart of Doco-CD drops them and regular change detection applies again.

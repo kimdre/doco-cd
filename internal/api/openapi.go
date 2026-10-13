@@ -623,8 +623,8 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			{Value: &openapi3.Schema{Type: &openapi3.Types{openapi3.TypeNull}}},
 		},
 	}}
-	retrySchema.Value.Properties["cooldown"] = &openapi3.SchemaRef{Value: &openapi3.Schema{
-		Description: "Non-negative cooldown as whole seconds or a Go duration string. Defaults to zero.",
+	retrySchema.Value.Properties["delay"] = &openapi3.SchemaRef{Value: &openapi3.Schema{
+		Description: "Non-negative retry delay as whole seconds or a Go duration string. Defaults to zero.",
 		OneOf: openapi3.SchemaRefs{
 			{Value: openapi3.NewIntegerSchema().WithMin(0)},
 			{Value: openapi3.NewStringSchema()},

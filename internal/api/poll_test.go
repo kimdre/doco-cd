@@ -512,7 +512,7 @@ func TestHandler_TriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
 			})
 			response := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, APIPath+"/poll/run?wait="+strconv.FormatBool(wait),
-				strings.NewReader(`[{"url":"https://example.com/repo.git","deployments":[{"name":"web","retry":{"max_retries":0,"cooldown":"1h"}}]}]`))
+				strings.NewReader(`[{"url":"https://example.com/repo.git","deployments":[{"name":"web","retry":{"max_retries":0,"delay":"1h"}}]}]`))
 			request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
 			h.TriggerPollHandler(response, request)
 

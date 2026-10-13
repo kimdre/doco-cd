@@ -280,8 +280,8 @@ func addConstraints(schema *jsonschema.Schema, supportedEvents []string) {
 
 	retry := schema.Properties["retry"]
 	retry.Properties["max_retries"].Minimum = new(0.0)
-	retry.Properties["cooldown"].Minimum = new(0.0)
-	retry.Properties["cooldown"].Pattern = `^[^-]+$`
+	retry.Properties["delay"].Minimum = new(0.0)
+	retry.Properties["delay"].Pattern = `^[^-]+$`
 
 	reconciliation := schema.Properties["reconciliation"]
 	for _, field := range []string{"restart_timeout", "restart_limit", "restart_window"} {

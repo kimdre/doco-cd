@@ -24,7 +24,7 @@ func mustToolInputSchema[T any](tool string) *jsonschema.Schema {
 	retrySchema, err := jsonschema.For[deploy.RetryConfig](&jsonschema.ForOptions{
 		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
 			reflect.TypeFor[duration.Duration](): {
-				Description: "Non-negative cooldown as whole seconds or a Go duration string.",
+				Description: "Non-negative retry delay as whole seconds or a Go duration string.",
 				OneOf: []*jsonschema.Schema{
 					{Type: "integer", Minimum: new(float64(0))},
 					{Type: "string"},
