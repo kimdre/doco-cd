@@ -373,7 +373,7 @@ func run() error {
 
 	graceful.SafeGo(&wg, log.Logger,
 		func() {
-			notificationForNewAppVersion(log.Logger, notifier)
+			notificationForNewAppVersion(log.Logger, notifier, c.VersionCheckEnabled)
 		},
 	)
 

@@ -359,6 +359,55 @@ func TestGetConfig_OpenAPIEnabled(t *testing.T) {
 	}
 }
 
+func TestGetConfig_VersionCheckEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		value       string
+		unset       bool
+		wantEnabled bool
+		wantErr     bool
+	}{
+		{name: "enabled by default", unset: true, wantEnabled: true},
+		{name: "empty uses default", wantEnabled: true},
+		{name: "explicitly enabled", value: "true", wantEnabled: true},
+		{name: "explicitly disabled", value: "false"},
+		{name: "invalid boolean", value: "invalid", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("VERSION_CHECK_ENABLED", tc.value)
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			t.Setenv("APPRISE_NOTIFY_LEVEL", "info")
+
+			if tc.unset {
+				if err := os.Unsetenv("VERSION_CHECK_ENABLED"); err != nil {
+					t.Fatalf("unset VERSION_CHECK_ENABLED: %v", err)
+				}
+			}
+
+			cfg, err := GetConfig()
+			if tc.wantErr {
+				if !errors.Is(err, config.ErrParseConfigFailed) || !strings.Contains(err.Error(), "VersionCheckEnabled") {
+					t.Fatalf("expected a VERSION_CHECK_ENABLED parse error, got %v", err)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("load config: %v", err)
+			}
+
+			if cfg.VersionCheckEnabled != tc.wantEnabled {
+				t.Fatalf("VersionCheckEnabled = %v, want %v", cfg.VersionCheckEnabled, tc.wantEnabled)
+			}
+
+			if cfg.AppriseNotifyLevel != "info" {
+				t.Fatalf("AppriseNotifyLevel = %q, want info", cfg.AppriseNotifyLevel)
+			}
+		})
+	}
+}
+
 func TestGetConfig_Pprof(t *testing.T) {
 	tests := []struct {
 		name        string
