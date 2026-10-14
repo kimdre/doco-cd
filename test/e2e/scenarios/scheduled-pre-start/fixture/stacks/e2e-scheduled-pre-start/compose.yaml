@@ -1,16 +1,21 @@
 services:
+  idle:
+    image: alpine:3.22
+    command: ["sleep", "3600"]
+    labels:
+      cd.doco.deployment.autostart: "false"
   backup:
     image: alpine:3.22
-    command: ["sh", "-c", "touch /state/workload-started"]
+    command: ["sh", "-c", "test $(wc -l < /state/hooks) -gt $(wc -l < /state/runs 2>/dev/null || echo 0) && echo run >> /state/runs"]
     restart: "no"
     pre_start:
-      - command: ["sh", "-c", "touch /state/hook-started"]
+      - command: ["sh", "-c", "echo hook >> /state/hooks; test ! -f /state/fail-hook"]
     volumes:
       - job-state:/state
     labels:
       cd.doco.job.enabled: "true"
       cd.doco.job.schedule: "@every 24h"
-      cd.doco.job.execution_mode: "one_off"
+      cd.doco.job.execution_mode: "restart"
       cd.doco.job.skip_running: "true"
       cd.doco.job.notify_on: "none"
 

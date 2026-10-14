@@ -108,6 +108,12 @@ and then re-/started at the scheduled time without being removed after completio
     `configs` are applied when the job starts. Restart-mode services must have an effective scale of `1`; use
     [`one_off`](#one_off) for a multi-replica workload.
 
+    For a stopped service with `pre_start` hooks, doco-cd prepares fresh hook runners before each execution
+    without recreating the job's source container. This step pulls only missing images, even if the service
+    sets a `pull_policy` such as `always`. A failed hook prevents the workload from starting and is
+    retained for inspection. The next execution prepares fresh runners, so a failed hook can be retried.
+    Restarting an already running container retains Docker's restart behavior and does not run `pre_start`.
+
 !!! warning "Docker Swarm `global` + `restart` limitation"
     In Docker Swarm, restart-mode scheduled jobs are deployed with `0` replicas so they do not run on deployment.
     `global` services cannot be scaled to `0` (a global service always runs one task per node), so a `global` service
