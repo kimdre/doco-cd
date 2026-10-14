@@ -1,0 +1,34 @@
+services:
+  db:
+    image: alpine:3.22
+    command: ["sleep", "3600"]
+    init: true
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test ! -f /marks/unhealthy"]
+      interval: 1s
+      timeout: 2s
+      retries: 1
+    pre_start:
+      - command: ["sh", "-c", "echo pre_start >> /marks/log"]
+    post_start:
+      - command: ["sh", "-c", "echo post_start >> /marks/log"]
+    # The pre_stop hook makes the container healthy again, so one reconciliation restart is enough.
+    pre_stop:
+      - command: ["sh", "-c", "rm -f /marks/unhealthy && echo pre_stop >> /marks/log"]
+    volumes:
+      - marks:/marks
+  backup:
+    image: alpine:3.22
+    command: ["sh", "-c", "echo job >> /marks/log"]
+    restart: "no"
+    volumes:
+      - marks:/marks
+    labels:
+      cd.doco.job.enabled: "true"
+      cd.doco.job.schedule: "@every 24h"
+      cd.doco.job.execution_mode: "restart"
+      cd.doco.job.stop_services: "db"
+      cd.doco.job.notify_on: "none"
+
+volumes:
+  marks:

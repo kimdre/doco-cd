@@ -48,6 +48,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			DocoCDLabels.Source.URL:                     resolveSourceURLLabel(sourceURL, payload),
 			DocoCDLabels.Source.ConfigRevision:          deployConfig.Internal.ConfigSourceRevision,
 			DocoCDLabels.Source.ConfigWorkingDir:        deployConfig.Internal.ConfigSourceWorkingDir,
+			DocoCDLabels.Deployment.LifecycleHooks:      composeHookLabelValue(s),
 			api.ProjectLabel:                            project.Name,
 			api.ServiceLabel:                            s.Name,
 			api.WorkingDirLabel:                         project.WorkingDir,

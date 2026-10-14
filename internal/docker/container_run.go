@@ -59,7 +59,8 @@ func RestartContainer(ctx context.Context, apiClient client.APIClient, container
 // For a stopped container the wait is subscribed BEFORE starting to avoid
 // racing with a fast-exiting container. For a running container,
 // ContainerRestart is called first (it blocks until the container is running
-// again after the restart cycle), and then the wait is subscribed.
+// again after the restart cycle), and then the wait includes an exit that
+// happened before the restart request returned.
 func RestartContainerAndWait(ctx context.Context, apiClient client.APIClient, containerID string) error {
 	inspectResult, err := apiClient.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
@@ -81,12 +82,13 @@ func RestartContainerAndWait(ctx context.Context, apiClient client.APIClient, co
 	// Container is running. ContainerRestart stops and starts it in one API
 	// call; subscribing to WaitConditionNextExit BEFORE the restart would
 	// fire on the stop step (not the eventual job completion). Restart first
-	// which blocks until the container is running again, then subscribe.
+	// which blocks until the container is running again, then wait for not-running
+	// so a fast exit before the wait request is not missed.
 	if _, err = apiClient.ContainerRestart(ctx, containerID, client.ContainerRestartOptions{}); err != nil {
 		return fmt.Errorf("restart container %s: %w", containerID, err)
 	}
 
-	waitResult := apiClient.ContainerWait(ctx, containerID, client.ContainerWaitOptions{Condition: containerTypes.WaitConditionNextExit})
+	waitResult := apiClient.ContainerWait(ctx, containerID, client.ContainerWaitOptions{Condition: containerTypes.WaitConditionNotRunning})
 
 	return awaitContainerExit(waitResult, containerID)
 }

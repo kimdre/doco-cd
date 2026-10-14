@@ -76,7 +76,7 @@ func RotateProjectCertificates(
 			ErrComposeSourceRevisionConflict, ref.Project, err)
 	}
 
-	unlockSource, err := lockScheduledSource(ref, opts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
+	unlockSource, err := lockScheduledSource(ctx, ref, opts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
 	if err != nil {
 		return fmt.Errorf("%w: lock cached source for project %s: %v",
 			ErrComposeSourceRevisionConflict, ref.Project, err)
@@ -156,7 +156,7 @@ func rotateSwarmProjectCertificates(
 			ErrComposeSourceRevisionConflict, ref.Project, err)
 	}
 
-	unlockSource, err := lockScheduledSource(ref, certOpts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
+	unlockSource, err := lockScheduledSource(ctx, ref, certOpts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
 	if err != nil {
 		return fmt.Errorf("%w: lock cached source for project %s: %v",
 			ErrComposeSourceRevisionConflict, ref.Project, err)

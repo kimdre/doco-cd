@@ -3,9 +3,11 @@ package reconciliation
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"strings"
 
 	"github.com/docker/cli/cli/command"
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/events"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
@@ -37,6 +39,11 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 	}
 
 	for _, c := range containers {
+		// Hook runners have the labels of their service, but they are not service replicas.
+		if c.Labels[api.HookLabel] != "" {
+			continue
+		}
+
 		stackName := strings.TrimSpace(c.Labels[docker.DocoCDLabels.Deployment.Name])
 		if stackName == "" {
 			continue
@@ -85,13 +92,17 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 				slog.String("stack", stackName),
 			)
 
+		// Docker events contain the container labels as attributes. The restart reads the Compose labels
+		// from them to find the lifecycle hooks, so this event must contain them too.
+		attributes := make(map[string]string, len(c.Labels)+1)
+		maps.Copy(attributes, c.Labels)
+		attributes["name"] = containerName
+
 		restartEvent := withReconciliationTraceID(events.Message{
 			Action: events.Action("unhealthy"),
 			Actor: events.Actor{
-				ID: c.ID,
-				Attributes: map[string]string{
-					"name": containerName,
-				},
+				ID:         c.ID,
+				Attributes: attributes,
 			},
 		}, traceID)
 

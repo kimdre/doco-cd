@@ -30,6 +30,7 @@ type docoCdLabelNamesDeployment struct {
 	CertState            string // JSON-serialized deployed pki-role cert refs and serials for revocation-aware rotation checks
 	PinnedRevisions      string // Comma-separated source revisions whose artifacts are still mounted by a service because their content is unchanged
 	LiveResources        string // Comma-separated repository paths a service mounts from its stack's live directory (see recreate.ignore)
+	LifecycleHooks       string // Comma-separated Compose lifecycle hook phases that the service declares (pre_start, post_start, pre_stop)
 }
 
 // docoCdLabelNamesSource contains the labels used by DocoCD to identify the deployment source.
@@ -84,6 +85,7 @@ var DocoCDLabels = docoCdLabelNames{
 		CertState:            "cd.doco.deployment.cert.state",
 		PinnedRevisions:      "cd.doco.deployment.pinned_revisions",
 		LiveResources:        "cd.doco.deployment.live_resources",
+		LifecycleHooks:       "cd.doco.deployment.lifecycle_hooks",
 	},
 	Source: docoCdLabelNamesSource{
 		Type:             "cd.doco.source",

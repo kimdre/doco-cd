@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
@@ -104,6 +105,8 @@ type Manager struct {
 	projectSkips    *stages.ProjectSkipCache
 	// syncWindowNotices deduplicates reports of deployments deferred by sync windows.
 	syncWindowNotices syncWindowNotices
+	// loadHookService replaces the Compose lifecycle hook loader in tests.
+	loadHookService func(ctx context.Context, log *slog.Logger, cli command.Cli, labels map[string]string) (types.ServiceConfig, bool)
 }
 
 // NewManager validates dependencies and creates an isolated reconciliation manager.
