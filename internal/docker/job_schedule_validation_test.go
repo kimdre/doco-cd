@@ -1,10 +1,59 @@
 package docker
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
 )
+
+func TestValidateScheduledJobPolicies_PreStart(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		mode      JobExecutionMode
+		enabled   bool
+		swarmMode bool
+		wantErr   bool
+	}{
+		{name: "standalone one-off", mode: JobExecutionModeOneOff, enabled: true, wantErr: true},
+		{name: "standalone restart", mode: JobExecutionModeRestart, enabled: true},
+		{name: "ordinary service", mode: JobExecutionModeOneOff},
+		{name: "swarm unchanged", mode: JobExecutionModeOneOff, enabled: true, swarmMode: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			labels := map[string]string{}
+			if tt.enabled {
+				labels[DocoCDJobLabels.JobEnabled] = "true"
+				labels[DocoCDJobLabels.JobSchedule] = "@every 24h"
+				labels[DocoCDJobLabels.JobExecutionMode] = string(tt.mode)
+			}
+
+			service := types.ServiceConfig{
+				Name:     "backup",
+				Labels:   labels,
+				PreStart: []types.PreStartHook{{}},
+			}
+			project := &types.Project{Services: types.Services{"backup": service}}
+
+			err := validateScheduledJobPolicies(project, tt.swarmMode)
+			if errors.Is(err, ErrComposeOneOffPreStartUnsupported) != tt.wantErr || (!tt.wantErr && err != nil) {
+				t.Fatalf("validation error = %v, want unsupported pre_start = %v", err, tt.wantErr)
+			}
+
+			withoutHook := service
+			withoutHook.PreStart = nil
+
+			project.Services["backup"] = withoutHook
+			if err := validateScheduledJobPolicies(project, tt.swarmMode); err != nil {
+				t.Fatalf("service without pre_start rejected: %v", err)
+			}
+		})
+	}
+}
 
 func TestValidateScheduledJobPolicies(t *testing.T) {
 	t.Parallel()

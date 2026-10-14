@@ -1807,6 +1807,23 @@ func TestPrepareComposeProjectForOneOffRun(t *testing.T) {
 			t.Fatal("expected error for missing service, got nil")
 		}
 	})
+
+	t.Run("rejects pre_start before preparing an execution", func(t *testing.T) {
+		t.Parallel()
+
+		project := &types.Project{Services: types.Services{
+			"backup": {Name: "backup", PreStart: []types.PreStartHook{{}}},
+		}}
+
+		got, err := prepareComposeProjectForOneOffRunWithOptions(project, "backup", ComposeOneOffOptions{RunID: "run"})
+		if !errors.Is(err, ErrComposeOneOffPreStartUnsupported) || got != nil {
+			t.Fatalf("one-off project = %v, error = %v, want unsupported pre_start", got, err)
+		}
+
+		if project.Services["backup"].Labels[DocoCDJobLabels.JobEphemeral] != "" {
+			t.Fatal("rejected execution mutated the source")
+		}
+	})
 }
 
 func TestScheduledDiscoveryGitOptions(t *testing.T) {
