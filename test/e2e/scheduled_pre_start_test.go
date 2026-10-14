@@ -110,6 +110,7 @@ func TestScheduledPreStart_UnrelatedWebhooks(t *testing.T) {
 	sourceID, hookID := inventory()
 	source := inspectCreated(sourceID)
 	hook := inspectCreated(hookID)
+	idle := inspectCreated(stack + "-idle-1")
 
 	initialHead, err := h.repo.Head()
 	if err != nil {
@@ -253,6 +254,125 @@ func TestScheduledPreStart_UnrelatedWebhooks(t *testing.T) {
 		}
 
 		assertUnexecutedJob()
+	}
+
+	setState := scheduledOneOffCompletionGate(t, h, sourceID)
+	previousState := source.Container.State
+
+	for _, attempt := range []struct {
+		name      string
+		failHook  bool
+		hookCount int
+		runCount  int
+	}{
+		{name: "first run", hookCount: 1, runCount: 1},
+		{name: "repeat run", hookCount: 2, runCount: 2},
+		{name: "failed hook", failHook: true, hookCount: 3, runCount: 2},
+		{name: "recovery after failed hook", hookCount: 4, runCount: 3},
+	} {
+		if attempt.failHook {
+			if err := setState("touch /state/fail-hook"); err != nil {
+				t.Fatalf("arm hook failure: %v", err)
+			}
+		} else if err := setState("rm -f /state/fail-hook"); err != nil {
+			t.Fatalf("clear hook failure: %v", err)
+		}
+
+		query := url.Values{"context": {"remote"}, "stack": {stack}, "wait": {"false"}}
+
+		var accepted struct {
+			JobID string `json:"job_id"`
+		}
+		if err := json.Unmarshal(h.APIRequest(http.MethodPost,
+			"/v1/api/job/"+url.PathEscape(getScheduledOneOffJob(t, h, "remote", stack).Name)+"/run?"+query.Encode(),
+			http.StatusAccepted), &accepted); err != nil {
+			t.Fatalf("decode manual run response: %v", err)
+		}
+
+		h.WaitFor(time.Minute, attempt.name+" completed", func() bool {
+			var response struct {
+				Content controlplane.Run `json:"content"`
+			}
+			if err := json.Unmarshal(h.APIRequest(http.MethodGet,
+				"/v1/api/run/"+url.PathEscape(accepted.JobID), http.StatusOK), &response); err != nil {
+				t.Fatalf("decode manual run: %v", err)
+			}
+
+			run := response.Content
+			if run.Status == controlplane.RunStatusAccepted || run.Status == controlplane.RunStatusRunning {
+				return false
+			}
+
+			wantStatus := controlplane.RunStatusSucceeded
+			if attempt.failHook {
+				wantStatus = controlplane.RunStatusFailed
+			}
+
+			if run.Status != wantStatus || run.FinishedAt == nil {
+				t.Fatalf("%s: run = %#v, want %s", attempt.name, run, wantStatus)
+			}
+
+			return true
+		})
+
+		h.WaitFor(15*time.Second, attempt.name+" left the source stopped", func() bool {
+			current, err := remoteDocker.ContainerInspect(ctx, sourceID, client.ContainerInspectOptions{})
+			if err != nil {
+				t.Fatalf("inspect source after %s: %v", attempt.name, err)
+			}
+
+			if current.Container.Created != source.Container.Created ||
+				!reflect.DeepEqual(current.Container.Config.Labels, labels) {
+				t.Fatalf("%s changed source identity or deployment metadata", attempt.name)
+			}
+
+			state := current.Container.State
+			if state.Running {
+				return false
+			}
+
+			if attempt.failHook {
+				if !reflect.DeepEqual(state, previousState) {
+					t.Fatalf("failed hook changed the workload state: before %#v, after %#v", previousState, state)
+				}
+			} else if state.Status != "exited" || state.ExitCode != 0 || state.StartedAt == previousState.StartedAt {
+				t.Fatalf("%s did not execute the workload successfully: %#v", attempt.name, state)
+			}
+
+			previousState = state
+
+			return true
+		})
+
+		if err := setState(fmt.Sprintf(
+			`test "$(wc -l < /state/hooks)" -eq %d && test "$(wc -l < /state/runs)" -eq %d`,
+			attempt.hookCount, attempt.runCount)); err != nil {
+			t.Fatalf("%s did not run hooks before the workload: %v", attempt.name, err)
+		}
+
+		hooks, err := remoteDocker.ContainerList(ctx, client.ContainerListOptions{
+			All: true,
+			Filters: client.Filters{}.
+				Add("label", api.ProjectLabel+"="+stack).
+				Add("label", api.HookLabel+"=pre_start"),
+		})
+		if err != nil {
+			t.Fatalf("list hooks after %s: %v", attempt.name, err)
+		}
+
+		wantHooks := 0
+		if attempt.failHook {
+			wantHooks = 1
+		}
+
+		if len(hooks.Items) != wantHooks {
+			t.Fatalf("%s: retained hooks = %#v, want %d", attempt.name, hooks.Items, wantHooks)
+		}
+
+		currentIdle := inspectCreated(idle.Container.ID)
+		if !reflect.DeepEqual(currentIdle.Container.State, idle.Container.State) {
+			t.Fatalf("%s changed an unrelated autostart-disabled service", attempt.name)
+		}
 	}
 }
 

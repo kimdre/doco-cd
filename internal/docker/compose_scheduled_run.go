@@ -101,6 +101,22 @@ func RunComposeScheduledContainer(
 		return fmt.Errorf("create compose service: %w", err)
 	}
 
+	if len(project.Services[ref.Service].PreStart) > 0 {
+		// Compose consumes pre_start runners on success. Prepare fresh runners
+		// for each stopped job without recreating its source container.
+		prepareComposeScheduledHookProject(project, ref.Service)
+
+		if err := service.Create(ctx, project, api.CreateOptions{
+			Services:             []string{ref.Service},
+			Recreate:             api.RecreateNever,
+			RecreateDependencies: api.RecreateNever,
+			IgnoreOrphans:        true,
+			QuietPull:            true,
+		}); err != nil {
+			return fmt.Errorf("prepare pre_start hooks for compose service %s/%s: %w", ref.Project, ref.Service, err)
+		}
+	}
+
 	var waitResult client.ContainerWaitResult
 	if waitForExit {
 		waitResult = dockerCli.Client().ContainerWait(ctx, containerID, client.ContainerWaitOptions{
@@ -120,6 +136,24 @@ func RunComposeScheduledContainer(
 	}
 
 	return nil
+}
+
+// prepareComposeScheduledHookProject sets the labels and pull policy that
+// Create needs to prepare pre_start runners for a restart-mode job.
+func prepareComposeScheduledHookProject(project *types.Project, serviceName string) {
+	addComposeServiceTrackingLabels(project)
+
+	svc, ok := project.Services[serviceName]
+	if !ok {
+		return
+	}
+
+	// The source container keeps its image. Pull only missing hook images, so
+	// a scheduled run does not contact the registry on every execution.
+	if svc.PullPolicy != types.PullPolicyNever && svc.PullPolicy != types.PullPolicyBuild {
+		svc.PullPolicy = types.PullPolicyMissing
+		project.Services[serviceName] = svc
+	}
 }
 
 func RunComposeOneOffFromServiceDefinition(
