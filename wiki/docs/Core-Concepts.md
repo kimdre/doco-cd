@@ -61,12 +61,12 @@ During a deployment, Doco-CD will:
 4. Deploy the services defined in the `docker-compose.yml` files.
 
 #### Failed Deployment Retry
-- A deployment that fails after its containers were already created (for example a failed lifecycle hook) is recorded and, by default, retried on every following trigger until it succeeds.
-- A retry of a failed deploy stage recreates the whole stack, so partially applied changes like never-finished hooks run again.
-- The optional [retry policy](Deploy-Settings.md#retry-settings) can limit automatic retries after the first attempt with `retry.limit` and add a minimum delay with `retry.delay`.
-- When the limit is exhausted, automatic retries pause for the same desired revision/configuration; a changed desired state gets a fresh budget. Manual REST API and MCP triggers bypass the delay and pause for one attempt.
-- The record lives in memory: a restart of Doco-CD drops it and the regular change detection applies again.
-- Each failed attempt reports a failure [notification](Advanced/Notifications.md), de-duplicated with periodic reminders.
+A deployment that fails after its containers were already created (for example a failed lifecycle hook) is recorded and, by default, retried on every following trigger until it succeeds.
+A retry of a failed deploy stage recreates the whole stack, so partially applied changes like never-finished hooks run again.
+The optional [retry policy](Deploy-Settings.md#retry-settings) can limit automatic retries after the first attempt with `retry.limit` and add a minimum delay with `retry.delay`.
+When the limit is exhausted, automatic retries pause for the same desired revision/configuration; a changed desired state gets a fresh budget. Manual REST API and MCP triggers bypass the delay and pause for one attempt.
+The record lives in memory: a restart of Doco-CD drops it and the regular change detection applies again.
+Each failed attempt reports a failure [notification](Advanced/Notifications.md), de-duplicated with periodic reminders.
 
 ### Deployment Configuration
 A YAML file (`.doco-cd.yml` or `.doco-cd.yaml`) placed in the root of a Git repository that controls how a deployment is performed.
