@@ -447,6 +447,34 @@
       "description": "AutoDiscovery configures autodiscovery of services to deploy in the working directory",
       "additionalProperties": false
     },
+    "retry": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Limit sets the maximum number of automatic retries after the original attempt. Omitted means unlimited; zero disables automatic retries. Negative values are invalid.",
+          "minimum": 0
+        },
+        "delay": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ],
+          "description": "Delay is the fixed minimum wait after an actual failure before another automatic retry; numeric values are seconds and strings accept Go duration syntax. Omitted or zero means no delay. Negative values are invalid.",
+          "minimum": 0,
+          "pattern": "^[^-]+$"
+        }
+      },
+      "description": "Retry limits automatic retries of a failed desired state and adds an optional fixed delay. Omitted means unlimited retries without delay.",
+      "additionalProperties": false
+    },
     "reconciliation": {
       "type": [
         "boolean",
@@ -626,5 +654,5 @@
   },
   "title": "Doco-CD deployment configuration",
   "type": "object",
-  "x-doco-cd-version": "07057114ce70c2fb9610672a29c15fb517e6e0f7"
+  "x-doco-cd-version": "c98aba89597e45b9bfd0b65eaf600dd6cc57c97a"
 }
