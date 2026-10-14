@@ -374,6 +374,53 @@ func TestScheduledPreStart_UnrelatedWebhooks(t *testing.T) {
 			t.Fatalf("%s changed an unrelated autostart-disabled service", attempt.name)
 		}
 	}
+
+	mark := h.LogMark()
+
+	before, err := h.repo.Head()
+	if err != nil {
+		t.Fatalf("read HEAD before unsupported one-off config: %v", err)
+	}
+
+	h.ReplaceInWorktree("stacks/"+stack+"/compose.yaml", `execution_mode: "restart"`, `execution_mode: "one_off"`)
+	after := h.RepoPush("e2e: reject one-off pre_start instead of silently skipping it")
+	payload := webhook.GithubPushPayload{Ref: "refs/heads/main", Before: before.Hash().String(), After: after.String()}
+	payload.Repository.Name = scenario
+	payload.Repository.FullName = internalgit.GetFullName(cloneURL)
+	payload.Repository.CloneURL = cloneURL
+	payload.Repository.WebURL = cloneURL
+	runID := sendScheduledPreStartWebhook(t, h, webhookSecret, payload)
+	h.WaitForLogLineAfter(mark, time.Minute, runID, docker.ErrComposeOneOffPreStartUnsupported.Error())
+	h.WaitFor(15*time.Second, "unsupported one-off configuration reported as failed", func() bool {
+		var response struct {
+			Content controlplane.Run `json:"content"`
+		}
+		if err := json.Unmarshal(h.APIRequest(http.MethodGet,
+			"/v1/api/run/"+url.PathEscape(runID), http.StatusOK), &response); err != nil {
+			t.Fatalf("decode rejected deployment: %v", err)
+		}
+
+		run := response.Content
+		if run.Status == controlplane.RunStatusAccepted || run.Status == controlplane.RunStatusRunning {
+			return false
+		}
+
+		if run.Status != controlplane.RunStatusFailed ||
+			!strings.Contains(run.Message, docker.ErrComposeOneOffPreStartUnsupported.Error()) {
+			t.Fatalf("unsupported one-off deployment was not rejected: %#v", run)
+		}
+
+		return run.FinishedAt != nil
+	})
+
+	current, err := remoteDocker.ContainerInspect(ctx, sourceID, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatalf("inspect source after rejected configuration: %v", err)
+	}
+
+	if !reflect.DeepEqual(current.Container.State, previousState) || !reflect.DeepEqual(current.Container.Config.Labels, labels) {
+		t.Fatal("rejected one-off configuration changed the existing source")
+	}
 }
 
 func sendScheduledPreStartWebhook(t *testing.T, h *Harness, secret string, payload webhook.GithubPushPayload) string {

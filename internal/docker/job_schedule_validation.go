@@ -40,12 +40,26 @@ func validateScheduledJobPolicies(project *types.Project, swarmMode bool) error 
 			return fmt.Errorf("service %s: deploy.restart_policy.condition=%q is not allowed for scheduled services; use none or unset restart_policy", serviceName, svc.Deploy.RestartPolicy.Condition)
 		}
 
+		if cfg.ExecutionMode == JobExecutionModeOneOff {
+			if err := validateComposeOneOffHooks(svc); err != nil {
+				return fmt.Errorf("service %s: %w", serviceName, err)
+			}
+		}
+
 		restart := strings.ToLower(strings.TrimSpace(svc.Restart))
 		if restart == "" || restart == "no" {
 			continue
 		}
 
 		return fmt.Errorf("service %s: restart=%q is not allowed for scheduled services; use no or unset", serviceName, svc.Restart)
+	}
+
+	return nil
+}
+
+func validateComposeOneOffHooks(svc types.ServiceConfig) error {
+	if len(svc.PreStart) > 0 {
+		return ErrComposeOneOffPreStartUnsupported
 	}
 
 	return nil

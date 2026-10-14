@@ -279,7 +279,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	}
 
 	if err = validateScheduledJobPolicies(project, req.SwarmMode); err != nil {
-		return fmt.Errorf("invalid scheduled job restart policy: %w", err)
+		return fmt.Errorf("invalid scheduled job configuration: %w", err)
 	}
 
 	if req.DeployConfig.WaitRunningJobs {

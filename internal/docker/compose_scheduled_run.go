@@ -31,6 +31,7 @@ import (
 var (
 	ErrComposeScheduledMetadataUnavailable = errors.New("compose scheduled-job metadata unavailable")
 	ErrComposeScheduledServiceReplicated   = errors.New("standalone scheduled compose service must have exactly one replica")
+	ErrComposeOneOffPreStartUnsupported    = errors.New("pre_start hooks are not supported for Compose one_off jobs; use cd.doco.job.execution_mode=restart")
 	// ErrComposeScheduledSourceUnavailable reports that a deployment source is not yet on disk.
 	// This can occur before the first poll fetches it, so timer-based callers should retry rather
 	// than treat it as a deployment failure.
@@ -234,6 +235,10 @@ func prepareComposeProjectForOneOffRunWithOptions(project *types.Project, servic
 	sourceSvc, ok := project.Services[serviceName]
 	if !ok {
 		return nil, fmt.Errorf("compose service %q not found", serviceName)
+	}
+
+	if err := validateComposeOneOffHooks(sourceSvc); err != nil {
+		return nil, fmt.Errorf("service %s: %w", serviceName, err)
 	}
 
 	projectCopy := *project

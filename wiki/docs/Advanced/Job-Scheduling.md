@@ -124,6 +124,12 @@ and then re-/started at the scheduled time without being removed after completio
 Alternatively, you can configure scheduled jobs to run in `one_off` mode, which means a new ephemeral container will
 be created for each scheduled run and removed after completion and reporting.
 
+!!! warning "`pre_start` hooks require `restart` mode"
+    Docker Compose's one-off API does not execute `pre_start` hooks. doco-cd rejects standalone scheduled
+    services that combine `one_off` with `pre_start`, both during deployment and before an execution.
+    Use `cd.doco.job.execution_mode: "restart"` if the workload needs these hooks. `post_start` hooks
+    remain supported by Compose's one-off API.
+
 !!! note
     You won't be able to see the container or its logs after the job has completed,
     so make sure to configure appropriate logging (e.g., log to a persistent file or logging service like [Loki](https://grafana.com/docs/loki/latest/)) 

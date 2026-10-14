@@ -55,7 +55,7 @@ state shared by parallel tests:
 | Changelog             | Real notifications, selected-target config changes, and pull-request merge attribution                                            |
 | Appended documents    | Plain additions, first encrypted addition, and later additions after decryption, preserving existing containers                   |
 | Scheduled status      | Uninterrupted automatic execution, dependency stop/restore, cleanup, failed-source isolation, manual execution, and API reporting |
-| Scheduled pre_start   | Unrelated webhook skips, repeated hooks without source recreation, and hook failure/retry                                         |
+| Scheduled pre_start   | Unrelated webhook skips, repeated hooks without source recreation, hook failure/retry, and unsupported one-off rejection          |
 | Self-update scale-out | Bootstrap adoption and labels, followed by healthy overlap and handover                                                           |
 
 Config decoding, successive artifact decryption, and detailed changelog filtering
@@ -84,7 +84,8 @@ The same scenario then triggers consecutive executions through the scheduled-job
 API. Persistent counters verify that hooks run before each workload, a failing
 hook blocks the workload, and the next execution recovers. The source container
 and its deployment labels remain unchanged, and an unrelated autostart-disabled
-service stays Created.
+service stays Created. Finally, a deployment that changes the job to `one_off`
+must fail with the unsupported `pre_start` error and preserve the existing source.
 
 ## How it works
 
