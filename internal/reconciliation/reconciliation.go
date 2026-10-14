@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/docker/cli/cli/command"
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
@@ -414,6 +415,16 @@ func dockerEventTime(event events.Message) time.Time {
 
 func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events.Message, contextName string, swarmMode bool) {
 	action := normalizeReconciliationEventAction(string(event.Action))
+	if event.Type == events.ContainerEventType && event.Actor.Attributes[api.HookLabel] != "" {
+		jobLog.Debug("skipping reconciliation for lifecycle-hook runner",
+			slog.String("event", action),
+			slog.String("container_name", event.Actor.Attributes["name"]),
+			slog.String("hook", event.Actor.Attributes[api.HookLabel]),
+		)
+
+		return
+	}
+
 	// Restrict candidates to the context the event originated from, since stack
 	// names are only guaranteed to be unique within a single Docker context.
 	dcs := filterConfigsByMode(filterConfigsByContext(j.deployConfigGroupByEvent[action], contextName), j.swarmModeForContext(contextName), swarmMode)
