@@ -101,6 +101,11 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 	runningEphemeralByKey := set.New[string]()
 
 	for _, c := range containers.Items {
+		// Hook runners inherit job labels but are not scheduled workloads.
+		if c.Labels[api.HookLabel] != "" {
+			continue
+		}
+
 		// A Swarm task is represented as a container too. On a Swarm manager it
 		// is handled by the Swarm worker through its parent service, never by the
 		// Compose worker.

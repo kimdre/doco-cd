@@ -1,0 +1,18 @@
+services:
+  backup:
+    image: alpine:3.22
+    command: ["sh", "-c", "touch /state/workload-started"]
+    restart: "no"
+    pre_start:
+      - command: ["sh", "-c", "touch /state/hook-started"]
+    volumes:
+      - job-state:/state
+    labels:
+      cd.doco.job.enabled: "true"
+      cd.doco.job.schedule: "@every 24h"
+      cd.doco.job.execution_mode: "one_off"
+      cd.doco.job.skip_running: "true"
+      cd.doco.job.notify_on: "none"
+
+volumes:
+  job-state:

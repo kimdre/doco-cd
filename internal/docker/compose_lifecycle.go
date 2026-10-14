@@ -228,7 +228,7 @@ func containerHasConfiguredStopTimeout(ctx context.Context, dockerCli command.Cl
 //
 // Note: the compose Start API ignores StartOptions.Services, so containers are
 // looked up directly by the com.docker.compose.project and com.docker.compose.service
-// labels and started individually.
+// labels and started individually. Compose lifecycle-hook runner containers are skipped.
 //
 // This is best-effort: if starting one container fails, the remaining
 // containers are still attempted, and all failures are aggregated into the
@@ -248,6 +248,11 @@ func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectNam
 	var errs []string
 
 	for _, c := range containers {
+		// Only Compose runs pre_start hook runners. A direct start runs the hook outside of the Compose start flow.
+		if c.Labels[api.HookLabel] != "" {
+			continue
+		}
+
 		svcName := c.Labels[api.ServiceLabel]
 		if !serviceSet.Contains(svcName) {
 			continue

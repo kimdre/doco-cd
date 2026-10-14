@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -12,7 +13,9 @@ import (
 
 	"github.com/avast/retry-go/v5"
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 
@@ -21,6 +24,211 @@ import (
 	"github.com/kimdre/doco-cd/internal/test"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+func TestGetServiceStatusFromContainerStatus_ExcludesHookContainers(t *testing.T) {
+	t.Parallel()
+
+	const project = "test-project"
+
+	realLabels := Labels{
+		api.ProjectLabel:                    project,
+		api.ServiceLabel:                    "scheduled",
+		DocoCDLabels.Source.Name:            "owner/repo",
+		DocoCDLabels.Deployment.CommitSHA:   "real-commit",
+		DocoCDLabels.Deployment.ComposeHash: "real-compose",
+		DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deploy.AutoDiscoveryConfig{
+			Enabled: true,
+			Delete:  true,
+		}),
+	}
+	source := container.Summary{ID: "source", State: container.StateCreated, Labels: realLabels}
+
+	for _, state := range []container.ContainerState{container.StateCreated, container.StateRunning, container.StateExited} {
+		for _, carriesMetadata := range []bool{false, true} {
+			hookLabels := Labels{
+				api.ProjectLabel: project,
+				api.ServiceLabel: "scheduled",
+				api.HookLabel:    "pre_start",
+			}
+			if carriesMetadata {
+				hookLabels[DocoCDLabels.Source.Name] = "owner/repo"
+				hookLabels[DocoCDLabels.Deployment.CommitSHA] = "hook-commit"
+				hookLabels[DocoCDLabels.Deployment.ComposeHash] = "hook-compose"
+				hookLabels[DocoCDLabels.Deployment.AutoDiscoveryConfig] = "{enabled: false}"
+			}
+
+			hook := container.Summary{ID: "hook", State: state, Labels: hookLabels}
+			orders := []struct {
+				name       string
+				containers []container.Summary
+			}{
+				{name: "hook first", containers: []container.Summary{hook, source}},
+				{name: "source first", containers: []container.Summary{source, hook}},
+				{name: "hook only", containers: []container.Summary{hook}},
+			}
+
+			for _, order := range orders {
+				t.Run(string(state)+"/metadata="+strconv.FormatBool(carriesMetadata)+"/"+order.name, func(t *testing.T) {
+					t.Parallel()
+
+					want := map[Service]ServiceStatus{}
+					if order.name != "hook only" {
+						want["scheduled"] = ServiceStatus{Labels: realLabels}
+					}
+
+					got := getServiceStatusFromContainerStatus(project, order.containers)
+					if !reflect.DeepEqual(got, want) {
+						t.Fatalf("service status = %#v, want %#v", got, want)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestGetServiceStatusFromContainerStatus_PreservesRealContainers(t *testing.T) {
+	t.Parallel()
+
+	const project = "test-project"
+
+	labels := Labels{api.ProjectLabel: project, api.ServiceLabel: "app"}
+	emptyHookLabels := Labels{api.ProjectLabel: project, api.ServiceLabel: "app", api.HookLabel: ""}
+	hookLabels := Labels{api.ProjectLabel: project, api.ServiceLabel: "app", api.HookLabel: "pre_start"}
+	otherLabels := Labels{api.ProjectLabel: "other-project", api.ServiceLabel: "app"}
+
+	tests := []struct {
+		name       string
+		containers []container.Summary
+		want       map[Service]ServiceStatus
+	}{
+		{
+			name: "empty inventory",
+			want: map[Service]ServiceStatus{},
+		},
+		{
+			name:       "nil labels",
+			containers: []container.Summary{{State: container.StateRunning}},
+			want:       map[Service]ServiceStatus{},
+		},
+		{
+			name:       "other project",
+			containers: []container.Summary{{State: container.StateRunning, Labels: otherLabels}},
+			want:       map[Service]ServiceStatus{},
+		},
+		{
+			name:       "unmanaged running service",
+			containers: []container.Summary{{State: container.StateRunning, Labels: labels}},
+			want:       map[Service]ServiceStatus{"app": {Labels: labels, Replicas: 1}},
+		},
+		{
+			name:       "unmanaged created service",
+			containers: []container.Summary{{State: container.StateCreated, Labels: labels}},
+			want:       map[Service]ServiceStatus{"app": {Labels: labels}},
+		},
+		{
+			name:       "unmanaged stopped service",
+			containers: []container.Summary{{State: container.StateExited, Labels: labels}},
+			want:       map[Service]ServiceStatus{"app": {Labels: labels}},
+		},
+		{
+			name:       "empty hook label is not a runner",
+			containers: []container.Summary{{State: container.StateRunning, Labels: emptyHookLabels}},
+			want:       map[Service]ServiceStatus{"app": {Labels: emptyHookLabels, Replicas: 1}},
+		},
+		{
+			name: "only running real replicas count",
+			containers: []container.Summary{
+				{State: container.StateRunning, Labels: hookLabels},
+				{State: container.StateRunning, Labels: labels},
+				{State: container.StateExited, Labels: labels},
+				{State: container.StateCreated, Labels: labels},
+				{State: container.StateRunning, Labels: labels},
+			},
+			want: map[Service]ServiceStatus{"app": {Labels: labels, Replicas: 2}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := getServiceStatusFromContainerStatus(project, tt.containers)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("service status = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetLatestServiceStatus_IgnoresHookMetadata(t *testing.T) {
+	t.Parallel()
+
+	const project = "test-project"
+
+	autoDiscovery := MarshalAutoDiscoveryConfig(deploy.AutoDiscoveryConfig{Enabled: true})
+	realLabels := Labels{
+		api.ProjectLabel:                            project,
+		api.ServiceLabel:                            "scheduled",
+		DocoCDLabels.Source.Name:                    "owner/repo",
+		DocoCDLabels.Deployment.CommitSHA:           "real-commit",
+		DocoCDLabels.Deployment.ComposeHash:         "real-compose",
+		DocoCDLabels.Deployment.AutoDiscoveryConfig: autoDiscovery,
+		DocoCDLabels.Deployment.Timestamp:           "2026-10-14T07:00:00Z",
+	}
+	hookLabels := Labels{
+		api.ProjectLabel:                            project,
+		api.ServiceLabel:                            "scheduled",
+		api.HookLabel:                               "pre_start",
+		DocoCDLabels.Source.Name:                    "owner/repo",
+		DocoCDLabels.Deployment.CommitSHA:           "hook-commit",
+		DocoCDLabels.Deployment.ComposeHash:         "hook-compose",
+		DocoCDLabels.Deployment.AutoDiscoveryConfig: "{enabled: false}",
+		DocoCDLabels.Deployment.Timestamp:           "2026-10-14T08:00:00Z",
+	}
+	hook := container.Summary{State: container.StateCreated, Labels: hookLabels}
+	source := container.Summary{State: container.StateCreated, Labels: realLabels}
+
+	for _, tt := range []struct {
+		name       string
+		containers []container.Summary
+		want       LatestServiceStatus
+	}{
+		{
+			name:       "hook first",
+			containers: []container.Summary{hook, source},
+			want: LatestServiceStatus{
+				deploymentCommitSHA:   "real-commit",
+				deploymentComposeHash: "real-compose",
+				DeployedStatus:        map[Service]ServiceStatus{"scheduled": {Labels: realLabels}},
+			},
+		},
+		{
+			name:       "source first",
+			containers: []container.Summary{source, hook},
+			want: LatestServiceStatus{
+				deploymentCommitSHA:   "real-commit",
+				deploymentComposeHash: "real-compose",
+				DeployedStatus:        map[Service]ServiceStatus{"scheduled": {Labels: realLabels}},
+			},
+		},
+		{
+			name:       "hook only",
+			containers: []container.Summary{hook},
+			want:       LatestServiceStatus{DeployedStatus: map[Service]ServiceStatus{}},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			inventory := getServiceStatusFromContainerStatus(project, tt.containers)
+
+			got := getLatestServiceStatus(&sync.Map{}, inventory, "https://github.com/owner/repo.git", project)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("deployment status = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestDeploymentTimestampAtLeastSubsecond(t *testing.T) {
 	t.Parallel()

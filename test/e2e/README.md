@@ -55,6 +55,7 @@ state shared by parallel tests:
 | Changelog             | Real notifications, selected-target config changes, and pull-request merge attribution                                            |
 | Appended documents    | Plain additions, first encrypted addition, and later additions after decryption, preserving existing containers                   |
 | Scheduled status      | Uninterrupted automatic execution, dependency stop/restore, cleanup, failed-source isolation, manual execution, and API reporting |
+| Scheduled pre_start   | Two signed unrelated webhooks leave an auto-discovered scheduled service and its hook runner Created and unchanged                |
 | Self-update scale-out | Bootstrap adoption and labels, followed by healthy overlap and handover                                                           |
 
 Config decoding, successive artifact decryption, and detailed changelog filtering
@@ -66,6 +67,18 @@ process-crash windows retain their E2E coverage.
 
 Keep Swarm scheduled-job recovery serial: scheduler discovery scans the shared
 cluster, so different stack names do not isolate concurrent schedulers.
+
+`TestScheduledPreStart_UnrelatedWebhooks` uses an isolated remote Docker context
+and a label-based one-off job scheduled every 24 hours. A long poll interval
+allows the initial deployment but leaves both subsequent unrelated commits for
+real signed GitHub push webhooks. Each webhook's returned job ID is checked
+through the run API for a completed skip of the discovered stack. Docker
+inventory includes stopped containers (`All: true`), distinguishes hook runners
+by Compose's hook label, and checks that source and hook IDs, Created states,
+container counts, and deployment metadata remain unchanged. The scheduled job
+API must still report the real source with no last run. This catches hook runners
+incorrectly supplying deployment labels or replacing scheduled-job sources
+without executing the workload.
 
 ## How it works
 

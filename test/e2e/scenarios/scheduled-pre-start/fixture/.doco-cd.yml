@@ -1,0 +1,13 @@
+name: e2e-scheduled-pre-start-discovery
+working_dir: stacks
+reference: refs/heads/main
+webhook_filter: "^refs/heads/main$"
+context: remote
+swarm:
+  enabled: false
+auto_discovery:
+  enabled: true
+  delete: true
+  remove_volumes: false
+  remove_images: true
+reconciliation: false
