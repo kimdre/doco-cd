@@ -47,11 +47,11 @@ type Dependencies struct {
 	AppConfig      *app.Config             `validate:"required,nostructlevel"`
 	DataMountPoint container.MountPoint    `validate:"required"`
 	DockerCLI      command.Cli             `validate:"required,nostructlevel"`
-	Contexts       *docker.ContextRegistry `validate:"required"`
+	Contexts       *docker.ContextRegistry `validate:"required,nostructlevel"`
 	// A nil SecretProvider means no external secret provider is configured.
-	SecretProvider secretprovider.SecretProvider
-	Notifier       notification.Sender `validate:"required,nostructlevel"`
-	RuntimeQueries RuntimeQueries
+	SecretProvider secretprovider.SecretProvider `validate:"omitempty,nostructlevel"`
+	Notifier       notification.Sender           `validate:"required,nostructlevel"`
+	RuntimeQueries RuntimeQueries                `validate:"omitempty,nostructlevel"`
 }
 
 // RuntimeQueries is the read-only Docker query surface used by reconciliation.

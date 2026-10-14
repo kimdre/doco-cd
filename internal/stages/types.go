@@ -345,8 +345,8 @@ type Dependencies struct {
 	// on-disk leftovers left behind after migration (see internal/migration). Both are optional;
 	// a nil Contexts disables the retry entirely, and a nil LeftoverTracker just disables the
 	// in-memory short-circuit for repositories already confirmed clean.
-	Contexts        *docker.ContextRegistry `validate:"omitempty,nostructlevel"`
-	LeftoverTracker *migration.LeftoverTracker
+	Contexts        *docker.ContextRegistry    `validate:"omitempty,nostructlevel"`
+	LeftoverTracker *migration.LeftoverTracker `validate:"omitempty,nostructlevel"`
 }
 
 // RunInput holds the per-deployment input for a single StageManager run: the job identity and
@@ -362,9 +362,9 @@ type RunInput struct {
 	Payload      *webhook.ParsedPayload
 	DeployConfig *deploy.Config `validate:"required,nostructlevel"`
 	Metadata     notification.Metadata
-	GitChanges   *GitChangeCache
-	GitAncestry  *GitAncestryCache
-	ProjectSkips *ProjectSkipCache
+	GitChanges   *GitChangeCache   `validate:"omitempty,nostructlevel"`
+	GitAncestry  *GitAncestryCache `validate:"omitempty,nostructlevel"`
+	ProjectSkips *ProjectSkipCache `validate:"omitempty,nostructlevel"`
 }
 
 // NewStageManager validates dependencies and run, then creates and initializes a new
