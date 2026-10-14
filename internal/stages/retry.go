@@ -162,9 +162,12 @@ func (s *StageManager) logAdmittedDeploymentRetry(ctx context.Context, stageLog 
 		slog.String("failed_commit", failure.CommitSHA),
 		slog.Time("failed_at", failure.FailedAt),
 		slog.String("error", failure.Error),
-		slog.Int("retries_used", failure.RetriesUsed),
-		slog.Any("retry_limit", s.DeployConfig.Retry.MaxRetries),
-		slog.String("origin", string(origin)))
+		slog.Group("retry",
+			slog.Int("used", failure.RetriesUsed),
+			slog.Any("limit", s.DeployConfig.Retry.MaxRetries),
+			slog.String("origin", string(origin)),
+		),
+	)
 }
 
 // prepareDeploymentRetry runs on every mutating pre-deploy exit, including
@@ -210,7 +213,11 @@ func (s *StageManager) prepareDeploymentRetry(ctx context.Context, stageLog *slo
 		if manual {
 			if failure, failed := s.lastDeploymentFailure(); failed {
 				stageLog.Info("manual deployment bypasses retry delay and budget",
-					slog.String("origin", string(s.Origin)), slog.Int("retries_used", failure.RetriesUsed))
+					slog.Group("retry",
+						slog.String("origin", string(s.Origin)),
+						slog.Int("used", failure.RetriesUsed),
+					),
+				)
 			}
 		}
 
@@ -227,22 +234,26 @@ func (s *StageManager) prepareDeploymentRetry(ctx context.Context, stageLog *slo
 		origin = syncwindow.OriginAutomatic
 	}
 
-	attrs := []slog.Attr{
-		slog.String("stack", s.DeployConfig.Name),
-		slog.String("context", docker.DisplayContextName(s.DeployConfig.Context)),
-		slog.String("revision", desired.Revision),
+	retryAttrs := []any{
 		slog.String("reason", suppressed.Reason),
-		slog.String("failed_stage", suppressed.Failure.Stage),
-		slog.String("failure_reason", suppressed.Failure.Error),
-		slog.Int("retries_used", suppressed.Failure.RetriesUsed),
-		slog.Any("retry_limit", suppressed.RetryLimit),
-		slog.String("origin", string(origin)),
+		slog.Int("used", suppressed.Failure.RetriesUsed),
+		slog.Any("limit", suppressed.RetryLimit),
 	}
 	message := "automatic deployment retries paused"
 
 	if !suppressed.NextRetry.IsZero() {
-		attrs = append(attrs, slog.Time("retry_after", suppressed.NextRetry))
+		retryAttrs = append(retryAttrs, slog.Time("after", suppressed.NextRetry))
 		message = "automatic deployment retry delayed"
+	}
+
+	attrs := []slog.Attr{
+		slog.String("stack", s.DeployConfig.Name),
+		slog.String("context", docker.DisplayContextName(s.DeployConfig.Context)),
+		slog.String("revision", desired.Revision),
+		slog.String("origin", string(origin)),
+		slog.String("failed_stage", suppressed.Failure.Stage),
+		slog.String("failure_reason", suppressed.Failure.Error),
+		slog.Group("retry", retryAttrs...),
 	}
 
 	stageLog.LogAttrs(ctx, level, message, attrs...)

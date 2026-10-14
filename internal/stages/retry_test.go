@@ -463,7 +463,20 @@ func TestRetrySuppressedPreDeployDoesNotAnnounceRetry(t *testing.T) {
 				t.Fatal("suppressed polls falsely announced an admitted retry")
 			}
 
-			if strings.Count(output.String(), "level=WARN") != 1 || !strings.Contains(output.String(), "reason="+reason) {
+			for _, field := range []string{
+				"stack=" + sm.DeployConfig.Name,
+				"failed_stage=deploy",
+				"failure_reason=broken",
+				"retry.reason=" + reason,
+				"retry.used=",
+				"retry.limit=",
+			} {
+				if !strings.Contains(output.String(), field) {
+					t.Fatalf("expected log field %q: %s", field, output.String())
+				}
+			}
+
+			if strings.Count(output.String(), "level=WARN") != 1 {
 				t.Fatalf("expected one transition warning and repeated debug suppressions: %s", output.String())
 			}
 		})
@@ -492,6 +505,10 @@ func TestRetryAdmittedUnlimitedRetryPreservesWarning(t *testing.T) {
 
 	if strings.Count(output.String(), "last deployment attempt failed, retrying") != 1 || !strings.Contains(output.String(), "level=WARN") {
 		t.Fatalf("admitted unlimited retry lost its warning: %s", output.String())
+	}
+
+	if !strings.Contains(output.String(), "failed_stage=deploy") || !strings.Contains(output.String(), "retry.used=") {
+		t.Fatalf("admitted retry log is missing the expected structure: %s", output.String())
 	}
 }
 
