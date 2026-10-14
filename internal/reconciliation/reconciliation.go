@@ -494,7 +494,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		jobLog.Debug("suppressing follow-up event from self-initiated container restart",
 			slog.String("event", action),
 			slog.String("container_name", event.Actor.Attributes["name"]),
-			slog.String("restart_cooldown_remaining", remaining.Truncate(time.Second).String()),
+			slog.String("restart_delay_remaining", remaining.Truncate(time.Second).String()),
 			slog.String("stack", stackName),
 		)
 
@@ -649,7 +649,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 		req.Origin = syncwindow.OriginReconciliation
 
 		err := j.manager.handleDeploy(ctx, req)
-		if errors.Is(err, stages.ErrSyncWindowBlocked) {
+		if errors.Is(err, stages.ErrSyncWindowBlocked) || errors.Is(err, stages.ErrRetrySuppressed) {
 			// The gate already logged the deferral.
 			continue
 		}

@@ -19,6 +19,16 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		s.Stages.Deploy.FinishedAt = time.Now()
 	}()
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if s.retryAttempt != nil {
+		s.retryAttempt.Start()
+	}
+
+	s.logAdmittedDeploymentRetry(ctx, stageLog)
+
 	var err error
 
 	// Migrate deployment mode if needed

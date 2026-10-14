@@ -69,3 +69,19 @@ func TestReportPollOutcomeTreatsSyncWindowDeferralAsNoOp(t *testing.T) {
 		t.Fatalf("expected a deferral info log, got %q", output)
 	}
 }
+
+func TestReportPollOutcomeDoesNotReportSuppressionAsFailure(t *testing.T) {
+	t.Parallel()
+
+	output := pollOutcomeLog(t, &stages.RetrySuppressedError{Stacks: []stages.RetrySuppressedStack{{
+		Name: "web", Revision: "failed", Reason: "budget_exhausted",
+	}}})
+	if strings.Contains(output, "level=ERROR") || strings.Contains(output, "level=WARN") ||
+		strings.Contains(output, "job completed successfully") {
+		t.Fatalf("suppression must not be reported as failure or success: %s", output)
+	}
+
+	if !strings.Contains(output, "job skipped by deployment retry policy") {
+		t.Fatalf("missing suppression reason: %s", output)
+	}
+}

@@ -183,8 +183,12 @@ Each item in `configs` accepts these fields:
 | `target`      | No       | Custom deployment configuration target.                                  |
 | `deployments` | No       | Inline deployment configurations, overriding the repository's config.    |
 
-The `interval`, `schedule` and `run_once` fields are not accepted; MCP-triggered polls always run once immediately.
-MCP-triggered polls count as manual deployments for [sync windows](../Advanced/Sync-Windows.md#manual-deployments).
+The `interval`, `schedule` and `run_once` fields are not accepted; MCP-triggered polls always run once immediately and 
+count as manual deployments for [sync windows](../Advanced/Sync-Windows.md#manual-deployments).
+They also bypass [deployment retry delay and exhausted-budget pause](../Deploy-Settings.md#manual-retry) for that attempt only,
+including `#!yaml limit: 0` with either `#!yaml wait: true` or `#!yaml wait: false`.
+A failed manual deployment neither consumes nor refills the automatic retry budget; complete success clears the failure and retry state.
+Other deployment safety checks, including source trust and sync windows, still apply.
 All configs in one request run with bounded concurrency controlled by `MAX_CONCURRENT_DEPLOYMENTS` (default: 4).
 
 ## Logging

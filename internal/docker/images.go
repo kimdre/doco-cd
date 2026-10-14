@@ -548,6 +548,15 @@ var (
 //
 // A service without a deployed digest is treated as changed.
 func DeployedServicesWithChangedImageDigests(ctx context.Context, dockerCli command.Cli, swarmMode bool, project *types.Project, logger *slog.Logger) ([]string, error) {
+	desired := DesiredProjectImageDigests(ctx, dockerCli, project, logger)
+
+	return DeployedServicesWithChangedDesiredImageDigests(ctx, dockerCli, swarmMode, project, desired, logger)
+}
+
+// DesiredProjectImageDigests resolves immutable desired image identities without
+// pulling layers or changing the deployed services. Unavailable digests are
+// omitted so an inspection failure cannot reset an exhausted retry budget.
+func DesiredProjectImageDigests(ctx context.Context, dockerCli command.Cli, project *types.Project, logger *slog.Logger) map[string]string {
 	// service name -> configured image ref
 	configuredRefs := make(map[string]string)
 	uniqueRefs := set.New[string]()
@@ -563,18 +572,41 @@ func DeployedServicesWithChangedImageDigests(ctx context.Context, dockerCli comm
 	}
 
 	if len(configuredRefs) == 0 {
-		return nil, nil
+		return map[string]string{}
 	}
 
 	registryDigests := make(map[string]string, uniqueRefs.Len())
 	for _, ref := range uniqueRefs.ToSlice() {
-		digest, err := registryDigestLookup(ctx, dockerCli, ref)
-		if err != nil {
-			logger.Warn("could not fetch registry digest", slog.String("ref", ref), slog.String("err", err.Error()))
-			continue
+		digest := digestFromReference(ref)
+		if digest == "" {
+			var err error
+
+			digest, err = registryDigestLookup(ctx, dockerCli, ref)
+			if err != nil {
+				logger.Warn("could not fetch registry digest", slog.String("ref", ref), slog.String("err", err.Error()))
+				continue
+			}
 		}
 
 		registryDigests[ref] = digest
+	}
+
+	desired := make(map[string]string, len(configuredRefs))
+	for service, ref := range configuredRefs {
+		if digest := registryDigests[ref]; digest != "" {
+			desired[service] = digest
+		}
+	}
+
+	return desired
+}
+
+// DeployedServicesWithChangedDesiredImageDigests reuses desired registry results
+// for drift detection and retry admission rather than inspecting mutable tags
+// twice within one attempt.
+func DeployedServicesWithChangedDesiredImageDigests(ctx context.Context, dockerCli command.Cli, swarmMode bool, project *types.Project, desired map[string]string, logger *slog.Logger) ([]string, error) {
+	if len(desired) == 0 {
+		return nil, nil
 	}
 
 	deployedDigests, err := deployedServiceDigestLookup(ctx, dockerCli, swarmMode, project.Name, logger)
@@ -584,16 +616,10 @@ func DeployedServicesWithChangedImageDigests(ctx context.Context, dockerCli comm
 
 	var changedServices []string
 
-	for serviceName, configuredRef := range configuredRefs {
-		registryDigest, ok := registryDigests[configuredRef]
-		if !ok {
-			logger.Warn("registry digest unavailable, skipping service", slog.String("service", serviceName), slog.String("ref", configuredRef))
-			continue
-		}
-
+	for serviceName, registryDigest := range desired {
 		deployedDigest, ok := deployedDigests[serviceName]
 		if !ok {
-			logger.Debug("deployed service image digest unavailable, treating as changed", slog.String("service", serviceName), slog.String("ref", configuredRef))
+			logger.Debug("deployed service image digest unavailable, treating as changed", slog.String("service", serviceName))
 
 			changedServices = append(changedServices, serviceName)
 
@@ -604,7 +630,7 @@ func DeployedServicesWithChangedImageDigests(ctx context.Context, dockerCli comm
 			logger.Info("service image digest changed",
 				slog.String("service", serviceName),
 				slog.Group("image",
-					slog.String("ref", configuredRef),
+					slog.String("ref", project.Services[serviceName].Image),
 					slog.Group("digest",
 						slog.String("deployed", deployedDigest),
 						slog.String("registry", registryDigest),

@@ -11,6 +11,8 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/kimdre/doco-cd/internal/common/types/duration"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/logger"
 	prometheusmetrics "github.com/kimdre/doco-cd/internal/prometheus"
@@ -19,7 +21,28 @@ import (
 
 // mustToolInputSchema derives a tool schema and panics on programmer configuration errors.
 func mustToolInputSchema[T any](tool string) *jsonschema.Schema {
-	schema, err := jsonschema.For[T](nil)
+	retrySchema, err := jsonschema.For[deploy.RetryConfig](&jsonschema.ForOptions{
+		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+			reflect.TypeFor[duration.Duration](): {
+				Description: "Non-negative retry delay as whole seconds or a Go duration string.",
+				OneOf: []*jsonschema.Schema{
+					{Type: "integer", Minimum: new(float64(0))},
+					{Type: "string"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("infer %s retry schema: %v", tool, err))
+	}
+
+	retrySchema.Properties["limit"].Minimum = new(float64(0))
+
+	schema, err := jsonschema.For[T](&jsonschema.ForOptions{
+		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+			reflect.TypeFor[deploy.RetryConfig](): retrySchema,
+		},
+	})
 	if err != nil {
 		panic(fmt.Sprintf("infer %s input schema: %v", tool, err))
 	}
@@ -69,7 +92,7 @@ func destructiveAnnotations(idempotent bool) *sdkmcp.ToolAnnotations {
 // triggerRunToolResult maps run completion into MCP content and a lifecycle status.
 func triggerRunToolResult(wait bool, err error) (*sdkmcp.CallToolResult, string) {
 	// Nothing was deployed, but a deferral by a sync window is not a failure.
-	if errors.Is(err, stages.ErrSyncWindowBlocked) {
+	if errors.Is(err, stages.ErrSyncWindowBlocked) || errors.Is(err, stages.ErrRetrySuppressed) {
 		return &sdkmcp.CallToolResult{
 			Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: err.Error()}},
 		}, string(controlplane.RunStatusSkipped)

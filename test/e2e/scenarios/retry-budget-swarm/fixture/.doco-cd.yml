@@ -1,0 +1,9 @@
+name: e2e-retry-budget-swarm
+context: remote
+swarm:
+  enabled: true
+retry:
+  limit: 0
+  delay: 20s
+reconciliation:
+  enabled: false

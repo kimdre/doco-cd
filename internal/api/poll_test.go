@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -444,6 +445,7 @@ func TestHandler_TriggerPollHandlerReportsSyncWindowDeferral(t *testing.T) {
 		appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
 		log:       log,
 	}
+
 	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 		appConfig: h.appConfig,
 		log:       log,
@@ -480,5 +482,57 @@ func TestHandler_TriggerPollHandlerReportsSyncWindowDeferral(t *testing.T) {
 	run, ok := h.controlPlaneRuns.Get(result.JobID)
 	if !ok || run.Status != controlplane.RunStatusSkipped || run.Message != want {
 		t.Fatalf("tracked run = %#v, found = %t", run, ok)
+	}
+}
+
+func TestHandler_TriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
+	for _, wait := range []bool{true, false} {
+		t.Run(strconv.FormatBool(wait), func(t *testing.T) {
+			origin := make(chan syncwindow.Origin, 1)
+			log := logger.New(logger.LevelCritical)
+			h := &Handler{
+				appConfig: &app.Config{ApiSecret: "poll-test-key", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+				log:       log,
+			}
+			h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+				appConfig: h.appConfig,
+				log:       log,
+				pollRunner: func(ctx context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
+					_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
+				) error {
+					if len(cfg.Deployments) != 1 || cfg.Deployments[0].Retry.Limit == nil ||
+						*cfg.Deployments[0].Retry.Limit != 0 {
+						t.Errorf("manual poll lost retry configuration: %#v", cfg)
+					}
+
+					origin <- controlplane.DeploymentOrigin(ctx)
+
+					return nil
+				},
+			})
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, APIPath+"/poll/run?wait="+strconv.FormatBool(wait),
+				strings.NewReader(`[{"url":"https://example.com/repo.git","deployments":[{"name":"web","retry":{"limit":0,"delay":"1h"}}]}]`))
+			request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+			h.TriggerPollHandler(response, request)
+
+			wantStatus := http.StatusOK
+			if !wait {
+				wantStatus = http.StatusAccepted
+			}
+
+			if response.Code != wantStatus {
+				t.Fatalf("status = %d, want %d: %s", response.Code, wantStatus, response.Body.String())
+			}
+
+			select {
+			case got := <-origin:
+				if got != syncwindow.OriginManual {
+					t.Fatalf("origin = %s, want manual", got)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("manual API trigger did not execute")
+			}
+		})
 	}
 }

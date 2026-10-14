@@ -28,6 +28,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/migration"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
@@ -275,6 +276,7 @@ type StageManager struct {
 	Log            *slog.Logger
 	JobID          string     // Unique identifier for the job
 	JobTrigger     JobTrigger // Trigger type for the job (e.g., "webhook", "poll")
+	Origin         syncwindow.Origin
 	AppConfig      *app.Config
 	DeployConfig   *deploy.Config
 	DeployState    *DeploymentState
@@ -305,6 +307,8 @@ type StageManager struct {
 	// inProgressPosted is set once the deployment's "In Progress" commit
 	// status was posted, which phase updates then refine.
 	inProgressPosted bool
+	retryAttempt     *docker.DeploymentAttempt
+	retryDesired     *docker.DeploymentDesiredState
 	// shortCommit memoizes the short form of the commit SHA shown in
 	// notifications, so a deployment computes it once rather than per message.
 	shortCommitMu sync.Mutex
@@ -351,7 +355,8 @@ type Dependencies struct {
 type RunInput struct {
 	Log          *slog.Logger `validate:"required,nostructlevel"`
 	JobID        string
-	JobTrigger   JobTrigger      `validate:"required,oneof=webhook poll"`
+	JobTrigger   JobTrigger `validate:"required,oneof=webhook poll"`
+	Origin       syncwindow.Origin
 	Repository   *RepositoryData `validate:"required,nostructlevel"`
 	Docker       *Docker         `validate:"required,nostructlevel"`
 	Payload      *webhook.ParsedPayload
@@ -377,6 +382,7 @@ func NewStageManager(dependencies Dependencies, run RunInput) (*StageManager, er
 		Log:             run.Log.With(),
 		JobID:           run.JobID,
 		JobTrigger:      run.JobTrigger,
+		Origin:          run.Origin,
 		AppConfig:       dependencies.AppConfig,
 		DeployConfig:    run.DeployConfig,
 		DeployState:     &DeploymentState{},

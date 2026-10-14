@@ -137,12 +137,12 @@ The docker compose deployment can be configured inside the [deployment configura
 | `name`              | string                | Name of the deployed stack / project / application.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                                                                                                                        |
 | `version`           | string                | Optional deployment config/artifact version for OCI-backed deployments. Currently only `doco.v1` is supported.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `doco.v1`                                                                                                              |
 | `reference`         | string                | Git reference to deploy from, must be either a branch (e.g. `main` or `refs/heads/main`) or tag (e.g. `v1.0.0.` or `refs/tags/v1.0.0`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | - Polling: the reference from the [Poll Config](Poll-Settings.md)<br/>- Webhooks: the reference of the webhook payload |
-| `repository_url`    | string                | Git clone URL of another repository that contains the docker compose files to be deployed. Supports HTTP(S), SSH, native Git, and local filesystem URLs (see [Supported transports](Git-Settings.md#supported-transports)). If specified, the deployment runs from there. Also set `reference` to specify the branch. | ` ` (Ignored when not specified) |
+| `repository_url`    | string                | Git clone URL of another repository that contains the docker compose files to be deployed. Supports HTTP(S), SSH, native Git, and local filesystem URLs (see [Supported transports](Git-Settings.md#supported-transports)). If specified, the deployment runs from there. Also set `reference` to specify the branch.                                                                                                                                                                                                                                                                                                          | ` ` (Ignored when not specified)                                                                                       |
 | `context`           | string                | [Docker context](Advanced/Docker-Contexts.md) to use for this deployment. By specifying a context, you can deploy a stack/project to a specific (remote) Docker host.                                                                                                                                                                                                                                                                                                                                                                                                                                                          | ` ` (Default Docker context)                                                                                           |
 | `working_dir`       | string                | The working directory for the deployment.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `.` (Root/base directory of cloned repository)                                                                         |
-| `compose_files`     | array of strings      | List of docker-compose and overwrite files to use (in descending order, first file gets read first and following files [overwrite/merge](https://docs.docker.com/reference/compose-file/merge/) previous configs). Unknown/Non-existing files get skipped.                                                                                                                                                                                                                                                                                                                                                                     | `["compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"]`                                         |
+| `compose_files`     | array of strings      | List of docker-compose and overwrite files to use (in descending order, first file gets read first and following files [overwrite/merge](https://docs.docker.com/reference/compose-file/merge/) previous configs). Unknown/Non-existing files get skipped.                                                                                                                                                                                                                                                                                                                                                                     | `#!yaml ["compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"]`                                  |
 | `environment`       | map of strings        | A map of environment variables to use for [variable interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation) in the compose files. Overwrites entries from `env_files` with the same key/name.                                                                                                                                                                                                                                                                                                                                                                                     | `null` (No environment variables)                                                                                      |
-| `env_files`         | array of strings      | List of dotenv files to use for [variable interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation). Subsequent .env files overwrite each other and variables resolved from an earlier file are available for substitution in a later one (see [dotenv file format](#dotenv-file-format)). If the default `.env` file does not exist, it will be ignored.<br>If `repository_url` is also specified to deploy from a different repo, you can use the `remote:<filepath>` syntax to specify, that the dotenv file is located in the remote repository and should be loaded from there | `[".env"]`                                                                                                             |
+| `env_files`         | array of strings      | List of dotenv files to use for [variable interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation). Subsequent .env files overwrite each other and variables resolved from an earlier file are available for substitution in a later one (see [dotenv file format](#dotenv-file-format)). If the default `.env` file does not exist, it will be ignored.<br>If `repository_url` is also specified to deploy from a different repo, you can use the `remote:<filepath>` syntax to specify, that the dotenv file is located in the remote repository and should be loaded from there | `#!yaml [".env"]`                                                                                                      |
 | `profiles`          | array of strings      | List of [compose profiles](https://docs.docker.com/compose/how-tos/profiles/) to use for the deployment, e.g., `#!yaml ["prod", "debug"]`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `[]`                                                                                                                   |
 | `webhook_filter`    | string                | A regular expression to whitelist deployment triggers based on the webhook event payload. See the [Webhook Filter](#webhook-filter) Section below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | ` ` (Ignored when not specified)                                                                                       |
 | `remove_orphans`    | boolean               | Remove/Prune containers/services that are not (or no longer) defined in the Compose file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `true`                                                                                                                 |
@@ -153,9 +153,10 @@ The docker compose deployment can be configured inside the [deployment configura
 | `force_image_pull`  | boolean               | Always pulls the latest version of the image tags you've specified if a newer version is available.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `false`                                                                                                                |
 | `timeout`           | number \| Go duration | The maximum time to wait for the deployment to finish before timing out. Numeric values are seconds; duration strings (for example, `90s` or `3m`) must resolve to whole seconds.                                                                                                                                                                                                                                                                                                                                                                                                                                              | `3m`                                                                                                                   |
 | `git_depth`         | number                | Limits the number of commits fetched during clone/fetch (shallow clone). `0` means use the global [`GIT_CLONE_DEPTH`](Git-Settings.md#general) value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.                                                                                                                                                                               | `0` (use global)                                                                                                       |
-| `destroy`           | boolean \| object     | (⚠️ Destructive) Configure stack/project destruction behavior. Use `destroy: true` as shorthand to enable destruction with default options, or use `destroy.enabled: true` inside the object form to customize removal behavior. See [Destroy settings](#destroy-settings).                                                                                                                                                                                                                                                                                                                                                    | see [Destroy settings](#destroy-settings)                                                                              |
+| `destroy`           | boolean \| object     | (⚠️ Destructive) Configure stack/project destruction behavior. Use `#!yaml destroy: true` as shorthand to enable destruction with default options, or use `#!yaml destroy.enabled: true` inside the object form to customize removal behavior. See [Destroy settings](#destroy-settings).                                                                                                                                                                                                                                                                                                                                      | see [Destroy settings](#destroy-settings)                                                                              |
 | `auto_discovery`    | boolean \| object     | Enables [autodiscovery](#auto-discovery) of services to deploy in the working directory by scanning for subdirectories with Docker Compose files (see the `compose_files` setting). Use `auto_discovery: true` as shorthand to enable it with default options, or use the object form to customize settings such as `depth` and `delete`. See [Auto-Discovery Settings](#auto-discovery-settings).                                                                                                                                                                                                                             | see [Auto-Discovery Settings](#auto-discovery-settings)                                                                |
-| `reconciliation`    | boolean \| object     | Enables event-driven reconciliation for deployments. Use `reconciliation: true` as shorthand to enable reconciliation with default options, or use the object form to customize settings. See [reconciliation settings](#reconciliation-settings).                                                                                                                                                                                                                                                                                                                                                                             | see [Reconciliation Settings](#reconciliation-settings)                                                                |
+| `retry`             | object                | Limits automatic retries of a failed desired revision/configuration and optionally delays retries. See [Retry settings](#retry-settings).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Unlimited retries, no delay                                                                                            |
+| `reconciliation`    | boolean \| object     | Enables event-driven reconciliation for deployments. Use `#!yaml reconciliation: true` as shorthand to enable reconciliation with default options, or use the object form to customize settings. See [reconciliation settings](#reconciliation-settings).                                                                                                                                                                                                                                                                                                                                                                      | see [Reconciliation Settings](#reconciliation-settings)                                                                |
 
 
 !!! example
@@ -216,18 +217,18 @@ The docker compose deployment can be configured inside the [deployment configura
         6. Read file from local repository
         7. Read file from remote repository
     
-        ```dotenv title="base.env"
+        ```ini title="base.env"
         TEST=base
         HELLO=world
         ```
         
-        ```dotenv title="test.env in remote repository"
+        ```ini title="test.env in remote repository"
         TEST=changed
         ```
         
         This will result in the following environment variables being set for the deployment in the remote repository:
         
-        ```dotenv
+        ```ini
         TEST=changed
         HELLO=world
         ```
@@ -240,11 +241,11 @@ Doco-CD parses `env_files` using the same dotenv engine as Docker Compose itself
 One notable difference from a plain `.env` file: variables resolved from an earlier `env_files` entry (or from `environment`) 
 can be referenced with `${VAR}` in a later one, e.g. to conditionally override or pass through a value:
 
-```dotenv title="base.env"
+```ini title="base.env"
 TEST_PATH=/data
 ```
 
-```dotenv title="override.env"
+```ini title="override.env"
 TEST_PATH=${TEST_PATH} # keeps the value from base.env unless overridden here
 ```
 
@@ -272,7 +273,7 @@ See [Removing obsolete stacks](#removing-obsolete-stacks).
 #### Auto-Discovery settings
 
 `auto_discovery` accepts either a boolean or a nested object in the deployment configuration file. 
-Use `auto_discovery: true` to enable it with defaults, or use the object form below to customize the settings.
+Use `#!yaml auto_discovery: true` to enable it with defaults, or use the object form below to customize the settings.
 
 | Key              | Type    | Description                                                                                                     | Default value |
 |------------------|---------|-----------------------------------------------------------------------------------------------------------------|---------------|
@@ -340,7 +341,7 @@ auto_discovery:
 
 ??? note "Default behavior"
     By default, `remove_volumes` is set to `false`, meaning volumes are **preserved** when auto-discovered stacks are deleted.
-    This is a safer default to prevent accidental data loss (e.g., databases). Set `remove_volumes: true` if you want volumes to be removed when stacks are auto-deleted.
+    This is a safer default to prevent accidental data loss (e.g., databases). Set `#!yaml remove_volumes: true` if you want volumes to be removed when stacks are auto-deleted.
 
 #### Removing obsolete stacks
 
@@ -390,8 +391,8 @@ When using [custom webhook targets](Endpoints/Webhook-Listener.md#with-custom-ta
 - Slices replace the base value when the nested value is non-empty
 - Scalar values override the base value when the key is set in the nested config, even to `false`, `0` or an empty string.
   Keys set to `null` keep the base value.
-- Nested objects (such as `build`, `destroy`, `reconciliation`) are merged recursively. The boolean shorthand of an object
-  (e.g. `destroy: false`) only sets its `enabled` field.
+- Nested objects (such as `build`, `destroy`, `retry`, `reconciliation`) are merged recursively. The boolean shorthand of an object
+  (e.g. `#!yaml destroy: false`) only sets its `enabled` field.
 - YAML merge keys (`<<`) are resolved before these overrides are applied: explicit keys replace merged values,
   and earlier entries in a merge sequence take precedence over later ones. A replacement does not retain the
   shadowed mapping's children; an explicit `null` shadows the merged value and keeps the base setting.
@@ -485,7 +486,7 @@ Specify all build-settings in a nested `build` object in the deployment configur
 
 The following settings can be used to configure how the deployed compose stack/project will be removed.
 
-`destroy` accepts either a boolean or a nested object in the deployment configuration file. Use `destroy: true` to enable destructive removal with default options, or use the object form below to customize which resources are removed.
+`destroy` accepts either a boolean or a nested object in the deployment configuration file. Use `#!yaml destroy: true` to enable destructive removal with default options, or use the object form below to customize which resources are removed.
 
 doco-cd only destroys a stack that it deployed from the same source: the repository containing the deployment configuration file,
 the repository set in [`repository_url`](#available-settings), or, for [OCI artifacts](Advanced/OCI/Artifact-Usage.md), the same artifact repository
@@ -493,11 +494,11 @@ regardless of its tag or digest. The ownership check includes the canonical sour
 Legacy labels without a source URL must include both a source type and the full host-qualified repository name;
 hostless names alone are ambiguous. Missing, conflicting, or ambiguous ownership skips destruction and is reported as a conflict.
 
-| Key              | Type    | Description                                                                                                                                                                                                                                                                                                | Default value |
-|------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `enabled`        | boolean | Enable destructive removal of the deployment and its resources.                                                                                                                                                                                                                                            | `false`       |
-| `remove_volumes` | boolean | Remove all volumes used by the deployment (in docker swarm mode only the volumes on the node doco-cd is connected to)                                                                                                                                                                                       | `true`        |
-| `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                                                                                                                                                    | `true`        |
+| Key              | Type    | Description                                                                                                           | Default value |
+|------------------|---------|-----------------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`        | boolean | Enable destructive removal of the deployment and its resources.                                                       | `false`       |
+| `remove_volumes` | boolean | Remove all volumes used by the deployment (in docker swarm mode only the volumes on the node doco-cd is connected to) | `true`        |
+| `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                               | `true`        |
 
 !!! example
 
@@ -508,7 +509,7 @@ hostless names alone are ambiguous. Missing, conflicting, or ambiguous ownership
         destroy: true
         ```
     
-        This shorthand enables destruction with the default options (`remove_volumes: true`, `remove_images: true`).
+        This shorthand enables destruction with the default options (`#!yaml remove_volumes: true`, `#!yaml remove_images: true`).
 
     === "Object with custom options"
 
@@ -520,15 +521,74 @@ hostless names alone are ambiguous. Missing, conflicting, or ambiguous ownership
           remove_images: false
         ```
 
+### Retry Settings
+
+`retry` controls automatic retries after a failure in the deploy, post-deploy, or cleanup stage for both Compose projects and Swarm stacks.
+Omitting `retry` preserves unlimited automatic retries without an additional delay.
+
+| Key           | Type                  | Description                                                                                                                                                                                        | Default value       |
+|---------------|-----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------|
+| `limit`       | integer               | Maximum number of automatic retries after the original attempt. `0` disables automatic retries; a negative value is invalid.                                                                       | Omitted (unlimited) |
+| `delay`       | number \| Go duration | Fixed minimum delay since the preceding actual failure. Numeric values are seconds; Go duration strings must resolve to whole seconds. Omitted or `0` means no delay; a negative value is invalid. | `0`                 |
+
+Use a finite budget together with a positive delay to limit repeated interruptions from a broken release.
+
+!!!example "Retry with a delay"
+    For example, this allows the original attempt plus at most two automatic retries:
+    
+    ```yaml title=".doco-cd.yml"
+    name: example
+    retry:
+      limit: 2
+      delay: 5m
+    ```
+    
+    Each automatic retry is eligible five minutes after the preceding actual failure, on the next existing trigger.
+    The delay does not schedule a retry itself and skipped or deferred triggers do not move its deadline or consume retries.
+    A delay with an omitted budget is valid for unlimited, delayed retries; a finite budget with zero delay is also valid.
+    
+Once the budget is exhausted, automatic deployment attempts for that same desired revision/configuration remain paused.
+The budget does not refill after the retry delay expires.
+Doco-CD continues resolving the source so a new Git revision, OCI digest, effective configuration, or desired image identity can receive a fresh budget without the old delay.
+A different error message does not reset the budget. Complete deployment success clears the failure and retry state.
+
+The `retry` object inherits omitted settings from the base config.  
+For example, a nested `#!yaml retry: {limit: 0}` disables automatic retries for that discovered deployment while
+retaining the base delay. An explicit `#!yaml delay: 0` removes the inherited delay.
+
+#### Manual retry
+
+An explicit deployment trigger through the [REST polling endpoint](Endpoints/REST-API.md#polling) or the
+[MCP `trigger_poll` tool](Endpoints/MCP-Server.md#poll-input) bypasses both delay and exhaustion for that attempt only,
+including when `#!yaml limit: 0`. This applies with either `#!yaml wait: true` or `#!yaml wait: false`.
+A failed manual attempt updates the failure details and retry-delay deadline but neither consumes nor refills the automatic retry budget;
+an exhausted budget stays exhausted and a successful manual attempt clears the state.
+Manual retries still obey sync windows, source trust checks, and other deployment safety checks.
+
+Polling, webhooks, local watcher triggers, and full redeploy reconciliation share the automatic budget for the affected target.
+Webhooks and reconciliation are not manual retries. Setting `#!yaml force_recreate: true` does not bypass the policy.
+While an automatic retry is suppressed, the desired release remains failed even if Swarm has rolled back to a healthy older release.
+
+!!! warning "In-memory retry state"
+    The retry budget, delay, and automatic pause currently exist only in memory. Restarting Doco-CD resets them.
+    Regular change detection then applies again; a restart does not guarantee that another deployment will occur.
+
+#### Scope
+
+Source-fetch, initialization, and pre-deploy failures retain their existing retry behavior and do not consume this budget.
+Direct container restarts, scheduled jobs, and destroy operations are outside this policy.
+In particular, `retry.limit` is separate from [reconciliation](#reconciliation-settings)'s container `restart_limit` and `restart_window`.
+
 ### Reconciliation Settings
 
 Reconciliation is an optional event-driven check that compares the currently running Docker services/containers with the expected deployment state.
 When configured container events occur, doco-cd either reapplies the deployment or directly restarts the affected container, depending on the event type.
+Full redeploy reconciliation obeys the deployment's [retry policy](#retry-settings) but direct container restarts do not.
 
 !!! warning
     The currently implemented state will be lost when doco-cd gets restarted and will be restored in the next poll or webhook event.
 
-`reconciliation` accepts either a boolean or a nested object in the deployment configuration file. Use `reconciliation: true` to enable it with defaults, or use the object form below to customize the settings.
+`reconciliation` accepts either a boolean or a nested object in the deployment configuration file. Use `#!yaml reconciliation: true` to enable it with defaults, or use the object form below to customize the settings.
 
 The following settings can be used to configure reconciliation triggers.
 

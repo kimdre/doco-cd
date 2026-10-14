@@ -244,9 +244,9 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		Origin:        DeploymentOrigin(ctx),
 	}); err != nil {
 		if errors.Is(err, stages.ErrSkipDeployment) {
-			// A poll finding nothing to deploy is a normal outcome, but a
-			// deployment deferred by a sync window is reported to the caller.
-			if req.JobTrigger == stages.JobTriggerPoll && !errors.Is(err, stages.ErrSyncWindowBlocked) {
+			// Ordinary poll skips succeed. Safety-policy suppression stays visible.
+			if req.JobTrigger == stages.JobTriggerPoll &&
+				!errors.Is(err, stages.ErrSyncWindowBlocked) && !errors.Is(err, stages.ErrRetrySuppressed) {
 				return nil
 			}
 

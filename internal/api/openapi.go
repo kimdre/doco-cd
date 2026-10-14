@@ -18,6 +18,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -609,6 +610,26 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 	if err = customizePollSchema(builder.components.Schemas[componentTypeName(reflect.TypeFor[poll.Config]())]); err != nil {
 		return nil, err
 	}
+
+	retrySchema := builder.components.Schemas[componentTypeName(reflect.TypeFor[deploy.RetryConfig]())]
+	if retrySchema == nil || retrySchema.Value == nil {
+		return nil, errors.New("generated deployment retry schema is missing")
+	}
+
+	retrySchema.Value.Properties["limit"] = &openapi3.SchemaRef{Value: &openapi3.Schema{
+		Description: "Automatic retries after the initial failure. Omitted or null means unlimited.",
+		OneOf: openapi3.SchemaRefs{
+			{Value: openapi3.NewIntegerSchema().WithMin(0)},
+			{Value: &openapi3.Schema{Type: &openapi3.Types{openapi3.TypeNull}}},
+		},
+	}}
+	retrySchema.Value.Properties["delay"] = &openapi3.SchemaRef{Value: &openapi3.Schema{
+		Description: "Non-negative retry delay as whole seconds or a Go duration string. Defaults to zero.",
+		OneOf: openapi3.SchemaRefs{
+			{Value: openapi3.NewIntegerSchema().WithMin(0)},
+			{Value: openapi3.NewStringSchema()},
+		},
+	}}
 
 	if err = customizeRunSchema(builder.components.Schemas[componentTypeName(reflect.TypeFor[controlplane.Run]())]); err != nil {
 		return nil, err

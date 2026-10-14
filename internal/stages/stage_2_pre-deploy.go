@@ -346,7 +346,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	// later stages run), so the skip checks below must not trust them (#1702).
 	lastFailure, retryAfterFailure := s.lastDeploymentFailure()
 	if retryAfterFailure {
-		stageLog.Warn("last deployment attempt failed, retrying",
+		stageLog.Debug("last deployment attempt failed",
 			slog.String("failed_stage", lastFailure.Stage),
 			slog.String("failed_commit", lastFailure.CommitSHA),
 			slog.Time("failed_at", lastFailure.FailedAt),
@@ -463,7 +463,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			s.DeployState.changedServices = append(s.DeployState.changedServices, staleArtifactChange(staleArtifacts))
 		}
 
-		return nil
+		return s.prepareDeploymentRetry(ctx, stageLog)
 	}
 
 	if deployedCommit := deployedState.GetDeploymentCommitSHA(); deployedCommit != "" {
@@ -507,6 +507,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			stageLog.Debug("force image pull enabled, checking deployed image digests against registry")
 
 			imageChangedServices, err = measurePreDeployOperation(stageLog, "image_digest_lookup", func() ([]string, error) {
+				if s.DeployConfig.Retry.Configured() {
+					desired := docker.DesiredProjectImageDigests(ctx, s.Docker.Cmd, s.Docker.Project, stageLog)
+					s.retryDesired = &docker.DeploymentDesiredState{ImageDigests: desired}
+
+					return docker.DeployedServicesWithChangedDesiredImageDigests(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, desired, stageLog)
+				}
+
 				return docker.DeployedServicesWithChangedImageDigests(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, stageLog)
 			})
 			if err != nil {
@@ -705,7 +712,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		)
 	}
 
-	return nil
+	return s.prepareDeploymentRetry(ctx, stageLog)
 }
 
 func swarmServiceLogIdentity(status docker.ServiceStatus, fallbackName string) (string, string) {

@@ -67,6 +67,13 @@ func (h *Handler) TriggerPollHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobID, err := h.controlPlaneRuns.TriggerPoll(r.Context(), pollConfigs, wait, jobLog)
 	if err != nil {
+		if errors.Is(err, stages.ErrRetrySuppressed) {
+			jobLog.Debug("poll jobs skipped by deployment retry policy", slog.String("reason", err.Error()))
+			restapi.JSONResponse(w, err.Error(), jobID, http.StatusAccepted)
+
+			return
+		}
+
 		if blocked, ok := errors.AsType[*stages.SyncWindowBlockedError](err); ok {
 			jobLog.Info("poll jobs deferred by sync window", slog.String("reason", blocked.Error()))
 			restapi.JSONResponse(w, blocked.Error(), jobID, http.StatusAccepted)

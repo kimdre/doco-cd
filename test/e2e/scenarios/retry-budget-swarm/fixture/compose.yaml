@@ -1,0 +1,13 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["sh", "-c", "tail -f /dev/null"]
+    deploy:
+      replicas: 1
+      update_config:
+        order: stop-first
+        failure_action: rollback
+        monitor: 5s
+        max_failure_ratio: 0
+      rollback_config:
+        order: stop-first

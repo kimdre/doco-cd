@@ -239,6 +239,7 @@ func summarizeDeployResults(results []stackResult, total int) error {
 	var (
 		errs            []error
 		blocked         []*stages.SyncWindowBlockedError
+		suppressed      []*stages.RetrySuppressedError
 		skipped         []stages.SkippedStack
 		successCount    int
 		skipCount       int
@@ -261,8 +262,17 @@ func summarizeDeployResults(results []stackResult, total int) error {
 			continue
 		}
 
-		if blockedErr, ok := errors.AsType[*stages.SyncWindowBlockedError](e); ok {
+		retryErr, retrySuppressed := errors.AsType[*stages.RetrySuppressedError](e)
+		if retrySuppressed {
+			suppressed = append(suppressed, retryErr)
+		}
+
+		blockedErr, windowBlocked := errors.AsType[*stages.SyncWindowBlockedError](e)
+		if windowBlocked {
 			blocked = append(blocked, blockedErr)
+		}
+
+		if retrySuppressed || windowBlocked {
 			continue
 		}
 
@@ -288,6 +298,15 @@ func summarizeDeployResults(results []stackResult, total int) error {
 
 	if handoverCount > 0 {
 		return selfupdate.ErrHandover
+	}
+
+	if len(suppressed) > 0 {
+		retryErr := stages.MergeRetrySuppressed(suppressed)
+		if len(blocked) > 0 {
+			return errors.Join(retryErr, stages.MergeSyncWindowBlocked(blocked))
+		}
+
+		return retryErr
 	}
 
 	if successCount == 0 && total > 0 && skipCount+filterSkipCount+len(blocked) == total {
@@ -361,6 +380,7 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 			Log:        deployLog,
 			JobID:      req.Metadata.JobID,
 			JobTrigger: req.JobTrigger,
+			Origin:     req.Origin,
 			Repository: &req.Repository,
 			Docker: &stages.Docker{
 				Cmd:            deploymentDockerCli,

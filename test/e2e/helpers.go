@@ -453,6 +453,19 @@ func (h *Harness) WaitFor(timeout time.Duration, desc string, check func() bool)
 func (h *Harness) APIRequest(method, path string, wantStatus int) []byte {
 	h.t.Helper()
 
+	return h.apiRequest(method, path, wantStatus, nil)
+}
+
+// APIRequestWithBody sends a JSON request to the daemon's REST API.
+func (h *Harness) APIRequestWithBody(method, path string, wantStatus int, body string) []byte {
+	h.t.Helper()
+
+	return h.apiRequest(method, path, wantStatus, strings.NewReader(body))
+}
+
+func (h *Harness) apiRequest(method, path string, wantStatus int, requestBody io.Reader) []byte {
+	h.t.Helper()
+
 	if h.apiKey == "" || h.daemon == nil {
 		h.t.Fatal("REST API is not enabled; call EnableAPI before Start")
 	}
@@ -465,12 +478,16 @@ func (h *Harness) APIRequest(method, path string, wantStatus int) []byte {
 	ctx, cancel := context.WithTimeout(h.ctx, 15*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, method, endpoint+path, nil)
+	req, err := http.NewRequestWithContext(ctx, method, endpoint+path, requestBody)
 	if err != nil {
 		h.t.Fatalf("create API request %s %s: %v", method, path, err)
 	}
 
 	req.Header.Set(restapi.KeyHeader, h.apiKey)
+
+	if requestBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

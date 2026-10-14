@@ -9,9 +9,11 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/common/lifecycle"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
@@ -93,23 +95,35 @@ func (s *StageManager) GetDestroyStageOrder() StageOrder {
 // admitMutation runs after a successful pre-deploy stage and before any
 // deployment-side notifications or mutations.
 func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmission) error {
+	stageOrder := s.GetDeployStageOrder()
+	if s.DeployConfig.Destroy.Enabled {
+		stageOrder = s.GetDestroyStageOrder()
+	}
+
+	return s.runStageOrder(ctx, admitMutation, stageOrder)
+}
+
+func (s *StageManager) runStageOrder(ctx context.Context, admitMutation MutationAdmission, stageOrder StageOrder) error {
 	defer func() {
 		if s.releaseGCLock != nil {
 			s.releaseGCLock()
 		}
 	}()
 
-	var releaseMutation func()
+	var (
+		releaseMutation func()
+		releaseRetry    func()
+	)
+
 	defer func() {
 		if releaseMutation != nil {
 			releaseMutation()
 		}
-	}()
 
-	stageOrder := s.GetDeployStageOrder()
-	if s.DeployConfig.Destroy.Enabled {
-		stageOrder = s.GetDestroyStageOrder()
-	}
+		if releaseRetry != nil {
+			releaseRetry()
+		}
+	}()
 
 	pendingPosted := false
 	startedNotified := false
@@ -119,6 +133,15 @@ func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmi
 
 	for _, stageName := range stageOrder.Order {
 		stageLog := s.Log.With(slog.String("stage", string(stageName)))
+
+		if stageName == StagePreDeploy && s.DeployConfig.Retry.Configured() {
+			var err error
+
+			releaseRetry, err = docker.DeploymentFailures.Acquire(ctx, s.deploymentFailureTarget())
+			if err != nil {
+				return err
+			}
+		}
 
 		metadata, err := s.GetStageMetaData(stageName)
 		if err != nil {
@@ -156,6 +179,10 @@ func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmi
 			// A handover does the same: the successor reports the result once it
 			// has proven itself, so recording a failure here would be wrong.
 			if errors.Is(err, ErrSkipDeployment) || errors.Is(err, selfupdate.ErrHandover) {
+				if s.retryAttempt != nil {
+					s.retryAttempt.Cancel()
+				}
+
 				return err
 			}
 
@@ -223,6 +250,10 @@ func (s *StageManager) handleStageFailure(ctx context.Context, stageName StageNa
 	// is healthy. Recording one here would make the next poll force-recreate the
 	// stack and fight the handover it is part of.
 	if errors.Is(err, selfupdate.ErrHandover) {
+		if s.retryAttempt != nil {
+			s.retryAttempt.Cancel()
+		}
+
 		stageLog.Info("self-update handover in progress", slog.String("stage", string(stageName)))
 
 		return err
@@ -283,23 +314,34 @@ func (s *StageManager) recordDeploymentFailure(stageName StageName, cause error)
 		return
 	}
 
-	docker.RecordDeploymentFailure(s.Repository.Name, s.DeployConfig.Name, docker.DeploymentFailure{
+	attempt := s.retryAttempt
+	if attempt == nil {
+		desired, err := s.deploymentDesiredState()
+		if err != nil {
+			s.Log.Warn("failed to fingerprint deployment failure", slog.Any("error", err))
+			desired.Revision = s.Repository.Revision
+		}
+
+		attempt, _ = docker.DeploymentFailures.Admit(s.deploymentFailureTarget(), desired, deploy.RetryConfig{}, s.Origin == syncwindow.OriginManual)
+		attempt.Start()
+	}
+
+	attempt.Fail(docker.DeploymentFailure{
 		Repository: s.Repository.Name,
 		Stack:      s.DeployConfig.Name,
 		CommitSHA:  s.Repository.Revision,
 		Stage:      string(stageName),
 		Error:      cause.Error(),
-		FailedAt:   time.Now().UTC(),
-	})
+	}, lifecycle.IsCanceled(cause))
 }
 
 // lastDeploymentFailure returns the recorded failure of the stack's last
 // deployment attempt, if any.
 func (s *StageManager) lastDeploymentFailure() (docker.DeploymentFailure, bool) {
-	return docker.GetDeploymentFailure(s.Repository.Name, s.DeployConfig.Name)
+	return docker.DeploymentFailures.Get(s.deploymentFailureTarget())
 }
 
 // clearDeploymentFailure removes the failure record of the stack, if present.
 func (s *StageManager) clearDeploymentFailure() {
-	docker.ClearDeploymentFailure(s.Repository.Name, s.DeployConfig.Name)
+	docker.DeploymentFailures.Clear(s.deploymentFailureTarget())
 }

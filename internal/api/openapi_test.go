@@ -12,6 +12,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -305,6 +306,30 @@ func TestOpenAPIDocumentDescribesSecurityParametersAndSchemas(t *testing.T) {
 
 	if interval := pollConfig.Value.Properties["interval"]; interval == nil || interval.Value == nil || len(interval.Value.OneOf) != 2 {
 		t.Fatal("poll interval must support numeric seconds and duration strings")
+	}
+
+	retry := document.Components.Schemas[componentTypeName(reflect.TypeFor[deploy.RetryConfig]())]
+	if retry == nil || retry.Value == nil {
+		t.Fatal("deployment retry schema is missing")
+	}
+
+	for _, value := range []any{
+		map[string]any{},
+		map[string]any{"limit": 0, "delay": "5m"},
+		map[string]any{"limit": nil, "delay": 0},
+	} {
+		if err := retry.Value.VisitJSON(value); err != nil {
+			t.Fatalf("retry schema rejected valid policy %#v: %v", value, err)
+		}
+	}
+
+	for _, value := range []any{
+		map[string]any{"limit": -1},
+		map[string]any{"delay": -1},
+	} {
+		if err := retry.Value.VisitJSON(value); err == nil {
+			t.Fatalf("retry schema accepted negative policy: %#v", value)
+		}
 	}
 }
 
