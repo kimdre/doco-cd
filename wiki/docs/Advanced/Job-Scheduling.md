@@ -127,7 +127,7 @@ be created for each scheduled run and removed after completion and reporting.
 !!! warning "`pre_start` hooks require `restart` mode"
     Docker Compose's one-off API does not execute `pre_start` hooks. doco-cd rejects standalone scheduled
     services that combine `one_off` with `pre_start`, both during deployment and before an execution.
-    Use `cd.doco.job.execution_mode: "restart"` if the workload needs these hooks. `post_start` hooks
+    Use `#!yaml cd.doco.job.execution_mode: "restart"` if the workload needs these hooks. `post_start` hooks
     remain supported by Compose's one-off API.
 
 !!! note
