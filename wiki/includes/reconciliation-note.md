@@ -1,9 +1,9 @@
-!!! note "[Reconciliation](../docs/Deploy-Settings.md#reconciliation-settings) for non-Swarm deployments follows classic Compose `restart` semantics"
+!!! note "[Reconciliation](/Deploy-Settings/#reconciliation-settings) for non-Swarm deployments follows classic Compose `restart` semantics"
 
     - Services with `#!yaml restart: always` or `#!yaml restart: unless-stopped` are expected to stay running.
     - Services with no explicit `restart` policy are treated as `#!yaml restart: "no"`.
     - Services with `#!yaml restart: on-failure` may remain exited after success (exited with status code `0`), and `#!yaml restart: "no"` is treated as one-time behavior and is not reconciled back to running.
-    - Events from Compose lifecycle-hook runner containers (identified by a nonempty `com.docker.compose.hook` label) are ignored. These helpers are not workload replicas, so their events do not restart or redeploy the service.
+    - Events from Compose [lifecycle-hook](/Advanced/Pre-Post-Deployment-Scripts/) runner containers (identified by a nonempty `com.docker.compose.hook` label) are ignored. These helpers are not workload replicas, so their events do not restart or redeploy the service.
     - Restart events use the stop signal that is configured in the container image (`StopSignal` in the image config); you can override this with `#!yaml reconciliation.restart_signal`. If neither is available, `SIGTERM` is used.
     - To prevent endless restart loops caused by flappy health checks, `#!yaml unhealthy` restarts are rate-limited via `#!yaml reconciliation.restart_limit` and `#!yaml reconciliation.restart_window`.
 
