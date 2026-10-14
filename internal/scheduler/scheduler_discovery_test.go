@@ -1,16 +1,105 @@
 package scheduler
 
 import (
+	"encoding/json"
+	"maps"
+	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
+
+func TestDiscoverJobs_IgnoresHookContainers(t *testing.T) {
+	t.Parallel()
+
+	sourceLabels := map[string]string{
+		api.ProjectLabel:                        "stack",
+		api.ServiceLabel:                        "backup",
+		api.HookLabel:                           "",
+		docker.DocoCDJobLabels.JobEnabled:       "true",
+		docker.DocoCDJobLabels.JobSchedule:      "@every 24h",
+		docker.DocoCDJobLabels.JobExecutionMode: "one_off",
+	}
+	source := container.Summary{
+		ID:     "source",
+		Names:  []string{"/stack-backup-1"},
+		State:  container.StateCreated,
+		Labels: sourceLabels,
+	}
+
+	for _, state := range []container.ContainerState{container.StateCreated, container.StateRunning, container.StateExited} {
+		for _, ephemeral := range []bool{false, true} {
+			hookLabels := maps.Clone(sourceLabels)
+
+			hookLabels[api.HookLabel] = "pre_start"
+			if ephemeral {
+				hookLabels[docker.DocoCDJobLabels.JobEphemeral] = "true"
+			}
+
+			hook := container.Summary{
+				ID:     "hook",
+				Names:  []string{"/stack-backup-pre_start-0"},
+				State:  state,
+				Labels: hookLabels,
+			}
+
+			for _, tt := range []struct {
+				name       string
+				containers []container.Summary
+				wantCount  int
+			}{
+				{name: "hook first", containers: []container.Summary{hook, source}, wantCount: 1},
+				{name: "source first", containers: []container.Summary{source, hook}, wantCount: 1},
+				{name: "hook only", containers: []container.Summary{hook}},
+			} {
+				t.Run(string(state)+"/ephemeral="+strconv.FormatBool(ephemeral)+"/"+tt.name, func(t *testing.T) {
+					t.Parallel()
+
+					worker, _ := newRunTestWorker(t, func(w http.ResponseWriter, r *http.Request) {
+						if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/containers/json") {
+							t.Errorf("unexpected Docker request: %s %s", r.Method, r.URL)
+							w.WriteHeader(http.StatusNotFound)
+
+							return
+						}
+
+						w.Header().Set("Content-Type", "application/json")
+
+						if err := json.NewEncoder(w).Encode(tt.containers); err != nil {
+							t.Errorf("encode containers: %v", err)
+						}
+					})
+
+					jobs, err := worker.discoverJobs(t.Context())
+					if err != nil {
+						t.Fatalf("discover scheduled jobs: %v", err)
+					}
+
+					if len(jobs) != tt.wantCount {
+						t.Fatalf("discovered jobs = %#v, want %d real jobs", jobs, tt.wantCount)
+					}
+
+					if tt.wantCount == 1 {
+						job := jobs[0]
+						if job.id != source.ID || job.name != "stack-backup-1" ||
+							job.containerState != "created" || job.running ||
+							!maps.Equal(job.labels, sourceLabels) {
+							t.Fatalf("hook changed the discovered source job: %#v", job)
+						}
+					}
+				})
+			}
+		}
+	}
+}
 
 func TestGetJobStackName(t *testing.T) {
 	t.Parallel()

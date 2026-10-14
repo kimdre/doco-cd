@@ -3,11 +3,14 @@ package docker
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
@@ -210,6 +213,53 @@ func TestGetRunningServices(t *testing.T) {
 
 	if !services.Contains("api") || services.Contains("stopped") || services.Contains("") {
 		t.Fatalf("unexpected running services: %v", services.ToSlice())
+	}
+}
+
+// startProjectServicesTestClient lists canned containers and records direct starts.
+type startProjectServicesTestClient struct {
+	client.APIClient
+	containers []container.Summary
+	started    []string
+}
+
+func (c *startProjectServicesTestClient) ContainerList(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+	return client.ContainerListResult{Items: c.containers}, nil
+}
+
+func (c *startProjectServicesTestClient) ContainerStart(_ context.Context, id string, _ client.ContainerStartOptions) (client.ContainerStartResult, error) {
+	c.started = append(c.started, id)
+
+	return client.ContainerStartResult{}, nil
+}
+
+func TestStartProjectServices_SkipsHookContainers(t *testing.T) {
+	t.Parallel()
+
+	labels := func(service, hook string) map[string]string {
+		l := map[string]string{api.ProjectLabel: "stack", api.ServiceLabel: service}
+		if hook != "" {
+			l[api.HookLabel] = hook
+		}
+
+		return l
+	}
+
+	apiClient := &startProjectServicesTestClient{containers: []container.Summary{
+		{ID: "db-pre_start-created", State: container.StateCreated, Labels: labels("db", "pre_start")},
+		{ID: "db-1", State: container.StateExited, Labels: labels("db", "")},
+		{ID: "db-pre_start-failed", State: container.StateExited, Labels: labels("db", "pre_start")},
+		{ID: "db-2", State: container.StateCreated, Labels: labels("db", "")},
+		{ID: "other-1", State: container.StateExited, Labels: labels("other", "")},
+	}}
+
+	err := StartProjectServices(t.Context(), contextRegistryTestCli{apiClient: apiClient}, "stack", []string{"db"})
+	if err != nil {
+		t.Fatalf("start project services: %v", err)
+	}
+
+	if want := []string{"db-1", "db-2"}; !slices.Equal(apiClient.started, want) {
+		t.Fatalf("started containers = %v, want only real service replicas %v", apiClient.started, want)
 	}
 }
 

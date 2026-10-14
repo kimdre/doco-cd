@@ -1,0 +1,2 @@
+Unrelated repository file, outside the auto-discovered stack.
+revision 0
