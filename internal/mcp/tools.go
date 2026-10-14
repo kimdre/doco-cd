@@ -36,7 +36,7 @@ func mustToolInputSchema[T any](tool string) *jsonschema.Schema {
 		panic(fmt.Sprintf("infer %s retry schema: %v", tool, err))
 	}
 
-	retrySchema.Properties["max_retries"].Minimum = new(float64(0))
+	retrySchema.Properties["limit"].Minimum = new(float64(0))
 
 	schema, err := jsonschema.For[T](&jsonschema.ForOptions{
 		TypeSchemas: map[reflect.Type]*jsonschema.Schema{

@@ -117,15 +117,15 @@ func TestGeneratedRetrySchema(t *testing.T) {
 		t.Fatalf("retry must be an optional object without a boolean shorthand: %+v", retry)
 	}
 
-	for _, field := range []string{"max_retries", "delay"} {
+	for _, field := range []string{"limit", "delay"} {
 		property := retry.Properties[field]
 		if property == nil || property.Minimum == nil || *property.Minimum != 0 {
 			t.Errorf("retry.%s must have minimum 0", field)
 		}
 	}
 
-	if budget := retry.Properties["max_retries"]; !reflect.DeepEqual(budget.Types, []string{"integer", "null"}) || len(budget.Default) != 0 {
-		t.Fatalf("retry.max_retries must remain optional with no default budget: %+v", budget)
+	if limit := retry.Properties["limit"]; !reflect.DeepEqual(limit.Types, []string{"integer", "null"}) || len(limit.Default) != 0 {
+		t.Fatalf("retry.limit must remain optional with no default limit: %+v", limit)
 	}
 }
 
@@ -231,13 +231,13 @@ func TestSchemaAuthoring(t *testing.T) {
 		{"reconciliation shorthand", "reconciliation: false", true},
 		{"reconciliation options", "reconciliation: {enabled: true, events: [unhealthy, die, remove, ' DELETE '], restart_timeout: 10, restart_signal: SIGTERM, restart_limit: 0, restart_window: 0}", true},
 		{"duration settings", "name: app\ntimeout: 3m\nreconciliation: {restart_timeout: 15s, restart_window: 1m30s}", true},
-		{"retry budget and delay", "retry: {max_retries: 2, delay: 5m}", true},
-		{"retry budget only", "retry: {max_retries: 2}", true},
+		{"retry limit and delay", "retry: {limit: 2, delay: 5m}", true},
+		{"retry limit only", "retry: {limit: 2}", true},
 		{"retry delay only", "retry: {delay: 300}", true},
-		{"no automatic retries", "retry: {max_retries: 0, delay: 0}", true},
+		{"no automatic retries", "retry: {limit: 0, delay: 0}", true},
 		{"empty retry object", "retry: {}", true},
 		{"null retry", "retry: null", true},
-		{"null retry fields", "retry: {max_retries: null, delay: null}", true},
+		{"null retry fields", "retry: {limit: null, delay: null}", true},
 		{"scalar string coercion", "name: 123\nreference: 123\nenvironment: {COUNT: 2, DEBUG: true, EMPTY: null}\nbuild: {args: {VERSION: 12, ENABLED: false}}", true},
 		{"deployment options", "name: app\nsource: git\nversion: custom\nrepository_url: https://github.com/example/app.git\nreference: main\nworking_dir: deploy\ncontext: remote\ncompose_files: [compose.yml]\nenv_files: [.env, 'remote:prod.env']\nprofiles: [prod]\nwebhook_filter: '^refs/heads/main$'\nremove_orphans: true\nprune_images: false\nwait_running_jobs: false\nforce_recreate: true\nforce_image_pull: true\ntimeout: 180\ngit_depth: 0\nbuild: {quiet: false, no_cache: true, force_image_pull: true}", true},
 		{"legacy secret references", "external_secrets: {PASSWORD: 'op://vault/item/password', NUMERIC: 123, BOOLEAN: true}\nexternal_secrets_files: [secrets.yaml]", true},
@@ -266,11 +266,11 @@ func TestSchemaAuthoring(t *testing.T) {
 		{"negative git depth", "git_depth: -1", false},
 		{"negative discovery depth", "auto_discovery: {depth: -1}", false},
 		{"retry shorthand unsupported", "retry: true", false},
-		{"negative retry budget", "retry: {max_retries: -1}", false},
-		{"fractional retry budget", "retry: {max_retries: 1.5}", false},
+		{"negative retry limit", "retry: {limit: -1}", false},
+		{"fractional retry limit", "retry: {limit: 1.5}", false},
 		{"negative retry delay", "retry: {delay: -1}", false},
 		{"negative retry duration", "retry: {delay: -5m}", false},
-		{"unknown retry field", "retry: {max_retry: 2}", false},
+		{"old retry field", "retry: {max_retries: 2}", false},
 		{"invalid retention", "swarm: {config_retention: -2}", false},
 		{"empty compose files", "compose_files: []", false},
 		{"unknown reconciliation event", "reconciliation: {events: [start]}", false},

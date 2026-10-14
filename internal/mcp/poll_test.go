@@ -191,8 +191,8 @@ func TestMCPTriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
 				pollRunner: func(ctx context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
 					_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
 				) error {
-					if len(cfg.Deployments) != 1 || cfg.Deployments[0].Retry.MaxRetries == nil ||
-						*cfg.Deployments[0].Retry.MaxRetries != 0 {
+					if len(cfg.Deployments) != 1 || cfg.Deployments[0].Retry.Limit == nil ||
+						*cfg.Deployments[0].Retry.Limit != 0 {
 						t.Errorf("manual poll lost retry configuration: %#v", cfg)
 					}
 
@@ -207,8 +207,8 @@ func TestMCPTriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
 			deployment := &deploy.Config{
 				Name: "web",
 				Retry: deploy.RetryConfig{
-					MaxRetries: new(0),
-					Delay:      duration.Duration(time.Hour),
+					Limit: new(0),
+					Delay: duration.Duration(time.Hour),
 				},
 			}
 			if err := json.Unmarshal([]byte(`{"environment":{},"external_secrets":{},"build":{"args":{}}}`), deployment); err != nil {

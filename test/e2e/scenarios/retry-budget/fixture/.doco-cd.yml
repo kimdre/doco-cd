@@ -2,7 +2,7 @@ name: e2e-retry-budget
 swarm:
   enabled: false
 retry:
-  max_retries: 1
+  limit: 1
   delay: 20s
 reconciliation:
   enabled: false

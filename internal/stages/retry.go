@@ -164,7 +164,7 @@ func (s *StageManager) logAdmittedDeploymentRetry(ctx context.Context, stageLog 
 		slog.String("error", failure.Error),
 		slog.Group("retry",
 			slog.Int("used", failure.RetriesUsed),
-			slog.Any("limit", s.DeployConfig.Retry.MaxRetries),
+			slog.Any("limit", s.DeployConfig.Retry.Limit),
 			slog.String("origin", string(origin)),
 		),
 	)

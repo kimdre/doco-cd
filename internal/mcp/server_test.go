@@ -516,12 +516,12 @@ func TestMCPServerListsTools(t *testing.T) {
 
 			retrySchema := resolveToolSchemaRef(t, tool.InputSchema, toolSchemaProperty(t, deploymentItems, "retry"))
 			if toolSchemaRequiresProperty(deploymentItems, "retry") ||
-				toolSchemaRequiresProperty(retrySchema, "max_retries") ||
+				toolSchemaRequiresProperty(retrySchema, "limit") ||
 				toolSchemaRequiresProperty(retrySchema, "delay") {
 				t.Fatal("deployment retry policy and its fields must be optional")
 			}
 
-			if limit := toolSchemaProperty(t, retrySchema, "max_retries"); limit["minimum"] != float64(0) {
+			if limit := toolSchemaProperty(t, retrySchema, "limit"); limit["minimum"] != float64(0) {
 				t.Fatalf("retry limit minimum = %#v, want 0", limit["minimum"])
 			}
 

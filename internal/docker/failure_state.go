@@ -242,7 +242,7 @@ func (s *DeploymentFailureStore) Admit(target DeploymentTarget, desired Deployme
 	}
 
 	decision := &DeploymentRetrySuppression{Failure: state.failure}
-	if policy.MaxRetries != nil && state.failure.RetriesUsed >= *policy.MaxRetries {
+	if policy.Limit != nil && state.failure.RetriesUsed >= *policy.Limit {
 		decision.Reason = RetryReasonBudgetExhausted
 	} else if deadline := state.failure.FailedAt.Add(time.Duration(policy.Delay)); policy.Delay > 0 && s.now().Before(deadline) {
 		decision.Reason = RetryReasonDelay
@@ -251,8 +251,8 @@ func (s *DeploymentFailureStore) Admit(target DeploymentTarget, desired Deployme
 		return attempt, nil
 	}
 
-	if policy.MaxRetries != nil {
-		limit := *policy.MaxRetries
+	if policy.Limit != nil {
+		limit := *policy.Limit
 		decision.RetryLimit = &limit
 	}
 

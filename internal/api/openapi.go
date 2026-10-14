@@ -616,7 +616,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 		return nil, errors.New("generated deployment retry schema is missing")
 	}
 
-	retrySchema.Value.Properties["max_retries"] = &openapi3.SchemaRef{Value: &openapi3.Schema{
+	retrySchema.Value.Properties["limit"] = &openapi3.SchemaRef{Value: &openapi3.Schema{
 		Description: "Automatic retries after the initial failure. Omitted or null means unlimited.",
 		OneOf: openapi3.SchemaRefs{
 			{Value: openapi3.NewIntegerSchema().WithMin(0)},

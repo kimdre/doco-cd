@@ -500,8 +500,8 @@ func TestHandler_TriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
 				pollRunner: func(ctx context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
 					_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
 				) error {
-					if len(cfg.Deployments) != 1 || cfg.Deployments[0].Retry.MaxRetries == nil ||
-						*cfg.Deployments[0].Retry.MaxRetries != 0 {
+					if len(cfg.Deployments) != 1 || cfg.Deployments[0].Retry.Limit == nil ||
+						*cfg.Deployments[0].Retry.Limit != 0 {
 						t.Errorf("manual poll lost retry configuration: %#v", cfg)
 					}
 
@@ -512,7 +512,7 @@ func TestHandler_TriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
 			})
 			response := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, APIPath+"/poll/run?wait="+strconv.FormatBool(wait),
-				strings.NewReader(`[{"url":"https://example.com/repo.git","deployments":[{"name":"web","retry":{"max_retries":0,"delay":"1h"}}]}]`))
+				strings.NewReader(`[{"url":"https://example.com/repo.git","deployments":[{"name":"web","retry":{"limit":0,"delay":"1h"}}]}]`))
 			request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
 			h.TriggerPollHandler(response, request)
 

@@ -54,7 +54,7 @@ func TestDeploymentRetryBudgets(t *testing.T) {
 			store := NewDeploymentFailureStore(func() time.Time { return now })
 			target, desired := retryTestState()
 
-			policy := deploy.RetryConfig{MaxRetries: tc.limit}
+			policy := deploy.RetryConfig{Limit: tc.limit}
 			for i := range tc.attempts {
 				failRetryAttempt(t, store, target, desired, policy, false, fmt.Sprintf("failure %d", i))
 
@@ -82,7 +82,7 @@ func TestDeploymentRetryDelayUsesActualFailure(t *testing.T) {
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 	store := NewDeploymentFailureStore(func() time.Time { return now })
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(2), Delay: duration.Duration(5 * time.Minute)}
+	policy := deploy.RetryConfig{Limit: new(2), Delay: duration.Duration(5 * time.Minute)}
 	failRetryAttempt(t, store, target, desired, policy, false, "first")
 
 	deadline := now.Add(5 * time.Minute)
@@ -149,7 +149,7 @@ func TestDeploymentRetryDesiredStateChangesResetBudget(t *testing.T) {
 
 			store := NewDeploymentFailureStore(nil)
 			target, desired := retryTestState()
-			policy := deploy.RetryConfig{MaxRetries: new(0), Delay: duration.Duration(time.Hour)}
+			policy := deploy.RetryConfig{Limit: new(0), Delay: duration.Duration(time.Hour)}
 			failRetryAttempt(t, store, target, desired, policy, false, "broken")
 			tc.change(&desired)
 			failRetryAttempt(t, store, target, desired, policy, false, "still broken")
@@ -176,7 +176,7 @@ func TestDeploymentRetryUnavailableDigestDoesNotResetBudget(t *testing.T) {
 
 	store := NewDeploymentFailureStore(nil)
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(0)}
+	policy := deploy.RetryConfig{Limit: new(0)}
 	failRetryAttempt(t, store, target, desired, policy, false, "broken")
 	desired.ImageDigests = nil
 
@@ -202,7 +202,7 @@ func TestDeploymentRetryManualFailurePreservesAutomaticBudget(t *testing.T) {
 			store := NewDeploymentFailureStore(func() time.Time { return now })
 			target, desired := retryTestState()
 
-			policy := deploy.RetryConfig{MaxRetries: &limit, Delay: duration.Duration(time.Hour)}
+			policy := deploy.RetryConfig{Limit: &limit, Delay: duration.Duration(time.Hour)}
 			for range limit + 1 {
 				failRetryAttempt(t, store, target, desired, policy, false, "automatic")
 
@@ -239,7 +239,7 @@ func TestDeploymentRetryManualBypassesDelayWithoutSpending(t *testing.T) {
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 	store := NewDeploymentFailureStore(func() time.Time { return now })
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(2), Delay: duration.Duration(time.Hour)}
+	policy := deploy.RetryConfig{Limit: new(2), Delay: duration.Duration(time.Hour)}
 	failRetryAttempt(t, store, target, desired, policy, false, "original")
 
 	now = now.Add(time.Minute)
@@ -262,7 +262,7 @@ func TestDeploymentRetryCancellationPreservesRecoveryAndBudget(t *testing.T) {
 
 	store := NewDeploymentFailureStore(nil)
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(1)}
+	policy := deploy.RetryConfig{Limit: new(1)}
 	failRetryAttempt(t, store, target, desired, policy, false, "original")
 	before, _ := store.Get(target)
 	attempt, _ := store.Admit(target, desired, policy, false)
@@ -286,7 +286,7 @@ func TestDeploymentRetryCancellationPreservesRecoveryAndBudget(t *testing.T) {
 	}
 
 	store.Clear(target)
-	attempt, _ = store.Admit(target, desired, deploy.RetryConfig{MaxRetries: new(0)}, false)
+	attempt, _ = store.Admit(target, desired, deploy.RetryConfig{Limit: new(0)}, false)
 	attempt.Start()
 	attempt.Fail(DeploymentFailure{Stage: "deploy", Error: "original canceled"}, true)
 
@@ -295,7 +295,7 @@ func TestDeploymentRetryCancellationPreservesRecoveryAndBudget(t *testing.T) {
 		t.Fatalf("expected untimed recovery marker: %+v", failure)
 	}
 
-	if _, suppressed := store.Admit(target, desired, deploy.RetryConfig{MaxRetries: new(0)}, false); suppressed != nil {
+	if _, suppressed := store.Admit(target, desired, deploy.RetryConfig{Limit: new(0)}, false); suppressed != nil {
 		t.Fatal("first interruption must not exhaust original attempt")
 	}
 }
@@ -305,7 +305,7 @@ func TestDeploymentRetryAdmissionWithoutMutationDoesNotSpend(t *testing.T) {
 
 	store := NewDeploymentFailureStore(nil)
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(1)}
+	policy := deploy.RetryConfig{Limit: new(1)}
 	failRetryAttempt(t, store, target, desired, policy, false, "original")
 
 	before, _ := store.Get(target)
@@ -326,7 +326,7 @@ func TestDeploymentRetrySpendsAtDeployEntryAndRefundsHandover(t *testing.T) {
 
 	store := NewDeploymentFailureStore(nil)
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(1)}
+	policy := deploy.RetryConfig{Limit: new(1)}
 	failRetryAttempt(t, store, target, desired, policy, false, "original")
 
 	attempt, suppressed := store.Admit(target, desired, policy, false)
@@ -359,7 +359,7 @@ func TestDeploymentRetryDestroyClearsBudgetBeforeQueuedMutation(t *testing.T) {
 
 	store := NewDeploymentFailureStore(nil)
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(1)}
+	policy := deploy.RetryConfig{Limit: new(1)}
 	failRetryAttempt(t, store, target, desired, policy, false, "original")
 
 	attempt, suppressed := store.Admit(target, desired, policy, false)
@@ -382,7 +382,7 @@ func TestDeploymentRetryTargetIsolationAndDefaultContext(t *testing.T) {
 
 	store := NewDeploymentFailureStore(nil)
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(0)}
+	policy := deploy.RetryConfig{Limit: new(0)}
 	failRetryAttempt(t, store, target, desired, policy, false, "original")
 	same := target
 
@@ -412,7 +412,7 @@ func TestDeploymentRetryConcurrentAttemptsCannotOverspend(t *testing.T) {
 
 	store := NewDeploymentFailureStore(nil)
 	target, desired := retryTestState()
-	policy := deploy.RetryConfig{MaxRetries: new(2)}
+	policy := deploy.RetryConfig{Limit: new(2)}
 
 	var (
 		attempts atomic.Int32

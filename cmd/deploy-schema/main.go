@@ -279,7 +279,7 @@ func addConstraints(schema *jsonschema.Schema, supportedEvents []string) {
 	}
 
 	retry := schema.Properties["retry"]
-	retry.Properties["max_retries"].Minimum = new(0.0)
+	retry.Properties["limit"].Minimum = new(0.0)
 	retry.Properties["delay"].Minimum = new(0.0)
 	retry.Properties["delay"].Pattern = `^[^-]+$`
 

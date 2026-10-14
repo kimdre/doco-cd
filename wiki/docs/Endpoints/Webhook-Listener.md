@@ -21,7 +21,7 @@ By default, all incoming webhooks are accepted and trigger deployments if they m
 See [Webhook Filter](../Deploy-Settings.md#webhook-filter) for more granular control over which webhooks should trigger deployments.
 
 Webhooks are automatic triggers and obey the deployment's [retry budget and delay](../Deploy-Settings.md#retry-settings).
-Neither `wait=true` nor `force_recreate: true` makes a webhook a manual retry.
+Neither `#!ini wait=true` nor `#!yaml force_recreate: true` makes a webhook a manual retry.
 When an unchanged failed release is suppressed by the retry delay or budget exhaustion, the attempt is skipped without marking that release successful.
 Use a [REST API-triggered poll](REST-API.md#polling) or [MCP `trigger_poll`](MCP-Server.md#poll-input) for an explicit manual retry.
 

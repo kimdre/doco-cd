@@ -406,10 +406,6 @@ When using [custom webhook targets](Endpoints/Webhook-Listener.md#with-custom-ta
 
     1. Keeps the volumes of this stack, even if the base config removes them.
 
-The `retry` object inherits omitted settings from the base config. For example, a nested
-`retry: {max_retries: 0}` disables automatic retries for that discovered deployment while retaining the base delay.
-An explicit `delay: 0` removes the inherited delay. `retry` has no boolean shorthand.
-
 ##### Non-overridable Fields
 
 The following fields are always inherited from the base/root deployment config:
@@ -530,37 +526,41 @@ hostless names alone are ambiguous. Missing, conflicting, or ambiguous ownership
 `retry` controls automatic retries after a failure in the deploy, post-deploy, or cleanup stage for both Compose projects and Swarm stacks.
 Omitting `retry` preserves unlimited automatic retries without an additional delay.
 
-| Key | Type | Description | Default value |
-|-----|------|-------------|---------------|
-| `max_retries` | integer | Maximum number of automatic retries after the original attempt. `0` disables automatic retries; a negative value is invalid. | Omitted (unlimited) |
-| `delay` | number \| Go duration | Fixed minimum delay since the preceding actual failure. Numeric values are seconds; Go duration strings must resolve to whole seconds. Omitted or `0` means no delay; a negative value is invalid. | `0` |
+| Key           | Type                  | Description                                                                                                                                                                                        | Default value       |
+|---------------|-----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------|
+| `limit`       | integer               | Maximum number of automatic retries after the original attempt. `0` disables automatic retries; a negative value is invalid.                                                                       | Omitted (unlimited) |
+| `delay`       | number \| Go duration | Fixed minimum delay since the preceding actual failure. Numeric values are seconds; Go duration strings must resolve to whole seconds. Omitted or `0` means no delay; a negative value is invalid. | `0`                 |
 
 Use a finite budget together with a positive delay to limit repeated interruptions from a broken release.
-For example, this allows the original attempt plus at most two automatic retries:
 
-`.doco-cd.yml` (YAML)
-
-```
-name: example
-retry:
-  max_retries: 2
-  delay: 5m
-```
-
-Each automatic retry is eligible five minutes after the preceding actual failure, on the next existing trigger.
-The delay does not schedule a retry itself, and skipped or deferred triggers do not move its deadline or consume retries.
-A delay with an omitted budget is valid for unlimited, delayed retries; a finite budget with zero delay is also valid.
-
+!!!example "Retry with a delay"
+    For example, this allows the original attempt plus at most two automatic retries:
+    
+    ```yaml title=".doco-cd.yml"
+    name: example
+    retry:
+      limit: 2
+      delay: 5m
+    ```
+    
+    Each automatic retry is eligible five minutes after the preceding actual failure, on the next existing trigger.
+    The delay does not schedule a retry itself and skipped or deferred triggers do not move its deadline or consume retries.
+    A delay with an omitted budget is valid for unlimited, delayed retries; a finite budget with zero delay is also valid.
+    
 Once the budget is exhausted, automatic deployment attempts for that same desired revision/configuration remain paused.
 The budget does not refill after the retry delay expires.
 Doco-CD continues resolving the source so a new Git revision, OCI digest, effective configuration, or desired image identity can receive a fresh budget without the old delay.
 A different error message does not reset the budget. Complete deployment success clears the failure and retry state.
 
+The `retry` object inherits omitted settings from the base config.  
+For example, a nested `#!yaml retry: {limit: 0}` disables automatic retries for that discovered deployment while
+retaining the base delay. An explicit `#!yaml delay: 0` removes the inherited delay.
+
 #### Manual retry
 
 An explicit deployment trigger through the [REST polling endpoint](Endpoints/REST-API.md#polling) or the
 [MCP `trigger_poll` tool](Endpoints/MCP-Server.md#poll-input) bypasses both delay and exhaustion for that attempt only,
-including when `max_retries: 0`. This applies with either `wait: true` or `wait: false`.
+including when `#!yaml limit: 0`. This applies with either `#!yaml wait: true` or `#!yaml wait: false`.
 A failed manual attempt updates the failure details and retry-delay deadline but neither consumes nor refills the automatic retry budget;
 an exhausted budget stays exhausted. A successful manual attempt clears the state.
 Manual retries still obey sync windows, source trust checks, and other deployment safety checks.
@@ -577,7 +577,7 @@ While an automatic retry is suppressed, the desired release remains failed even 
 
 Source-fetch, initialization, and pre-deploy failures retain their existing retry behavior and do not consume this budget.
 Direct container restarts, scheduled jobs, and destroy operations are outside this policy.
-In particular, `retry.max_retries` is separate from reconciliation's container `restart_limit` and `restart_window`.
+In particular, `retry.limit` is separate from reconciliation's container `restart_limit` and `restart_window`.
 There are no global retry settings, exponential backoff, periodic budget refill, or persistent retry storage.
 The same object is supported in inline poll deployments and [nested auto-discovery overrides](#nested-config-overrides).
 

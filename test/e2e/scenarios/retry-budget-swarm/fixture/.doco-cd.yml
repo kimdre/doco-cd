@@ -3,7 +3,7 @@ context: remote
 swarm:
   enabled: true
 retry:
-  max_retries: 0
+  limit: 0
   delay: 20s
 reconciliation:
   enabled: false

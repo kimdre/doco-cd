@@ -31,7 +31,7 @@ func newRetryTestManager(t *testing.T, stack string) *StageManager {
 	t.Helper()
 	manager := newTestStageManager(t)
 	manager.DeployConfig = deploy.New(stack, "main")
-	manager.DeployConfig.Retry.MaxRetries = new(0)
+	manager.DeployConfig.Retry.Limit = new(0)
 	manager.Repository.Revision = "actual-application-revision"
 	manager.Repository.ConfigRevision = "different-config-revision"
 	manager.Repository.ConfigSourceUrl = "https://config.example.com/owner/config.git"
@@ -150,7 +150,7 @@ func TestRetryGateManualFailurePreservesPauseAndSuccessClears(t *testing.T) {
 
 	sm.Origin = syncwindow.OriginManual
 	if err := sm.prepareDeploymentRetry(t.Context(), sm.Log); err != nil {
-		t.Fatalf("manual max_retries0 override was suppressed: %v", err)
+		t.Fatalf("manual limit 0 override was suppressed: %v", err)
 	}
 
 	sm.retryAttempt.Start()
@@ -186,7 +186,7 @@ func TestRetryFailedManualBranchAliasDoesNotRefillBudget(t *testing.T) {
 	sm := newRetryTestManager(t, "retry-manual-reference-alias")
 	sm.Repository.Source = config.SourceTypeGit
 	sm.DeployConfig.Reference = "refs/heads/main"
-	sm.DeployConfig.Retry.MaxRetries = new(1)
+	sm.DeployConfig.Retry.Limit = new(1)
 	recordRetryTestFailure(t, sm, StageDeploy)
 	recordRetryTestFailure(t, sm, StageDeploy)
 
@@ -226,7 +226,7 @@ func TestRetryBranchAliasPreservesManualFailureDelay(t *testing.T) {
 	sm := newRetryTestManager(t, "retry-manual-alias-delay")
 	sm.Repository.Source = config.SourceTypeGit
 	sm.DeployConfig.Reference = "refs/heads/main"
-	sm.DeployConfig.Retry.MaxRetries = new(2)
+	sm.DeployConfig.Retry.Limit = new(2)
 	sm.DeployConfig.Retry.Delay = duration.Duration(time.Hour)
 	recordRetryTestFailure(t, sm, StageDeploy)
 	sm.Origin = syncwindow.OriginManual
@@ -443,7 +443,7 @@ func TestRetrySuppressedPreDeployDoesNotAnnounceRetry(t *testing.T) {
 
 			sm := newRetryTestManager(t, "retry-suppression-log-"+reason)
 			if reason == "delay" {
-				sm.DeployConfig.Retry.MaxRetries = new(2)
+				sm.DeployConfig.Retry.Limit = new(2)
 				sm.DeployConfig.Retry.Delay = duration.Duration(time.Hour)
 			}
 
@@ -486,7 +486,7 @@ func TestRetrySuppressedPreDeployDoesNotAnnounceRetry(t *testing.T) {
 func TestRetryAdmittedUnlimitedRetryPreservesWarning(t *testing.T) {
 	t.Parallel()
 	sm := newRetryTestManager(t, "retry-admitted-warning")
-	sm.DeployConfig.Retry.MaxRetries = nil
+	sm.DeployConfig.Retry.Limit = nil
 	recordRetryTestFailure(t, sm, StageDeploy)
 
 	var output bytes.Buffer
@@ -515,7 +515,7 @@ func TestRetryAdmittedUnlimitedRetryPreservesWarning(t *testing.T) {
 func TestRetryStageRunnerQueuedCancellationDoesNotSpend(t *testing.T) {
 	t.Parallel()
 	sm := newRetryTestManager(t, "retry-runner-queued-cancel")
-	sm.DeployConfig.Retry.MaxRetries = new(1)
+	sm.DeployConfig.Retry.Limit = new(1)
 	recordRetryTestFailure(t, sm, StageDeploy)
 	before, _ := sm.lastDeploymentFailure()
 	order := retryStageOrder(sm, func(context.Context) error {
@@ -551,7 +551,7 @@ func TestRetryStageRunnerConcurrentFailuresCannotOverspend(t *testing.T) {
 
 	for range 12 {
 		sm := newRetryTestManager(t, stack)
-		sm.DeployConfig.Retry.MaxRetries = new(2)
+		sm.DeployConfig.Retry.Limit = new(2)
 
 		workers.Go(func() {
 			err := sm.runStageOrder(t.Context(), nil, retryStageOrder(sm, func(context.Context) error {
