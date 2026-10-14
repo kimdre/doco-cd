@@ -165,9 +165,9 @@ func TestScheduledPreStart_UnrelatedWebhooks(t *testing.T) {
 	assertUnexecutedJob()
 
 	for revision := 1; revision <= 2; revision++ {
-		before, headErr := h.repo.Head()
-		if headErr != nil {
-			t.Fatalf("read fixture HEAD before unrelated commit %d: %v", revision, headErr)
+		before, hErr := h.repo.Head()
+		if hErr != nil {
+			t.Fatalf("read fixture HEAD before unrelated commit %d: %v", revision, hErr)
 		}
 
 		mark := h.LogMark()
