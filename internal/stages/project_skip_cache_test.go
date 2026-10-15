@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -206,6 +207,178 @@ func TestProjectSkipCacheOnlySkipsUnchangedProjectTree(t *testing.T) {
 	s.Repository.Revision = commitN(t, wt, 1, 2)[0].String()
 	if s.skipFromCachedProject(log, first.String(), "hash", status) {
 		t.Fatal("changed compose content must take the full pre-deploy path")
+	}
+}
+
+func TestProjectExpectedServicesPreservesAutostartLabels(t *testing.T) {
+	t.Parallel()
+
+	label := docker.DocoCDLabels.Deployment.Autostart
+	project := &types.Project{Services: types.Services{
+		"web": {
+			Name: "web", Restart: "unless-stopped", Scale: new(2),
+			Deploy:       &types.DeployConfig{Mode: "replicated", Replicas: new(2)},
+			Labels:       types.Labels{label: "true", "unrelated": "value"},
+			CustomLabels: types.Labels{label: "false", "unrelated": "custom"},
+		},
+		"default": {Name: "default", Labels: types.Labels{"unrelated": "value"}},
+	}}
+
+	got := projectExpectedServices(project)
+
+	want := types.Services{
+		"web": {
+			Name: "web", Restart: "unless-stopped", Scale: new(2),
+			Deploy:       &types.DeployConfig{Mode: "replicated", Replicas: new(2)},
+			Labels:       types.Labels{label: "true"},
+			CustomLabels: types.Labels{label: "false"},
+		},
+		"default": {Name: "default"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected services = %#v, want %#v", got, want)
+	}
+
+	project.Services["web"].Labels[label] = "false"
+	project.Services["web"].CustomLabels[label] = "true"
+	*project.Services["web"].Scale = 3
+	*project.Services["web"].Deploy.Replicas = 3
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatal("source mutations changed the cached service configuration")
+	}
+
+	got["web"].Labels[label] = "cached-only"
+
+	got["web"].CustomLabels[label] = "cached-only"
+	if project.Services["web"].Labels[label] != "false" || project.Services["web"].CustomLabels[label] != "true" {
+		t.Fatal("cached label mutations changed the source project")
+	}
+}
+
+func TestProjectSkipCacheAutostart(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	composePath := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  web:\n    image: nginx\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo, err := gogit.PlainInit(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := wt.Add("compose.yaml"); err != nil {
+		t.Fatal(err)
+	}
+
+	revision := commitN(t, wt, 1, 0)[0].String()
+	label := docker.DocoCDLabels.Deployment.Autostart
+
+	for _, tt := range []struct {
+		name         string
+		restart      string
+		labels       types.Labels
+		customLabels types.Labels
+		containers   uint64
+		replicas     uint64
+		scale        int
+		extra        bool
+		wantSkip     bool
+		wantError    bool
+	}{
+		{name: "disabled stopped", restart: "unless-stopped", labels: types.Labels{label: "false"}, containers: 1, scale: 1, wantSkip: true},
+		{name: "custom disabled stopped", restart: "always", customLabels: types.Labels{label: "false"}, containers: 1, scale: 1, wantSkip: true},
+		{
+			name: "custom overrides enabled", restart: "always", labels: types.Labels{label: "true"}, customLabels: types.Labels{label: " FALSE "},
+			containers: 1, scale: 1, wantSkip: true,
+		},
+		{
+			name: "custom overrides disabled", restart: "always", labels: types.Labels{label: "false"}, customLabels: types.Labels{label: "true"},
+			containers: 1, scale: 1,
+		},
+		{name: "default stopped", restart: "unless-stopped", containers: 1, scale: 1},
+		{name: "enabled stopped", restart: "unless-stopped", labels: types.Labels{label: "true"}, containers: 1, scale: 1},
+		{name: "disabled missing", restart: "unless-stopped", labels: types.Labels{label: "false"}, scale: 1},
+		{name: "disabled missing without restart", labels: types.Labels{label: "false"}, scale: 1},
+		{name: "disabled missing restart no", restart: "no", labels: types.Labels{label: "false"}, scale: 1},
+		{name: "disabled missing restart on-failure", restart: "on-failure", labels: types.Labels{label: "false"}, scale: 1},
+		{name: "disabled scaled to zero", restart: "unless-stopped", labels: types.Labels{label: "false"}, wantSkip: true},
+		{name: "disabled stopped replica missing", restart: "unless-stopped", labels: types.Labels{label: "false"}, containers: 1, scale: 2},
+		{name: "disabled stopped replica missing restart no", restart: "no", labels: types.Labels{label: "false"}, containers: 1, scale: 2},
+		{name: "disabled partially running", restart: "unless-stopped", labels: types.Labels{label: "false"}, containers: 2, replicas: 1, scale: 2},
+		{name: "disabled excess running", restart: "unless-stopped", labels: types.Labels{label: "false"}, containers: 2, replicas: 2, scale: 1},
+		{name: "disabled running", restart: "unless-stopped", labels: types.Labels{label: "false"}, containers: 1, replicas: 1, scale: 1, wantSkip: true},
+		{name: "unnecessary service", restart: "unless-stopped", labels: types.Labels{label: "false"}, containers: 1, scale: 1, extra: true},
+		{name: "invalid autostart", restart: "unless-stopped", labels: types.Labels{label: "invalid"}, containers: 1, scale: 1, wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &deploy.Config{
+				Name: "stack", WorkingDirectory: ".", ComposeFiles: []string{"compose.yaml"},
+				AutoDiscovery: deploy.AutoDiscoveryConfig{Enabled: true},
+			}
+			cfg.Internal.Hash = "effective-config"
+			project := &types.Project{
+				Name: "stack", ComposeFiles: []string{composePath},
+				Services: types.Services{"web": {
+					Name: "web", Restart: tt.restart, Scale: new(tt.scale),
+					Labels: tt.labels, CustomLabels: tt.customLabels,
+				}},
+			}
+			s := &StageManager{
+				Repository: &RepositoryData{
+					Source: config.SourceTypeGit, MirrorDir: root, Revision: revision,
+					PathInternal: root, PathExternal: root,
+				},
+				DeployConfig: cfg,
+				AppConfig:    &app.Config{},
+				Docker:       &Docker{Project: project},
+				ProjectSkips: NewProjectSkipCache(),
+				GitAncestry:  NewGitAncestryCache(),
+			}
+
+			var logs bytes.Buffer
+
+			log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+			status := map[docker.Service]docker.ServiceStatus{}
+			if tt.containers > 0 {
+				status["web"] = docker.ServiceStatus{Replicas: tt.replicas, Containers: tt.containers}
+			}
+
+			if tt.extra {
+				status["extra"] = docker.ServiceStatus{Replicas: 1, Containers: 1}
+			}
+
+			mismatches, err := docker.CheckServiceMismatch(false, status, project.Services)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("full drift check error = %v, wantError %t", err, tt.wantError)
+			}
+
+			if err == nil && shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, false, mismatches) != tt.wantSkip {
+				t.Fatalf("full drift check mismatches = %v, wantSkip %t", mismatches, tt.wantSkip)
+			}
+
+			s.cacheUnchangedProject(log, revision, "hash")
+			s.Docker.Project = nil
+
+			if got := s.skipFromCachedProject(log, revision, "hash", status); got != tt.wantSkip {
+				t.Fatalf("cached skip = %t, want %t; logs: %s", got, tt.wantSkip, logs.String())
+			}
+
+			if tt.wantError && (!strings.Contains(logs.String(), "using full pre-deploy") ||
+				!strings.Contains(logs.String(), "service web: invalid "+label)) {
+				t.Fatalf("invalid cached labels did not log a fallback: %s", logs.String())
+			}
+		})
 	}
 }
 

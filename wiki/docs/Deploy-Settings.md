@@ -715,6 +715,7 @@ The label defaults to `true`. When it is `false`:
 
 - A service without an existing container is created but not started.
 - A stopped service remains stopped when it is recreated or updated.
+- An existing stopped service does not cause a deployment on an otherwise unchanged poll, unless some of its containers are missing.
 - A running service is restarted normally when it is recreated or updated.
 - A service that remains stopped is excluded from deployment readiness checks.
 

@@ -429,7 +429,7 @@ func hasComposeIncludes(node yaml.Node) bool {
 
 // projectExpectedServices returns a map of service names to their expected configurations
 // based on the provided project. It includes the service name, restart policy,
-// scale, and deploy configuration (mode and replicas).
+// autostart labels, scale, and deploy configuration (mode and replicas).
 func projectExpectedServices(project *types.Project) types.Services {
 	services := make(types.Services, len(project.Services))
 	for name, service := range project.Services {
@@ -437,6 +437,14 @@ func projectExpectedServices(project *types.Project) types.Services {
 			Name:    service.Name,
 			Restart: service.Restart,
 		}
+		if value, ok := service.Labels[docker.DocoCDLabels.Deployment.Autostart]; ok {
+			expected.Labels = types.Labels{docker.DocoCDLabels.Deployment.Autostart: value}
+		}
+
+		if value, ok := service.CustomLabels[docker.DocoCDLabels.Deployment.Autostart]; ok {
+			expected.CustomLabels = types.Labels{docker.DocoCDLabels.Deployment.Autostart: value}
+		}
+
 		if service.Scale != nil {
 			scale := *service.Scale
 			expected.Scale = &scale
@@ -664,7 +672,11 @@ func (s *StageManager) skipFromCachedProject(
 		return fallback(reason)
 	}
 
-	mismatches := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedStatus, snapshot.services)
+	mismatches, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedStatus, snapshot.services)
+	if err != nil {
+		return fallback(err.Error())
+	}
+
 	if len(s.dropSchedulerHeldProjectMismatches(mismatches, snapshot.projectName, stageLog)) != 0 {
 		return fallback("deployed services differ from the cached snapshot")
 	}

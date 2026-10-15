@@ -645,7 +645,11 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			changedServices = append(changedServices, staleArtifactChange(staleArtifacts))
 		}
 
-		mismatchServices := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus, s.Docker.Project.Services)
+		mismatchServices, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus, s.Docker.Project.Services)
+		if err != nil {
+			return fmt.Errorf("failed to check service mismatch: %w", err)
+		}
+
 		mismatchServices = s.dropSchedulerHeldMismatches(mismatchServices, stageLog)
 
 		if s.Docker.SwarmMode {
