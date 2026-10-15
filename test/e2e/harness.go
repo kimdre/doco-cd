@@ -797,7 +797,9 @@ func (h *Harness) teardownInternal() {
 		}
 
 		if h.ociRegistry != nil && h.net != nil {
-			h.ociRegistry.detachFromNetwork(h.ctx, h.net.Name)
+			if err := h.ociRegistry.detachFromNetwork(h.ctx, h.net.Name); err != nil {
+				h.logf("detach OCI registry from network %s: %v", h.net.Name, err)
+			}
 		}
 
 		if h.net != nil {

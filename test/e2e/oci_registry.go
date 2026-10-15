@@ -45,7 +45,7 @@ const ociRegistryPort = "5000"
 // addresses it by its IP on that network.
 type ociTestRegistry struct {
 	container testcontainers.Container
-	docker    *client.Client
+	docker    client.APIClient
 	hostAddr  string // host:port reachable from the test process itself, used for pushes
 
 	mu  sync.Mutex
@@ -104,13 +104,9 @@ func startOCIRegistry(ctx context.Context, dockerCli *client.Client) (*ociTestRe
 // with a reference resolved against the registry's current host-side
 // address.
 //
-// Attach and push are done as one atomic operation under r.mu, not two:
-// Docker can reallocate the registry's published host port whenever it gains
-// an additional network connection (see refreshHostAddr), and scenarios run
-// in parallel, each with their own network. Resolving the host address once
-// and pushing afterwards - outside the lock - would leave a window for
-// another scenario's NetworkConnect to invalidate the address before this
-// push actually happens.
+// Attach, address refresh and push are atomic under r.mu. Detach uses the
+// same lock. Network changes can invalidate the published host port, so
+// every push refreshes it, even when netName is already attached.
 func (r *ociTestRegistry) pushArtifact(ctx context.Context, netName, repo, tag string, push func(ref name.Reference) error) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -135,12 +131,10 @@ func (r *ociTestRegistry) pushArtifact(ctx context.Context, netName, repo, tag s
 
 		ip = endpoint.IPAddress.String()
 		r.ips[netName] = ip
+	}
 
-		// See the refreshHostAddr doc comment: the host port can have just
-		// changed as a side effect of the NetworkConnect above.
-		if err := r.refreshHostAddr(ctx); err != nil {
-			return "", fmt.Errorf("resolve OCI registry port after connecting network %s: %w", netName, err)
-		}
+	if err := r.refreshHostAddr(ctx); err != nil {
+		return "", fmt.Errorf("refresh OCI registry address before pushing on network %s: %w", netName, err)
 	}
 
 	pushRef, err := name.ParseReference(fmt.Sprintf("%s/%s:%s", r.hostAddr, repo, tag), name.WeakValidation)
@@ -156,7 +150,9 @@ func (r *ociTestRegistry) pushArtifact(ctx context.Context, netName, repo, tag s
 }
 
 // refreshHostAddr re-resolves the registry's published host port and waits
-// for it to accept connections, updating r.hostAddr. Callers must hold r.mu.
+// for it to accept connections, updating r.hostAddr. Pushes call this under
+// r.mu after attaching and before using the address. Initial setup calls
+// it before publishing the shared registry.
 func (r *ociTestRegistry) refreshHostAddr(ctx context.Context) error {
 	port, err := r.container.MappedPort(ctx, ociRegistryPort+"/tcp")
 	if err != nil {
@@ -206,21 +202,26 @@ func waitForHostPort(ctx context.Context, addr string) error {
 
 // detachFromNetwork disconnects the registry from netName, so the network
 // can be removed during teardown. It's a no-op if the registry was never
-// attached to netName.
-func (r *ociTestRegistry) detachFromNetwork(ctx context.Context, netName string) {
+// attached to netName. The same lock serializes attach, detach and push.
+// Keep the cached IP until Docker confirms the disconnect succeeded.
+func (r *ociTestRegistry) detachFromNetwork(ctx context.Context, netName string) error {
 	r.mu.Lock()
-	_, attached := r.ips[netName]
-	delete(r.ips, netName)
-	r.mu.Unlock()
+	defer r.mu.Unlock()
 
-	if !attached {
-		return
+	if _, attached := r.ips[netName]; !attached {
+		return nil
 	}
 
-	_, _ = r.docker.NetworkDisconnect(ctx, netName, client.NetworkDisconnectOptions{
+	if _, err := r.docker.NetworkDisconnect(ctx, netName, client.NetworkDisconnectOptions{
 		Container: r.container.GetContainerID(),
 		Force:     true,
-	})
+	}); err != nil {
+		return fmt.Errorf("disconnect OCI registry from network %s: %w", netName, err)
+	}
+
+	delete(r.ips, netName)
+
+	return nil
 }
 
 // terminateSharedOCIRegistry tears down the suite-wide registry container, if

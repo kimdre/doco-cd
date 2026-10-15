@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/avast/retry-go/v5"
 	composeCli "github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
@@ -260,21 +261,13 @@ func TestStopAndStartProjectServices_RunComposeHooks(t *testing.T) {
 		t.Fatalf("StopProjectServices() = %v", err)
 	}
 
-	if state := serviceContainer("db").state; state != "exited" {
-		t.Fatalf("db state = %q, want exited", state)
-	}
-
-	if state := serviceContainer("app").state; state != "exited" {
-		t.Fatalf("app state = %q, want exited", state)
-	}
+	assertComposeHookServiceStates(t, dockerCli, stack.Name, map[string]string{"db": "exited", "app": "exited"})
 
 	if err := StartProjectServices(ctx, dockerCli, stack.Name, []string{"db", "app"}, hooks); err != nil {
 		t.Fatalf("StartProjectServices() = %v", err)
 	}
 
-	if state := serviceContainer("app").state; state != "running" {
-		t.Fatalf("app state = %q, want running", state)
-	}
+	assertComposeHookServiceStates(t, dockerCli, stack.Name, map[string]string{"db": "running", "app": "running"})
 
 	assertLog("pre_start", "post_start", "pre_stop", "pre_start", "post_start")
 
@@ -395,20 +388,8 @@ func TestStopProjectServices_FailedPreStopKeepsContainerRunning(t *testing.T) {
 		t.Fatalf("StopProjectServices() = %v, want the pre_stop failure", err)
 	}
 
-	containers, err := GetProjectContainers(ctx, dockerCli, stack.Name)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	states := map[string]string{}
-	for _, c := range containers {
-		states[c.Labels[api.ServiceLabel]] = string(c.State)
-	}
-
 	// Like Compose, the failed hook keeps its container running. Other services still stop.
-	if states["db"] != "running" || states["app"] != "exited" {
-		t.Fatalf("container states = %v, want db running and app exited", states)
-	}
+	assertComposeHookServiceStates(t, dockerCli, stack.Name, map[string]string{"db": "running", "app": "exited"})
 }
 
 func TestRestartComposeScheduledContainerRunsComposeHooks(t *testing.T) {
@@ -483,4 +464,57 @@ func TestRestartComposeScheduledContainerRunsComposeHooks(t *testing.T) {
 type hookTestContainer struct {
 	id    string
 	state string
+}
+
+// Docker's container list can lag behind stop and start operations.
+func assertComposeHookServiceStates(t *testing.T, dockerCli command.Cli, projectName string, want map[string]string) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	stateMismatch := errors.New("service states have not converged")
+
+	var observed map[string][]hookTestContainer
+
+	err := retry.New(
+		retry.Context(ctx),
+		retry.Attempts(20),
+		retry.Delay(500*time.Millisecond),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.RetryIf(func(err error) bool { return errors.Is(err, stateMismatch) }),
+	).Do(func() error {
+		containers, err := GetProjectContainers(ctx, dockerCli, projectName)
+		if err != nil {
+			return err
+		}
+
+		observed = make(map[string][]hookTestContainer)
+
+		for _, c := range containers {
+			service := c.Labels[api.ServiceLabel]
+			observed[service] = append(observed[service], hookTestContainer{
+				id:    c.ID[:min(12, len(c.ID))],
+				state: string(c.State),
+			})
+		}
+
+		for service, state := range want {
+			if len(observed[service]) == 0 {
+				return stateMismatch
+			}
+
+			for _, c := range observed[service] {
+				if c.state != state {
+					return stateMismatch
+				}
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("project %q service states: want %v, observed %+v: %v", projectName, want, observed, err)
+	}
 }
