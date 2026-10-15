@@ -611,6 +611,17 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 		return nil, err
 	}
 
+	deployment := builder.components.Schemas[componentTypeName(reflect.TypeFor[deploy.Config]())]
+	if deployment == nil || deployment.Value == nil {
+		return nil, errors.New("generated deployment configuration schema is missing")
+	}
+
+	deployment.Value.Properties["pause"] = &openapi3.SchemaRef{Value: &openapi3.Schema{
+		Type:        &openapi3.Types{openapi3.TypeBoolean},
+		Default:     false,
+		Description: "Freeze deployment updates without stopping workloads. Last-deployed recovery still requires reconciliation.enabled.",
+	}}
+
 	retrySchema := builder.components.Schemas[componentTypeName(reflect.TypeFor[deploy.RetryConfig]())]
 	if retrySchema == nil || retrySchema.Value == nil {
 		return nil, errors.New("generated deployment retry schema is missing")

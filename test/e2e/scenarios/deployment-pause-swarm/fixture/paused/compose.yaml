@@ -1,0 +1,11 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["tail", "-f", "/dev/null"]
+    environment:
+      VERSION: "1"
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 0s

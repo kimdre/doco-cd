@@ -365,15 +365,8 @@ func autoDiscoverDeployments(fsys fs.FS, repoRoot, revisionKey string, baseConfi
 		repository: repoRoot,
 		label:      repositoryLabel,
 		base:       baseConfig,
-		origin: &AutoDiscoveryOrigin{
-			WorkingDirectory:   path.Clean(baseConfig.WorkingDirectory),
-			Reference:          baseConfig.Reference,
-			RepositoryURL:      string(baseConfig.RepositoryUrl),
-			WebhookEventFilter: baseConfig.WebhookEventFilter,
-			Revision:           revisionKey,
-			Settings:           baseConfig.AutoDiscovery,
-		},
-		compose: set.New(baseConfig.ComposeFiles...),
+		origin:     autoDiscoveryOrigin(baseConfig, revisionKey),
+		compose:    set.New(baseConfig.ComposeFiles...),
 	}
 
 	// A plain TreeFS has no materialized inputs. A published artifact has both

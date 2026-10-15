@@ -151,7 +151,7 @@ To poll progress with `#!yaml wait: false`:
 | `running`   | No       | Job is actively executing.                           |
 | `succeeded` | Yes      | Job completed without error.                         |
 | `failed`    | Yes      | Job encountered an error.                            |
-| `skipped`   | Yes      | Job was not executed (e.g. no changes detected or deferred by a [sync window](../Advanced/Sync-Windows.md)). |
+| `skipped`   | Yes      | Job was not executed (e.g. no changes detected, deployments [paused](../Deploy-Settings.md#pause-settings), or deferred by a [sync window](../Advanced/Sync-Windows.md)). |
 
 !!! note
     For `trigger_scheduled_job`, `succeeded` means the trigger completed without error. Compose restarts and Swarm reruns can return after Docker accepts the start or update, so this does not guarantee the workload finished successfully or exited with code 0.
@@ -190,6 +190,9 @@ including `#!yaml limit: 0` with either `#!yaml wait: true` or `#!yaml wait: fal
 A failed manual deployment neither consumes nor refills the automatic retry budget; complete success clears the failure and retry state.
 Other deployment safety checks, including source trust and sync windows, still apply.
 All configs in one request run with bounded concurrency controlled by `MAX_CONCURRENT_DEPLOYMENTS` (default: 4).
+
+Manual `trigger_poll` calls do **not** bypass [`pause`](../Deploy-Settings.md#pause-settings). Inline deployments accept `"pause": true`.
+With `wait=true`, a run whose deployments are all paused returns `status: "skipped"` with the pause reason and no MCP error flag.
 
 ## Logging
 

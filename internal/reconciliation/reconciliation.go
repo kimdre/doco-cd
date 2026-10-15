@@ -132,6 +132,15 @@ func (j *job) cleanupConfigsForContextMode(contextName string, swarmMode bool) [
 	return filterConfigsByMode(filterConfigsByContext(j.cleanupConfigs, contextName), j.swarmModeForContext(contextName), swarmMode)
 }
 
+// cleanupRequest returns the latest observed cleanup request of the repository.
+// Without an observation, it uses the cleanup configs of the job, not its recovery configs.
+func (j *job) cleanupRequest() DeployRequest {
+	fallback := j.info
+	fallback.DeployConfigs = j.cleanupConfigs
+
+	return j.manager.currentCleanupRequest(fallback)
+}
+
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.Logger
 
@@ -156,7 +165,7 @@ func (j *job) run(ctx context.Context) {
 			}
 
 			unhealthyConfigs := filterConfigsByMode(
-				getDeployConfigGroupByEvent(configs)["unhealthy"],
+				j.manager.recoveryGroupByEvent(j.info, configs)["unhealthy"],
 				entry.swarmMode,
 				swarmMode,
 			)
@@ -262,7 +271,7 @@ func (j *job) runContextEventListener(ctx context.Context, jobLog *slog.Logger, 
 		repositoryLabelValue = j.info.Payload.FullName
 	}
 
-	contextGroupByEvent := getDeployConfigGroupByEvent(contextDCs)
+	contextGroupByEvent := j.manager.recoveryGroupByEvent(j.info, contextDCs)
 
 	if len(contextGroupByEvent) == 0 {
 		return
@@ -439,6 +448,8 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	}
 
 	stackDCs := deployConfigsByName(dcs, stackName)
+
+	stackDCs = j.manager.recoveryConfigs(j.info, stackDCs)
 	if len(stackDCs) == 0 {
 		return
 	}
@@ -620,7 +631,8 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	// Use the context-specific CLI and only the deploy configs targeting this context
 	// for cleanup, so we inspect the correct remote daemon for obsolete containers.
 	contextCLI := j.cliForContext(contextName)
-	contextDCs := j.cleanupConfigsForContextMode(contextName, swarmMode)
+	cleanupReq := j.cleanupRequest()
+	contextDCs := filterConfigsByMode(filterConfigsByContext(cleanupReq.DeployConfigs, contextName), j.swarmModeForContext(contextName), swarmMode)
 
 	// Removing an obsolete stack is a change, not the recovery of a deployed
 	// revision, so sync windows apply to it like to any automatic deployment.
@@ -630,8 +642,8 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	removalGate := j.manager.newSyncWindowGate(removalReq, time.Now())
 
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-		contextCLI, swarmMode, contextName, j.info,
-		contextDCs, j.manager.notifier, removalGate.removalPredicate(contextName)); err != nil {
+		contextCLI, swarmMode, contextName, cleanupReq,
+		contextDCs, j.manager.notifier, j.manager.removalPredicate(cleanupReq, contextName, removalGate)); err != nil {
 		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))
 	}
 
@@ -660,8 +672,8 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 		req.Origin = syncwindow.OriginReconciliation
 
 		err := j.manager.handleDeploy(ctx, req)
-		if errors.Is(err, stages.ErrSyncWindowBlocked) || errors.Is(err, stages.ErrRetrySuppressed) {
-			// The gate already logged the deferral.
+		if errors.Is(err, stages.ErrSkipDeployment) {
+			// Skips such as sync window deferrals, retry suppression, and pause are logged where they occur.
 			continue
 		}
 

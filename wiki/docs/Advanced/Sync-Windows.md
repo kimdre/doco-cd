@@ -90,6 +90,12 @@ Poll runs you trigger via the [REST API](../Endpoints/REST-API.md#polling) or th
 A manual deployment may bypass a block only if **every** window that blocks it has `#!yaml manual_sync: true`. This lets you do emergency deployments during a freeze while webhooks and polls stay blocked.
 doco-cd logs `sync window bypassed by manual deployment` whenever this happens.
 
+### Deployment pause
+
+[`pause`](../Deploy-Settings.md#pause-settings) and sync windows are independent.
+`#!yaml pause: true` freezes deployment updates, even with an open window or a `manual_sync` bypass.
+After resume, sync windows apply as usual. Paused revisions are not replayed.
+
 ## Deferred deployments
 
 A blocked deployment is **skipped, not queued**. doco-cd doesn't replay it once the window opens.

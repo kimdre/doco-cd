@@ -105,6 +105,7 @@ type Manager struct {
 	projectSkips    *stages.ProjectSkipCache
 	// syncWindowNotices deduplicates reports of deployments deferred by sync windows.
 	syncWindowNotices syncWindowNotices
+	pauses            pauseRegistry
 	// loadHookService replaces the Compose lifecycle hook loader in tests.
 	loadHookService func(ctx context.Context, log *slog.Logger, cli command.Cli, labels map[string]string) (types.ServiceConfig, bool)
 }
@@ -156,16 +157,18 @@ type contextCLIEntry struct {
 // unique test name. Stable application dependencies (app config, Docker CLI, context registry,
 // secret provider) live on the Manager itself instead; see Dependencies.
 type DeployRequest struct {
-	Logger        *slog.Logger `validate:"required,nostructlevel"`
-	Metadata      notification.Metadata
-	JobTrigger    stages.JobTrigger `validate:"required,oneof=webhook poll"`
-	Repository    stages.RepositoryData
-	DeployConfigs []*deployConfig.Config `validate:"dive,required"`
-	Payload       *webhook.ParsedPayload
-	TestName      string
+	Logger               *slog.Logger `validate:"required,nostructlevel"`
+	Metadata             notification.Metadata
+	JobTrigger           stages.JobTrigger `validate:"required,oneof=webhook poll"`
+	Repository           stages.RepositoryData
+	DeployConfigs        []*deployConfig.Config `validate:"dive,required"`
+	AutoDiscoveryOrigins []deployConfig.AutoDiscoveryOrigin
+	Payload              *webhook.ParsedPayload
+	TestName             string
 	// Origin decides how sync windows apply to the request. Empty means
 	// syncwindow.OriginAutomatic.
-	Origin syncwindow.Origin `validate:"omitempty,oneof=automatic manual reconciliation"`
+	Origin          syncwindow.Origin `validate:"omitempty,oneof=automatic manual reconciliation"`
+	pauseGeneration uint64
 }
 
 type job struct {
@@ -222,7 +225,7 @@ func newJob(manager *Manager, info DeployRequest, deployConfigGroupByEvent map[s
 
 func newReconciliationJob(manager *Manager, req DeployRequest, deferred map[*deployConfig.Config]struct{}, previous *job) *job {
 	info, carried, pinned := reconciliationJobInfo(req, deferred, previous)
-	j := newJob(manager, req, getDeployConfigGroupByEvent(info.DeployConfigs))
+	j := newJob(manager, req, manager.recoveryGroupByEvent(info, info.DeployConfigs))
 	j.info = info
 	j.carried = carried
 	j.pinned = pinned
@@ -567,6 +570,10 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 ) {
 	deferred = withWebhookFilteredConfigs(req, deferred)
 
+	if m.newerPauseObservation(req) && len(forcedDeployments) == 0 {
+		return
+	}
+
 	var (
 		checked *job
 		stale   bool
@@ -607,22 +614,59 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 	}
 
 	old := m.jobs.jobs[req.Repository.Name]
+	if m.newerPauseObservation(req) && len(forcedDeployments) == 0 {
+		m.jobs.mu.Unlock()
+		return
+	}
 
-	if stale {
-		req, deferred = forcedRollbackRequest(req, old, forcedDeployments)
+	if stale || m.newerPauseObservation(req) {
+		if old != nil {
+			req, deferred = forcedRollbackRequest(req, old, forcedDeployments)
+		} else {
+			configs := make([]*deployConfig.Config, 0, len(forcedDeployments))
+			for _, dc := range req.DeployConfigs {
+				if _, deployed := forcedDeployments[dc]; deployed {
+					configs = append(configs, dc)
+				}
+			}
+
+			req.DeployConfigs = configs
+		}
+	}
+
+	req = m.withPausedRootConfigs(req, old)
+	for _, dc := range req.DeployConfigs {
+		if _, deployed := forcedDeployments[dc]; deployed {
+			delete(deferred, dc)
+			continue
+		}
+
+		if m.pauseFor(req, dc) {
+			if deferred == nil {
+				deferred = make(map[*deployConfig.Config]struct{})
+			}
+
+			deferred[dc] = struct{}{}
+		}
 	}
 
 	newJob := newReconciliationJob(m, req, deferred, old)
+
+	newJob.cleanupConfigs = m.currentCleanupRequest(req).DeployConfigs
 	if len(newJob.deployConfigGroupByEvent) == 0 {
-		if stale {
+		if m.hasPause(req) {
+			if m.jobs.jobs == nil {
+				m.jobs.jobs = make(map[string]*job)
+			}
+
+			m.jobs.jobs[req.Repository.Name] = newJob
+		} else {
 			delete(m.jobs.jobs, req.Repository.Name)
 		}
 
 		m.jobs.mu.Unlock()
-
-		if stale {
-			old.close()
-		}
+		old.close()
+		newJob.signalReady()
 
 		return
 	}

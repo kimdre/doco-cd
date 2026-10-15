@@ -156,6 +156,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `destroy`           | boolean \| object     | (⚠️ Destructive) Configure stack/project destruction behavior. Use `#!yaml destroy: true` as shorthand to enable destruction with default options, or use `#!yaml destroy.enabled: true` inside the object form to customize removal behavior. See [Destroy settings](#destroy-settings).                                                                                                                                                                                                                                                                                                                                      | see [Destroy settings](#destroy-settings)                                                                              |
 | `auto_discovery`    | boolean \| object     | Enables [autodiscovery](#auto-discovery) of services to deploy in the working directory by scanning for subdirectories with Docker Compose files (see the `compose_files` setting). Use `auto_discovery: true` as shorthand to enable it with default options, or use the object form to customize settings such as `depth` and `delete`. See [Auto-Discovery Settings](#auto-discovery-settings).                                                                                                                                                                                                                             | see [Auto-Discovery Settings](#auto-discovery-settings)                                                                |
 | `retry`             | object                | Limits automatic retries of a failed desired revision/configuration and optionally delays retries. See [Retry settings](#retry-settings).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Unlimited retries, no delay                                                                                            |
+| `pause`             | boolean               | Freeze deployment updates without stopping workloads. Last-deployed recovery still follows `reconciliation.enabled`. See [Pause settings](#pause-settings). | `false` |
 | `reconciliation`    | boolean \| object     | Enables event-driven reconciliation for deployments. Use `#!yaml reconciliation: true` as shorthand to enable reconciliation with default options, or use the object form to customize settings. See [reconciliation settings](#reconciliation-settings).                                                                                                                                                                                                                                                                                                                                                                      | see [Reconciliation Settings](#reconciliation-settings)                                                                |
 
 
@@ -391,8 +392,8 @@ When using [custom webhook targets](Endpoints/Webhook-Listener.md#with-custom-ta
 - Slices replace the base value when the nested value is non-empty
 - Scalar values override the base value when the key is set in the nested config, even to `false`, `0` or an empty string.
   Keys set to `null` keep the base value.
-- Nested objects (such as `build`, `destroy`, `retry`, `reconciliation`) are merged recursively. The boolean shorthand of an object
-  (e.g. `#!yaml destroy: false`) only sets its `enabled` field.
+- Nested objects (such as `build`, `destroy`, `retry`, `reconciliation`) are merged recursively.
+  The boolean shorthand for `destroy`, `auto_discovery`, and `reconciliation` only sets the object's `enabled` field.
 - YAML merge keys (`<<`) are resolved before these overrides are applied: explicit keys replace merged values,
   and earlier entries in a merge sequence take precedence over later ones. A replacement does not retain the
   shadowed mapping's children; an explicit `null` shadows the merged value and keeps the base setting.
@@ -520,6 +521,46 @@ hostless names alone are ambiguous. Missing, conflicting, or ambiguous ownership
           remove_volumes: true
           remove_images: false
         ```
+
+### Pause Settings
+
+Use `#!yaml pause: true` to freeze deployment changes without stopping or removing existing workloads.
+
+With [`reconciliation.enabled`](#reconciliation-settings), doco-cd still restores the last-deployed configuration and revision.
+It never deploys a newer revision or a changed configuration while paused.
+Pause does not enable reconciliation or change its behavior when it is disabled.
+For a full deployment-and-recovery freeze, combine `#!yaml pause: true` with `#!yaml reconciliation: false`:
+
+```yaml title=".doco-cd.yml"
+name: production
+pause: true
+reconciliation: false
+```
+
+!!! note
+    doco-cd keeps the last-deployed state in memory. If doco-cd starts while a deployment is already paused,
+    it does not reconcile that deployment until it is resumed. Docker restart policies and Swarm healing still apply.
+
+#### Triggers and operational boundaries
+
+- Pause takes effect on the next trigger that successfully resolves a valid, trusted configuration, not immediately when a Git file changes.
+  The configuration source continues to be fetched so a cleared flag can be detected.
+- All deployment triggers honor pause: polling, webhooks, local watchers, and manual REST/MCP polls.
+  It blocks first deployment, updates, mode migration, deployment-driven destruction and cleanup, and automatic certificate reissuance/redeployment.
+  Manual retry privileges, `force_recreate`, image-pull settings, and `destroy` do not bypass pause.
+  Effective [inline deployment definitions](Poll-Settings.md#inline-deploy-configs) replace repository definitions and remain authoritative.
+- Operations already admitted to mutation finish normally. Pause does not abort a running replacement or destruction halfway through.
+- Pause is independent of [sync windows](Advanced/Sync-Windows.md); an open window or manual bypass does not override it.
+  After resume, normal change detection, source trust, sync windows, and retry policies apply; paused revisions are not queued or replayed.
+- Existing [scheduled jobs](Advanced/Job-Scheduling.md) keep running from their deployed definitions, even with `#!yaml pause: true`.
+  Updates to those definitions wait while deployment updates are paused.
+- Explicit Docker, [REST API](Endpoints/REST-API.md), and [MCP](Endpoints/MCP-Server.md) lifecycle controls (start, stop, restart, scale, destroy, or remove) remain available.
+  Docker restart policies and native Swarm healing are unchanged, including with `#!yaml reconciliation: false`.
+
+Pause differs from [preserving a service's running state](#preserve-a-services-running-state), stopping workloads,
+[retry suppression](#retry-settings), or time-based sync windows.
+Runs whose deployments are all paused are reported as `skipped`, not failed; mixed runs succeed if active work succeeds,
+and real failures take precedence.
 
 ### Retry Settings
 

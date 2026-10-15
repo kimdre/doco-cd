@@ -17,6 +17,7 @@ const (
 	SkipReasonStale          = "a newer commit is already deployed"
 	SkipReasonSelfUpdate     = "self-update to this commit failed before"
 	SkipReasonNothingDestroy = "nothing to destroy"
+	SkipReasonPaused         = "deployment paused"
 )
 
 // maxSkippedStacksInSummary bounds the stacks listed in a skipped run summary.
@@ -51,6 +52,11 @@ func skipDeployment(reason, detail string) error {
 // does not exist.
 func NothingToDestroy() error {
 	return skipDeployment(SkipReasonNothingDestroy, "the stack does not exist")
+}
+
+// DeploymentPaused returns an ErrSkipDeployment for a stack when the deployment is paused.
+func DeploymentPaused() error {
+	return &SkipError{Reason: SkipReasonPaused, err: ErrDeploymentPaused}
 }
 
 // WebhookFilterMismatch returns an ErrWebhookFilterMismatch naming the
@@ -101,8 +107,12 @@ type SkippedRunError struct {
 // NewSkippedRunError returns the result of a run that skipped every stack.
 func NewSkippedRunError(stacks []SkippedStack) *SkippedRunError {
 	err := ErrSkipDeployment
-	if len(stacks) > 0 && !slices.ContainsFunc(stacks, func(s SkippedStack) bool { return s.Reason != SkipReasonWebhookFilter }) {
+
+	switch {
+	case len(stacks) > 0 && !slices.ContainsFunc(stacks, func(s SkippedStack) bool { return s.Reason != SkipReasonWebhookFilter }):
 		err = ErrWebhookFilterMismatch
+	case slices.ContainsFunc(stacks, func(s SkippedStack) bool { return s.Reason == SkipReasonPaused }):
+		err = ErrDeploymentPaused
 	}
 
 	stacks = slices.Clone(stacks)
@@ -114,6 +124,21 @@ func NewSkippedRunError(stacks []SkippedStack) *SkippedRunError {
 }
 
 func (e *SkippedRunError) Error() string {
+	if errors.Is(e.err, ErrDeploymentPaused) {
+		var names []string
+
+		for _, stack := range e.Stacks {
+			if stack.Reason == SkipReasonPaused {
+				names = append(names, stackLabel(stack))
+				if len(names) == maxSkippedStacksInSummary {
+					break
+				}
+			}
+		}
+
+		return "deployment paused: " + strings.Join(names, ", ")
+	}
+
 	return e.err.Error()
 }
 

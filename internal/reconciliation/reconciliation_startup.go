@@ -145,7 +145,7 @@ func uniqueRedeployDCsFromGroupByEvent(grouped map[string][]*deployConfig.Config
 // reconciliation is configured for redeploy-oriented events (e.g., "die", "destroy", "update")
 // and triggers a redeploy for any stacks that are completely missing their containers/services.
 func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog.Logger, contextName string, cli command.Cli, swarmMode bool, modeConfigs []*deployConfig.Config) {
-	allCandidates := uniqueRedeployDCsFromGroupByEvent(getDeployConfigGroupByEvent(modeConfigs))
+	allCandidates := uniqueRedeployDCsFromGroupByEvent(j.manager.recoveryGroupByEvent(j.info, modeConfigs))
 
 	candidates := filterConfigsByContext(allCandidates, contextName)
 	if len(candidates) == 0 {

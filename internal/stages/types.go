@@ -41,6 +41,7 @@ var (
 	ErrNotManagedByDocoCD = errors.New("stack is not managed by doco-cd")
 	ErrDeploymentConflict = errors.New("another stack with the same name already exists and is not managed by this repository")
 	ErrSkipDeployment     = errors.New("deployment skipped") // Special error to indicate deployment was skipped, not an actual failure/error
+	ErrDeploymentPaused   = fmt.Errorf("deployment paused: %w", ErrSkipDeployment)
 
 	// ErrWebhookFilterMismatch is returned when the deployment is skipped because
 	// the webhook ref does not match the configured webhook_filter. It wraps

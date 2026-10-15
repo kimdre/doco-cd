@@ -230,10 +230,36 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 			lifecycleErr error
 			deferred     []*stages.SyncWindowBlockedError
 			suppressed   []*stages.RetrySuppressedError
+			paused       []error
 		)
 
 		for runErr := range errs {
 			if runErr == nil {
+				continue
+			}
+
+			if errors.Is(runErr, stages.ErrDeploymentPaused) {
+				retryErr, retrySuppressed := errors.AsType[*stages.RetrySuppressedError](runErr)
+				if !retrySuppressed {
+					paused = append(paused, runErr)
+
+					continue
+				}
+
+				// Split the joined run error so that each outcome is reported only once.
+				// The retry and sync window parts are merged with the other runs below.
+				suppressed = append(suppressed, retryErr)
+
+				if blocked, windowBlocked := errors.AsType[*stages.SyncWindowBlockedError](runErr); windowBlocked {
+					deferred = append(deferred, blocked)
+				}
+
+				if skipped, ok := errors.AsType[*stages.SkippedRunError](runErr); ok {
+					paused = append(paused, skipped)
+				} else {
+					paused = append(paused, runErr)
+				}
+
 				continue
 			}
 
@@ -266,13 +292,15 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 
 		if len(suppressed) > 0 {
 			retryErr := stages.MergeRetrySuppressed(suppressed)
-			if len(deferred) > 0 {
-				err := errors.Join(retryErr, stages.MergeSyncWindowBlocked(deferred))
 
-				return SkippedRun(err.Error()), err
+			outcomes := append([]error{retryErr}, paused...)
+			if len(deferred) > 0 {
+				outcomes = append(outcomes, stages.MergeSyncWindowBlocked(deferred))
 			}
 
-			return SkippedRun(retryErr.Error()), retryErr
+			err := errors.Join(outcomes...)
+
+			return SkippedRun(err.Error()), err
 		}
 
 		// The error tells synchronous callers that nothing was deployed; the
@@ -281,6 +309,16 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 			blocked := stages.MergeSyncWindowBlocked(deferred)
 
 			return SkippedRun(blocked.Error()), blocked
+		}
+
+		if len(paused) > 0 && len(paused)+len(deferred) == len(configs) {
+			if len(deferred) > 0 {
+				paused = append(paused, stages.MergeSyncWindowBlocked(deferred))
+			}
+
+			err := errors.Join(paused...)
+
+			return SkippedRun(err.Error()), err
 		}
 
 		return SucceededRun("poll jobs complete"), nil
@@ -326,7 +364,8 @@ func (c *Runs) RunConfiguredPoll(
 			c.poll.secretProvider,
 			triggerReason,
 		)
-		if errors.Is(err, stages.ErrSyncWindowBlocked) || errors.Is(err, stages.ErrRetrySuppressed) {
+		if errors.Is(err, stages.ErrSyncWindowBlocked) || errors.Is(err, stages.ErrRetrySuppressed) ||
+			errors.Is(err, stages.ErrDeploymentPaused) {
 			return SkippedRun(err.Error()), nil
 		}
 

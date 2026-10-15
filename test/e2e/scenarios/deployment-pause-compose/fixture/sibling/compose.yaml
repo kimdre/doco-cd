@@ -1,0 +1,7 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["tail", "-f", "/dev/null"]
+    restart: unless-stopped
+    environment:
+      VERSION: "1"

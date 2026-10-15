@@ -514,6 +514,12 @@ func TestMCPServerListsTools(t *testing.T) {
 				t.Fatalf("trigger_poll deployment schema exposes internal state: %#v", deploymentItems)
 			}
 
+			pauseSchema := resolveToolSchemaRef(t, tool.InputSchema, toolSchemaProperty(t, deploymentItems, "pause"))
+			if toolSchemaRequiresProperty(deploymentItems, "pause") ||
+				pauseSchema["type"] != "boolean" || pauseSchema["default"] != false {
+				t.Fatalf("pause must be an optional boolean defaulting to false: %#v", pauseSchema)
+			}
+
 			retrySchema := resolveToolSchemaRef(t, tool.InputSchema, toolSchemaProperty(t, deploymentItems, "retry"))
 			if toolSchemaRequiresProperty(deploymentItems, "retry") ||
 				toolSchemaRequiresProperty(retrySchema, "limit") ||

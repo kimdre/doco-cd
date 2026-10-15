@@ -3,13 +3,17 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kimdre/doco-cd/internal/common/types/duration"
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -125,57 +129,91 @@ func TestMCPTriggerPollAsyncJobIDResolves(t *testing.T) {
 	waitForDeploymentRunStatus(t, h.controlPlaneRuns, output.JobID, controlplane.RunStatusSucceeded)
 }
 
-func TestMCPTriggerPollReportsSyncWindowDeferral(t *testing.T) {
-	log := logger.New(logger.LevelCritical)
-	appConfig := &app.Config{}
-	h := &Handler{log: log}
-	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
-		appConfig: appConfig,
-		log:       log,
-		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
-		) error {
-			if origin := controlplane.DeploymentOrigin(ctx); origin != syncwindow.OriginManual {
-				t.Errorf("MCP poll origin = %q, want manual", origin)
+func TestMCPTriggerPollReportsRunOutcomes(t *testing.T) {
+	pauseErr := fmt.Errorf("web: %w", stages.ErrDeploymentPaused)
+
+	for _, tc := range []struct {
+		name    string
+		outcome error
+		wait    bool
+		wantRun controlplane.RunStatus
+	}{
+		{"sync window", &stages.SyncWindowBlockedError{Stacks: []string{"web"}, Windows: []string{"freeze"}}, true, controlplane.RunStatusSkipped},
+		{"retry suppressed", &stages.RetrySuppressedError{Stacks: []stages.RetrySuppressedStack{{Name: "web", Reason: "budget_exhausted"}}}, true, controlplane.RunStatusSkipped},
+		{"paused", pauseErr, true, controlplane.RunStatusSkipped},
+		{"paused async", pauseErr, false, controlplane.RunStatusSkipped},
+		{"failed", errors.New("deployment failed"), true, controlplane.RunStatusFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			log := logger.New(logger.LevelCritical)
+			h := &Handler{log: log}
+			h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+				appConfig: &app.Config{},
+				log:       log,
+				pollRunner: func(ctx context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
+					_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
+				) error {
+					if origin := controlplane.DeploymentOrigin(ctx); origin != syncwindow.OriginManual {
+						t.Errorf("MCP poll origin = %q, want manual", origin)
+					}
+
+					if len(cfg.Deployments) != 1 || !cfg.Deployments[0].Pause {
+						t.Errorf("manual MCP poll lost pause configuration: %#v", cfg)
+					}
+
+					return tc.outcome
+				},
+			})
+			server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 4096, h)
+			session := connectMCPTestClient(t, server)
+
+			deployment := &deploy.Config{Name: "web", Pause: true}
+			if err := json.Unmarshal([]byte(`{"environment":{},"external_secrets":{},"build":{"args":{}}}`), deployment); err != nil {
+				t.Fatal(err)
 			}
 
-			return &stages.SyncWindowBlockedError{Stacks: []string{"web"}, Windows: []string{"freeze"}}
-		},
-	})
-	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
-	session := connectMCPTestClient(t, server)
+			result, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{
+				Name: "trigger_poll",
+				Arguments: triggerPollInput{
+					Configs: []triggerPollConfig{{
+						SourceURL:   validPollSourceURL,
+						Deployments: []*deploy.Config{deployment},
+					}},
+					Wait: new(tc.wait),
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	result := callMCPTool(t, session, "trigger_poll", map[string]any{
-		"configs": []any{map[string]any{"url": validPollSourceURL}},
-	})
+			var output triggerPollOutput
+			decodeMCPStructuredContent(t, result, &output)
 
-	var output triggerPollOutput
-	decodeMCPStructuredContent(t, result, &output)
+			wantStatus := tc.wantRun
+			if !tc.wait {
+				wantStatus = controlplane.RunStatusAccepted
+			}
 
-	if output.JobID == "" || output.Status != string(controlplane.RunStatusSkipped) {
-		t.Fatalf("unexpected trigger output: %#v", output)
-	}
+			if output.JobID == "" || output.Status != string(wantStatus) || result.IsError != (tc.wantRun == controlplane.RunStatusFailed) {
+				content, _ := json.Marshal(result.Content)
+				t.Fatalf("unexpected run output: %#v, content %s, isError %t", output, content, result.IsError)
+			}
 
-	waitForDeploymentRunStatus(t, h.controlPlaneRuns, output.JobID, controlplane.RunStatusSkipped)
-}
+			if tc.wait && tc.wantRun == controlplane.RunStatusSkipped {
+				if len(result.Content) != 1 {
+					t.Fatalf("skip must include one reason: %#v", result.Content)
+				}
 
-func TestTriggerRunToolResultReportsSyncWindowDeferralAsSkipped(t *testing.T) {
-	t.Parallel()
+				if reason, ok := result.Content[0].(*sdkmcp.TextContent); !ok || reason.Text != tc.outcome.Error() {
+					t.Fatalf("skip reason = %#v, want %q", result.Content, tc.outcome.Error())
+				}
+			}
 
-	result, status := triggerRunToolResult(true, &stages.SyncWindowBlockedError{Stacks: []string{"web"}, Windows: []string{"freeze"}})
-	if status != string(controlplane.RunStatusSkipped) || result == nil || result.IsError {
-		t.Fatalf("triggerRunToolResult() = %#v, %q, want a non-error skipped result", result, status)
-	}
-}
-
-func TestTriggerRunToolResultReportsRetrySuppressionAsSkipped(t *testing.T) {
-	t.Parallel()
-
-	result, status := triggerRunToolResult(true, &stages.RetrySuppressedError{Stacks: []stages.RetrySuppressedStack{{
-		Name: "web", Reason: "budget_exhausted",
-	}}})
-	if status != string(controlplane.RunStatusSkipped) || result == nil || result.IsError {
-		t.Fatalf("result = %#v, status = %q, want a non-error skip", result, status)
+			run := waitForDeploymentRunStatus(t, h.controlPlaneRuns, output.JobID, tc.wantRun)
+			if tc.wantRun == controlplane.RunStatusSkipped && !strings.Contains(run.Message, tc.outcome.Error()) {
+				t.Fatalf("run lost skip reason: %#v", run)
+			}
+		})
 	}
 }
 

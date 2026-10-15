@@ -134,6 +134,9 @@ func NewSwarmRetentionOptions(c *app.Config) SwarmRetentionOptions {
 type CertificateRotationOptions struct {
 	Scheduled      ScheduledComposeOptions
 	SwarmRetention SwarmRetentionOptions
+	// Admission is checked under the stack lock before source loading or certificate reissuance.
+	// Nil permits rotation; false intentionally skips it.
+	Admission func(contextName string, labels map[string]string) bool
 }
 
 // NewCertificateRotationOptions builds CertificateRotationOptions from the application

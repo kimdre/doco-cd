@@ -57,6 +57,15 @@ func TestNewSkippedRunErrorSentinel(t *testing.T) {
 	if mixed.Stacks[0].Name != "api" {
 		t.Fatalf("stacks = %+v, want them sorted by name", mixed.Stacks)
 	}
+
+	run := NewSkippedRunError([]SkippedStack{
+		NewSkippedStack("paused", "remote", DeploymentPaused()),
+		NewSkippedStack("unchanged", "", skipDeployment(SkipReasonNoChanges, "")),
+	})
+	if !errors.Is(run, ErrSkipDeployment) || !errors.Is(run, ErrDeploymentPaused) ||
+		run.Stacks[0].Reason != SkipReasonPaused {
+		t.Fatalf("pause identity or reason lost: %v", run)
+	}
 }
 
 func TestSkippedCommitStatusDescription(t *testing.T) {
@@ -77,6 +86,7 @@ func TestSkippedCommitStatusDescription(t *testing.T) {
 			{Name: "api", Reason: SkipReasonWebhookFilter},
 		}), want: "Skipped"},
 		{name: "unknown reason", err: NewSkippedRunError([]SkippedStack{{Name: "web"}}), want: "Skipped"},
+		{name: "deployment pause", err: NewSkippedRunError([]SkippedStack{NewSkippedStack("web", "", DeploymentPaused())}), want: "Skipped: deployment paused"},
 	}
 
 	for _, tt := range tests {

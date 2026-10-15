@@ -331,6 +331,62 @@ func TestRotationReasons(t *testing.T) {
 	}
 }
 
+func TestWatcherLogsPausedRotationAsInfoSkip(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	labels := map[string]string{
+		api.ProjectLabel: "paused-app",
+		api.ServiceLabel: "web",
+		docker.DocoCDLabels.Deployment.CertExpiry: now.Add(time.Hour).Format(time.RFC3339),
+	}
+	apiClient := &fakeAPIClient{
+		containerList: func(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{{Names: []string{"/paused-app_web_1"}, Labels: labels}},
+			}, nil
+		},
+	}
+
+	var buf bytes.Buffer
+
+	watcher := &Watcher{
+		log:       slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		threshold: 72 * time.Hour,
+		now:       func() time.Time { return now },
+		certOptions: docker.CertificateRotationOptions{
+			Admission: func(string, map[string]string) bool { return false },
+		},
+	}
+	watcher.checkAndRotateContext(t.Context(), docker.ContextClientResult{
+		Name: "remote", Cli: fakeCli{apiClient: apiClient},
+	})
+
+	skipped := false
+
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatal(err)
+		}
+
+		switch entry["msg"] {
+		case "certificate rotation skipped because deployment is paused":
+			skipped = true
+
+			if entry["level"] != "INFO" || entry["context"] != "remote" || entry["project"] != "paused-app" {
+				t.Errorf("unexpected pause skip log: %#v", entry)
+			}
+		case "failed to rotate certificate", "certificate rotation redeploy completed":
+			t.Errorf("paused rotation logged failure or success: %#v", entry)
+		}
+	}
+
+	if !skipped {
+		t.Fatalf("paused rotation did not log an info skip: %s", buf.String())
+	}
+}
+
 func TestWatcherLogsWhenCertificateNeedsRotation(t *testing.T) {
 	var buf bytes.Buffer
 
