@@ -1,0 +1,7 @@
+name: e2e-autostart-drift
+working_dir: stacks/e2e-autostart-drift
+reference: refs/heads/main
+context: remote
+swarm:
+  enabled: false
+reconciliation: false

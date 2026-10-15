@@ -39,6 +39,10 @@ type ServiceStatus struct {
 	// Non-swarm mode: number of running containers
 	// Swarm mode: number of service replicas
 	Replicas uint64
+
+	// Non-swarm mode: number of containers in any state.
+	// Swarm mode: not used.
+	Containers uint64
 }
 
 type LatestServiceStatus struct {
@@ -290,6 +294,7 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 			}
 		}
 
+		status.Containers++
 		if cont.State == container.StateRunning {
 			status.Replicas++
 		}
@@ -306,6 +311,7 @@ const (
 	ServiceMismatchReasonUnnecessary = "service is unnecessary"
 	ServiceMismatchReasonSwarmMode   = "swarm mode mismatch"
 	ServiceMismatchReasonReplicas    = "replicas mismatch"
+	ServiceMismatchReasonContainers  = "containers mismatch"
 	oneOffServiceNameSeparator       = "-doco-job-"
 )
 
@@ -320,9 +326,11 @@ type ServiceMismatchReason struct {
 	Got    any    `json:"got"`
 }
 
-// CheckServiceMismatch checks if the deployed services match the services in the compose file.
-// now only check replicas, swarm mode, missing and unnecessary services.
-func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) []ServiceMismatch {
+// CheckServiceMismatch checks replicas, Swarm modes, and service presence.
+// In standalone mode, services with autostart disabled may remain stopped,
+// but all of their containers must exist.
+// Invalid autostart labels return an error in standalone mode.
+func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) ([]ServiceMismatch, error) {
 	var mismatches []ServiceMismatch
 
 	// In non-Swarm mode, services with unset, "on-failure", or "no" restart policy can be considered as "stopped" and won't cause a mismatch.
@@ -389,18 +397,36 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 					}
 				}
 			}
-		} else if !allowStoppedForRestartPolicy(svc) {
-			if !ok {
-				if !isScaledToZeroForMode(swarmInternal.DeployModeReplicated, svc) {
+		} else {
+			autostartEnabled, err := serviceAutostartEnabled(svcName, svc)
+			if err != nil {
+				return nil, err
+			}
+
+			enforceReplicas := !allowStoppedForRestartPolicy(svc)
+
+			switch {
+			case !ok:
+				if (!autostartEnabled || enforceReplicas) && !isScaledToZeroForMode(swarmInternal.DeployModeReplicated, svc) {
 					reasons = append(reasons, ServiceMismatchReason{
 						Reason: ServiceMismatchReasonNotDeployed,
 					})
 				}
-			} else if uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
+			case enforceReplicas && (autostartEnabled || status.Replicas > 0) &&
+				uint64(svc.GetScale()) != status.Replicas: //nolint:gosec
 				reasons = append(reasons, ServiceMismatchReason{
 					Reason: ServiceMismatchReasonReplicas,
 					Want:   svc.GetScale(),
 					Got:    status.Replicas,
+				})
+			// A stopped service still needs all of its containers. Extra containers are not
+			// reported because one-off containers can share the service label.
+			case !autostartEnabled && status.Replicas == 0 &&
+				status.Containers < uint64(svc.GetScale()): //nolint:gosec
+				reasons = append(reasons, ServiceMismatchReason{
+					Reason: ServiceMismatchReasonContainers,
+					Want:   svc.GetScale(),
+					Got:    status.Containers,
 				})
 			}
 		}
@@ -438,7 +464,7 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 		})
 	}
 
-	return mismatches
+	return mismatches, nil
 }
 
 func isEphemeralOneOffService(name string, status ServiceStatus, declaredServices set.Set[string]) bool {

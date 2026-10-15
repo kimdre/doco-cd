@@ -191,15 +191,9 @@ func getAutostartDisabledServices(project *types.Project) (set.Set[string], erro
 	}
 
 	for serviceName, svc := range project.Services {
-		raw, ok := getServiceSchedulerLabels(svc)[DocoCDLabels.Deployment.Autostart]
-		if !ok {
-			continue
-		}
-
-		enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
+		enabled, err := serviceAutostartEnabled(serviceName, svc)
 		if err != nil {
-			return nil, fmt.Errorf("service %s: invalid %s label value %q",
-				serviceName, DocoCDLabels.Deployment.Autostart, raw)
+			return nil, err
 		}
 
 		if !enabled {
@@ -208,6 +202,22 @@ func getAutostartDisabledServices(project *types.Project) (set.Set[string], erro
 	}
 
 	return disabled, nil
+}
+
+// serviceAutostartEnabled checks if a service has the autostart label set to false.
+func serviceAutostartEnabled(serviceName string, svc types.ServiceConfig) (bool, error) {
+	raw, ok := getServiceSchedulerLabels(svc)[DocoCDLabels.Deployment.Autostart]
+	if !ok {
+		return true, nil
+	}
+
+	enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false, fmt.Errorf("service %s: invalid %s label value %q",
+			serviceName, DocoCDLabels.Deployment.Autostart, raw)
+	}
+
+	return enabled, nil
 }
 
 func getRunningServices(containers []api.ContainerSummary) set.Set[string] {

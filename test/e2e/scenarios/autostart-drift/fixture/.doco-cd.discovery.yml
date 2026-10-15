@@ -1,0 +1,9 @@
+name: e2e-autostart-drift-discovery
+working_dir: stacks
+reference: refs/heads/main
+context: remote
+swarm:
+  enabled: false
+auto_discovery:
+  enabled: true
+reconciliation: false

@@ -163,6 +163,30 @@ func TestGetAutostartDisabledServices_InvalidValue(t *testing.T) {
 	}
 }
 
+func TestServiceAutostartEnabled(t *testing.T) {
+	t.Parallel()
+
+	for raw, want := range map[string]bool{
+		"false": false, "False": false, "FALSE": false, "f": false, "F": false, "0": false, " FALSE ": false,
+		"true": true, "True": true, "TRUE": true, "t": true, "T": true, "1": true, " TRUE ": true,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+
+			enabled, err := serviceAutostartEnabled("web", types.ServiceConfig{
+				Labels: types.Labels{DocoCDLabels.Deployment.Autostart: raw},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if enabled != want {
+				t.Fatalf("autostart %q enabled = %t, want %t", raw, enabled, want)
+			}
+		})
+	}
+}
+
 func TestGetStartServicesForDeploy_PreservesAutostartState(t *testing.T) {
 	t.Parallel()
 

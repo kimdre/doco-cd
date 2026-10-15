@@ -1,0 +1,9 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["sleep", "3600"]
+    restart: unless-stopped
+    environment:
+      VERSION: "1"
+    labels:
+      cd.doco.deployment.autostart: "false"

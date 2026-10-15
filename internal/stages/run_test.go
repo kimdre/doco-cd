@@ -1,12 +1,109 @@
 package stages
 
 import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"sync/atomic"
 	"testing"
 
+	"github.com/compose-spec/compose-go/v2/types"
+
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+func TestAutostartDisabledPollSkipHasNoDeploymentSideEffects(t *testing.T) {
+	t.Parallel()
+
+	var statusRequests atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		statusRequests.Add(1)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	s := newTestStageManager(t)
+	s.JobTrigger = JobTriggerPoll
+	s.DeployConfig.Name = "autostart-poll-skip"
+	s.AppConfig.GitCommitStatus = true
+	s.AppConfig.GitScmProvider = "gitea"
+	s.AppConfig.GitScmApiUrl = config.HttpUrl(server.URL)
+	s.AppConfig.GitAccessToken = "test-token"
+	s.Repository.Source = config.SourceTypeGit
+	s.Repository.SourceUrl = server.URL + "/owner/repo.git"
+	s.Repository.Revision = "0123456789abcdef0123456789abcdef01234567"
+	s.Docker.Project = &types.Project{Services: types.Services{"web": {
+		Name: "web", Restart: "unless-stopped",
+		Labels: types.Labels{docker.DocoCDLabels.Deployment.Autostart: "false"},
+	}}}
+	sender := &levelGatedSender{minLevel: notification.Info}
+	s.Notifier = sender
+
+	if _, ok := s.resolveCommitStatusRequest(); !ok {
+		t.Fatal("commit status must be enabled to verify that skipped polls do not post it")
+	}
+
+	order := s.GetDeployStageOrder()
+
+	var entered []StageName
+
+	for _, stage := range order.Order {
+		order.Funcs[stage] = func(context.Context, *slog.Logger) error {
+			entered = append(entered, stage)
+			return nil
+		}
+	}
+
+	order.Funcs[StagePreDeploy] = func(context.Context, *slog.Logger) error {
+		entered = append(entered, StagePreDeploy)
+
+		mismatches, err := docker.CheckServiceMismatch(false,
+			map[docker.Service]docker.ServiceStatus{"web": {Containers: 1}}, s.Docker.Project.Services)
+		if err != nil {
+			return err
+		}
+
+		if shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, false, mismatches) {
+			return skipDeployment(SkipReasonNoChanges, "")
+		}
+
+		return nil
+	}
+
+	for poll := range 3 {
+		entered = nil
+		admitted := false
+
+		err := s.runStageOrder(t.Context(), func(context.Context) (func(), error) {
+			admitted = true
+			return func() {}, nil
+		}, order)
+		if !errors.Is(err, ErrSkipDeployment) {
+			t.Fatalf("poll %d returned %v, want an unchanged skip", poll, err)
+		}
+
+		if admitted || !slices.Equal(entered, []StageName{StageInit, StagePreDeploy}) {
+			t.Fatalf("poll %d entered deployment: admitted=%t, stages=%v", poll, admitted, entered)
+		}
+	}
+
+	if sent := sender.sentNotifications(); len(sent) != 0 {
+		t.Fatalf("skipped polls sent notifications: %+v", sent)
+	}
+
+	if got := statusRequests.Load(); got != 0 {
+		t.Fatalf("skipped polls posted %d commit statuses", got)
+	}
+}
 
 func TestDeploymentMetricLabels(t *testing.T) {
 	t.Parallel()

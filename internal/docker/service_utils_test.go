@@ -73,7 +73,7 @@ func TestGetServiceStatusFromContainerStatus_ExcludesHookContainers(t *testing.T
 
 					want := map[Service]ServiceStatus{}
 					if order.name != "hook only" {
-						want["scheduled"] = ServiceStatus{Labels: realLabels}
+						want["scheduled"] = ServiceStatus{Labels: realLabels, Containers: 1}
 					}
 
 					got := getServiceStatusFromContainerStatus(project, order.containers)
@@ -118,25 +118,25 @@ func TestGetServiceStatusFromContainerStatus_PreservesRealContainers(t *testing.
 		{
 			name:       "unmanaged running service",
 			containers: []container.Summary{{State: container.StateRunning, Labels: labels}},
-			want:       map[Service]ServiceStatus{"app": {Labels: labels, Replicas: 1}},
+			want:       map[Service]ServiceStatus{"app": {Labels: labels, Replicas: 1, Containers: 1}},
 		},
 		{
 			name:       "unmanaged created service",
 			containers: []container.Summary{{State: container.StateCreated, Labels: labels}},
-			want:       map[Service]ServiceStatus{"app": {Labels: labels}},
+			want:       map[Service]ServiceStatus{"app": {Labels: labels, Containers: 1}},
 		},
 		{
 			name:       "unmanaged stopped service",
 			containers: []container.Summary{{State: container.StateExited, Labels: labels}},
-			want:       map[Service]ServiceStatus{"app": {Labels: labels}},
+			want:       map[Service]ServiceStatus{"app": {Labels: labels, Containers: 1}},
 		},
 		{
 			name:       "empty hook label is not a runner",
 			containers: []container.Summary{{State: container.StateRunning, Labels: emptyHookLabels}},
-			want:       map[Service]ServiceStatus{"app": {Labels: emptyHookLabels, Replicas: 1}},
+			want:       map[Service]ServiceStatus{"app": {Labels: emptyHookLabels, Replicas: 1, Containers: 1}},
 		},
 		{
-			name: "only running real replicas count",
+			name: "running replicas and all real containers count",
 			containers: []container.Summary{
 				{State: container.StateRunning, Labels: hookLabels},
 				{State: container.StateRunning, Labels: labels},
@@ -144,7 +144,7 @@ func TestGetServiceStatusFromContainerStatus_PreservesRealContainers(t *testing.
 				{State: container.StateCreated, Labels: labels},
 				{State: container.StateRunning, Labels: labels},
 			},
-			want: map[Service]ServiceStatus{"app": {Labels: labels, Replicas: 2}},
+			want: map[Service]ServiceStatus{"app": {Labels: labels, Replicas: 2, Containers: 4}},
 		},
 	}
 
@@ -199,7 +199,7 @@ func TestGetLatestServiceStatus_IgnoresHookMetadata(t *testing.T) {
 			want: LatestServiceStatus{
 				deploymentCommitSHA:   "real-commit",
 				deploymentComposeHash: "real-compose",
-				DeployedStatus:        map[Service]ServiceStatus{"scheduled": {Labels: realLabels}},
+				DeployedStatus:        map[Service]ServiceStatus{"scheduled": {Labels: realLabels, Containers: 1}},
 			},
 		},
 		{
@@ -208,7 +208,7 @@ func TestGetLatestServiceStatus_IgnoresHookMetadata(t *testing.T) {
 			want: LatestServiceStatus{
 				deploymentCommitSHA:   "real-commit",
 				deploymentComposeHash: "real-compose",
-				DeployedStatus:        map[Service]ServiceStatus{"scheduled": {Labels: realLabels}},
+				DeployedStatus:        map[Service]ServiceStatus{"scheduled": {Labels: realLabels, Containers: 1}},
 			},
 		},
 		{
@@ -1334,7 +1334,11 @@ func TestCheckServiceMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CheckServiceMismatch(tt.swarmModeEnable, tt.deployed, tt.services)
+			got, err := CheckServiceMismatch(tt.swarmModeEnable, tt.deployed, tt.services)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			slices.SortFunc(got, cmpFunc)
 			slices.SortFunc(tt.want, cmpFunc)
 
@@ -1342,6 +1346,310 @@ func TestCheckServiceMismatch(t *testing.T) {
 				t.Errorf("CheckServiceMismatch() = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCheckServiceMismatch_AutostartDisabled(t *testing.T) {
+	t.Parallel()
+
+	for _, policy := range []struct {
+		restart         string
+		enforceReplicas bool
+	}{
+		{restart: ""},
+		{restart: "no"},
+		{restart: "on-failure"},
+		{restart: "on-failure:3"},
+		{restart: "always", enforceReplicas: true},
+		{restart: "unless-stopped", enforceReplicas: true},
+	} {
+		for _, tt := range []struct {
+			name       string
+			present    bool
+			replicas   uint64
+			containers uint64
+			scale      int
+			reason     string
+		}{
+			{name: "stopped", present: true, containers: 1, scale: 1},
+			{name: "all scaled replicas stopped", present: true, containers: 2, scale: 2},
+			{name: "stopped replica missing", present: true, containers: 1, scale: 2, reason: ServiceMismatchReasonContainers},
+			{name: "stopped extra container", present: true, containers: 2, scale: 1},
+			{name: "running", present: true, replicas: 1, containers: 1, scale: 1},
+			{name: "partially running", present: true, replicas: 1, containers: 1, scale: 2, reason: ServiceMismatchReasonReplicas},
+			{name: "too many running", present: true, replicas: 2, containers: 2, scale: 1, reason: ServiceMismatchReasonReplicas},
+			{name: "missing", scale: 1, reason: ServiceMismatchReasonNotDeployed},
+			{name: "scaled to zero and absent"},
+			{name: "scaled to zero and stopped", present: true, containers: 1},
+			{name: "scaled to zero but running", present: true, replicas: 1, containers: 1, reason: ServiceMismatchReasonReplicas},
+		} {
+			t.Run(policy.restart+"/"+tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				services := types.Services{"web": {
+					Name: "web", Restart: policy.restart, Scale: new(tt.scale),
+					Labels: types.Labels{DocoCDLabels.Deployment.Autostart: "false"},
+				}}
+
+				deployed := map[Service]ServiceStatus{}
+				if tt.present {
+					deployed["web"] = ServiceStatus{Replicas: tt.replicas, Containers: tt.containers}
+				}
+
+				got, err := CheckServiceMismatch(false, deployed, services)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				var want []ServiceMismatch
+
+				if tt.reason != "" && (tt.reason != ServiceMismatchReasonReplicas || policy.enforceReplicas) {
+					reason := ServiceMismatchReason{Reason: tt.reason}
+
+					switch tt.reason {
+					case ServiceMismatchReasonReplicas:
+						reason.Want, reason.Got = tt.scale, tt.replicas
+					case ServiceMismatchReasonContainers:
+						reason.Want, reason.Got = tt.scale, tt.containers
+					}
+
+					want = []ServiceMismatch{{ServiceName: "web", Reasons: []ServiceMismatchReason{reason}}}
+				}
+
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("CheckServiceMismatch() = %#v, want %#v", got, want)
+				}
+			})
+		}
+	}
+}
+
+func TestCheckServiceMismatch_ContainerCountNeedsAutostartDisabled(t *testing.T) {
+	t.Parallel()
+
+	for _, restart := range []string{"", "no", "on-failure"} {
+		t.Run(restart, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := CheckServiceMismatch(false,
+				map[Service]ServiceStatus{"web": {Containers: 1}},
+				types.Services{"web": {Name: "web", Restart: restart, Scale: new(2)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(got) != 0 {
+				t.Fatalf("autostart-enabled service reported container drift: %v", got)
+			}
+		})
+	}
+}
+
+func TestCheckServiceMismatch_AutostartContainerInventory(t *testing.T) {
+	t.Parallel()
+
+	type inventoryContainer struct {
+		state container.ContainerState
+		hook  string
+	}
+
+	for _, tt := range []struct {
+		name       string
+		containers []inventoryContainer
+		scale      int
+		want       []ServiceMismatchReason
+	}{
+		{name: "created", containers: []inventoryContainer{{state: container.StateCreated}}, scale: 1},
+		{name: "exited", containers: []inventoryContainer{{state: container.StateExited}}, scale: 1},
+		{name: "running", containers: []inventoryContainer{{state: container.StateRunning}}, scale: 1},
+		{
+			name:       "hook only",
+			containers: []inventoryContainer{{state: container.StateCreated, hook: "pre_start"}},
+			scale:      1,
+			want:       []ServiceMismatchReason{{Reason: ServiceMismatchReasonNotDeployed}},
+		},
+		{
+			name:       "all scaled replicas stopped",
+			containers: []inventoryContainer{{state: container.StateCreated}, {state: container.StateExited}},
+			scale:      2,
+		},
+		{
+			name: "stopped replica missing",
+			containers: []inventoryContainer{
+				{state: container.StateExited},
+				{state: container.StateCreated, hook: "pre_start"},
+			},
+			scale: 2,
+			want:  []ServiceMismatchReason{{Reason: ServiceMismatchReasonContainers, Want: 2, Got: uint64(1)}},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			summaries := make([]container.Summary, 0, len(tt.containers))
+			for _, c := range tt.containers {
+				summaries = append(summaries, container.Summary{
+					State: c.state,
+					Labels: Labels{
+						api.ProjectLabel:                  "stack",
+						api.ServiceLabel:                  "web",
+						api.HookLabel:                     c.hook,
+						DocoCDLabels.Deployment.Autostart: "true",
+					},
+				})
+			}
+
+			deployed := getServiceStatusFromContainerStatus("stack", summaries)
+			services := types.Services{"web": {
+				Name: "web", Restart: "unless-stopped", Scale: new(tt.scale),
+				Labels: types.Labels{DocoCDLabels.Deployment.Autostart: "false"},
+			}}
+
+			got, err := CheckServiceMismatch(false, deployed, services)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var want []ServiceMismatch
+			if tt.want != nil {
+				want = []ServiceMismatch{{ServiceName: "web", Reasons: tt.want}}
+			}
+
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("inventory mismatch = %#v, want %#v", got, want)
+			}
+		})
+	}
+}
+
+func TestCheckServiceMismatch_AutostartLabels(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name         string
+		labels       types.Labels
+		customLabels types.Labels
+		wantMismatch bool
+		wantError    bool
+	}{
+		{name: "default enabled", wantMismatch: true},
+		{name: "enabled", labels: types.Labels{DocoCDLabels.Deployment.Autostart: "true"}, wantMismatch: true},
+		{name: "disabled", labels: types.Labels{DocoCDLabels.Deployment.Autostart: "false"}},
+		{name: "custom disabled", customLabels: types.Labels{DocoCDLabels.Deployment.Autostart: "false"}},
+		{
+			name: "custom overrides enabled", labels: types.Labels{DocoCDLabels.Deployment.Autostart: "true"},
+			customLabels: types.Labels{DocoCDLabels.Deployment.Autostart: " FALSE "},
+		},
+		{
+			name: "custom overrides disabled", labels: types.Labels{DocoCDLabels.Deployment.Autostart: "false"},
+			customLabels: types.Labels{DocoCDLabels.Deployment.Autostart: "true"}, wantMismatch: true,
+		},
+		{
+			name: "custom overrides invalid", labels: types.Labels{DocoCDLabels.Deployment.Autostart: "invalid"},
+			customLabels: types.Labels{DocoCDLabels.Deployment.Autostart: "false"},
+		},
+		{name: "invalid", labels: types.Labels{DocoCDLabels.Deployment.Autostart: "invalid"}, wantError: true},
+		{
+			name: "invalid custom", labels: types.Labels{DocoCDLabels.Deployment.Autostart: "false"},
+			customLabels: types.Labels{DocoCDLabels.Deployment.Autostart: "invalid"}, wantError: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			deployed := map[Service]ServiceStatus{"web": {
+				Labels:     Labels{DocoCDLabels.Deployment.Autostart: "false"},
+				Containers: 1,
+			}}
+			services := types.Services{"web": {
+				Name: "web", Restart: "unless-stopped", Labels: tt.labels, CustomLabels: tt.customLabels,
+			}}
+
+			got, err := CheckServiceMismatch(false, deployed, services)
+			if tt.wantError {
+				if err == nil || !strings.Contains(err.Error(), "service web: invalid "+DocoCDLabels.Deployment.Autostart) {
+					t.Fatalf("expected a service-specific autostart error, got %v", err)
+				}
+
+				if got != nil {
+					t.Fatalf("invalid labels returned mismatches: %v", got)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var want []ServiceMismatch
+			if tt.wantMismatch {
+				want = []ServiceMismatch{{ServiceName: "web", Reasons: []ServiceMismatchReason{{
+					Reason: ServiceMismatchReasonReplicas, Want: 1, Got: uint64(0),
+				}}}}
+			}
+
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("CheckServiceMismatch() = %#v, want %#v", got, want)
+			}
+		})
+	}
+}
+
+func TestCheckServiceMismatch_AutostartPreservesSwarm(t *testing.T) {
+	t.Parallel()
+
+	for _, label := range []string{"false", "invalid"} {
+		for _, tt := range []struct {
+			name     string
+			mode     swarm.DeployMode
+			deployed map[Service]ServiceStatus
+			reason   string
+		}{
+			{name: "missing", mode: swarm.DeployModeReplicated, reason: ServiceMismatchReasonNotDeployed},
+			{
+				name: "stopped", mode: swarm.DeployModeReplicated,
+				deployed: map[Service]ServiceStatus{"web": {SwarmMode: swarm.DeployModeReplicated}}, reason: ServiceMismatchReasonReplicas,
+			},
+			{
+				name: "job", mode: swarm.DeployModeReplicatedJob,
+				deployed: map[Service]ServiceStatus{"web": {SwarmMode: swarm.DeployModeReplicatedJob}}, reason: ServiceMismatchReasonReplicas,
+			},
+			{
+				name: "mode drift", mode: swarm.DeployModeReplicated,
+				deployed: map[Service]ServiceStatus{"web": {SwarmMode: swarm.DeployModeGlobal}}, reason: ServiceMismatchReasonSwarmMode,
+			},
+			{
+				name: "global", mode: swarm.DeployModeGlobal,
+				deployed: map[Service]ServiceStatus{"web": {SwarmMode: swarm.DeployModeGlobal}},
+			},
+			{
+				name: "global job", mode: swarm.DeployModeGlobalJob,
+				deployed: map[Service]ServiceStatus{"web": {SwarmMode: swarm.DeployModeGlobalJob}},
+			},
+		} {
+			t.Run(label+"/"+tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				services := types.Services{"web": {
+					Name: "web", Deploy: &types.DeployConfig{Mode: string(tt.mode)},
+					Labels: types.Labels{DocoCDLabels.Deployment.Autostart: label},
+				}}
+
+				got, err := CheckServiceMismatch(true, tt.deployed, services)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if tt.reason == "" {
+					if len(got) != 0 {
+						t.Fatalf("unexpected Swarm mismatch: %v", got)
+					}
+				} else if len(got) != 1 || len(got[0].Reasons) != 1 || got[0].Reasons[0].Reason != tt.reason {
+					t.Fatalf("Swarm mismatches = %v, want %q", got, tt.reason)
+				}
+			})
+		}
 	}
 }
 

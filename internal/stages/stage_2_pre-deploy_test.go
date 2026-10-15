@@ -862,7 +862,11 @@ func TestDropSchedulerHeldMismatches_SkipsDeploymentDuringJobStopWindow(t *testi
 		"db": {Labels: docker.Labels{}},
 	}
 
-	mismatches := docker.CheckServiceMismatch(false, deployedStatus, project.Services)
+	mismatches, err := docker.CheckServiceMismatch(false, deployedStatus, project.Services)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if len(mismatches) != 1 {
 		t.Fatalf("expected the stopped service to report a mismatch, got %v", mismatches)
 	}
@@ -886,6 +890,47 @@ func TestDropSchedulerHeldMismatches_SkipsDeploymentDuringJobStopWindow(t *testi
 
 	if !shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, false, filtered) {
 		t.Fatal("expected deployment to be skipped while the job scheduler holds the service stopped")
+	}
+}
+
+func TestShouldSkipDeployment_AutostartDisabled(t *testing.T) {
+	t.Parallel()
+
+	mismatches, err := docker.CheckServiceMismatch(false,
+		map[docker.Service]docker.ServiceStatus{"web": {Containers: 1}},
+		types.Services{"web": {
+			Name: "web", Restart: "unless-stopped",
+			Labels: types.Labels{docker.DocoCDLabels.Deployment.Autostart: "false"},
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		name            string
+		retry           bool
+		composeChanged  bool
+		discoveryChange bool
+		filesChanged    []docker.Change
+		imagesChanged   bool
+		want            bool
+	}{
+		{name: "unchanged", want: true},
+		{name: "retry", retry: true},
+		{name: "compose changed", composeChanged: true},
+		{name: "discovery changed", discoveryChange: true},
+		{name: "files changed", filesChanged: []docker.Change{{Type: "file", Services: []string{"web"}}}},
+		{name: "images changed", imagesChanged: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := shouldSkipDeployment(tt.retry, tt.composeChanged, tt.discoveryChange,
+				tt.filesChanged, docker.IgnoredInfo{}, false, tt.imagesChanged, mismatches)
+			if got != tt.want {
+				t.Fatalf("shouldSkipDeployment() = %t, want %t", got, tt.want)
+			}
+		})
 	}
 }
 
