@@ -134,7 +134,7 @@ func ApplySelfUpdate(ctx context.Context, dockerCli command.Cli, opts ApplySelfO
 		return finishSelfApplyFailure(ctx, apiClient, opts.Store, record, err, log)
 	}
 
-	unlockSource, err = lockSelfApplySource(record, opts)
+	unlockSource, err = lockSelfApplySource(ctx, record, opts)
 	if err != nil {
 		return finishSelfApplyFailure(ctx, apiClient, opts.Store, record,
 			fmt.Errorf("relock the cached source after predecessor drain: %w", err), log)
@@ -284,7 +284,7 @@ func readyAndWaitSelfApply(
 }
 
 // lockSelfApplySource holds the cached repository stable across applier retries.
-func lockSelfApplySource(record selfupdate.Record, opts ApplySelfOptions) (func(), error) {
+func lockSelfApplySource(ctx context.Context, record selfupdate.Record, opts ApplySelfOptions) (func(), error) {
 	ref, err := composeScheduledServiceRefFromLabels(record.Labels)
 	if err != nil {
 		return nil, err
@@ -295,7 +295,7 @@ func lockSelfApplySource(record selfupdate.Record, opts ApplySelfOptions) (func(
 		return nil, err
 	}
 
-	return lockScheduledSource(ref, opts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
+	return lockScheduledSource(ctx, ref, opts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
 }
 
 // FailSelfUpdate recovers from applier setup errors before ApplySelfUpdate.
@@ -351,7 +351,7 @@ func prepareSelfApply(
 		return nil, nil, nil, nil, fmt.Errorf("resolve the cached source for the self stack: %w", err)
 	}
 
-	unlockSource, err := lockScheduledSource(ref, opts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
+	unlockSource, err := lockScheduledSource(ctx, ref, opts.Scheduled.ComposeLoad.DataMountPath, sourceRepoPath)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("lock the cached source for the self stack: %w", err)
 	}

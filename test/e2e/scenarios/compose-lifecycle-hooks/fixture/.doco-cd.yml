@@ -1,0 +1,6 @@
+name: e2e-compose-lifecycle-hooks
+working_dir: deploy
+swarm:
+  enabled: false
+reconciliation:
+  events: [unhealthy]

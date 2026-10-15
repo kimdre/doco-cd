@@ -253,7 +253,7 @@ func TestStartProjectServices_SkipsHookContainers(t *testing.T) {
 		{ID: "other-1", State: container.StateExited, Labels: labels("other", "")},
 	}}
 
-	err := StartProjectServices(t.Context(), contextRegistryTestCli{apiClient: apiClient}, "stack", []string{"db"})
+	err := StartProjectServices(t.Context(), contextRegistryTestCli{apiClient: apiClient}, "stack", []string{"db"}, nil)
 	if err != nil {
 		t.Fatalf("start project services: %v", err)
 	}

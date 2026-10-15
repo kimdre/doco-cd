@@ -147,7 +147,10 @@ const DefaultStopServicesTimeout = 30 * time.Second
 // This is best-effort: if stopping one container fails, the remaining
 // containers are still attempted, and all failures are aggregated into the
 // returned error.
-func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string, timeoutOverride *time.Duration) error {
+//
+// When hooks is not nil, the pre_stop hooks of each service run before its containers stop, like
+// with `docker compose stop`. A failed hook keeps its container running and is reported as an error.
+func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string, timeoutOverride *time.Duration, hooks *ComposeHookLoader) error {
 	if len(services) == 0 {
 		return nil
 	}
@@ -159,9 +162,16 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 		return fmt.Errorf("failed to list containers for project %q: %w", projectName, err)
 	}
 
+	hookServices := newComposeHookServices(hooks, dockerCli)
+
 	var errs []string
 
 	for _, c := range containers {
+		// Hook runners are not service replicas, and pre_stop hooks must not run in them.
+		if c.Labels[api.HookLabel] != "" {
+			continue
+		}
+
 		svcName := c.Labels[api.ServiceLabel]
 		if !serviceSet.Contains(svcName) {
 			continue
@@ -195,6 +205,17 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 			// Otherwise leave stopOpts.Timeout nil, so the engine applies
 			// the container's own StopTimeout (derived from the compose
 			// file's stop_grace_period).
+		}
+
+		if svc, ok := hookServices.service(ctx, svcName, c.Labels, ComposeHookPreStop); ok {
+			if err := RunComposeHooks(ctx, dockerCli.Client(), c.ID, svc, ComposeHookPreStop); err != nil {
+				// Like Compose, a container that stopped in the meantime is not an error.
+				if !IsComposeHookContainerUnavailable(err) {
+					errs = append(errs, fmt.Sprintf("container %s (service %q): %v", c.ID[:12], svcName, err))
+				}
+
+				continue
+			}
 		}
 
 		if _, err := dockerCli.Client().ContainerStop(ctx, c.ID, stopOpts); err != nil {
@@ -233,7 +254,11 @@ func containerHasConfiguredStopTimeout(ctx context.Context, dockerCli command.Cl
 // This is best-effort: if starting one container fails, the remaining
 // containers are still attempted, and all failures are aggregated into the
 // returned error.
-func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string) error {
+//
+// When hooks is not nil, a service with pre_start or post_start hooks starts through Compose,
+// like with `docker compose start`. doco-cd prepares fresh pre_start runners for it first.
+// Services without these hooks still start directly.
+func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string, hooks *ComposeHookLoader) error {
 	if len(services) == 0 {
 		return nil
 	}
@@ -245,6 +270,9 @@ func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectNam
 		return fmt.Errorf("failed to list containers for project %q: %w", projectName, err)
 	}
 
+	hookServices := newComposeHookServices(hooks, dockerCli)
+	startedWithHooks := set.New[string]()
+
 	var errs []string
 
 	for _, c := range containers {
@@ -254,7 +282,18 @@ func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectNam
 		}
 
 		svcName := c.Labels[api.ServiceLabel]
-		if !serviceSet.Contains(svcName) {
+		if !serviceSet.Contains(svcName) || startedWithHooks.Contains(svcName) {
+			continue
+		}
+
+		if project, ok := hookServices.project(ctx, svcName, c.Labels, ComposeHookPreStart, ComposeHookPostStart); ok && hasComposeStartHooks(project.Services[svcName]) {
+			// Compose starts all replicas of the service in one call.
+			startedWithHooks.Add(svcName)
+
+			if err := startComposeServiceWithHooks(ctx, dockerCli, project, svcName); err != nil {
+				errs = append(errs, fmt.Sprintf("service %q: %v", svcName, err))
+			}
+
 			continue
 		}
 
@@ -265,6 +304,33 @@ func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectNam
 
 	if len(errs) > 0 {
 		return fmt.Errorf("failed to start %d container(s): %s", len(errs), strings.Join(errs, "; "))
+	}
+
+	return nil
+}
+
+// hasComposeStartHooks reports whether Compose must start the service to run its hooks.
+func hasComposeStartHooks(svc types.ServiceConfig) bool {
+	return HasComposeHooks(svc, ComposeHookPreStart) || HasComposeHooks(svc, ComposeHookPostStart)
+}
+
+// startComposeServiceWithHooks starts one service of a deployed project through Compose.
+// The project must contain only this service, so Compose does not start other services.
+func startComposeServiceWithHooks(ctx context.Context, dockerCli command.Cli, project *types.Project, serviceName string) error {
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return fmt.Errorf("create compose service: %w", err)
+	}
+
+	if err := prepareComposePreStartRunners(ctx, service, project, serviceName); err != nil {
+		return fmt.Errorf("prepare pre_start hooks: %w", err)
+	}
+
+	if err := service.Start(ctx, project.Name, api.StartOptions{
+		Project:  project,
+		Services: []string{serviceName},
+	}); err != nil {
+		return fmt.Errorf("start with lifecycle hooks: %w", err)
 	}
 
 	return nil
@@ -416,7 +482,7 @@ func recreateManagedProject(
 			ErrComposeSourceRevisionConflict, ref.Project, err)
 	}
 
-	unlockSource, err := lockScheduledSource(ref, opts.ComposeLoad.DataMountPath, sourceRepoPath)
+	unlockSource, err := lockScheduledSource(ctx, ref, opts.ComposeLoad.DataMountPath, sourceRepoPath)
 	if err != nil {
 		return fmt.Errorf("%w: lock cached source for project %s: %v",
 			ErrComposeSourceRevisionConflict, ref.Project, err)

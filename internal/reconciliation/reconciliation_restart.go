@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/events"
@@ -51,6 +52,26 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 		return restartAttemptResult{}
 	}
 
+	// Swarm does not support Compose lifecycle hooks.
+	var (
+		hookService types.ServiceConfig
+		hasHooks    bool
+	)
+
+	if !swarmMode {
+		hookService, hasHooks = j.restartHookService(ctx, restartLog, cli, event.Actor.Attributes)
+	}
+
+	if hasHooks {
+		// The pre_stop hook may fail because the container is unhealthy. Restart the container anyway,
+		// because a restart is the recovery. A stopped container has nothing to prepare for the stop.
+		if err := runReconciliationHooks(ctx, cli, containerID, hookService, docker.ComposeHookPreStop); err != nil &&
+			!docker.IsComposeHookContainerUnavailable(err) {
+			restartLog.Warn("pre_stop hook failed, restarting the "+actorKind+" anyway", logger.ErrAttr(err))
+		}
+	}
+
+	// Mark after the pre_stop hook, so a slow hook does not use up the suppression window.
 	j.markRestartFollowupSuppression(containerID, restartTimeout)
 
 	restartLog.Info("restarting " + actorKind)
@@ -83,6 +104,29 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 	restartLog.Info(actorKind + " restarted successfully")
 
+	if hasHooks {
+		hookErr := runReconciliationHooks(ctx, cli, containerID, hookService, docker.ComposeHookPostStart)
+
+		// Events of the restart wait in the queue while the hook runs. Renew the window, so they stay suppressed.
+		j.markRestartFollowupSuppression(containerID, restartTimeout)
+
+		if hookErr != nil {
+			restartLog.Error("post_start hook failed after the "+actorKind+" restart", logger.ErrAttr(hookErr))
+
+			if notifyErr := j.manager.notifier.Send(
+				notification.Warning,
+				actorKindTitle+" restarted, post_start hook failed",
+				fmt.Sprintf("%s %s (%s) was restarted on %q event, but its post_start hook failed: %s",
+					actorKindTitle, containerName, shortID(containerID), action, hookErr.Error()),
+				metadata,
+			); notifyErr != nil {
+				restartLog.Error("failed to send restart hook failure notification", logger.ErrAttr(notifyErr))
+			}
+
+			return restartAttemptResult{}
+		}
+	}
+
 	if notifyErr := j.manager.notifier.Send(
 		notification.Success,
 		actorKindTitle+" restarted",
@@ -95,6 +139,53 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 	return restartAttemptResult{}
 }
 
+// reconciliationHookTimeout limits the project load and each group of lifecycle hooks during a reconciliation restart.
+// Compose has no hook timeout, but a hanging hook or secret provider must not block the event loop of the repository.
+const reconciliationHookTimeout = 2 * time.Minute
+
+// restartHookService loads the deployed Compose service definition of a container for its lifecycle hooks.
+// It returns false if the service has no pre_stop or post_start hooks, or if the definition cannot be loaded.
+func (j *job) restartHookService(ctx context.Context, log *slog.Logger, cli command.Cli, labels map[string]string) (types.ServiceConfig, bool) {
+	// The load resolves external secrets. Skip it if the labels show that the service has no restart hooks.
+	if !docker.MayHaveComposeHooks(labels, docker.ComposeHookPreStop, docker.ComposeHookPostStart) {
+		return types.ServiceConfig{}, false
+	}
+
+	loadCtx, cancel := context.WithTimeout(ctx, reconciliationHookTimeout)
+	defer cancel()
+
+	var (
+		svc types.ServiceConfig
+		ok  bool
+	)
+
+	if j.manager.loadHookService != nil {
+		svc, ok = j.manager.loadHookService(loadCtx, log, cli, labels)
+	} else {
+		loader := &docker.ComposeHookLoader{
+			SecretProvider: j.manager.secretProvider,
+			Options:        docker.NewScheduledComposeOptions(j.manager.appConfig),
+			Logger:         log,
+		}
+		svc, ok = loader.HookService(loadCtx, cli, labels)
+	}
+
+	if !ok {
+		return types.ServiceConfig{}, false
+	}
+
+	return svc, docker.HasComposeHooks(svc, docker.ComposeHookPreStop) || docker.HasComposeHooks(svc, docker.ComposeHookPostStart)
+}
+
+// runReconciliationHooks runs the pre_stop or post_start hooks of a Compose service for a container.
+func runReconciliationHooks(ctx context.Context, cli command.Cli, containerID string, svc types.ServiceConfig, phase docker.ComposeHookPhase) error {
+	hookCtx, cancel := context.WithTimeout(ctx, reconciliationHookTimeout)
+	defer cancel()
+
+	return docker.RunComposeHooks(hookCtx, cli.Client(), containerID, svc, phase)
+}
+
+// shouldFallbackToDeployOnRestartError returns true if the error indicates that the container is no longer restartable.
 func shouldFallbackToDeployOnRestartError(err error) bool {
 	if err == nil {
 		return false
@@ -112,6 +203,7 @@ func shouldFallbackToDeployOnRestartError(err error) bool {
 	return strings.Contains(errText, "marked for removal") && strings.Contains(errText, "cannot be started")
 }
 
+// restartNotificationMetadata creates a notification.Metadata for a restart event.
 func restartNotificationMetadata(base notification.Metadata, dc *deployConfig.Config, action, actorKind, actorID, actorName, traceID string) notification.Metadata {
 	metadata := base
 	if dc != nil {
@@ -128,6 +220,7 @@ func restartNotificationMetadata(base notification.Metadata, dc *deployConfig.Co
 	return metadata
 }
 
+// restartNotificationActorKind returns the actor kind for a restart notification.
 func restartNotificationActorKind(swarmMode bool) string {
 	if swarmMode {
 		return "service"
@@ -136,6 +229,7 @@ func restartNotificationActorKind(swarmMode bool) string {
 	return "container"
 }
 
+// restartNotificationActorKindTitle returns the title-cased actor kind for a restart notification.
 func restartNotificationActorKindTitle(actorKind string) string {
 	if actorKind == "" {
 		return ""
@@ -144,6 +238,7 @@ func restartNotificationActorKindTitle(actorKind string) string {
 	return strings.ToUpper(actorKind[:1]) + actorKind[1:]
 }
 
+// shouldSuppressRestartFollowupEvent returns true if the event is a follow-up die/stop/kill event of a container that was just restarted.
 func (j *job) shouldSuppressRestartFollowupEvent(action string, event events.Message) (bool, time.Duration) {
 	if !isRestartFollowupAction(action) {
 		return false, 0
@@ -171,6 +266,7 @@ func (j *job) shouldSuppressRestartFollowupEvent(action string, event events.Mes
 	return true, until.Sub(now)
 }
 
+// markRestartFollowupSuppression marks a container's follow-up die/stop/kill events to be suppressed for a certain duration.
 func (j *job) markRestartFollowupSuppression(containerID string, timeoutSeconds int) {
 	if containerID == "" {
 		return
@@ -183,6 +279,7 @@ func (j *job) markRestartFollowupSuppression(containerID string, timeoutSeconds 
 	j.restartStateMu.Unlock()
 }
 
+// restartFollowupSuppressionWindow returns the duration for which follow-up die/stop/kill events should be suppressed.
 func restartFollowupSuppressionWindow(timeoutSeconds int) time.Duration {
 	if timeoutSeconds < 0 {
 		timeoutSeconds = 0

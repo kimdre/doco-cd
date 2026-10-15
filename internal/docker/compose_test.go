@@ -2192,14 +2192,14 @@ func TestStopAndStartProjectServices(t *testing.T) {
 		}
 	}
 
-	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, &timeout); err != nil {
+	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, &timeout, nil); err != nil {
 		t.Fatalf("failed to stop project service: %v", err)
 	}
 
 	assertServiceState("db", "exited")
 	assertServiceState("app", "running")
 
-	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}); err != nil {
+	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}, nil); err != nil {
 		t.Fatalf("failed to start project service: %v", err)
 	}
 
@@ -2270,7 +2270,7 @@ func TestStopProjectServices_HonoursContainerStopTimeout(t *testing.T) {
 	// StopProjectServices with no override must still succeed end-to-end for
 	// both containers (one relying on its own configured timeout, one on the
 	// default fallback).
-	if err = StopProjectServices(ctx, dockerCli, stack.Name, []string{"withgrace", "withoutgrace"}, nil); err != nil {
+	if err = StopProjectServices(ctx, dockerCli, stack.Name, []string{"withgrace", "withoutgrace"}, nil, nil); err != nil {
 		t.Fatalf("failed to stop project services: %v", err)
 	}
 }
@@ -2343,7 +2343,7 @@ func TestStopAndStartProjectServices_SchedulerSequence_WithDependsOn(t *testing.
 	t.Log("Stopping db service to simulate scheduler pre-run hook")
 
 	// 1) Scheduler pre-run hook: stop selected services (db).
-	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, &timeout); err != nil {
+	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, &timeout, nil); err != nil {
 		t.Fatalf("failed to stop project service: %v", err)
 	}
 
@@ -2356,7 +2356,7 @@ func TestStopAndStartProjectServices_SchedulerSequence_WithDependsOn(t *testing.
 	t.Log("Restarting db service to simulate scheduler post-run hook")
 
 	// 3) Scheduler post-run hook: restart selected services.
-	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}); err != nil {
+	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}, nil); err != nil {
 		t.Fatalf("failed to start project service: %v", err)
 	}
 

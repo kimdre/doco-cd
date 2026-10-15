@@ -268,6 +268,15 @@ func stopServicesTimeoutOverride(cfg docker.JobScheduleConfig) *time.Duration {
 	return &d
 }
 
+// composeHookLoader returns the loader that stop_services uses to run Compose lifecycle hooks.
+func (s *scheduler) composeHookLoader() *docker.ComposeHookLoader {
+	return &docker.ComposeHookLoader{
+		SecretProvider: s.secretProvider,
+		Options:        s.composeOptions,
+		Logger:         s.log,
+	}
+}
+
 // stopServicesForJob stops the services listed in StopServices before a job runs.
 // For compose mode, services are grouped by project and stopped via the compose API.
 // For swarm mode, services are scaled to 0 (global-mode services are skipped with a warning).
@@ -327,7 +336,7 @@ func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMod
 				slog.Any("services", toStop),
 			)
 
-			if err := docker.StopProjectServices(ctx, s.dockerCli, project, toStop, timeoutOverride); err != nil {
+			if err := docker.StopProjectServices(ctx, s.dockerCli, project, toStop, timeoutOverride, s.composeHookLoader()); err != nil {
 				errs = append(errs, fmt.Sprintf("project %q services %v: %v", project, toStop, err))
 			}
 		}
@@ -439,7 +448,7 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 				slog.Any("services", toStart),
 			)
 
-			if err := docker.StartProjectServices(ctx, s.dockerCli, project, toStart); err != nil {
+			if err := docker.StartProjectServices(ctx, s.dockerCli, project, toStart, s.composeHookLoader()); err != nil {
 				errs = append(errs, fmt.Sprintf("project %q services %v: %v", project, toStart, err))
 			}
 		}

@@ -112,7 +112,11 @@ and then re-/started at the scheduled time without being removed after completio
     without recreating the job's source container. This step pulls only missing images, even if the service
     sets a `pull_policy` such as `always`. A failed hook prevents the workload from starting and is
     retained for inspection. The next execution prepares fresh runners, so a failed hook can be retried.
-    Restarting an already running container retains Docker's restart behavior and does not run `pre_start`.
+
+    An already running container is restarted like with `docker compose restart`: its `pre_stop` hooks run
+    before the restart and its `post_start` hooks run after it, but `pre_start` hooks do not run.
+    A failed `pre_stop` hook cancels the restart. A failed `post_start` hook fails the execution, but the
+    workload keeps running. See [Compose lifecycle hooks](Pre-Post-Deployment-Scripts.md#when-doco-cd-runs-lifecycle-hooks).
 
 !!! warning "Docker Swarm `global` + `restart` limitation"
     In Docker Swarm, restart-mode scheduled jobs are deployed with `0` replicas so they do not run on deployment.
@@ -242,6 +246,8 @@ Behavior:
 - After the job finishes (success or failure), listed services are started again.
 - `service` targets the same project/stack as the job.
 - `project/service` targets another compose project (standalone) or stack (swarm).
+- Standalone compose: the [Compose lifecycle hooks](Pre-Post-Deployment-Scripts.md#when-doco-cd-runs-lifecycle-hooks) of the listed services run like with `docker compose stop` and `docker compose start`.
+  If a `pre_stop` hook fails, its container keeps running and the job does not run.
 
 !!! info "Execution mode support"
     `cd.doco.job.stop_services` is supported in both execution modes for **standalone compose**:

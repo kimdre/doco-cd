@@ -4,6 +4,7 @@
     - Services with no explicit `restart` policy are treated as `#!yaml restart: "no"`.
     - Services with `#!yaml restart: on-failure` may remain exited after success (exited with status code `0`), and `#!yaml restart: "no"` is treated as one-time behavior and is not reconciled back to running.
     - Events from Compose [lifecycle-hook](/Advanced/Pre-Post-Deployment-Scripts/#compose-lifecycle-hooks) runner containers are ignored. These helpers are not workload replicas, so their events do not restart or redeploy the service.
+    - Restarts run the `pre_stop` and `post_start` [lifecycle hooks](/Advanced/Pre-Post-Deployment-Scripts/#when-doco-cd-runs-lifecycle-hooks) of the service, like `docker compose restart`. `pre_start` hooks do not run.
     - Restart events use the stop signal that is configured in the container image (`StopSignal` in the image config); you can override this with `#!yaml reconciliation.restart_signal`. If neither is available, `SIGTERM` is used.
     - To prevent endless restart loops caused by flappy health checks, `#!yaml unhealthy` restarts are rate-limited via `#!yaml reconciliation.restart_limit` and `#!yaml reconciliation.restart_window`.
 
