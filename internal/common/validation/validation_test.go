@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -17,6 +18,343 @@ func (v selfValidatedScalar) ValidateValue() error {
 	}
 
 	return nil
+}
+
+type selfValidatedStruct struct {
+	Value selfValidatedScalar
+}
+
+func (v selfValidatedStruct) ValidateValue() error {
+	if v.Value < -1 {
+		return errors.New("invalid struct value")
+	}
+
+	return nil
+}
+
+func TestValidateRespectsTraversalTags(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		value   any
+		wantErr string
+	}{
+		{
+			name: "skip scalar",
+			value: struct {
+				Value selfValidatedScalar `validate:"-"`
+			}{Value: -1},
+		},
+		{
+			name: "skip struct",
+			value: struct {
+				Child *selfValidatedStruct `validate:"-"`
+			}{Child: &selfValidatedStruct{Value: -2}},
+		},
+		{
+			name: "nostructlevel pointer",
+			value: struct {
+				Child *selfValidatedStruct `validate:"required,nostructlevel"`
+			}{Child: &selfValidatedStruct{Value: -2}},
+		},
+		{
+			name: "nostructlevel interface",
+			value: struct {
+				Child any `validate:"required,nostructlevel"`
+			}{Child: &selfValidatedStruct{Value: -2}},
+		},
+		{
+			name: "structonly skips fields",
+			value: struct {
+				Child *selfValidatedStruct `validate:"required,structonly"`
+			}{Child: &selfValidatedStruct{Value: -1}},
+		},
+		{
+			name: "structonly validates self",
+			value: struct {
+				Child *selfValidatedStruct `validate:"required,structonly"`
+			}{Child: &selfValidatedStruct{Value: -2}},
+			wantErr: "Child: invalid struct value",
+		},
+		{
+			name: "structonly optional nil",
+			value: struct {
+				Child *selfValidatedStruct `validate:"omitempty,structonly"`
+			}{},
+		},
+		{
+			name: "nostructlevel zero value",
+			value: struct {
+				Child selfValidatedStruct `validate:"required,nostructlevel"`
+			}{},
+			wantErr: "'required'",
+		},
+		{
+			name: "nostructlevel nonzero value",
+			value: struct {
+				Child selfValidatedStruct `validate:"required,nostructlevel"`
+			}{Child: selfValidatedStruct{Value: -2}},
+		},
+		{
+			name: "nostructlevel optional zero value",
+			value: struct {
+				Child selfValidatedStruct `validate:"omitempty,nostructlevel"`
+			}{},
+		},
+		{
+			name: "omitted parent skips opaque presence checks",
+			value: struct {
+				Parent struct {
+					Child selfValidatedStruct `validate:"required,nostructlevel"`
+				} `validate:"omitempty"`
+			}{},
+		},
+		{
+			name: "non-omitted parent keeps opaque presence checks",
+			value: struct {
+				Parent struct {
+					Child selfValidatedStruct `validate:"required,nostructlevel"`
+				}
+			}{},
+			wantErr: "'required'",
+		},
+		{
+			name: "nostructlevel pointer to zero value",
+			value: struct {
+				Child *selfValidatedStruct `validate:"required,nostructlevel"`
+			}{Child: &selfValidatedStruct{}},
+		},
+		{
+			name: "nostructlevel typed nil interface",
+			value: struct {
+				Child any `validate:"required,nostructlevel"`
+			}{Child: (*selfValidatedStruct)(nil)},
+			wantErr: "'required'",
+		},
+		{
+			name: "nostructlevel required nil",
+			value: struct {
+				Child *selfValidatedStruct `validate:"required,nostructlevel"`
+			}{},
+			wantErr: "'required'",
+		},
+		{
+			name: "structonly required nil",
+			value: struct {
+				Child *selfValidatedStruct `validate:"required,structonly"`
+			}{},
+			wantErr: "'required'",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := Validate(test.value)
+			if test.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() error = %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", test.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestValidateTraversalTagsSkipNestedCustomValidators(t *testing.T) {
+	if err := RegisterValidationFunc("validationtesttraversal", func(_ any, _ string) error {
+		return errors.New("nested custom validator must not run")
+	}); err != nil {
+		t.Fatalf("RegisterValidationFunc() error = %v", err)
+	}
+
+	type child struct {
+		Code string `validate:"validationtesttraversal"`
+	}
+
+	for _, test := range []struct {
+		name  string
+		value any
+	}{
+		{
+			name: "skip",
+			value: struct {
+				Child *child `validate:"-"`
+			}{Child: &child{}},
+		},
+		{
+			name: "nostructlevel",
+			value: struct {
+				Child *child `validate:"required,nostructlevel"`
+			}{Child: &child{}},
+		},
+		{
+			name: "structonly",
+			value: struct {
+				Child *child `validate:"required,structonly"`
+			}{Child: &child{}},
+		},
+		{
+			name: "skip collection",
+			value: struct {
+				Children []child `validate:"-"`
+			}{Children: []child{{}}},
+		},
+		{
+			name: "field custom validator after nostructlevel",
+			value: struct {
+				Child *child `validate:"nostructlevel,validationtesttraversal"`
+			}{Child: &child{}},
+		},
+		{
+			name: "field custom validator after structonly",
+			value: struct {
+				Child *child `validate:"structonly,validationtesttraversal"`
+			}{Child: &child{}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := Validate(test.value); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateOpaqueStructFieldRules(t *testing.T) {
+	expectedErr := errors.New("invalid opaque field")
+
+	if err := RegisterValidationFunc("validationtestopaque", func(_ any, _ string) error {
+		return expectedErr
+	}); err != nil {
+		t.Fatalf("RegisterValidationFunc() error = %v", err)
+	}
+
+	err := Validate(struct {
+		Child *selfValidatedStruct `validate:"required,validationtestopaque,nostructlevel"`
+	}{Child: &selfValidatedStruct{}})
+	if !errors.Is(err, expectedErr) || !strings.Contains(err.Error(), "Child") {
+		t.Fatalf("expected custom field error, got %v", err)
+	}
+
+	err = Validate(struct {
+		Child *selfValidatedStruct `validate:"required_without=Other,nostructlevel"`
+		Other string
+	}{Child: &selfValidatedStruct{}})
+	if err == nil || !strings.Contains(err.Error(), `unsupported validation "required_without=Other"`) {
+		t.Fatalf("expected unsupported opaque field rule error, got %v", err)
+	}
+}
+
+func TestValidateConcurrentDependency(t *testing.T) {
+	type dependency struct {
+		state atomic.Uint64
+	}
+
+	dep := &dependency{}
+	started := make(chan struct{})
+	stopped := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		close(started)
+
+		for {
+			select {
+			case <-stopped:
+				return
+			default:
+				dep.state.Add(1)
+			}
+		}
+	}()
+
+	<-started
+	t.Cleanup(func() {
+		close(stopped)
+		<-done
+	})
+
+	type holder struct {
+		Dependency any `validate:"required,nostructlevel"`
+	}
+
+	for _, test := range []struct {
+		name     string
+		validate func() error
+	}{
+		{
+			name: "non-validator",
+			validate: func() error {
+				return validateSelf(reflect.ValueOf(dep).Elem(), "")
+			},
+		},
+		{
+			name: "opaque dependency",
+			validate: func() error {
+				return Validate(holder{Dependency: dep})
+			},
+		},
+		{
+			name: "optional opaque dependency",
+			validate: func() error {
+				return Validate(struct {
+					Dependency any `validate:"omitempty,nostructlevel"`
+				}{Dependency: dep})
+			},
+		},
+		{
+			name: "structonly dependency",
+			validate: func() error {
+				return Validate(struct {
+					Dependency any `validate:"required,structonly"`
+				}{Dependency: dep})
+			},
+		},
+		{
+			name: "skipped dependency",
+			validate: func() error {
+				return Validate(struct {
+					Dependency any `validate:"-"`
+				}{Dependency: dep})
+			},
+		},
+		{
+			name: "nested dependency",
+			validate: func() error {
+				return Validate(struct{ Nested *holder }{Nested: &holder{Dependency: dep}})
+			},
+		},
+		{
+			name: "slice dependency",
+			validate: func() error {
+				return Validate(struct{ Items []holder }{Items: []holder{{Dependency: dep}}})
+			},
+		},
+		{
+			name: "slice dive dependency",
+			validate: func() error {
+				return Validate(struct {
+					Items []holder `validate:"dive"`
+				}{Items: []holder{{Dependency: dep}}})
+			},
+		},
+		{
+			name: "map dive dependency",
+			validate: func() error {
+				return Validate(struct {
+					Items map[string]holder `validate:"dive"`
+				}{Items: map[string]holder{"live": {Dependency: dep}}})
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for range 1000 {
+				if err := test.validate(); err != nil {
+					t.Fatalf("validation error = %v", err)
+				}
+			}
+		})
+	}
 }
 
 func TestValidateSelfValidatedScalars(t *testing.T) {
