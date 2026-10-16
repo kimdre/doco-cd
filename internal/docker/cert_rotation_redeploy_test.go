@@ -2,12 +2,17 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/docker/compose/v5/pkg/api"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -15,10 +20,95 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/test"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+func TestRotateProjectCertificates_PauseAdmission(t *testing.T) {
+	for _, swarmMode := range []bool{false, true} {
+		for _, admission := range []string{"nil", "allowed", "paused"} {
+			t.Run(fmt.Sprintf("swarm=%t/%s", swarmMode, admission), func(t *testing.T) {
+				t.Parallel()
+
+				const contextName = "docker01"
+
+				stackName := test.ConvertTestName(t.Name())
+				labels := map[string]string{
+					api.ProjectLabel:             stackName,
+					api.ServiceLabel:             "web",
+					DocoCDLabels.Deployment.Name: stackName,
+					DocoCDLabels.Source.URL:      "https://example.com/owner/repo.git",
+				}
+				opts := CertificateRotationOptions{}
+				admitted := make(chan struct{}, 1)
+
+				if admission != "nil" {
+					opts.Admission = func(gotContext string, gotLabels map[string]string) bool {
+						admitted <- struct{}{}
+
+						if gotContext != contextName || !maps.Equal(gotLabels, labels) {
+							t.Errorf("admission received context %q, labels %#v", gotContext, gotLabels)
+						}
+
+						return admission == "allowed"
+					}
+				}
+
+				key := lock.StackKey(contextName, stackName)
+				lock.LockStack(key)
+
+				var releaseOnce sync.Once
+
+				releaseStack := func() { releaseOnce.Do(func() { lock.UnlockStack(key) }) }
+				defer releaseStack()
+
+				// Any secret access or Docker mutation panics through the nil interfaces.
+				// Missing source metadata distinguishes admitted rotations from paused ones.
+				provider := struct{ secretprovider.SecretProvider }{}
+				done := make(chan error, 1)
+
+				go func() {
+					done <- RotateProjectCertificates(t.Context(), contextName, nil, labels, provider, swarmMode, opts)
+				}()
+
+				select {
+				case <-admitted:
+					t.Fatal("rotation admission ran before acquiring the stack lock")
+				case err := <-done:
+					t.Fatalf("rotation finished before acquiring the stack lock: %v", err)
+				case <-time.After(50 * time.Millisecond):
+				}
+
+				releaseStack()
+
+				wantErr := ErrComposeSourceRevisionConflict
+				if admission == "paused" {
+					wantErr = ErrCertificateRotationPaused
+				}
+
+				select {
+				case err := <-done:
+					if !errors.Is(err, wantErr) {
+						t.Fatalf("rotation error = %v, want %v", err, wantErr)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("rotation did not finish after the stack lock was released")
+				}
+
+				wantCalls := 1
+				if admission == "nil" {
+					wantCalls = 0
+				}
+
+				if len(admitted) != wantCalls {
+					t.Fatalf("admission calls = %d, want %d", len(admitted), wantCalls)
+				}
+			})
+		}
+	}
+}
 
 func TestRotateProjectCertificates_MissingLabels(t *testing.T) {
 	err := RotateProjectCertificates(context.Background(), "", nil, map[string]string{}, nil, false, CertificateRotationOptions{})

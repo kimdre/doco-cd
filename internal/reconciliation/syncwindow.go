@@ -305,6 +305,7 @@ func (g *syncWindowGate) deferred() map[*deployConfig.Config]struct{} {
 func isUnchangedOutcome(err error) bool {
 	return errors.Is(err, stages.ErrSkipDeployment) &&
 		!errors.Is(err, stages.ErrSyncWindowBlocked) &&
+		!errors.Is(err, stages.ErrDeploymentPaused) &&
 		!errors.Is(err, stages.ErrWebhookFilterMismatch)
 }
 

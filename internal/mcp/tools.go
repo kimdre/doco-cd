@@ -38,8 +38,24 @@ func mustToolInputSchema[T any](tool string) *jsonschema.Schema {
 
 	retrySchema.Properties["limit"].Minimum = new(float64(0))
 
+	deploymentSchema, err := jsonschema.For[deploy.Config](&jsonschema.ForOptions{
+		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+			reflect.TypeFor[deploy.RetryConfig](): retrySchema,
+		},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("infer %s deployment schema: %v", tool, err))
+	}
+
+	deploymentSchema.Properties["pause"] = &jsonschema.Schema{
+		Type:        "boolean",
+		Default:     []byte("false"),
+		Description: "Freeze deployment updates without stopping workloads. Last-deployed recovery still requires reconciliation.enabled.",
+	}
+
 	schema, err := jsonschema.For[T](&jsonschema.ForOptions{
 		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+			reflect.TypeFor[deploy.Config]():      deploymentSchema,
 			reflect.TypeFor[deploy.RetryConfig](): retrySchema,
 		},
 	})
@@ -91,8 +107,8 @@ func destructiveAnnotations(idempotent bool) *sdkmcp.ToolAnnotations {
 
 // triggerRunToolResult maps run completion into MCP content and a lifecycle status.
 func triggerRunToolResult(wait bool, err error) (*sdkmcp.CallToolResult, string) {
-	// Nothing was deployed, but a deferral by a sync window is not a failure.
-	if errors.Is(err, stages.ErrSyncWindowBlocked) || errors.Is(err, stages.ErrRetrySuppressed) {
+	// Intentional skips preserve their reason without reporting an operational failure.
+	if errors.Is(err, stages.ErrSyncWindowBlocked) || errors.Is(err, stages.ErrRetrySuppressed) || errors.Is(err, stages.ErrDeploymentPaused) {
 		return &sdkmcp.CallToolResult{
 			Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: err.Error()}},
 		}, string(controlplane.RunStatusSkipped)

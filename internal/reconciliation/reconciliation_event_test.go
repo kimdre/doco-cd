@@ -523,6 +523,8 @@ func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
 
 	dc1 := deployConfig.New("stack-a", "main")
 	dc1.ForceRecreate = false
+	dc1.Internal.Environment = map[string]string{"VALUE": "before"}
+	dc1.Reconciliation.Events = []string{"die"}
 	dc2 := deployConfig.New("stack-b", "main")
 	dc2.ForceRecreate = false
 
@@ -544,6 +546,13 @@ func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
 
 	if dc1.ForceRecreate || dc2.ForceRecreate {
 		t.Fatal("expected source deploy configs to remain unmodified")
+	}
+
+	cloned[0].Internal.Environment["VALUE"] = "after"
+
+	cloned[0].Reconciliation.Events[0] = "stop"
+	if dc1.Internal.Environment["VALUE"] != "before" || dc1.Reconciliation.Events[0] != "die" {
+		t.Fatal("reconciliation mutated the retained deployed snapshot")
 	}
 }
 

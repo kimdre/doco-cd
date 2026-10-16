@@ -10,6 +10,7 @@ package certrotation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -189,6 +190,16 @@ func (w *Watcher) checkAndRotateContextMode(ctx context.Context, result docker.C
 		)
 
 		if err := docker.RotateProjectCertificates(ctx, result.Name, result.Cli, labels, w.secretProvider, swarmMode, w.certOptions); err != nil {
+			if errors.Is(err, docker.ErrCertificateRotationPaused) {
+				// The certificate can expire while the deployment is paused, so this is not a debug detail.
+				contextLog.Info("certificate rotation skipped because deployment is paused",
+					slog.String("project", project),
+					slog.Bool("swarm_mode", swarmMode),
+				)
+
+				continue
+			}
+
 			contextLog.Error("failed to rotate certificate",
 				slog.String("project", project),
 				slog.Bool("swarm_mode", swarmMode),

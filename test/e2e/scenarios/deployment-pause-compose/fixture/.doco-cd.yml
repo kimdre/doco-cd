@@ -1,0 +1,17 @@
+name: e2e-deployment-pause-compose
+working_dir: paused
+context: remote
+pause: false
+swarm:
+  enabled: false
+reconciliation:
+  enabled: true
+  events: [update]
+---
+name: e2e-deployment-pause-compose-sibling
+working_dir: sibling
+context: remote
+swarm:
+  enabled: false
+# Keep sibling own-event recovery out of paused/unchanged reporting checks.
+reconciliation: false

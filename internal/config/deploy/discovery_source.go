@@ -26,6 +26,12 @@ type AutoDiscoveryOrigin struct {
 	Reference string
 	// RepositoryURL is the repository the auto-discovery config scans. Empty means the job's own source.
 	RepositoryURL string
+	// ConfigTarget is the deployment config target that owns this discovery scope.
+	ConfigTarget string
+	// Context is the base config's Docker context, including when the scope discovers no deployments.
+	Context string
+	// Swarm is the base config's deployment mode and Swarm settings.
+	Swarm SwarmConfig
 	// WebhookEventFilter is the webhook event filter of the auto-discovery config. Nested configs can
 	// override the filter of a discovered deployment, so it is kept separately.
 	WebhookEventFilter string
@@ -35,6 +41,102 @@ type AutoDiscoveryOrigin struct {
 	MirrorDir string
 	// Settings are the auto-discovery settings of the config.
 	Settings AutoDiscoveryConfig
+	// Pause is the base config's pause intent, before any discovered child overrides.
+	Pause bool
+	// ReconciliationEnabled controls recovery of children no longer found by this root.
+	ReconciliationEnabled bool
+}
+
+// ResolvedConfigs keeps configured discovery scopes even when they discover no deployments.
+type ResolvedConfigs struct {
+	Configs []*Config
+	Origins []AutoDiscoveryOrigin
+}
+
+// autoDiscoveryOrigin returns the origin of a deployment config discovered by base.
+func autoDiscoveryOrigin(base *Config, revision string) *AutoDiscoveryOrigin {
+	return &AutoDiscoveryOrigin{
+		WorkingDirectory:      path.Clean(base.WorkingDirectory),
+		Reference:             base.Reference,
+		RepositoryURL:         string(base.RepositoryUrl),
+		ConfigTarget:          base.Internal.ConfigTarget,
+		Context:               base.Context,
+		Swarm:                 base.Swarm,
+		WebhookEventFilter:    base.WebhookEventFilter,
+		Revision:              revision,
+		Settings:              base.AutoDiscovery,
+		Pause:                 base.Pause,
+		ReconciliationEnabled: base.Reconciliation.Enabled,
+	}
+}
+
+// PauseForAutoDiscoveryOrigin returns the current base-root pause intent for a previously discovered config.
+// Callers must prefer exact current child configs. Root identity ignores revision, mode, and nested child overrides.
+func PauseForAutoDiscoveryOrigin(dc *Config, origins []AutoDiscoveryOrigin) (bool, bool) {
+	pause, _, found := ControlsForAutoDiscoveryOrigin(dc, origins)
+
+	return pause, found
+}
+
+// ControlsForAutoDiscoveryOrigin returns current root controls for a previously discovered config.
+func ControlsForAutoDiscoveryOrigin(dc *Config, origins []AutoDiscoveryOrigin) (pause, reconciliation, found bool) {
+	if dc == nil || dc.Internal.AutoDiscoveryOrigin == nil {
+		return false, false, false
+	}
+
+	previous := *dc.Internal.AutoDiscoveryOrigin
+	if previous.ConfigTarget == "" {
+		previous.ConfigTarget = dc.Internal.ConfigTarget
+	}
+
+	reconciliation = true
+
+	for _, current := range origins {
+		if !sameAutoDiscoveryOwner(previous, current) {
+			continue
+		}
+
+		found = true
+		pause = pause || current.Pause
+		reconciliation = reconciliation && current.ReconciliationEnabled
+	}
+
+	return pause, reconciliation, found
+}
+
+// SameOwner compares discovery roots without their revision or current controls.
+func (o AutoDiscoveryOrigin) SameOwner(other AutoDiscoveryOrigin) bool {
+	return sameAutoDiscoveryOwner(o, other)
+}
+
+// sameAutoDiscoveryOwner reports whether previous and current describe the same auto-discovery config, ignoring revision and mirror.
+func sameAutoDiscoveryOwner(previous, current AutoDiscoveryOrigin) bool {
+	if path.Clean(previous.WorkingDirectory) != path.Clean(current.WorkingDirectory) ||
+		strings.TrimSpace(previous.ConfigTarget) != strings.TrimSpace(current.ConfigTarget) {
+		return false
+	}
+
+	previousSource, currentSource := strings.TrimSpace(previous.RepositoryURL), strings.TrimSpace(current.RepositoryURL)
+	if (previousSource == "") != (currentSource == "") ||
+		gitInternal.GetRepoName(previousSource) != gitInternal.GetRepoName(currentSource) {
+		return false
+	}
+
+	previousRef, currentRef := strings.TrimSpace(previous.Reference), strings.TrimSpace(current.Reference)
+	if !gitInternal.ReferenceMatches(previousRef, currentRef) && !gitInternal.ReferenceMatches(currentRef, previousRef) {
+		return false
+	}
+
+	normalizeContext := func(name string) string {
+		name = strings.TrimSpace(name)
+		if strings.EqualFold(name, "default") {
+			return ""
+		}
+
+		return name
+	}
+
+	return normalizeContext(previous.Context) == normalizeContext(current.Context)
 }
 
 // Owns reports whether relDir, a stack's working directory relative to the source root, lies within
@@ -96,6 +198,7 @@ type discoverySource struct {
 	reference string
 	revision  string
 	opts      *GitOptions
+	origins   []AutoDiscoveryOrigin
 }
 
 // newDiscoverySource returns the discovery source for a job that resolved reference to primaryRevision,
@@ -157,7 +260,7 @@ func (s *discoverySource) discover(ctx context.Context, c *Config) ([]*Config, e
 	default:
 		configs, err := autoDiscoverDeployments(os.DirFS(s.repoRoot), s.labelRoot, "", c)
 
-		return scanDiscovery("", configs, err)
+		return s.scanDiscovery(c, "", "", configs, err)
 	}
 }
 
@@ -198,10 +301,10 @@ func (s *discoverySource) discoverSnapshot(c *Config, snapshot *DiscoverySnapsho
 	if !plumbing.IsHash(snapshot.Revision) {
 		configs, err := autoDiscoverDeployments(os.DirFS(snapshot.RepositoryRoot), snapshotLabelRoot, "", c)
 
-		return scanDiscovery("", configs, err)
+		return s.scanDiscovery(c, "", "", configs, err)
 	}
 
-	return scanPublished(snapshot.RepositoryRoot, snapshotLabelRoot, snapshot.MirrorDir, plumbing.NewHash(snapshot.Revision), c)
+	return s.scanPublished(snapshot.RepositoryRoot, snapshotLabelRoot, snapshot.MirrorDir, plumbing.NewHash(snapshot.Revision), c)
 }
 
 // discoverGit discovers c in the job's own Git repository.
@@ -283,7 +386,7 @@ func (s *discoverySource) publishAndScan(ctx context.Context, gitStore *store.Gi
 		return nil, fmt.Errorf("failed to publish reference %s: %w", c.Reference, err)
 	}
 
-	return scanPublished(artifact.Path, labelRoot, gitStore.MirrorDir(), hash, c)
+	return s.scanPublished(artifact.Path, labelRoot, gitStore.MirrorDir(), hash, c)
 }
 
 // discoverMirrorTree discovers c from the Git objects of its reference without fetching or publishing it.
@@ -328,16 +431,16 @@ func (s *discoverySource) discoverMirrorTree(c *Config) ([]*Config, error) {
 
 	configs, err := autoDiscoverDeployments(treeFS, s.labelRoot, hash.String(), c)
 
-	return scanDiscovery(s.mirrorRoot, configs, err)
+	return s.scanDiscovery(c, s.mirrorRoot, hash.String(), configs, err)
 }
 
 // scanPrimary scans the job's own artifact, which holds revision.
 func (s *discoverySource) scanPrimary(c *Config, revision plumbing.Hash) ([]*Config, error) {
-	return scanPublished(s.repoRoot, s.labelRoot, s.mirrorRoot, revision, c)
+	return s.scanPublished(s.repoRoot, s.labelRoot, s.mirrorRoot, revision, c)
 }
 
 // scanPublished scans the published artifact root of revision.
-func scanPublished(root, labelRoot, mirrorRoot string, revision plumbing.Hash, c *Config) ([]*Config, error) {
+func (s *discoverySource) scanPublished(root, labelRoot, mirrorRoot string, revision plumbing.Hash, c *Config) ([]*Config, error) {
 	fsys, release := publishedGitDiscoveryFS(root, labelRoot, mirrorRoot, revision, c)
 	if release != nil {
 		defer release()
@@ -345,19 +448,24 @@ func scanPublished(root, labelRoot, mirrorRoot string, revision plumbing.Hash, c
 
 	configs, err := autoDiscoverDeployments(fsys, labelRoot, revision.String(), c)
 
-	return scanDiscovery(mirrorRoot, configs, err)
+	return s.scanDiscovery(c, mirrorRoot, revision.String(), configs, err)
 }
 
-// scanDiscovery records the mirror the configs were discovered from and wraps a scan error.
-func scanDiscovery(mirrorDir string, configs []*Config, err error) ([]*Config, error) {
+// scanDiscovery records the resolved root independently of its discovered children and wraps a scan error.
+func (s *discoverySource) scanDiscovery(base *Config, mirrorDir, revision string, configs []*Config, err error) ([]*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 	}
 
+	origin := autoDiscoveryOrigin(base, revision)
+	if revision != "" {
+		origin.MirrorDir = mirrorDir
+	}
+
+	s.origins = append(s.origins, *origin)
+
 	for _, c := range configs {
-		if origin := c.Internal.AutoDiscoveryOrigin; origin != nil && origin.Revision != "" {
-			origin.MirrorDir = mirrorDir
-		}
+		c.Internal.AutoDiscoveryOrigin = origin
 	}
 
 	return configs, nil

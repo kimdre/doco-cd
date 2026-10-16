@@ -63,6 +63,19 @@ It accepts the same [schedule formats](Advanced/Job-Scheduling.md#schedule-forma
 !!! tip
     A poll `schedule` works well together with [sync windows](Advanced/Sync-Windows.md): schedule a poll for when an allow window opens so that deferred changes are deployed right away.
 
+## Pausing deployments
+
+Set [`pause`](Deploy-Settings.md#pause-settings) in the deployment configuration, not as a poll setting.
+Polls keep reading the configuration while paused, so a later poll detects when the deployment is resumed.
+Inline deployment definitions replace repository definitions, so their `pause` setting is authoritative. For example:
+
+```yaml title="poll-config.yaml"
+- url: https://github.com/example/app.git
+  deployments:
+    - name: production
+      pause: true
+```
+
 ## Example
 
 ### With `POLL_CONFIG`

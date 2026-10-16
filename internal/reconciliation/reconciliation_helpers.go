@@ -12,6 +12,7 @@ import (
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
@@ -219,9 +220,9 @@ func cloneDeployConfigsWithForcedRecreate(dcs []*deployConfig.Config) []*deployC
 	reconcileDCs := make([]*deployConfig.Config, len(dcs))
 
 	for i, dc := range dcs {
-		dcCopy := *dc
+		dcCopy := clone.New(dc)
 		dcCopy.ForceRecreate = true
-		reconcileDCs[i] = &dcCopy
+		reconcileDCs[i] = dcCopy
 	}
 
 	return reconcileDCs

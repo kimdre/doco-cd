@@ -29,7 +29,7 @@ import (
 // cleanupObsoleteAutoDiscoveredContainers removes auto-discovered stacks of req's source that are not part of
 // deployConfigs anymore.
 //
-// The removal policy of a stack comes from the auto-discovery configs in deployConfigs that scan its directory.
+// The removal policy of a stack comes from configured discovery origins and deployConfigs that scan its directory.
 // The policy recorded in the stack's labels is only used if none of them does, e.g. because the auto-discovery
 // config was removed. A stack is kept if the webhook event filter of such a config does not match the event, or
 // if it runs a newer revision than the one its directory was scanned in.
@@ -108,7 +108,7 @@ type obsoleteStackCleanup struct {
 	// present holds the names of all deploy configs, discovered or not.
 	present set.Set[string]
 	targets set.Set[string]
-	// origins are the auto-discovery configs that discovered deploy configs.
+	// origins are configured discovery scopes, including scopes with no current deployments.
 	origins  []deployConfig.AutoDiscoveryOrigin
 	ancestry *stages.GitAncestryCache
 }
@@ -129,13 +129,32 @@ func newObsoleteStackCleanup(jobLog *slog.Logger, dockerCli command.Cli, swarmMo
 
 	seen := set.New[deployConfig.AutoDiscoveryOrigin]()
 
+	for _, origin := range req.AutoDiscoveryOrigins {
+		if docker.NormalizeContextName(origin.Context) != docker.NormalizeContextName(contextName) {
+			continue
+		}
+
+		c.targets.Add(strings.TrimSpace(origin.ConfigTarget))
+
+		if !seen.Contains(origin) {
+			seen.Add(origin)
+			c.origins = append(c.origins, origin)
+		}
+	}
+
 	for _, cfg := range deployConfigs {
 		c.present.Add(cfg.Name)
 		c.targets.Add(strings.TrimSpace(cfg.Internal.ConfigTarget))
 
-		if origin := cfg.Internal.AutoDiscoveryOrigin; origin != nil && !seen.Contains(*origin) {
-			seen.Add(*origin)
-			c.origins = append(c.origins, *origin)
+		if origin := cfg.Internal.AutoDiscoveryOrigin; origin != nil {
+			scoped := *origin
+			scoped.ConfigTarget = strings.TrimSpace(cfg.Internal.ConfigTarget)
+
+			scoped.Context = cfg.Context
+			if !seen.Contains(scoped) {
+				seen.Add(scoped)
+				c.origins = append(c.origins, scoped)
+			}
 		}
 	}
 
@@ -219,7 +238,7 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	deployed := labels[docker.DocoCDLabels.Deployment.CommitSHA]
 	deployedReference := labels[docker.DocoCDLabels.Deployment.TargetRef]
 
-	owners := c.owners(labels[docker.DocoCDLabels.Deployment.WorkingDir])
+	owners := c.owners(labels[docker.DocoCDLabels.Deployment.WorkingDir], stackConfigTarget)
 	if len(owners) == 0 {
 		// No current auto-discovery config scans the stack's directory, fall back to the
 		// policy the stack was deployed with.
@@ -244,6 +263,12 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	})
 
 	for _, owner := range owners {
+		if owner.Pause {
+			stackLog.Debug("skipping obsolete auto-discovered stack because its auto-discovery config pauses deployments")
+
+			return deployConfig.AutoDiscoveryConfig{}, false
+		}
+
 		if !stages.WebhookEventFilterMatches(c.req.JobTrigger, owner.WebhookEventFilter, c.req.Payload) {
 			stackLog.Debug("skipping obsolete auto-discovered stack as the webhook event filter of its auto-discovery config does not match",
 				slog.String("webhook_filter", owner.WebhookEventFilter))
@@ -348,10 +373,14 @@ func cleanupRevisionApplies(reference, deployedReference string) bool {
 }
 
 // owners returns the auto-discovery configs that scan workingDir, the working directory of a stack.
-func (c *obsoleteStackCleanup) owners(workingDir string) []deployConfig.AutoDiscoveryOrigin {
+func (c *obsoleteStackCleanup) owners(workingDir, configTarget string) []deployConfig.AutoDiscoveryOrigin {
 	var owners []deployConfig.AutoDiscoveryOrigin
 
 	for _, origin := range c.origins {
+		if strings.TrimSpace(origin.ConfigTarget) != configTarget {
+			continue
+		}
+
 		relDir, ok := artifactRelativeDir(workingDir, c.storeName(origin))
 		if ok && origin.Owns(relDir) {
 			owners = append(owners, origin)

@@ -558,6 +558,10 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	if errors.Is(deployErr, stages.ErrSkipDeployment) {
 		msg := "deployment skipped"
+		if errors.Is(deployErr, stages.ErrDeploymentPaused) {
+			msg = deployErr.Error()
+		}
+
 		elapsedTime := time.Since(startTime)
 		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 		restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)

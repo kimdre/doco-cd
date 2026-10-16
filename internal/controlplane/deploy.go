@@ -234,19 +234,22 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 	}
 
 	if err := d.reconciler.Deploy(ctx, reconciliation.DeployRequest{
-		Logger:        req.Logger,
-		Metadata:      req.Metadata,
-		JobTrigger:    req.JobTrigger,
-		Repository:    repoData,
-		DeployConfigs: result.DeployConfigs,
-		Payload:       &result.Payload,
-		TestName:      req.TestName,
-		Origin:        DeploymentOrigin(ctx),
+		Logger:               req.Logger,
+		Metadata:             req.Metadata,
+		JobTrigger:           req.JobTrigger,
+		Repository:           repoData,
+		ConfigTarget:         req.CustomTarget,
+		DeployConfigs:        result.DeployConfigs,
+		AutoDiscoveryOrigins: result.AutoDiscoveryOrigins,
+		Payload:              &result.Payload,
+		TestName:             req.TestName,
+		Origin:               DeploymentOrigin(ctx),
 	}); err != nil {
 		if errors.Is(err, stages.ErrSkipDeployment) {
 			// Ordinary poll skips succeed. Safety-policy suppression stays visible.
 			if req.JobTrigger == stages.JobTriggerPoll &&
-				!errors.Is(err, stages.ErrSyncWindowBlocked) && !errors.Is(err, stages.ErrRetrySuppressed) {
+				!errors.Is(err, stages.ErrSyncWindowBlocked) && !errors.Is(err, stages.ErrRetrySuppressed) &&
+				!errors.Is(err, stages.ErrDeploymentPaused) {
 				return nil
 			}
 

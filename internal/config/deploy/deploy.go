@@ -90,6 +90,7 @@ type Config struct {
 	ExternalSecretsFiles []string                                 `yaml:"external_secrets_files" json:"external_secrets_files" default:"[]" doco:"allowOverride"`                                                                 // ExternalSecretsFiles is a list of YAML files, each holding a map of env var name to external secret reference (same shape as ExternalSecrets). Files are merged first, then ExternalSecrets entries are applied on top (inline wins on key collision).
 	AutoDiscovery        AutoDiscoveryConfig                      `yaml:"auto_discovery" json:"auto_discovery"`                                                                                                                   // AutoDiscovery configures autodiscovery of services to deploy in the working directory
 	Retry                RetryConfig                              `yaml:"retry,omitempty" json:"retry,omitzero" doco:"allowOverride"`                                                                                             // Retry limits automatic retries of a failed desired state and adds an optional fixed delay. Omitted means unlimited retries without delay.
+	Pause                bool                                     `yaml:"pause,omitempty" json:"pause,omitzero" default:"false" doco:"allowOverride"`                                                                             // Pause freezes deployment updates without stopping workloads or changing last-deployed recovery.
 	Reconciliation       ReconciliationConfig                     `yaml:"reconciliation" json:"reconciliation" doco:"allowOverride"`                                                                                              // Reconciliation is the configuration for the reconciliation feature
 	Oci                  config.OciTrustPolicyOverride            `yaml:"oci" json:"oci" doco:"allowOverride"`                                                                                                                    // Oci allows per-target overrides for OCI signature verification policy
 	Internal             struct {
@@ -322,9 +323,12 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Hash returns a hash of the Config struct (without changing the order of its elements).
+// Hash returns a hash of the deployment settings, excluding pause.
 func (c *Config) Hash() (string, error) {
-	data, err := yaml.Marshal(c)
+	hashConfig := *c
+	hashConfig.Pause = false
+
+	data, err := yaml.Marshal(&hashConfig)
 	if err != nil {
 		return "", err
 	}
@@ -405,6 +409,17 @@ func remoteDiscoveryStoreDir(sourceBaseDir, repoRoot, repositoryURL string) stri
 // Git source when repoRoot is a published artifact. primaryRevision must be resolved from reference,
 // or from gitOpts.PrimaryReference when the config source and deployment references differ.
 func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, reference, gitMirrorRoot, primaryRevision string, gitOpts *GitOptions) ([]*Config, error) {
+	result, err := GetConfigsWithOrigins(ctx, repoRoot, configBaseDir, customTarget, reference, gitMirrorRoot, primaryRevision, gitOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Configs, nil
+}
+
+// GetConfigsWithOrigins resolves repository configs and retains all configured auto-discovery scopes.
+// Its source and reference parameters have the same meaning as GetConfigs.
+func GetConfigsWithOrigins(ctx context.Context, repoRoot, configBaseDir, customTarget, reference, gitMirrorRoot, primaryRevision string, gitOpts *GitOptions) (*ResolvedConfigs, error) {
 	configDir := filepath.Join(repoRoot, configBaseDir)
 
 	files, err := os.ReadDir(configDir)
@@ -470,7 +485,7 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 		}
 
 		if len(expandedConfigs) == 0 {
-			return expandedConfigs, nil
+			return &ResolvedConfigs{Configs: expandedConfigs, Origins: source.origins}, nil
 		}
 
 		if err = validation.Validate(expandedConfigs); err != nil {
@@ -483,7 +498,7 @@ func GetConfigs(ctx context.Context, repoRoot, configBaseDir, customTarget, refe
 			return nil, err
 		}
 
-		return expandedConfigs, nil
+		return &ResolvedConfigs{Configs: expandedConfigs, Origins: source.origins}, nil
 	}
 
 	if customTarget != "" {
@@ -632,6 +647,17 @@ func ValidateUniqueProjectNames(configs []*Config) error {
 // gitOpts is optional and only required for AutoDiscovery with a remote RepositoryUrl.
 // gitMirrorRoot and primaryRevision are optional Git-only parameters; see GetConfigs.
 func ResolveConfigs(ctx context.Context, inlineDeployments []*Config, customTarget, reference, repoRoot, configBaseDir, gitMirrorRoot, primaryRevision string, gitOpts *GitOptions) ([]*Config, error) {
+	result, err := ResolveConfigsWithOrigins(ctx, inlineDeployments, customTarget, reference, repoRoot, configBaseDir, gitMirrorRoot, primaryRevision, gitOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Configs, nil
+}
+
+// ResolveConfigsWithOrigins resolves inline configs in preference to repository configs and retains all
+// configured auto-discovery scopes. Its parameters have the same meaning as ResolveConfigs.
+func ResolveConfigsWithOrigins(ctx context.Context, inlineDeployments []*Config, customTarget, reference, repoRoot, configBaseDir, gitMirrorRoot, primaryRevision string, gitOpts *GitOptions) (*ResolvedConfigs, error) {
 	// Prefer inline deployments when present
 	if len(inlineDeployments) > 0 {
 		inlineDeployments = cloneConfigSlice(inlineDeployments)
@@ -661,9 +687,9 @@ func ResolveConfigs(ctx context.Context, inlineDeployments []*Config, customTarg
 			return nil, err
 		}
 
-		return configs, nil
+		return &ResolvedConfigs{Configs: configs, Origins: source.origins}, nil
 	}
 
 	// No inline deployments, use repository config discovery
-	return GetConfigs(ctx, repoRoot, configBaseDir, customTarget, reference, gitMirrorRoot, primaryRevision, gitOpts)
+	return GetConfigsWithOrigins(ctx, repoRoot, configBaseDir, customTarget, reference, gitMirrorRoot, primaryRevision, gitOpts)
 }

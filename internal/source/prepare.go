@@ -169,11 +169,13 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 
 	deployConfigsStartedAt := time.Now()
 
-	deployConfigs, err := p.resolveDeployConfigs(ctx, req, resultPathInternal, gitMirrorDir, resolvedRevision, payload.Ref)
+	resolvedConfigs, err := p.resolveDeployConfigs(ctx, req, resultPathInternal, gitMirrorDir, resolvedRevision, payload.Ref)
 	if err != nil {
 		p.postEarlyFailureCommitStatus(ctx, req, sourceType, resolvedRevision, payload, err)
 		return Result{}, err
 	}
+
+	deployConfigs := resolvedConfigs.Configs
 
 	req.Logger.Info("resolved deploy configs",
 		slog.Int("count", len(deployConfigs)),
@@ -188,11 +190,24 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 		}
 
 		applyOCIReference(deployConfigs, ociRef)
+
+		for i := range resolvedConfigs.Origins {
+			if ociRef != "" && resolvedConfigs.Origins[i].RepositoryURL == "" {
+				resolvedConfigs.Origins[i].Reference = ociRef
+			}
+		}
 	}
 
 	customTarget := strings.TrimSpace(req.CustomTarget)
 	for _, cfg := range deployConfigs {
 		cfg.Internal.ConfigTarget = customTarget
+		if origin := cfg.Internal.AutoDiscoveryOrigin; origin != nil {
+			origin.ConfigTarget = customTarget
+		}
+	}
+
+	for i := range resolvedConfigs.Origins {
+		resolvedConfigs.Origins[i].ConfigTarget = customTarget
 	}
 
 	releaseArtifact := func() {
@@ -207,16 +222,17 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 		slog.String("elapsed_time", time.Since(startedAt).Truncate(time.Millisecond).String()))
 
 	return Result{
-		SourceType:    sourceType,
-		RepoName:      repoName,
-		PathInternal:  resultPathInternal,
-		PathExternal:  resultPathExternal,
-		Revision:      resolvedRevision,
-		MirrorDir:     gitMirrorDir,
-		OCITrusted:    ociTrusted,
-		DeployConfigs: deployConfigs,
-		Payload:       payload,
-		release:       releaseArtifact,
+		SourceType:           sourceType,
+		RepoName:             repoName,
+		PathInternal:         resultPathInternal,
+		PathExternal:         resultPathExternal,
+		Revision:             resolvedRevision,
+		MirrorDir:            gitMirrorDir,
+		OCITrusted:           ociTrusted,
+		DeployConfigs:        deployConfigs,
+		AutoDiscoveryOrigins: resolvedConfigs.Origins,
+		Payload:              payload,
+		release:              releaseArtifact,
 	}, nil
 }
 
@@ -228,6 +244,10 @@ func applyOCIReference(configs []*deploy.Config, ref string) {
 	for _, cfg := range configs {
 		if cfg.RepositoryUrl == "" {
 			cfg.Reference = ref
+		}
+
+		if origin := cfg.Internal.AutoDiscoveryOrigin; origin != nil && origin.RepositoryURL == "" {
+			origin.Reference = ref
 		}
 	}
 }

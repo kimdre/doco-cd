@@ -12,15 +12,16 @@ import (
 // applied), and the payload (enriched for OCI sources; passed through
 // unchanged for Git sources).
 type Result struct {
-	SourceType    config.SourceType // Source backend used for this deployment (git or oci)
-	RepoName      string            // Repository/artifact name (e.g., "user/my-repo")
-	PathInternal  string            // Path to the repository/artifact inside the container
-	PathExternal  string            // Path to the repository/artifact on the host machine
-	Revision      string            // Resolved immutable revision (commit SHA or OCI digest)
-	MirrorDir     string            // Path of Git's bare mirror clone backing this result; empty for OCI sources
-	OCITrusted    bool              // True when the OCI artifact passed trust-policy verification (always true for Git)
-	DeployConfigs []*deploy.Config  // Resolved deployment configurations for this run
-	Payload       webhook.ParsedPayload
+	SourceType           config.SourceType            // Source backend used for this deployment (git or oci)
+	RepoName             string                       // Repository/artifact name (e.g., "user/my-repo")
+	PathInternal         string                       // Path to the repository/artifact inside the container
+	PathExternal         string                       // Path to the repository/artifact on the host machine
+	Revision             string                       // Resolved immutable revision (commit SHA or OCI digest)
+	MirrorDir            string                       // Path of Git's bare mirror clone backing this result; empty for OCI sources
+	OCITrusted           bool                         // True when the OCI artifact passed trust-policy verification (always true for Git)
+	DeployConfigs        []*deploy.Config             // Resolved deployment configurations for this run
+	AutoDiscoveryOrigins []deploy.AutoDiscoveryOrigin // Configured discovery scopes, including roots with no deployments
+	Payload              webhook.ParsedPayload
 
 	// release drops the in-flight marker and shared GC lock held for this
 	// deployment. See Result.Release.

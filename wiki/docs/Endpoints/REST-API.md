@@ -81,6 +81,8 @@ Use these endpoints to inspect the current status and recent history by `job_id`
 Each run's `deployments` collection reports the resolved stack and Docker context targets. A single poll or webhook run can contain targets from multiple contexts.
 Automatic attempts suppressed by a [deployment retry policy](../Deploy-Settings.md#retry-settings) are skipped, not successful.
 The per-target reason distinguishes `delay` from `budget_exhausted` and suppression retains the failed desired release's state.
+Runs whose deployments are all [paused](../Deploy-Settings.md#pause-settings) are also `skipped`, with a pause reason.
+Mixed paused/active runs succeed if active work succeeds; any real failure takes precedence.
 
 | Endpoint              | Method | Description                           | Query Parameters                                                                                                                                                                                                                      |
 |-----------------------|--------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -123,6 +125,9 @@ API-triggered polls also bypass the deployment's [retry delay and exhausted-budg
 for that attempt only, including `#!yaml limit: 0`. This applies to both synchronous (`#!ini wait=true`) and asynchronous (`#!ini wait=false`) runs.
 A failed manual deployment does not consume or refill the automatic retry budget but a complete success clears the failure and retry state.
 Source trust checks, sync windows, and other safety checks still apply. Automatic webhooks and redeploy reconciliation do not receive this bypass.
+
+Manual polls do **not** bypass [`pause`](../Deploy-Settings.md#pause-settings). Inline deployments accept `"pause": true`.
+With `wait=true`, a poll whose deployments are all paused returns `202 Accepted` with the pause reason as `content`.
 
 #### Example Request
 

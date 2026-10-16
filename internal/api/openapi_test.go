@@ -331,6 +331,34 @@ func TestOpenAPIDocumentDescribesSecurityParametersAndSchemas(t *testing.T) {
 			t.Fatalf("retry schema accepted negative policy: %#v", value)
 		}
 	}
+
+	deployment := document.Components.Schemas[componentTypeName(reflect.TypeFor[deploy.Config]())].Value
+	if slices.Contains(deployment.Required, "pause") {
+		t.Fatal("deployment pause must be optional")
+	}
+
+	pause := deployment.Properties["pause"].Value
+	if pause == nil || !pause.Type.Is(openapi3.TypeBoolean) || len(pause.OneOf) != 0 || pause.Default != false {
+		t.Fatalf("pause must be a boolean defaulting to false: %+v", pause)
+	}
+
+	for _, value := range []bool{true, false} {
+		if err := pause.VisitJSON(value); err != nil {
+			t.Errorf("pause schema rejected %#v: %v", value, err)
+		}
+	}
+
+	for _, value := range []any{
+		"true", 1, nil,
+		[]any{},
+		map[string]any{},
+		map[string]any{"deployments": true},
+		map[string]any{"reconciliation": true},
+	} {
+		if err := pause.VisitJSON(value); err == nil {
+			t.Errorf("pause schema accepted invalid input %#v", value)
+		}
+	}
 }
 
 func TestRegisterRoutesServesPublicOpenAPIAndSwaggerUI(t *testing.T) {

@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -24,17 +25,19 @@ import (
 // redeploys, distinguishing them from webhook, poll, or scheduled-job triggered redeploys.
 const certRotationTrigger = "cert.rotation"
 
+// ErrCertificateRotationPaused marks a rotation intentionally skipped by admission.
+var ErrCertificateRotationPaused = errors.New("certificate rotation paused")
+
 // RotateProjectCertificates reloads the deploy config for a rotatable deployment (identified by
 // its doco-cd labels, see DocoCDLabels.Deployment.CertRotatable), re-resolves its external secrets
 // (reissuing any pki-role certificates through the configured secret provider), and redeploys so
 // the fresh values take effect.
 //
 // contextName identifies the Docker context dockerCli was created for (empty for the local
-// default context, see NormalizeContextName/DisplayContextName); it is only used to namespace the
-// per-stack scheduler/deploy lock (see lock.StackKey) so that same-named stacks on different
-// Docker contexts don't block each other. Discovered resources need no extra "context" label of
-// their own for this: the caller (certrotation.Watcher) already knows which context's client
-// produced labels, since it scans one context's resources at a time.
+// default context, see NormalizeContextName/DisplayContextName); it namespaces the per-stack
+// scheduler/deploy lock (see lock.StackKey) and identifies the target to opts.Admission.
+// Discovered resources need no extra "context" label: the caller (certrotation.Watcher) already
+// knows which context's client produced labels, since it scans one context's resources at a time.
 //
 // Compose deployments only recreate the services actually consuming a rotated certificate/key.
 // Swarm stacks redeploy the whole stack, but Swarm's own spec diffing (see
@@ -66,6 +69,10 @@ func RotateProjectCertificates(
 
 	lock.LockStack(stackLockKey)
 	defer lock.UnlockStack(stackLockKey)
+
+	if opts.Admission != nil && !opts.Admission(contextName, labels) {
+		return ErrCertificateRotationPaused
+	}
 
 	// Lock the same cached-source path source.Prepare/recreateManagedProject use: reloading
 	// the project here decrypts files in place and must not race a concurrent Prepare or
@@ -130,8 +137,8 @@ func RotateProjectCertificates(
 // needed: Swarm only recreates the tasks of services whose spec actually changed, so only the
 // services consuming the rotated certificate values end up being redeployed.
 //
-// contextName is used the same way as in RotateProjectCertificates: only to namespace the
-// per-stack lock so the same stack name on different Docker contexts never blocks each other.
+// contextName namespaces the per-stack lock and identifies the target to certOpts.Admission,
+// as in RotateProjectCertificates.
 func rotateSwarmProjectCertificates(
 	ctx context.Context,
 	contextName string,
@@ -149,6 +156,10 @@ func rotateSwarmProjectCertificates(
 
 	lock.LockStack(stackLockKey)
 	defer lock.UnlockStack(stackLockKey)
+
+	if certOpts.Admission != nil && !certOpts.Admission(contextName, labels) {
+		return ErrCertificateRotationPaused
+	}
 
 	sourceRepoPath, _, err := resolveScheduledSourceRepo(ref, certOpts.Scheduled.ComposeLoad.DataMountPath)
 	if err != nil {

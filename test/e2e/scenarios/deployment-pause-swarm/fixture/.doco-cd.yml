@@ -1,0 +1,17 @@
+name: e2e-deployment-pause-swarm
+working_dir: paused
+context: remote
+pause: false
+swarm:
+  enabled: true
+reconciliation:
+  enabled: true
+  events: [destroy]
+---
+name: e2e-deployment-pause-swarm-sibling
+working_dir: sibling
+context: remote
+swarm:
+  enabled: true
+# Keep sibling own-event recovery out of paused/unchanged reporting checks.
+reconciliation: false
