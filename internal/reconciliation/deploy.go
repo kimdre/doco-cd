@@ -476,6 +476,10 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 			dc.Name, docker.DisplayContextName(dc.Context), err)
 	}
 
+	// Init switches the stage repository to a repository_url override.
+	// Pause checks must keep the identity of the configuration source.
+	repository := req.Repository
+
 	stageMgr, err := stages.NewStageManager(
 		stages.Dependencies{
 			AppConfig:       m.appConfig,
@@ -490,7 +494,7 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 			JobID:      req.Metadata.JobID,
 			JobTrigger: req.JobTrigger,
 			Origin:     req.Origin,
-			Repository: &req.Repository,
+			Repository: &repository,
 			Docker: &stages.Docker{
 				Cmd:            deploymentDockerCli,
 				DataMountPoint: m.dataMountPoint,

@@ -43,6 +43,8 @@ type AutoDiscoveryOrigin struct {
 	Settings AutoDiscoveryConfig
 	// Pause is the base config's pause intent, before any discovered child overrides.
 	Pause bool
+	// ReconciliationEnabled controls recovery of children no longer found by this root.
+	ReconciliationEnabled bool
 }
 
 // ResolvedConfigs keeps configured discovery scopes even when they discover no deployments.
@@ -54,24 +56,32 @@ type ResolvedConfigs struct {
 // autoDiscoveryOrigin returns the origin of a deployment config discovered by base.
 func autoDiscoveryOrigin(base *Config, revision string) *AutoDiscoveryOrigin {
 	return &AutoDiscoveryOrigin{
-		WorkingDirectory:   path.Clean(base.WorkingDirectory),
-		Reference:          base.Reference,
-		RepositoryURL:      string(base.RepositoryUrl),
-		ConfigTarget:       base.Internal.ConfigTarget,
-		Context:            base.Context,
-		Swarm:              base.Swarm,
-		WebhookEventFilter: base.WebhookEventFilter,
-		Revision:           revision,
-		Settings:           base.AutoDiscovery,
-		Pause:              base.Pause,
+		WorkingDirectory:      path.Clean(base.WorkingDirectory),
+		Reference:             base.Reference,
+		RepositoryURL:         string(base.RepositoryUrl),
+		ConfigTarget:          base.Internal.ConfigTarget,
+		Context:               base.Context,
+		Swarm:                 base.Swarm,
+		WebhookEventFilter:    base.WebhookEventFilter,
+		Revision:              revision,
+		Settings:              base.AutoDiscovery,
+		Pause:                 base.Pause,
+		ReconciliationEnabled: base.Reconciliation.Enabled,
 	}
 }
 
 // PauseForAutoDiscoveryOrigin returns the current base-root pause intent for a previously discovered config.
 // Callers must prefer exact current child configs. Root identity ignores revision, mode, and nested child overrides.
 func PauseForAutoDiscoveryOrigin(dc *Config, origins []AutoDiscoveryOrigin) (bool, bool) {
+	pause, _, found := ControlsForAutoDiscoveryOrigin(dc, origins)
+
+	return pause, found
+}
+
+// ControlsForAutoDiscoveryOrigin returns current root controls for a previously discovered config.
+func ControlsForAutoDiscoveryOrigin(dc *Config, origins []AutoDiscoveryOrigin) (pause, reconciliation, found bool) {
 	if dc == nil || dc.Internal.AutoDiscoveryOrigin == nil {
-		return false, false
+		return false, false, false
 	}
 
 	previous := *dc.Internal.AutoDiscoveryOrigin
@@ -79,7 +89,7 @@ func PauseForAutoDiscoveryOrigin(dc *Config, origins []AutoDiscoveryOrigin) (boo
 		previous.ConfigTarget = dc.Internal.ConfigTarget
 	}
 
-	pause, found := false, false
+	reconciliation = true
 
 	for _, current := range origins {
 		if !sameAutoDiscoveryOwner(previous, current) {
@@ -88,9 +98,15 @@ func PauseForAutoDiscoveryOrigin(dc *Config, origins []AutoDiscoveryOrigin) (boo
 
 		found = true
 		pause = pause || current.Pause
+		reconciliation = reconciliation && current.ReconciliationEnabled
 	}
 
-	return pause, found
+	return pause, reconciliation, found
+}
+
+// SameOwner compares discovery roots without their revision or current controls.
+func (o AutoDiscoveryOrigin) SameOwner(other AutoDiscoveryOrigin) bool {
+	return sameAutoDiscoveryOwner(o, other)
 }
 
 // sameAutoDiscoveryOwner reports whether previous and current describe the same auto-discovery config, ignoring revision and mirror.

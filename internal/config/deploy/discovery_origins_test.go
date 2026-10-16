@@ -40,6 +40,7 @@ swarm:
   config_retention: 2
   secret_retention: 3
 pause: true
+reconciliation: false
 auto_discovery:
   enabled: true
   delete: true
@@ -81,6 +82,7 @@ auto_discovery: true
 		if origin.WorkingDirectory != wantDir || origin.Reference != "main" ||
 			origin.Revision != string(revision) || origin.MirrorDir != source.store.MirrorDir() ||
 			origin.Pause != wantPause || origin.Context != wantContext ||
+			origin.ReconciliationEnabled != (i != 0) ||
 			origin.Swarm.Enabled == nil || *origin.Swarm.Enabled != (i == 0) {
 			t.Fatalf("origin %d = %+v, want resolved %s root with pause %+v", i, origin, wantDir, wantPause)
 		}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/docker/compose/v5/pkg/api"
@@ -33,24 +34,51 @@ type pauseRegistry struct {
 func (m *Manager) observePause(req DeployRequest) uint64 {
 	for {
 		m.pauses.mu.Lock()
-		old := m.pauses.repos[req.Repository.Name]
+		old := m.pauses.repos[req.key()]
 		m.pauses.mu.Unlock()
 
 		if old != nil && predatesJob(req, old.request) {
 			return 0
 		}
 
+		matches := func(filter string) bool {
+			return stages.WebhookEventFilterMatches(req.JobTrigger, filter, req.Payload)
+		}
+
+		// A webhook that a filter excludes keeps the previous pause and reconciliation intent.
+		// The configs stay in the snapshot, so cleanup still treats their stacks as present.
 		snapshot := req
 
 		snapshot.DeployConfigs = make([]*deployConfig.Config, len(req.DeployConfigs))
 		for i, dc := range req.DeployConfigs {
 			snapshot.DeployConfigs[i] = clone.New(dc)
+
+			if old != nil && !matches(dc.WebhookEventFilter) {
+				if previous := old.targets[stackDeploymentKey(req.Repository.Name, dc.Context, dc.Name)]; previous != nil {
+					snapshot.DeployConfigs[i].Pause = previous.Pause
+					snapshot.DeployConfigs[i].Reconciliation.Enabled = previous.Reconciliation.Enabled
+				}
+			}
 		}
 
 		snapshot.AutoDiscoveryOrigins = *clone.New(&req.AutoDiscoveryOrigins)
+		for i, origin := range snapshot.AutoDiscoveryOrigins {
+			if old == nil || matches(origin.WebhookEventFilter) {
+				continue
+			}
+
+			for _, previous := range old.request.AutoDiscoveryOrigins {
+				if previous.SameOwner(origin) {
+					snapshot.AutoDiscoveryOrigins[i].Pause = previous.Pause
+					snapshot.AutoDiscoveryOrigins[i].ReconciliationEnabled = previous.ReconciliationEnabled
+
+					break
+				}
+			}
+		}
 
 		m.pauses.mu.Lock()
-		if m.pauses.repos[req.Repository.Name] != old {
+		if m.pauses.repos[req.key()] != old {
 			m.pauses.mu.Unlock()
 			continue
 		}
@@ -89,14 +117,25 @@ func (m *Manager) observePause(req DeployRequest) uint64 {
 					continue
 				}
 
-				if pause, owned := deployConfig.PauseForAutoDiscoveryOrigin(dc, snapshot.AutoDiscoveryOrigins); owned {
+				// A stack missing from a filtered webhook's configs keeps its previous intent.
+				if !matches(dc.WebhookEventFilter) {
+					observed.scopes[key] = dc.Pause
+					observed.targets[key] = dc
+
+					continue
+				}
+
+				if pause, reconciliation, owned := deployConfig.ControlsForAutoDiscoveryOrigin(dc, snapshot.AutoDiscoveryOrigins); owned {
+					dc = clone.New(dc)
+					dc.Pause = pause
+					dc.Reconciliation.Enabled = reconciliation
 					observed.scopes[key] = pause
 					observed.targets[key] = dc
 				}
 			}
 		}
 
-		m.pauses.repos[req.Repository.Name] = observed
+		m.pauses.repos[req.key()] = observed
 		m.pauses.mu.Unlock()
 
 		return observed.generation
@@ -104,7 +143,7 @@ func (m *Manager) observePause(req DeployRequest) uint64 {
 }
 
 func (m *Manager) pauseForLocked(req DeployRequest, dc *deployConfig.Config) bool {
-	if current := m.pauses.repos[req.Repository.Name]; current != nil {
+	if current := m.pauses.repos[req.key()]; current != nil {
 		if pause, present := current.scopes[stackDeploymentKey(req.Repository.Name, dc.Context, dc.Name)]; present {
 			return pause
 		}
@@ -171,7 +210,7 @@ func (m *Manager) currentCleanupRequest(req DeployRequest) DeployRequest {
 	m.pauses.mu.Lock()
 	defer m.pauses.mu.Unlock()
 
-	if current := m.pauses.repos[req.Repository.Name]; current != nil {
+	if current := m.pauses.repos[req.key()]; current != nil {
 		return current.request
 	}
 
@@ -207,7 +246,7 @@ func (m *Manager) recoveryConfigs(req DeployRequest, configs []*deployConfig.Con
 }
 
 func (m *Manager) reconciliationEnabledLocked(req DeployRequest, dc *deployConfig.Config) bool {
-	if current := m.pauses.repos[req.Repository.Name]; current != nil {
+	if current := m.pauses.repos[req.key()]; current != nil {
 		if target := current.targets[stackDeploymentKey(req.Repository.Name, dc.Context, dc.Name)]; target != nil {
 			return target.Reconciliation.Enabled
 		}
@@ -240,7 +279,7 @@ func (m *Manager) newerPauseObservation(req DeployRequest) bool {
 	m.pauses.mu.Lock()
 	defer m.pauses.mu.Unlock()
 
-	current := m.pauses.repos[req.Repository.Name]
+	current := m.pauses.repos[req.key()]
 
 	return current != nil && current.generation > req.pauseGeneration
 }
@@ -292,8 +331,21 @@ func (m *Manager) AdmitCertificateRotation(contextName string, labels map[string
 			continue
 		}
 
-		if observed.scopes[stackDeploymentKey(req.Repository.Name, contextName, name)] {
-			return false
+		if pause, present := observed.scopes[stackDeploymentKey(req.Repository.Name, contextName, name)]; present {
+			if pause {
+				return false
+			}
+
+			continue
+		}
+
+		// Stacks no longer found in Git stay protected by a paused discovery root, as in cleanup.
+		cleanup := newObsoleteStackCleanup(slog.Default(), nil, false, contextName, req, nil)
+		for _, origin := range cleanup.owners(labels[docker.DocoCDLabels.Deployment.WorkingDir],
+			strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.ConfigTarget])) {
+			if origin.Pause {
+				return false
+			}
 		}
 	}
 

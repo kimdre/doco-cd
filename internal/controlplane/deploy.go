@@ -238,6 +238,7 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		Metadata:             req.Metadata,
 		JobTrigger:           req.JobTrigger,
 		Repository:           repoData,
+		ConfigTarget:         req.CustomTarget,
 		DeployConfigs:        result.DeployConfigs,
 		AutoDiscoveryOrigins: result.AutoDiscoveryOrigins,
 		Payload:              &result.Payload,

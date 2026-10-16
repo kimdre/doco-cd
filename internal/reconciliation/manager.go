@@ -161,6 +161,7 @@ type DeployRequest struct {
 	Metadata             notification.Metadata
 	JobTrigger           stages.JobTrigger `validate:"required,oneof=webhook poll"`
 	Repository           stages.RepositoryData
+	ConfigTarget         string
 	DeployConfigs        []*deployConfig.Config `validate:"dive,required"`
 	AutoDiscoveryOrigins []deployConfig.AutoDiscoveryOrigin
 	Payload              *webhook.ParsedPayload
@@ -169,6 +170,15 @@ type DeployRequest struct {
 	// syncwindow.OriginAutomatic.
 	Origin          syncwindow.Origin `validate:"omitempty,oneof=automatic manual reconciliation"`
 	pauseGeneration uint64
+}
+
+// key returns the job registry key for the request's repository and config target.
+func (r DeployRequest) key() string {
+	if target := strings.TrimSpace(r.ConfigTarget); target != "" {
+		return r.Repository.Name + "\x00" + target
+	}
+
+	return r.Repository.Name
 }
 
 type job struct {
@@ -587,7 +597,7 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 			return
 		}
 
-		old := m.jobs.jobs[req.Repository.Name]
+		old := m.jobs.jobs[req.key()]
 		if old == nil {
 			stale = false
 			break
@@ -613,7 +623,7 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 		checked = old
 	}
 
-	old := m.jobs.jobs[req.Repository.Name]
+	old := m.jobs.jobs[req.key()]
 	if m.newerPauseObservation(req) && len(forcedDeployments) == 0 {
 		m.jobs.mu.Unlock()
 		return
@@ -659,9 +669,9 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 				m.jobs.jobs = make(map[string]*job)
 			}
 
-			m.jobs.jobs[req.Repository.Name] = newJob
+			m.jobs.jobs[req.key()] = newJob
 		} else {
-			delete(m.jobs.jobs, req.Repository.Name)
+			delete(m.jobs.jobs, req.key())
 		}
 
 		m.jobs.mu.Unlock()
@@ -675,7 +685,7 @@ func (m *Manager) addJob(ctx context.Context, req DeployRequest, deferred map[*d
 	newJob.cancel = cancel
 
 	m.jobWG.Add(1)
-	m.jobs.jobs[req.Repository.Name] = newJob
+	m.jobs.jobs[req.key()] = newJob
 	m.jobs.mu.Unlock()
 
 	old.close()

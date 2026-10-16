@@ -111,6 +111,54 @@ func TestPauseObservationRejectsStaleRevision(t *testing.T) {
 	}
 }
 
+func TestPauseObservationPreservesExcludedScopes(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		target string
+		stack  string
+		ref    string
+	}{
+		{name: "another target", target: "development", stack: "api", ref: "refs/heads/main"},
+		{name: "filtered webhook", target: "production", stack: "web", ref: "refs/heads/feature"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, pause := range []bool{true, false} {
+				manager := &Manager{}
+				dc := &deployConfig.Config{Name: "web", Pause: pause, WebhookEventFilter: "^refs/heads/main$"}
+				dc.Internal.ConfigTarget = "production"
+				req := pauseTestRequest(dc)
+				req.ConfigTarget = "production"
+				req.JobTrigger = stages.JobTriggerWebhook
+				req.Payload = &webhook.ParsedPayload{Ref: "refs/heads/main"}
+				manager.observePause(req)
+
+				changed := req
+				changed.ConfigTarget = tc.target
+				changed.Payload = &webhook.ParsedPayload{Ref: tc.ref}
+				changedDC := *dc
+				changedDC.Name = tc.stack
+				changedDC.Pause = !pause
+				changedDC.Internal.ConfigTarget = tc.target
+				changed.DeployConfigs = []*deployConfig.Config{&changedDC}
+				manager.observePause(changed)
+
+				if manager.pauseFor(req, dc) != pause {
+					t.Fatal("an excluded request changed the deployment's pause")
+				}
+
+				labels := map[string]string{
+					docker.DocoCDLabels.Source.Name:             "repo",
+					docker.DocoCDLabels.Deployment.Name:         "web",
+					docker.DocoCDLabels.Deployment.ConfigTarget: "production",
+				}
+				if manager.AdmitCertificateRotation("", labels) == pause {
+					t.Fatal("certificate rotation ignored the preserved pause")
+				}
+			}
+		})
+	}
+}
+
 func TestPauseJobRetainsDeployedSnapshotAndClosesOldListener(t *testing.T) {
 	manager := &Manager{jobs: jobRegistry{jobs: make(map[string]*job)}}
 	dc := &deployConfig.Config{Name: "web", Reconciliation: deployConfig.ReconciliationConfig{
@@ -185,8 +233,9 @@ func TestPauseJobRetainsDeployedSnapshotAndClosesOldListener(t *testing.T) {
 
 func TestPauseEmptyRootKeepsRecoveryAndRemovalProtection(t *testing.T) {
 	origin := deployConfig.AutoDiscoveryOrigin{
-		WorkingDirectory: "services",
-		Settings:         deployConfig.AutoDiscoveryConfig{Enabled: true, Delete: true, ScanDepth: 1},
+		WorkingDirectory:      "services",
+		Settings:              deployConfig.AutoDiscoveryConfig{Enabled: true, Delete: true, ScanDepth: 1},
+		ReconciliationEnabled: true,
 	}
 	dc := cleanupTestDiscovered("web", origin)
 	dc.WorkingDirectory = "services/web"
@@ -221,6 +270,13 @@ func TestPauseEmptyRootKeepsRecoveryAndRemovalProtection(t *testing.T) {
 
 	if len(manager.recoveryGroupByEvent(current, j.info.DeployConfigs)["die"]) != 1 {
 		t.Fatal("paused root blocked deployed-state recovery")
+	}
+
+	current.AutoDiscoveryOrigins[0].ReconciliationEnabled = false
+	manager.observePause(current)
+
+	if len(manager.recoveryGroupByEvent(current, j.info.DeployConfigs)) != 0 {
+		t.Fatal("empty root ignored reconciliation:false")
 	}
 
 	current.AutoDiscoveryOrigins = nil
@@ -340,6 +396,7 @@ func TestPauseCertificateRotationKeepsSourcesIsolatedAcrossHosts(t *testing.T) {
 		docker.DocoCDLabels.Source.URL:      "git@gitlab.com:owner/repo.git",
 		docker.DocoCDLabels.Deployment.Name: "web",
 	}
+
 	if !manager.AdmitCertificateRotation("", labels) {
 		t.Fatal("pause crossed repository hosts")
 	}
@@ -347,5 +404,38 @@ func TestPauseCertificateRotationKeepsSourcesIsolatedAcrossHosts(t *testing.T) {
 	labels[docker.DocoCDLabels.Source.URL] = "git@github.com:owner/repo.git"
 	if manager.AdmitCertificateRotation("", labels) {
 		t.Fatal("transport aliases bypassed deployment pause")
+	}
+}
+
+func TestPauseCertificateRotationHonorsEmptyRoot(t *testing.T) {
+	manager := &Manager{}
+	req := pauseTestRequest(nil)
+	req.DeployConfigs = nil
+	req.Repository.SourceUrl = cleanupTestRepoURL
+	req.AutoDiscoveryOrigins = []deployConfig.AutoDiscoveryOrigin{{
+		WorkingDirectory: "services", Pause: true,
+		Settings: deployConfig.AutoDiscoveryConfig{Enabled: true, ScanDepth: 1},
+	}}
+	manager.observePause(req)
+
+	for _, tc := range []struct {
+		directory string
+		context   string
+		target    string
+		allow     bool
+	}{
+		{directory: "services/web"},
+		{directory: "databases/web", allow: true},
+		{directory: "services/nested/web", allow: true},
+		{directory: "services/web", context: "remote", allow: true},
+		{directory: "services/web", target: "another", allow: true},
+	} {
+		stack := cleanupTestStack("web", tc.directory, map[string]string{
+			docker.DocoCDLabels.Source.Name:             "repo",
+			docker.DocoCDLabels.Deployment.ConfigTarget: tc.target,
+		})
+		if manager.AdmitCertificateRotation(tc.context, stack.Labels) != tc.allow {
+			t.Errorf("unexpected rotation admission for %+v", tc)
+		}
 	}
 }
