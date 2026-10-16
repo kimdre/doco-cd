@@ -375,6 +375,14 @@ deployed reference, retains the conservative ancestry guard. All covering config
 Reconciliation uses the latest request's discovery ownership and removal settings, even when a webhook filter or
 sync window defers deployment. Recovery of a deferred stack still uses its previously deployed config and source.
 
+Failed removals, inconclusive revision checks, and sync-window deferrals are retried automatically with capped backoff,
+even without another webhook or source change. Each retry reads the current source configuration and checks Docker
+state and removal permissions again. Restoring a stack or disabling deletion prevents the pending removal.
+Actual cleanup errors fail the triggering run but do not stop unrelated deployments.
+
+Pending retries are kept only in memory. Restarting doco-cd clears them until the source is processed again.
+Cleanup retries do not deploy newly discovered stacks or restore missing workloads.
+
 !!! note
     As the settings are stored in a label, changing `delete`, `remove_volumes` or `remove_images` recreates the containers
     or services of the discovered stacks on their next deployment.

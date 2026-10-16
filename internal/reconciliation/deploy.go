@@ -52,6 +52,7 @@ func (m *Manager) Deploy(ctx context.Context, req DeployRequest) error {
 	}
 
 	req.pauseGeneration = m.observePause(req)
+	m.cancelCleanupRetry(req)
 
 	// Sync windows are evaluated once for the whole request, see syncWindowGate.
 	gate := m.newSyncWindowGate(req, time.Now())
@@ -89,8 +90,26 @@ func (m *Manager) Deploy(ctx context.Context, req DeployRequest) error {
 }
 
 func (m *Manager) deploy(ctx context.Context, req DeployRequest, gate *syncWindowGate) ([]stackResult, error) {
+	pending, cleanupErr := m.cleanupObsolete(ctx, req, gate)
+	m.scheduleCleanupRetry(ctx, req, pending || cleanupErr != nil)
+
+	contextCLIs := buildDeployContextCLIs(ctx, m.contexts, m.activeDeployConfigs(req))
+
+	results, err := m.deployWithContexts(ctx, req, contextCLIs, gate)
+	if cleanupErr != nil && errors.Is(err, stages.ErrSkipDeployment) {
+		return results, cleanupErr
+	}
+
+	return results, errors.Join(cleanupErr, err)
+}
+
+func (m *Manager) cleanupObsolete(ctx context.Context, req DeployRequest, gate *syncWindowGate) (bool, error) {
 	if req.Repository.Source == config.SourceTypeOCI && !req.Repository.OCITrusted {
-		return nil, fmt.Errorf("%w: refusing to run reconciliation cleanup before trust-policy verification", ErrOCIArtifactNotVerified)
+		return false, fmt.Errorf("%w: refusing to run reconciliation cleanup before trust-policy verification", ErrOCIArtifactNotVerified)
+	}
+
+	if m.cleanupRetrySuperseded(req) {
+		return false, nil
 	}
 
 	cleanupReq := m.currentCleanupRequest(req)
@@ -117,6 +136,11 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest, gate *syncWindo
 		}
 	}
 
+	var (
+		pending bool
+		errs    []error
+	)
+
 	for contextName, groupedConfigs := range configsByContext {
 		entry, available := contextCLIs[contextName]
 		if !available {
@@ -129,6 +153,8 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest, gate *syncWindo
 			// only the affected deployments.
 			req.Logger.Error("failed to create docker client for context, skipping cleanup for it",
 				slog.String("context", docker.DisplayContextName(contextName)), logger.ErrAttr(entry.err))
+
+			errs = append(errs, fmt.Errorf("cleanup context %q: %w", contextName, entry.err))
 
 			continue
 		}
@@ -152,9 +178,13 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest, gate *syncWindo
 		}
 
 		for swarmMode, modeConfigs := range modes {
-			if err := cleanupObsoleteAutoDiscoveredContainers(ctx, req.Logger,
+			deferred, err := cleanupObsoleteAutoDiscoveredContainersResult(ctx, req.Logger,
 				entry.cli, swarmMode, contextName, cleanupReq,
-				modeConfigs, m.notifier, m.removalPredicate(req, contextName, gate)); err != nil {
+				modeConfigs, m.notifier, m.removalPredicate(cleanupReq, contextName, gate))
+			pending = pending || deferred
+
+			if err != nil {
+				errs = append(errs, err)
 				req.Logger.Error("failed to clean up obsolete auto-discovered containers for context",
 					slog.String("context", docker.DisplayContextName(contextName)),
 					slog.Bool("swarm_mode", swarmMode),
@@ -163,7 +193,7 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest, gate *syncWindo
 		}
 	}
 
-	return m.deployWithContexts(ctx, req, contextCLIs, gate)
+	return pending, errors.Join(errs...)
 }
 
 // handleDeploy deploys req. It is used by reconciliation, whose requests are

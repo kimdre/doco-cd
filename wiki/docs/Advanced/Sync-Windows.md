@@ -127,6 +127,8 @@ When a deployment is deferred, doco-cd reports it as follows:
 
 - **Logs**: `deployment deferred by sync window` with the blocking `sync_windows` and the `next_open` time, if known. It is logged at `info` level the first time a revision of a stack is deferred and at `debug` level on repeated polls.
   Deferred removals of deleted auto-discovered stacks are logged as `removal of obsolete auto-discovered stack deferred by sync window`.
+- **Removal retries**: obsolete-stack cleanup retries automatically and checks the current window and source configuration
+  before each attempt. It does not need another webhook. Pending retries are in memory and are cleared on restart.
 - **Webhooks**: if every stack of the webhook was deferred, the response is `202 Accepted` with the message `deployment deferred by sync window until <time>`.
 - **Deployment runs**: runs where every stack was deferred have the status `skipped` in the [deployment runs API](../Endpoints/REST-API.md#deployment-runs). A poll run triggered with `wait=true` responds with `202 Accepted` and the deferral message. The MCP `trigger_poll` tool returns the status `skipped`.
 - **Commit status**: with [`GIT_COMMIT_STATUS`](../Git-Settings.md) enabled, the commit gets a `pending` status `Deferred by sync window until <time>`. It becomes `success` once the same commit is deployed inside a window.
