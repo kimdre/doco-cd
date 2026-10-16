@@ -208,7 +208,18 @@ func GetLabeledServices(ctx context.Context, cli client.APIClient, swarmMode boo
 // including stopped containers.
 func GetDeploymentServices(ctx context.Context, cli client.APIClient, swarmMode bool, stackName string) (map[Service]map[string]string, error) {
 	if swarmMode {
-		return GetLabeledServices(ctx, cli, true, DocoCDLabels.Deployment.Name, stackName)
+		services, err := GetLabeledServices(ctx, cli, true, DocoCDLabels.Deployment.Name, stackName)
+		if err != nil {
+			return nil, err
+		}
+
+		for name, labels := range services {
+			if labels[DocoCDJobLabels.JobEphemeral] == "true" {
+				delete(services, name)
+			}
+		}
+
+		return services, nil
 	}
 
 	containers, err := GetLabeledContainers(ctx, cli, DocoCDLabels.Deployment.Name, stackName, true)
@@ -218,7 +229,9 @@ func GetDeploymentServices(ctx context.Context, cli client.APIClient, swarmMode 
 
 	result := make(map[Service]map[string]string, len(containers))
 	for _, cont := range containers {
-		if len(cont.Names) > 0 {
+		if len(cont.Names) > 0 && cont.Labels[api.HookLabel] == "" &&
+			cont.Labels[DocoCDJobLabels.JobEphemeral] != "true" &&
+			cont.Labels["com.docker.swarm.service.name"] == "" {
 			result[Service(cont.Names[0])] = cont.Labels
 		}
 	}
