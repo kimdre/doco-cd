@@ -28,7 +28,7 @@ require (
 	github.com/docker/cli v29.9.1+incompatible
 	github.com/docker/compose/v5 v5.6.0
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/getkin/kin-openapi v0.149.0
+	github.com/getkin/kin-openapi v0.150.0
 	github.com/getsops/sops/v3 v3.13.3
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/go-git/go-billy/v5 v5.9.2
