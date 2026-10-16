@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -41,7 +44,13 @@ func TestEarlySourceFailureReportsNativeTimeout(t *testing.T) {
 		git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{})
 	})
 
-	var conclusion string
+	var received struct {
+		Conclusion string `json:"conclusion"`
+		Output     struct {
+			Title   string `json:"title"`
+			Summary string `json:"summary"`
+		} `json:"output"`
+	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -49,14 +58,10 @@ func TestEarlySourceFailureReportsNativeTimeout(t *testing.T) {
 			return
 		}
 
-		var body struct {
-			Conclusion string `json:"conclusion"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
 			t.Errorf("decode check: %v", err)
 		}
 
-		conclusion = body.Conclusion
 		_, _ = w.Write([]byte(`{"id":123}`))
 	}))
 	defer server.Close()
@@ -64,12 +69,24 @@ func TestEarlySourceFailureReportsNativeTimeout(t *testing.T) {
 	preparer := &Preparer{appConfig: &app.Config{
 		GitCommitStatus: true, GitScmProvider: "github", GitScmApiUrl: config.HttpUrl(server.URL),
 	}}
-	preparer.postEarlyFailureCommitStatus(t.Context(), Request{
-		Logger: slog.Default(), SourceRef: "https://github.com/owner/repo",
-	}, config.SourceTypeGit, "deadbeef", webhook.ParsedPayload{}, context.DeadlineExceeded)
 
-	if conclusion != "timed_out" {
-		t.Fatalf("expected source timeout check, got %q", conclusion)
+	for _, timedOut := range []bool{false, true} {
+		failure := errors.New(strings.Repeat("source context ", 15) + "\nimportant error tail")
+		wantConclusion := "failure"
+
+		if timedOut {
+			failure = fmt.Errorf("%w: %w", failure, context.DeadlineExceeded)
+			wantConclusion = "timed_out"
+		}
+
+		preparer.postEarlyFailureCommitStatus(t.Context(), Request{
+			Logger: slog.Default(), SourceRef: "https://github.com/owner/repo",
+		}, config.SourceTypeGit, "deadbeef", webhook.ParsedPayload{}, failure)
+
+		if received.Conclusion != wantConclusion || received.Output.Title != commitstatus.FailureDescription(failure) ||
+			received.Output.Summary != "### Failure details\n\n    "+strings.ReplaceAll(failure.Error(), "\n", "\n    ") {
+			t.Fatalf("source failure details were lost: %+v", received)
+		}
 	}
 }
 

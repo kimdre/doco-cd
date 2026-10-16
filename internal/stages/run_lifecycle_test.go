@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -53,6 +54,83 @@ func TestHandleStageFailurePostsNativeTimeoutConclusion(t *testing.T) {
 	err := sm.handleStageFailure(ctx, StageDeploy, sm.Log, context.DeadlineExceeded)
 	if !errors.Is(err, context.DeadlineExceeded) || conclusion != "timed_out" {
 		t.Fatalf("timeout result=%q err=%v", conclusion, err)
+	}
+}
+
+func TestFailureCheckDetails(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		stage     StageName
+		admission bool
+		timedOut  bool
+	}{
+		{name: "init", stage: StageInit},
+		{name: "pre-deploy", stage: StagePreDeploy},
+		{name: "deploy", stage: StageDeploy},
+		{name: "admission", stage: StagePreDeploy, admission: true},
+		{name: "timeout", stage: StageDeploy, timedOut: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var received struct {
+				Conclusion string `json:"conclusion"`
+				Output     struct {
+					Title   string `json:"title"`
+					Summary string `json:"summary"`
+				} `json:"output"`
+			}
+
+			server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPatch || !strings.HasSuffix(r.URL.Path, "/check-runs/123") {
+					t.Errorf("unexpected check update: %s %s", r.Method, r.URL.Path)
+				}
+
+				if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+					t.Errorf("decode check: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			sm := newFailureTestManager(t, "failure-details-"+tt.name)
+			sm.AppConfig = &app.Config{
+				GitCommitStatus: true, GitScmProvider: "github",
+				GitScmApiUrl: config.HttpUrl(server.URL), GitAccessToken: "test-token",
+			}
+			sm.Repository.SourceUrl = "https://github.com/owner/repo"
+			sm.Repository.Revision = "deadbeef"
+			sm.commitStatusTarget = &commitstatus.Target{
+				Backend: commitstatus.BackendChecks, CheckRunID: 123, ExternalID: "attempt",
+			}
+
+			failure := errors.New(strings.Repeat("deployment context ", 15) + "\nimportant error tail")
+			wantConclusion := "failure"
+
+			if tt.timedOut {
+				failure = fmt.Errorf("%w: %w", failure, context.DeadlineExceeded)
+				wantConclusion = "timed_out"
+			}
+
+			var err error
+			if tt.admission {
+				err = sm.runStageOrder(t.Context(), func(context.Context) (func(), error) {
+					return nil, failure
+				}, StageOrder{
+					Order: []StageName{StagePreDeploy},
+					Funcs: map[StageName]StageFunc{StagePreDeploy: func(context.Context, *slog.Logger) error { return nil }},
+				})
+			} else {
+				err = sm.handleStageFailure(t.Context(), tt.stage, sm.Log, failure)
+			}
+
+			if !errors.Is(err, failure) || received.Conclusion != wantConclusion ||
+				received.Output.Title != commitstatus.FailureDescription(failure) ||
+				received.Output.Summary != "### Failure details\n\n    "+strings.ReplaceAll(failure.Error(), "\n", "\n    ") {
+				t.Fatalf("failure details were lost: output=%+v err=%v", received, err)
+			}
+		})
 	}
 }
 

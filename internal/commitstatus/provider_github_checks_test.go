@@ -166,6 +166,68 @@ func TestGitHubCheckConclusions(t *testing.T) {
 	}
 }
 
+func TestGitHubCheckPreservesFailureDetails(t *testing.T) {
+	t.Parallel()
+
+	message := strings.Repeat("deployment context ", 15) + "\n```<details>important error tail</details>"
+	wantSummary := "### Failure details\n\n    " + strings.Repeat("deployment context ", 15) +
+		"\n    ```<details>important error tail</details>"
+
+	for _, state := range []State{StateError, StateFailure} {
+		t.Run(string(state), func(t *testing.T) {
+			t.Parallel()
+
+			var received []githubCheckRequest
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					_, _ = w.Write([]byte(`{"total_count":0,"check_runs":[]}`))
+					return
+				}
+
+				var body githubCheckRequest
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Errorf("decode check: %v", err)
+				}
+
+				received = append(received, body)
+				if len(received) == 1 {
+					if r.Method != http.MethodPost {
+						t.Errorf("expected creation, got %s", r.Method)
+					}
+
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(`{"id":123}`))
+				} else if r.Method != http.MethodPatch || !strings.HasSuffix(r.URL.Path, "/123") {
+					t.Errorf("expected update of the original check, got %s %s", r.Method, r.URL.Path)
+				}
+			}))
+			defer server.Close()
+
+			req := checkTestRequest(server.URL)
+			status := FailureStatus(state, errors.New(message))
+
+			for range 2 {
+				if err := req.Post(t.Context(), status); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if len(received) != 2 {
+				t.Fatalf("received %d requests, want creation and update", len(received))
+			}
+
+			for _, body := range received {
+				if body.Conclusion != "failure" || body.Output == nil ||
+					body.Output.Title != FailureDescription(errors.New(message)) ||
+					len([]rune(body.Output.Title)) != maxDescriptionLength || body.Output.Summary != wantSummary {
+					t.Fatalf("failure details were lost: %+v", body.Output)
+				}
+			}
+		})
+	}
+}
+
 func TestGitHubCheckOutputOnlyAddsInformation(t *testing.T) {
 	t.Parallel()
 
@@ -229,8 +291,12 @@ func TestGitHubCheckOutputUsesSummary(t *testing.T) {
 
 	long := strings.Repeat("ä", maxCheckSummaryLength+10)
 
-	for _, outcome := range []Outcome{"", OutcomeSkipped} {
-		body, err := checkTestRequest("").checkRequest(Status{State: StateSuccess, Outcome: outcome, Description: "Result", Summary: long})
+	for _, status := range []Status{
+		{State: StateSuccess, Description: "Result", Summary: long},
+		{State: StateSuccess, Outcome: OutcomeSkipped, Description: "Result", Summary: long},
+		FailureStatus(StateFailure, errors.New(long)),
+	} {
+		body, err := checkTestRequest("").checkRequest(status)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -238,6 +304,49 @@ func TestGitHubCheckOutputUsesSummary(t *testing.T) {
 		if got := []rune(body.Output.Summary); len(got) != maxCheckSummaryLength || got[len(got)-1] != '…' {
 			t.Fatalf("summary has %d characters, want %d ending in an ellipsis", len(got), maxCheckSummaryLength)
 		}
+	}
+}
+
+func TestFailureStatusPreservesLegacyPayloads(t *testing.T) {
+	t.Parallel()
+
+	for _, provider := range []Provider{ProviderGitHub, ProviderGitLab, ProviderGitea, ProviderAzureDevOps} {
+		t.Run(string(provider), func(t *testing.T) {
+			t.Parallel()
+
+			var body map[string]json.RawMessage
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Errorf("expected status creation, got %s", r.Method)
+				}
+
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Errorf("decode status: %v", err)
+				}
+
+				w.WriteHeader(http.StatusCreated)
+			}))
+			defer server.Close()
+
+			req := checkTestRequest(server.URL)
+			req.Provider = provider
+			req.RepoURL = server.URL + "/org/project/_git/repo"
+			req.Target = &Target{Backend: BackendStatus}
+
+			err := req.Post(t.Context(), FailureStatus(StateFailure, errors.New(strings.Repeat("x", 200))))
+
+			wantState := `"failure"`
+			if provider == ProviderGitLab || provider == ProviderAzureDevOps {
+				wantState = `"failed"`
+			}
+
+			if err != nil || string(body["state"]) != wantState ||
+				string(body["description"]) != `"`+strings.Repeat("x", 137)+`..."` ||
+				body["summary"] != nil || body["output"] != nil {
+				t.Fatalf("legacy payload changed: body=%s err=%v", body, err)
+			}
+		})
 	}
 }
 

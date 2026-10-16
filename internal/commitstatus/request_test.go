@@ -1,6 +1,8 @@
 package commitstatus_test
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -32,6 +34,16 @@ func TestFailureDescription(t *testing.T) {
 			err:  simpleError(strings.Repeat("x", 200)),
 			want: strings.Repeat("x", 137) + "...",
 		},
+		{
+			name: "exact description limit",
+			err:  simpleError(strings.Repeat("x", 140)),
+			want: strings.Repeat("x", 140),
+		},
+		{
+			name: "Unicode beyond description limit",
+			err:  simpleError(strings.Repeat("\u00e4", 141)),
+			want: strings.Repeat("\u00e4", 137) + "...",
+		},
 	}
 
 	for _, tt := range tests {
@@ -39,6 +51,53 @@ func TestFailureDescription(t *testing.T) {
 			got := commitstatus.FailureDescription(tt.err)
 			if got != tt.want {
 				t.Fatalf("FailureDescription() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFailureStatus(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		err     error
+		details string
+		outcome commitstatus.Outcome
+	}{
+		{name: "nil error", details: "Failed"},
+		{
+			name: "long error", err: simpleError(strings.Repeat("x", 200) + "important tail"),
+			details: strings.Repeat("x", 200) + "important tail",
+		},
+		{
+			name: "multiline literal text", err: simpleError("yaml:\n\t```<details>\n# failure & `reason`\n\nlast line"),
+			details: "yaml:\n    \t```<details>\n    # failure & `reason`\n    \n    last line",
+		},
+		{
+			name: "carriage returns", err: simpleError("first\r\n<details>\rlast"),
+			details: "first\n    <details>\n    last",
+		},
+		{
+			name: "Unicode", err: simpleError(strings.Repeat("\u00e4", 200) + "\n\u7d42"),
+			details: strings.Repeat("\u00e4", 200) + "\n    \u7d42",
+		},
+		{
+			name: "timeout", err: fmt.Errorf("readiness: %w", context.DeadlineExceeded),
+			details: "readiness: context deadline exceeded", outcome: commitstatus.OutcomeTimedOut,
+		},
+		{name: "timeout text", err: simpleError("timeout-like failure"), details: "timeout-like failure"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, state := range []commitstatus.State{commitstatus.StateError, commitstatus.StateFailure} {
+				got := commitstatus.FailureStatus(state, tt.err)
+				if got.State != state || got.Outcome != tt.outcome ||
+					got.Description != commitstatus.FailureDescription(tt.err) ||
+					got.Summary != "### Failure details\n\n    "+tt.details {
+					t.Fatalf("FailureStatus(%q, %v) = %+v", state, tt.err, got)
+				}
 			}
 		})
 	}
