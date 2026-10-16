@@ -40,7 +40,7 @@ func (p *Preparer) postEarlyFailureCommitStatus(
 		return
 	}
 
-	description := commitstatus.FailureDescription(cause)
+	status := commitstatus.FailureStatus(commitstatus.StateError, cause)
 
 	req.Logger.Debug("posting commit status",
 		slog.String("provider", string(commitStatusReq.Provider)),
@@ -48,14 +48,10 @@ func (p *Preparer) postEarlyFailureCommitStatus(
 		slog.String("commit_sha", commitStatusReq.CommitSHA),
 		slog.String("context", commitStatusReq.Context),
 		slog.String("state", string(commitstatus.StateError)),
-		slog.String("description", description),
+		slog.String("description", status.Description),
 	)
 
-	if err := commitStatusReq.Post(ctx, commitstatus.Status{
-		State:       commitstatus.StateError,
-		Outcome:     commitstatus.FailureOutcome(cause),
-		Description: description,
-	}); err != nil {
+	if err := commitStatusReq.Post(ctx, status); err != nil {
 		if lifecycle.IsCanceled(err) {
 			req.Logger.Debug("skipped commit status during application shutdown", slog.String("error", err.Error()))
 

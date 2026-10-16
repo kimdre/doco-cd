@@ -57,6 +57,24 @@ func FailureDescription(err error) string {
 	return truncateDescription(strings.Join(strings.Fields(err.Error()), " "))
 }
 
+// FailureStatus keeps a short description for commit statuses and the full
+// error as literal text for GitHub check summaries.
+func FailureStatus(state State, err error) Status {
+	details := "Failed"
+	if err != nil {
+		details = err.Error()
+	}
+
+	details = strings.ReplaceAll(strings.ReplaceAll(details, "\r\n", "\n"), "\r", "\n")
+
+	return Status{
+		State:       state,
+		Outcome:     FailureOutcome(err),
+		Description: FailureDescription(err),
+		Summary:     "### Failure details\n\n    " + strings.ReplaceAll(details, "\n", "\n    "),
+	}
+}
+
 // truncateDescription shortens description to at most maxDescriptionLength
 // runes, ending it with an ellipsis when it was cut.
 func truncateDescription(description string) string {

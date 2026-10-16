@@ -200,8 +200,7 @@ func (s *StageManager) runStageOrder(ctx context.Context, admitMutation Mutation
 			if admissionErr != nil {
 				if !errors.Is(admissionErr, ErrSkipDeployment) && !lifecycle.IsCanceled(admissionErr) &&
 					shouldPostFailureCommitStatus(s.DeployConfig.Destroy.Enabled) {
-					s.PostCommitStatusWithOutcome(ctx, failureCommitStatusState(stageName),
-						commitstatus.FailureDescription(admissionErr), commitstatus.FailureOutcome(admissionErr))
+					s.postStatus(ctx, commitstatus.FailureStatus(failureCommitStatusState(stageName), admissionErr))
 				}
 
 				return admissionErr
@@ -270,8 +269,7 @@ func (s *StageManager) handleStageFailure(ctx context.Context, stageName StageNa
 	notifiedErr := s.NotifyFailure(err)
 
 	if shouldPostFailureCommitStatus(s.DeployConfig.Destroy.Enabled) {
-		s.PostCommitStatusWithOutcome(ctx, failureCommitStatusState(stageName),
-			commitstatus.FailureDescription(err), commitstatus.FailureOutcome(err))
+		s.postStatus(ctx, commitstatus.FailureStatus(failureCommitStatusState(stageName), err))
 	}
 
 	return notifiedErr

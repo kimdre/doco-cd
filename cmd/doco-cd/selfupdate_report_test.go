@@ -197,9 +197,11 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 		{name: "recorded summary after reporting disabled", conclusion: "success", summary: "Successfully deployed stack `predecessor`."},
 		{name: "recorded external identity after reporting disabled", externalOnly: true, conclusion: "success"},
 		{name: "ordinary unhealthy", failure: true, reason: "new reported unhealthy", statusEnabled: true, conclusion: "failure"},
+		{name: "long failure details", failure: true, reason: strings.Repeat("health gate context ", 15) + "\nimportant rollback reason", statusEnabled: true, conclusion: "failure"},
 		{name: "failure omits success summary", failure: true, reason: "new reported unhealthy", statusEnabled: true, conclusion: "failure", summary: "Successfully deployed stack `predecessor`."},
 		{name: "deadline text is not typed timeout", failure: true, reason: "context deadline exceeded", statusEnabled: true, conclusion: "failure"},
 		{name: "structured timeout without deadline text", failure: true, timedOut: true, reason: "health gate expired", statusEnabled: true, conclusion: "timed_out"},
+		{name: "long timeout details", failure: true, timedOut: true, reason: strings.Repeat("health gate context ", 15) + "\nimportant timeout reason", statusEnabled: true, conclusion: "timed_out"},
 		{name: "timeout after reporting disabled", failure: true, timedOut: true, conclusion: "timed_out"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -337,8 +339,16 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 				if got.Output.Title != "Deployed" || got.Output.Summary != wantSummary {
 					t.Errorf("successful output = %+v; want the predecessor's summary %q", got.Output, wantSummary)
 				}
-			} else if got.Output.Summary != got.Output.Title {
-				t.Errorf("failure output = %+v; should not publish the success summary", got.Output)
+			} else {
+				reason := tc.reason
+				if reason == "" {
+					reason = "the new version did not become healthy"
+				}
+
+				if got.Output.Title != commitstatus.FailureDescription(errors.New(reason)) ||
+					got.Output.Summary != "### Failure details\n\n    "+strings.ReplaceAll(reason, "\n", "\n    ") {
+					t.Errorf("failure output = %+v; want the full failure reason, not the success summary", got.Output)
+				}
 			}
 		})
 	}

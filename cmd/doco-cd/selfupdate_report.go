@@ -94,10 +94,7 @@ func (r *selfUpdateReporter) reportFailure(ctx context.Context, log *logger.Logg
 		}
 	}
 
-	status := commitstatus.Status{
-		State:       commitstatus.StateFailure,
-		Description: commitstatus.FailureDescription(errors.New(reason)),
-	}
+	status := commitstatus.FailureStatus(commitstatus.StateFailure, errors.New(reason))
 	if record.TimedOut {
 		status.Outcome = commitstatus.OutcomeTimedOut
 	}
