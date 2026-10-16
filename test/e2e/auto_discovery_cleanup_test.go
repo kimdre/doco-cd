@@ -85,4 +85,14 @@ func TestAutoDiscoveryCleanup(t *testing.T) {
 	if got := containerID(keepStack)(); got != keepID {
 		t.Fatalf("%s container = %q, want %q", keepStack, got, keepID)
 	}
+
+	mark = h.LogMark()
+	h.RemoveFromWorktree("apps/" + keepStack)
+	h.RemoveFromWorktree("static/" + staticStack)
+	h.RepoPush("remove the last discovered stacks")
+
+	for _, stack := range []string{keepStack, staticStack} {
+		h.WaitForLogLineAfter(mark, 2*time.Minute, removedMsg, `"stack":"`+stack+`"`)
+		h.WaitForComposeContainerRemoval(stack, service, time.Minute)
+	}
 }

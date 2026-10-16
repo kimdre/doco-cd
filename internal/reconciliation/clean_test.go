@@ -27,7 +27,10 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-const cleanupTestRepoURL = "https://example.com/organization/repository.git"
+const (
+	cleanupTestRepoURL  = "https://example.com/organization/repository.git"
+	cleanupTestRevision = "0123456789abcdef0123456789abcdef01234567"
+)
 
 type cleanupTestCLI struct {
 	command.Cli
@@ -76,7 +79,7 @@ func (c *cleanupTestClient) ContainerList(_ context.Context, options client.Cont
 func cleanupTestRequest() DeployRequest {
 	return DeployRequest{
 		JobTrigger: stages.JobTriggerPoll,
-		Repository: stages.RepositoryData{SourceUrl: cleanupTestRepoURL},
+		Repository: stages.RepositoryData{SourceUrl: cleanupTestRepoURL, Revision: cleanupTestRevision},
 	}
 }
 
@@ -87,6 +90,8 @@ func cleanupTestStack(name, relDir string, labels map[string]string) container.S
 		docker.DocoCDLabels.Deployment.AutoDiscovery: "true",
 		docker.DocoCDLabels.Deployment.WorkingDir:    "/var/lib/doco-cd/example.com/organization/repository/artifacts/0123456789abcdef0123456789abcdef01234567/" + relDir,
 		docker.DocoCDLabels.Source.URL:               cleanupTestRepoURL,
+		docker.DocoCDLabels.Deployment.CommitSHA:     cleanupTestRevision,
+		docker.DocoCDLabels.Source.ConfigRevision:    cleanupTestRevision,
 	}
 
 	maps.Copy(stackLabels, labels)
@@ -96,6 +101,10 @@ func cleanupTestStack(name, relDir string, labels map[string]string) container.S
 
 // cleanupTestDiscovered returns a deploy config discovered by origin.
 func cleanupTestDiscovered(name string, origin deployConfig.AutoDiscoveryOrigin) *deployConfig.Config {
+	if origin.Revision == "" {
+		origin.Revision = cleanupTestRevision
+	}
+
 	cfg := &deployConfig.Config{Name: name}
 	cfg.AutoDiscovery = origin.Settings
 	cfg.Internal.AutoDiscoveryOrigin = &origin
@@ -171,10 +180,12 @@ func TestReconciliationCleanupUsesCurrentOwnershipAfterDeferral(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			repoDir, older, newer := newTestRepoWithTwoCommits(t)
 			oldOrigin := deployConfig.AutoDiscoveryOrigin{
 				WorkingDirectory:   ".",
 				WebhookEventFilter: "^refs/heads/main$",
-				Revision:           "rev-1",
+				Revision:           older,
+				MirrorDir:          repoDir,
 				Settings: deployConfig.AutoDiscoveryConfig{
 					Enabled: true, Delete: true, RemoveVolumes: true, RemoveImages: true,
 				},
@@ -185,18 +196,21 @@ func TestReconciliationCleanupUsesCurrentOwnershipAfterDeferral(t *testing.T) {
 			oldAlpha.Reconciliation.Events = []string{"die"}
 			oldOriginPtr := oldAlpha.Internal.AutoDiscoveryOrigin
 			oldReq := cleanupTestRequest()
-			oldReq.Repository.Revision = "rev-1"
+			oldReq.Repository.Revision = older
+			oldReq.Repository.MirrorDir = repoDir
 			oldReq.DeployConfigs = []*deployConfig.Config{oldAlpha, cleanupTestDiscovered("beta", oldOrigin)}
 			previous := newJob(nil, oldReq, nil)
 
 			manager := newSyncWindowTestManager(t, strings.ReplaceAll(syncWindowTestPolicy, "web*", "*"))
 			stack := cleanupTestStack("beta", "beta", map[string]string{
 				docker.DocoCDLabels.Deployment.AutoDiscoveryConfig: docker.MarshalAutoDiscoveryConfig(oldOrigin.Settings),
+				docker.DocoCDLabels.Source.ConfigRevision:          older,
+				docker.DocoCDLabels.Deployment.CommitSHA:           older,
 			})
 
 			var recoverySource *DeployRequest
 
-			for _, revision := range []string{"rev-2", "rev-3"} {
+			for _, revision := range []string{newer, newer} {
 				origin := oldOrigin
 				origin.Revision = revision
 				origin.WebhookEventFilter = tt.filter
@@ -206,6 +220,7 @@ func TestReconciliationCleanupUsesCurrentOwnershipAfterDeferral(t *testing.T) {
 				req := cleanupTestRequest()
 				req.Logger = slog.New(slog.DiscardHandler)
 				req.Repository.Revision = revision
+				req.Repository.MirrorDir = repoDir
 				req.DeployConfigs = []*deployConfig.Config{alpha}
 
 				var deferred map[*deployConfig.Config]struct{}

@@ -357,11 +357,14 @@ The `delete`, `remove_volumes` and `remove_images` settings of an obsolete stack
 config whose `working_dir` and `depth` cover the stack's directory. If several do, all of them must allow the removal.
 If none does, e.g. because the auto-discovery config was removed, the settings the stack was deployed with are used.
 They are stored in the `cd.doco.deployment.auto_discovery.config` label of the stack; a stack with an empty or unreadable label is kept.
+The current discovery settings still apply when a scan finds no stacks, including when the last stack was removed.
+Failed scans do not authorize removal.
 
 An obsolete stack is also kept if
 
 - the [webhook filter](#webhook-filter) of its auto-discovery config does not match the webhook event,
 - it runs a newer commit than the one doco-cd scanned, e.g. because a newer deployment finished first,
+- its ownership or Git ancestry cannot be established, e.g. because the mirror lacks the deployed commit,
 - it is redeployed while doco-cd removes obsolete stacks, or
 - a [sync window](Advanced/Sync-Windows.md) blocks the removal.
 
