@@ -16,6 +16,7 @@ type EnvVarFileMapping struct {
 	EnvName    string  // EnvName is the name/key of the environment variable (e.g. API_SECRET)
 	EnvValue   *string // EnvValue is the value of the environment variable
 	FileValue  *string // FileValue is the content of the file that is specified in the environment variable (e.g. API_SECRET_FILE)
+	FilePath   string  // FilePath overrides the environment path used to detect the SOPS format.
 	AllowUnset bool    // AllowUnset indicates if both the fileField and value can be unset
 }
 
@@ -33,7 +34,12 @@ func LoadFileBasedEnvVars(mappings *[]EnvVarFileMapping) error {
 			fileContent := strings.TrimSpace(*m.FileValue)
 
 			// If *_FILE content is SOPS-encrypted, decrypt it before assigning.
-			format, encrypted := encryption.DetectFormat([]byte(fileContent), os.Getenv(m.EnvName+"_FILE"))
+			filePath := m.FilePath
+			if filePath == "" {
+				filePath = os.Getenv(m.EnvName + "_FILE")
+			}
+
+			format, encrypted := encryption.DetectFormat([]byte(fileContent), filePath)
 			if encrypted {
 				decrypted, err := encryption.DecryptContent([]byte(fileContent), format)
 				if err != nil {
