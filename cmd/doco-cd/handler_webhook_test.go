@@ -153,6 +153,8 @@ func TestPostSkippedWebhookCommitStatusUsesRunContext(t *testing.T) {
 		{name: "trimmed target", target: " production ", want: "doco-cd/production/deploy"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			received = postedStatus{}
+
 			postSkippedWebhookCommitStatus(t.Context(), &app.Config{
 				GitCommitStatus: true,
 				GitAccessToken:  "token",

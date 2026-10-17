@@ -485,6 +485,8 @@ func TestPrepare_DeployConfigFailure_PostsEarlyCommitStatus(t *testing.T) {
 			{name: "targeted", target: "staging", want: "doco-cd/staging/deploy"},
 		} {
 			t.Run(string(trigger)+"/"+tt.name, func(t *testing.T) {
+				received = nil
+
 				req := Request{
 					Logger:         logger.New(logger.LevelCritical).Logger,
 					JobTrigger:     trigger,
