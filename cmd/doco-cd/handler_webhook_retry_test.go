@@ -35,7 +35,7 @@ func TestPostSkippedWebhookPreservesFailedRetryStatus(t *testing.T) {
 		CommitSHA: plumbing.NewHash("0123456789012345678901234567890123456789"),
 		FullName:  "owner/repo",
 		CloneURL:  "https://git.example.com/owner/repo.git",
-	}, &stages.RetrySuppressedError{Stacks: []stages.RetrySuppressedStack{{
+	}, "production", &stages.RetrySuppressedError{Stacks: []stages.RetrySuppressedStack{{
 		Name: "web", Reason: "budget_exhausted",
 	}}})
 

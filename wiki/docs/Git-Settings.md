@@ -225,8 +225,9 @@ Once pre-deployment checks confirm work is needed, Doco-CD reports each deployme
 Queued reporting is published before waiting for a mutation admission slot.
 
 Deployments excluded by a webhook reference filter or requiring no changes do not receive deployment-specific checks or statuses. 
-When the entire webhook run is skipped, Doco-CD reports only a generic `doco-cd/deploy` result. 
-This name is also used for failures before deployment configuration can be resolved.
+When the entire webhook run is skipped, Doco-CD reports a run-level result under `doco-cd/<target>/deploy` when a target is configured, or `doco-cd/deploy` otherwise.
+The same target-aware name is used for Git clone failures and failures before deployment configuration can be resolved, including polling runs.
+This keeps failures and skipped runs for different targets separate on the same commit.
 
 While a deployment runs, its check or status also shows the current deployment phase, the same one logged by the `deployment in progress` heartbeat, for example _pulling images_ or _waiting for services to start_.
 A phase is only published once it has lasted 3 seconds, so short phases cost no API requests.
@@ -250,7 +251,7 @@ Phase updates are best-effort: each is sent once without retries, a provider rat
     | All deployment stages succeeded            | `completed` / `success`                     | **success**                           |
     | Deployment failed                          | `completed` / `failure`                     | **error / failure**                   |
     | Deployment deadline or readiness timed out | `completed` / `timed_out`                   | **error / failure**                   |
-    | Entire webhook run skipped                 | `completed` / `skipped` on `doco-cd/deploy` | **success / Skipped: _reason_**       |
+    | Entire webhook run skipped                 | `completed` / `skipped`                     | **success / Skipped: _reason_**       |
 
     The check run of a skipped webhook run also lists every stack with its skip reason and details in its summary, such as the webhook filter that did not match.
 

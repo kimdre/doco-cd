@@ -34,7 +34,7 @@ func (p *Preparer) postEarlyFailureCommitStatus(
 		ProviderOverride: p.appConfig.GitScmProvider,
 		APIBaseURL:       string(p.appConfig.GitScmApiUrl),
 		AccessToken:      p.appConfig.GitAccessToken,
-		ContextName:      commitstatus.DeployContext,
+		ContextName:      commitstatus.ContextForRun(req.CustomTarget),
 	})
 	if !ok {
 		return
