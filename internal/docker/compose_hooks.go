@@ -298,7 +298,8 @@ func runComposeHook(ctx context.Context, apiClient client.APIClient, containerID
 	case <-ctx.Done():
 		// Closing the connection unblocks the reader. The exec process keeps running in the container.
 		attach.Close()
-		<-copyDone
+
+		<-copyDone //nolint:errcheck // Closing the connection can cause a read error.
 
 		return ctx.Err()
 	}
