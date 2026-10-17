@@ -45,6 +45,7 @@ func TestEarlySourceFailureReportsNativeTimeout(t *testing.T) {
 	})
 
 	var received struct {
+		Name       string `json:"name"`
 		Conclusion string `json:"conclusion"`
 		Output     struct {
 			Title   string `json:"title"`
@@ -80,10 +81,11 @@ func TestEarlySourceFailureReportsNativeTimeout(t *testing.T) {
 		}
 
 		preparer.postEarlyFailureCommitStatus(t.Context(), Request{
-			Logger: slog.Default(), SourceRef: "https://github.com/owner/repo",
+			Logger: slog.Default(), SourceRef: "https://github.com/owner/repo", CustomTarget: "staging",
 		}, config.SourceTypeGit, "deadbeef", webhook.ParsedPayload{}, failure)
 
-		if received.Conclusion != wantConclusion || received.Output.Title != commitstatus.FailureDescription(failure) ||
+		if received.Name != "doco-cd/staging/deploy" || received.Conclusion != wantConclusion ||
+			received.Output.Title != commitstatus.FailureDescription(failure) ||
 			received.Output.Summary != "### Failure details\n\n    "+strings.ReplaceAll(failure.Error(), "\n", "\n    ") {
 			t.Fatalf("source failure details were lost: %+v", received)
 		}
@@ -431,6 +433,7 @@ func TestPrepare_GitCloneFailure_PostsEarlyCommitStatus(t *testing.T) {
 		SourceType:     config.SourceTypeGit,
 		SourceRef:      "file://" + srcPath,
 		Ref:            "refs/heads/does-not-exist",
+		CustomTarget:   "production",
 		Payload:        webhook.ParsedPayload{Ref: git.MainBranch, CommitSHA: plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), WebURL: srv.URL + "/owner/repo", FullName: "owner/repo"},
 		DataMountPoint: testMountPoint(t),
 	})
@@ -440,6 +443,10 @@ func TestPrepare_GitCloneFailure_PostsEarlyCommitStatus(t *testing.T) {
 
 	if received["state"] != "error" {
 		t.Fatalf("expected an early 'error' commit status to be posted, got %v", received)
+	}
+
+	if received["context"] != "doco-cd/production/deploy" {
+		t.Fatalf("context = %q, want doco-cd/production/deploy", received["context"])
 	}
 }
 
@@ -468,21 +475,42 @@ func TestPrepare_DeployConfigFailure_PostsEarlyCommitStatus(t *testing.T) {
 		GitScmProvider:  "gitea",
 	})
 
-	_, err := p.Prepare(t.Context(), Request{
-		Logger:         logger.New(logger.LevelCritical).Logger,
-		JobTrigger:     stages.JobTriggerWebhook,
-		SourceType:     config.SourceTypeGit,
-		SourceRef:      "file://" + srcPath,
-		Ref:            git.MainBranch,
-		Payload:        webhook.ParsedPayload{Ref: git.MainBranch, CommitSHA: plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), WebURL: srv.URL + "/owner/repo", FullName: "owner/repo"},
-		DataMountPoint: testMountPoint(t),
-	})
-	if !errors.Is(err, ErrDeployConfig) {
-		t.Fatalf("expected ErrDeployConfig, got %v", err)
-	}
+	for _, trigger := range []stages.JobTrigger{stages.JobTriggerWebhook, stages.JobTriggerPoll} {
+		for _, tt := range []struct {
+			name   string
+			target string
+			want   string
+		}{
+			{name: "default", want: commitstatus.DeployContext},
+			{name: "targeted", target: "staging", want: "doco-cd/staging/deploy"},
+		} {
+			t.Run(string(trigger)+"/"+tt.name, func(t *testing.T) {
+				req := Request{
+					Logger:         logger.New(logger.LevelCritical).Logger,
+					JobTrigger:     trigger,
+					SourceType:     config.SourceTypeGit,
+					SourceRef:      "file://" + srcPath,
+					Ref:            git.MainBranch,
+					CustomTarget:   tt.target,
+					Payload:        webhook.ParsedPayload{Ref: git.MainBranch, CommitSHA: plumbing.NewHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), WebURL: srv.URL + "/owner/repo", FullName: "owner/repo"},
+					DataMountPoint: testMountPoint(t),
+				}
+				req.PollConfig.CustomTarget = tt.target
 
-	if received["state"] != "error" {
-		t.Fatalf("expected an early 'error' commit status to be posted, got %v", received)
+				_, err := p.Prepare(t.Context(), req)
+				if !errors.Is(err, ErrDeployConfig) {
+					t.Fatalf("expected ErrDeployConfig, got %v", err)
+				}
+
+				if received["state"] != "error" {
+					t.Fatalf("expected an early 'error' commit status to be posted, got %v", received)
+				}
+
+				if received["context"] != tt.want {
+					t.Fatalf("context = %q, want %q", received["context"], tt.want)
+				}
+			})
+		}
 	}
 }
 

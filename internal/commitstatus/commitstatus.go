@@ -66,6 +66,11 @@ func ContextForStack(target, stack string) string {
 	return BaseContext + "/" + stack
 }
 
+// ContextForRun keeps the configuration target in reports without a stack name.
+func ContextForRun(target string) string {
+	return ContextForStack(target, "deploy")
+}
+
 // Provider identifies which SCM API to use when posting a commit status.
 // The zero value ("") means auto-detect from the repository URL.
 type Provider string

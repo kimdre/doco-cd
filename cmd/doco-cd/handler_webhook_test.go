@@ -97,13 +97,13 @@ func TestPostSkippedWebhookUsesNativeGitHubConclusion(t *testing.T) {
 		CloneURL:  "https://github.com/owner/repo.git",
 		WebURL:    "https://github.com/owner/repo",
 		Ref:       "refs/heads/renovate/x",
-	}, stages.NewSkippedRunError([]stages.SkippedStack{{
+	}, "staging", stages.NewSkippedRunError([]stages.SkippedStack{{
 		Name:   "web",
 		Reason: stages.SkipReasonWebhookFilter,
 		Detail: "`^refs/heads/main$` does not match `refs/heads/renovate/x`",
 	}}))
 
-	if received.Name != commitstatus.DeployContext || received.Status != "completed" || received.Conclusion != "skipped" {
+	if received.Name != "doco-cd/staging/deploy" || received.Status != "completed" || received.Conclusion != "skipped" {
 		t.Fatalf("unexpected skipped check: %+v", received)
 	}
 
@@ -141,25 +141,39 @@ func TestPostSkippedWebhookCommitStatusUsesRunContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	postSkippedWebhookCommitStatus(t.Context(), &app.Config{
-		GitCommitStatus: true,
-		GitAccessToken:  "token",
-		GitScmProvider:  string(commitstatus.ProviderGitea),
-		GitScmApiUrl:    config.HttpUrl(server.URL),
-	}, logger.New(logger.LevelCritical).Logger, webhook.ParsedPayload{
-		Source:    webhook.PayloadSourceGit,
-		CommitSHA: plumbing.NewHash("0123456789012345678901234567890123456789"),
-		FullName:  "owner/repo",
-		CloneURL:  "https://git.example.com/owner/repo.git",
-		WebURL:    "https://git.example.com/owner/repo",
-	}, stages.ErrSkipDeployment)
+	for _, tt := range []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{name: "default", want: commitstatus.DeployContext},
+		{name: "blank target", target: " \t ", want: commitstatus.DeployContext},
+		{name: "production", target: "production", want: "doco-cd/production/deploy"},
+		{name: "staging", target: "staging", want: "doco-cd/staging/deploy"},
+		{name: "trimmed target", target: " production ", want: "doco-cd/production/deploy"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			postSkippedWebhookCommitStatus(t.Context(), &app.Config{
+				GitCommitStatus: true,
+				GitAccessToken:  "token",
+				GitScmProvider:  string(commitstatus.ProviderGitea),
+				GitScmApiUrl:    config.HttpUrl(server.URL),
+			}, logger.New(logger.LevelCritical).Logger, webhook.ParsedPayload{
+				Source:    webhook.PayloadSourceGit,
+				CommitSHA: plumbing.NewHash("0123456789012345678901234567890123456789"),
+				FullName:  "owner/repo",
+				CloneURL:  "https://git.example.com/owner/repo.git",
+				WebURL:    "https://git.example.com/owner/repo",
+			}, tt.target, stages.ErrSkipDeployment)
 
-	if received.State != "skipped" || received.Description != "Skipped" {
-		t.Fatalf("unexpected skipped status: %+v", received)
-	}
+			if received.State != "skipped" || received.Description != "Skipped" {
+				t.Fatalf("unexpected skipped status: %+v", received)
+			}
 
-	if received.Context != commitstatus.DeployContext {
-		t.Fatalf("context = %q, want %q", received.Context, commitstatus.DeployContext)
+			if received.Context != tt.want {
+				t.Fatalf("context = %q, want %q", received.Context, tt.want)
+			}
+		})
 	}
 }
 
@@ -306,6 +320,52 @@ func newConcurrencyTestWebhookRequest(t *testing.T, appConfig *app.Config, targe
 	req.SetPathValue("customTarget", target)
 
 	return req
+}
+
+func TestWebhookHandlerSkippedCommitStatusIncludesTarget(t *testing.T) {
+	h := newConcurrencyTestHandler(t, func(context.Context, reconciliation.DeployRequest) error {
+		return stages.NewSkippedRunError([]stages.SkippedStack{{
+			Name: "web", Reason: stages.SkipReasonNoChanges,
+		}})
+	})
+
+	var received struct {
+		Context     string `json:"context"`
+		Description string `json:"description"`
+		State       string `json:"state"`
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/version" {
+			_, _ = w.Write([]byte(`{"version":"1.25.0"}`))
+
+			return
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Errorf("decode status: %v", err)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	h.appConfig.GitCommitStatus = true
+	h.appConfig.GitAccessToken = "token"
+	h.appConfig.GitScmProvider = string(commitstatus.ProviderGitea)
+	h.appConfig.GitScmApiUrl = config.HttpUrl(server.URL)
+
+	rr := httptest.NewRecorder()
+	h.WebhookHandler(rr, newConcurrencyTestWebhookRequest(t, h.appConfig, "production"))
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d: %s", rr.Code, http.StatusAccepted, rr.Body.String())
+	}
+
+	if received.Context != "doco-cd/production/deploy" || received.Description != "Skipped: no changes detected" ||
+		received.State != "skipped" {
+		t.Fatalf("unexpected skipped status: %+v", received)
+	}
 }
 
 // TestWebhookHandlerDifferentTargetsRunConcurrently proves that removing the

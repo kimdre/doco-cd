@@ -170,7 +170,28 @@ func TestContextForStack(t *testing.T) {
 
 	assert.Equal(t, commitstatus.ContextForStack("", ""), commitstatus.BaseContext)
 	assert.Equal(t, commitstatus.ContextForStack("", "web"), "doco-cd/web")
-	assert.Equal(t, commitstatus.ContextForStack("nas", "web"), "doco-cd/nas/web")
+	assert.Equal(t, commitstatus.ContextForStack("production", "web"), "doco-cd/production/web")
+}
+
+func TestContextForRun(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{name: "default", want: commitstatus.DeployContext},
+		{name: "blank target", target: " \t ", want: commitstatus.DeployContext},
+		{name: "production", target: "production", want: "doco-cd/production/deploy"},
+		{name: "staging", target: "staging", want: "doco-cd/staging/deploy"},
+		{name: "trimmed target", target: " production ", want: "doco-cd/production/deploy"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, commitstatus.ContextForRun(tt.target), tt.want)
+		})
+	}
 }
 
 func TestPost_APIError(t *testing.T) {
