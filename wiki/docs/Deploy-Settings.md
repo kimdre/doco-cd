@@ -357,11 +357,14 @@ The `delete`, `remove_volumes` and `remove_images` settings of an obsolete stack
 config whose `working_dir` and `depth` cover the stack's directory. If several do, all of them must allow the removal.
 If none does, e.g. because the auto-discovery config was removed, the settings the stack was deployed with are used.
 They are stored in the `cd.doco.deployment.auto_discovery.config` label of the stack; a stack with an empty or unreadable label is kept.
+The current discovery settings still apply when a scan finds no stacks, including when the last stack was removed.
+Failed scans do not authorize removal.
 
 An obsolete stack is also kept if
 
 - the [webhook filter](#webhook-filter) of its auto-discovery config does not match the webhook event,
 - it runs a newer commit than the one doco-cd scanned, e.g. because a newer deployment finished first,
+- its ownership or Git ancestry cannot be established, e.g. because the mirror lacks the deployed commit,
 - it is redeployed while doco-cd removes obsolete stacks, or
 - a [sync window](Advanced/Sync-Windows.md) blocks the removal.
 
@@ -371,6 +374,14 @@ deployed reference, retains the conservative ancestry guard. All covering config
 
 Reconciliation uses the latest request's discovery ownership and removal settings, even when a webhook filter or
 sync window defers deployment. Recovery of a deferred stack still uses its previously deployed config and source.
+
+Failed removals, inconclusive revision checks, and sync-window deferrals are retried automatically with capped backoff,
+even without another webhook or source change. Each retry reads the current source configuration and checks Docker
+state and removal permissions again. Restoring a stack or disabling deletion prevents the pending removal.
+Actual cleanup errors fail the triggering run but do not stop unrelated deployments.
+
+Pending retries are kept only in memory. Restarting doco-cd clears them until the source is processed again.
+Cleanup retries do not deploy newly discovered stacks or restore missing workloads.
 
 !!! note
     As the settings are stored in a label, changing `delete`, `remove_volumes` or `remove_images` recreates the containers

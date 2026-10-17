@@ -210,8 +210,12 @@ func (m *Manager) currentCleanupRequest(req DeployRequest) DeployRequest {
 	m.pauses.mu.Lock()
 	defer m.pauses.mu.Unlock()
 
-	if current := m.pauses.repos[req.key()]; current != nil {
-		return current.request
+	if current := m.pauses.repos[req.key()]; current != nil &&
+		cleanupRetryKey(current.request) == cleanupRetryKey(req) {
+		request := current.request
+		request.pauseGeneration = current.generation
+
+		return request
 	}
 
 	return req
@@ -219,8 +223,25 @@ func (m *Manager) currentCleanupRequest(req DeployRequest) DeployRequest {
 
 func (m *Manager) removalPredicate(req DeployRequest, contextName string, gate *syncWindowGate) func(*slog.Logger, string) bool {
 	return func(log *slog.Logger, name string) bool {
+		if m.cleanupRetrySuperseded(req) {
+			log.Debug("removal skipped because a newer source request superseded cleanup")
+			return false
+		}
+
 		dc := &deployConfig.Config{Name: name, Context: contextName}
-		if m.pauseFor(req, dc) {
+
+		m.pauses.mu.Lock()
+
+		paused := slices.ContainsFunc(req.DeployConfigs, func(cfg *deployConfig.Config) bool {
+			return sameStack(cfg, dc) && cfg.Pause
+		})
+		if current := m.pauses.repos[req.key()]; current != nil &&
+			cleanupRetryKey(current.request) == cleanupRetryKey(req) {
+			paused = m.pauseForLocked(req, dc)
+		}
+		m.pauses.mu.Unlock()
+
+		if paused {
 			log.Debug("removal skipped because deployment is paused")
 			return false
 		}

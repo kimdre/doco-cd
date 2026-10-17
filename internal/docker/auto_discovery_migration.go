@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/client"
 
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
@@ -43,6 +44,10 @@ func getAndMigrateSwarmAutoDiscoveryServices(ctx context.Context, cli client.API
 	var migrationErrors []error
 
 	for _, service := range response.Items {
+		if service.Spec.Labels[DocoCDJobLabels.JobEphemeral] == "true" {
+			continue
+		}
+
 		labels := maps.Clone(service.Spec.Labels)
 		if labels == nil {
 			labels = make(map[string]string)
@@ -128,7 +133,9 @@ func getStandaloneAutoDiscoveryServices(ctx context.Context, cli client.APIClien
 		}
 
 		for _, cont := range containers {
-			if len(cont.Names) == 0 {
+			if len(cont.Names) == 0 || cont.Labels[api.HookLabel] != "" ||
+				cont.Labels[DocoCDJobLabels.JobEphemeral] == "true" ||
+				cont.Labels["com.docker.swarm.service.name"] != "" {
 				continue
 			}
 

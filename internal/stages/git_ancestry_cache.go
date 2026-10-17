@@ -203,6 +203,29 @@ func NewGitAncestryCache() *GitAncestryCache {
 	}
 }
 
+// RevisionContains reports whether deployed equals or precedes revision. Unknown history is an error.
+func RevisionContains(mirrorDir, revision, deployed string, cache *GitAncestryCache) (bool, error) {
+	if !plumbing.IsHash(revision) || !plumbing.IsHash(deployed) {
+		return false, errors.New("cannot compare incomplete Git revisions")
+	}
+
+	if revision == deployed {
+		return true, nil
+	}
+
+	if mirrorDir == "" {
+		return false, errors.New("cannot compare Git revisions without a mirror")
+	}
+
+	return git.MirrorRead(mirrorDir, func(repo *gogit.Repository) (bool, error) {
+		ancestor, descendant := plumbing.NewHash(deployed), plumbing.NewHash(revision)
+
+		return cache.isAncestor(mirrorDir, ancestor, descendant, func() (bool, error) {
+			return cache.isAncestorFromHistory(repo, mirrorDir, ancestor, descendant)
+		})
+	})
+}
+
 // isAncestorFromHistory incrementally walks the latest commit's ancestry.
 // Each stack resumes where the previous one stopped rather than starting at
 // the latest commit again when stacks have different deployed revisions. The

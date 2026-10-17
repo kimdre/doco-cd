@@ -641,10 +641,16 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	removalReq.Origin = syncwindow.OriginAutomatic
 	removalGate := j.manager.newSyncWindowGate(removalReq, time.Now())
 
-	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
+	pending, cleanupErr := cleanupObsoleteAutoDiscoveredContainersResult(ctx, jobLog,
 		contextCLI, swarmMode, contextName, cleanupReq,
-		contextDCs, j.manager.notifier, j.manager.removalPredicate(cleanupReq, contextName, removalGate)); err != nil {
-		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))
+		contextDCs, j.manager.notifier, j.manager.removalPredicate(cleanupReq, contextName, removalGate))
+	// This event covers one context. It must not clear retries for other contexts.
+	if pending || cleanupErr != nil {
+		j.manager.scheduleCleanupRetry(ctx, cleanupReq, true)
+	}
+
+	if cleanupErr != nil {
+		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(cleanupErr))
 	}
 
 	// Enrich metadata with reconciliation event information for deploy notifications

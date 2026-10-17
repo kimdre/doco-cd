@@ -79,6 +79,8 @@ Tags such as `production` and `staging` share a repository-based artifact store,
 auto-discovery owners. Cleanup requires the same registry/repository, stable tag, and deployment config
 target (when available). Matching targets do not allow one tag to clean up another tag's stacks.
 A tag moving to a new digest does not change its ownership.
+Automatic cleanup retries resolve the source again instead of reusing a webhook's old digest.
+Each attempt still checks stable-tag ownership and the current deletion policy.
 
 The recorded `cd.doco.source.url` tag is authoritative, including when `repository_url` selects a Git
 deployment repository. For a digest-only recorded URL, cleanup can use

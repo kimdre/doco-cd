@@ -54,6 +54,7 @@ func TestObsoleteStackCleanupRetainsPausedDiscoveryScopes(t *testing.T) {
 			origin := deployConfig.AutoDiscoveryOrigin{
 				WorkingDirectory: tt.dir, ConfigTarget: tt.target, RepositoryURL: tt.repositoryURL,
 				Settings: deleteSettings, Pause: tt.pause, Context: tt.rootContext,
+				Revision: cleanupTestRevision,
 			}
 			origin.Settings.ScanDepth = tt.depth
 

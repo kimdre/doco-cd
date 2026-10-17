@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
@@ -186,7 +187,7 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		return newDeploymentError(errSwarmModeCheck, err, http.StatusInternalServerError)
 	}
 
-	result, err := d.sourcePreparer.Prepare(ctx, source.Request{
+	sourceRequest := source.Request{
 		Logger:         req.Logger,
 		JobTrigger:     req.JobTrigger,
 		SourceType:     req.SourceType,
@@ -198,7 +199,9 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		Deployments:    req.Deployments,
 		Payload:        req.Payload,
 		DataMountPoint: d.dataMountPoint,
-	})
+	}
+
+	result, err := d.sourcePreparer.Prepare(ctx, sourceRequest)
 	if err != nil {
 		statusCode, response := classifySourceFailure(err)
 
@@ -218,33 +221,33 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		}
 	}
 
-	repoData := stages.RepositoryData{
-		Source:            result.SourceType,
-		SourceUrl:         req.SourceRef,
-		ConfigSourceUrl:   req.SourceRef,
-		Name:              result.RepoName,
-		PathInternal:      result.PathInternal,
-		PathExternal:      result.PathExternal,
-		MirrorDir:         result.MirrorDir,
-		Revision:          result.Revision,
-		ResolvedReference: req.Ref,
-		ConfigRevision:    result.Revision,
-		ConfigPath:        result.PathExternal,
-		OCITrusted:        result.OCITrusted,
+	deploymentRequest := preparedDeploymentRequest(req, result)
+	deploymentRequest.Origin = DeploymentOrigin(ctx)
+	deploymentRequest.RefreshCleanup = func(ctx context.Context) (reconciliation.DeployRequest, func(), error) {
+		// Retry the current reference, not the commit or digest from the triggering webhook.
+		refresh := sourceRequest
+		refresh.Payload.CommitSHA = plumbing.ZeroHash
+		refresh.Payload.Before = plumbing.ZeroHash
+		refresh.Payload.After = plumbing.ZeroHash
+		refresh.Payload.Digest = ""
+
+		refresh.Payload.Trigger = ""
+		if refresh.Ref == "" {
+			refresh.Ref = result.Payload.Ref
+		}
+
+		current, err := d.sourcePreparer.Prepare(ctx, refresh)
+		if err != nil {
+			return reconciliation.DeployRequest{}, nil, err
+		}
+
+		request := preparedDeploymentRequest(req, current)
+		request.RefreshCleanup = deploymentRequest.RefreshCleanup
+
+		return request, current.Release, nil
 	}
 
-	if err := d.reconciler.Deploy(ctx, reconciliation.DeployRequest{
-		Logger:               req.Logger,
-		Metadata:             req.Metadata,
-		JobTrigger:           req.JobTrigger,
-		Repository:           repoData,
-		ConfigTarget:         req.CustomTarget,
-		DeployConfigs:        result.DeployConfigs,
-		AutoDiscoveryOrigins: result.AutoDiscoveryOrigins,
-		Payload:              &result.Payload,
-		TestName:             req.TestName,
-		Origin:               DeploymentOrigin(ctx),
-	}); err != nil {
+	if err := d.reconciler.Deploy(ctx, deploymentRequest); err != nil {
 		if errors.Is(err, stages.ErrSkipDeployment) {
 			// Ordinary poll skips succeed. Safety-policy suppression stays visible.
 			if req.JobTrigger == stages.JobTriggerPoll &&
@@ -260,4 +263,38 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 	}
 
 	return nil
+}
+
+func preparedDeploymentRequest(req DeploymentRequest, result source.Result) reconciliation.DeployRequest {
+	reference := req.Ref
+	if reference == "" {
+		reference = result.Payload.Ref
+	}
+
+	repoData := stages.RepositoryData{
+		Source:            result.SourceType,
+		SourceUrl:         req.SourceRef,
+		ConfigSourceUrl:   req.SourceRef,
+		Name:              result.RepoName,
+		PathInternal:      result.PathInternal,
+		PathExternal:      result.PathExternal,
+		MirrorDir:         result.MirrorDir,
+		Revision:          result.Revision,
+		ResolvedReference: reference,
+		ConfigRevision:    result.Revision,
+		ConfigPath:        result.PathExternal,
+		OCITrusted:        result.OCITrusted,
+	}
+
+	return reconciliation.DeployRequest{
+		Logger:               req.Logger,
+		Metadata:             req.Metadata,
+		JobTrigger:           req.JobTrigger,
+		Repository:           repoData,
+		ConfigTarget:         req.CustomTarget,
+		DeployConfigs:        result.DeployConfigs,
+		AutoDiscoveryOrigins: result.AutoDiscoveryOrigins,
+		Payload:              &result.Payload,
+		TestName:             req.TestName,
+	}
 }

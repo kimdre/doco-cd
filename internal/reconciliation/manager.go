@@ -79,6 +79,7 @@ func (dockerRuntimeQueries) ListManagedRepositoryServices(ctx context.Context, a
 // Manager owns reconciliation jobs, active-deployment tracking, scheduler
 // holds, and deployment admission state.
 type Manager struct {
+	cleanupRetries   cleanupRetryState
 	jobs             jobRegistry
 	deployments      deploymentTracker
 	schedulerHolds   schedulerHoldRegistry
@@ -164,6 +165,7 @@ type DeployRequest struct {
 	ConfigTarget         string
 	DeployConfigs        []*deployConfig.Config `validate:"dive,required"`
 	AutoDiscoveryOrigins []deployConfig.AutoDiscoveryOrigin
+	RefreshCleanup       func(context.Context) (DeployRequest, func(), error)
 	Payload              *webhook.ParsedPayload
 	TestName             string
 	// Origin decides how sync windows apply to the request. Empty means
@@ -316,6 +318,7 @@ func (m *Manager) Close() {
 		m.lifecycleMu.Lock()
 		m.closed = true
 		m.lifecycleMu.Unlock()
+		m.stopCleanupRetries()
 		m.deployWG.Wait()
 
 		jobs := m.jobs.removeAll()

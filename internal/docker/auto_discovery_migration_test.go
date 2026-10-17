@@ -3,8 +3,11 @@ package docker
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
 	swarmtypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
@@ -13,9 +16,14 @@ import (
 
 type autoDiscoveryMigrationTestClient struct {
 	client.APIClient
+	containers  []container.Summary
 	services    []swarmtypes.Service
 	updateError error
 	updatedIDs  []string
+}
+
+func (c *autoDiscoveryMigrationTestClient) ContainerList(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+	return client.ContainerListResult{Items: c.containers}, nil
 }
 
 func (c *autoDiscoveryMigrationTestClient) ServiceList(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
@@ -187,5 +195,58 @@ func TestGetAndMigrateSwarmAutoDiscoveryServices_ContinuesAfterUpdateFailure(t *
 
 	if len(apiClient.updatedIDs) != 2 {
 		t.Fatalf("updates = %v, want both services attempted", apiClient.updatedIDs)
+	}
+}
+
+func TestAutoDiscoveryCleanupInventoryExcludesJobArtifacts(t *testing.T) {
+	t.Parallel()
+
+	apiClient := &autoDiscoveryMigrationTestClient{}
+
+	for name, extra := range map[string]map[string]string{
+		"workload":   {},
+		"hook":       {api.HookLabel: "pre_start"},
+		"ephemeral":  {DocoCDJobLabels.JobEphemeral: "true"},
+		"swarm-task": {"com.docker.swarm.service.name": "stack_app"},
+	} {
+		labels := map[string]string{
+			DocoCDLabels.Deployment.AutoDiscovery:       "true",
+			DocoCDLabels.Deployment.AutoDiscoveryConfig: "{enabled: true, delete: true}",
+			DocoCDLabels.Deployment.Name:                "stack",
+		}
+		maps.Copy(labels, extra)
+
+		apiClient.containers = append(apiClient.containers, container.Summary{
+			Names: []string{"/" + name}, Labels: labels,
+		})
+	}
+
+	for _, inventory := range []func(context.Context, client.APIClient) (map[Service]map[string]string, error){
+		getStandaloneAutoDiscoveryServices,
+		func(ctx context.Context, apiClient client.APIClient) (map[Service]map[string]string, error) {
+			return GetDeploymentServices(ctx, apiClient, false, "stack")
+		},
+	} {
+		services, err := inventory(t.Context(), apiClient)
+		if err != nil || len(services) != 1 || services["/workload"] == nil {
+			t.Fatalf("cleanup inventory = %v, %v; want only the workload", services, err)
+		}
+	}
+
+	apiClient.services = []swarmtypes.Service{{
+		ID: "ephemeral",
+		Spec: swarmtypes.ServiceSpec{Annotations: swarmtypes.Annotations{Labels: map[string]string{
+			legacyAutoDiscoverLabel: "true", DocoCDJobLabels.JobEphemeral: "true",
+		}}},
+	}}
+
+	services, err := getAndMigrateSwarmAutoDiscoveryServices(t.Context(), apiClient)
+	if err != nil || len(services) != 0 || len(apiClient.updatedIDs) != 0 {
+		t.Fatalf("ephemeral Swarm services = %v, %v; updates = %v", services, err, apiClient.updatedIDs)
+	}
+
+	services, err = GetDeploymentServices(t.Context(), apiClient, true, "stack")
+	if err != nil || len(services) != 0 {
+		t.Fatalf("ephemeral Swarm deployment services = %v, %v; want no workloads", services, err)
 	}
 }

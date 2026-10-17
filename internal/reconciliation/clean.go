@@ -41,12 +41,24 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 	req DeployRequest, deployConfigs []*deployConfig.Config,
 	notifier notification.Sender, allowRemoval func(stackLog *slog.Logger, stackName string) bool,
 ) error {
+	_, err := cleanupObsoleteAutoDiscoveredContainersResult(ctx, jobLog, dockerCli, swarmMode,
+		contextName, req, deployConfigs, notifier, allowRemoval)
+
+	return err
+}
+
+func cleanupObsoleteAutoDiscoveredContainersResult(ctx context.Context, jobLog *slog.Logger,
+	dockerCli command.Cli, swarmMode bool, contextName string,
+	req DeployRequest, deployConfigs []*deployConfig.Config,
+	notifier notification.Sender, allowRemoval func(stackLog *slog.Logger, stackName string) bool,
+) (bool, error) {
 	c := newObsoleteStackCleanup(jobLog, dockerCli, swarmMode, contextName, req, deployConfigs)
+	c.allowRemoval = allowRemoval
 
 	serviceLabels, err := docker.GetAutoDiscoveryServices(ctx, dockerCli.Client(), swarmMode)
 	if err != nil {
 		if serviceLabels == nil {
-			return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
+			return true, fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
 		}
 
 		c.log.Warn("failed to migrate auto-discovery labels for some services; continuing cleanup",
@@ -87,6 +99,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 		}
 
 		if allowRemoval != nil && !allowRemoval(stackLog, stackName) {
+			c.pending = true
 			continue
 		}
 
@@ -95,7 +108,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 		}
 	}
 
-	return errors.Join(errs...)
+	return c.pending || len(errs) > 0, errors.Join(errs...)
 }
 
 // obsoleteStackCleanup holds the state of one cleanup run.
@@ -109,8 +122,10 @@ type obsoleteStackCleanup struct {
 	present set.Set[string]
 	targets set.Set[string]
 	// origins are configured discovery scopes, including scopes with no current deployments.
-	origins  []deployConfig.AutoDiscoveryOrigin
-	ancestry *stages.GitAncestryCache
+	origins      []deployConfig.AutoDiscoveryOrigin
+	ancestry     *stages.GitAncestryCache
+	pending      bool
+	allowRemoval func(*slog.Logger, string) bool
 }
 
 func newObsoleteStackCleanup(jobLog *slog.Logger, dockerCli command.Cli, swarmMode bool, contextName string,
@@ -125,6 +140,9 @@ func newObsoleteStackCleanup(jobLog *slog.Logger, dockerCli command.Cli, swarmMo
 		present:     set.New[string](),
 		targets:     set.New[string](),
 		ancestry:    stages.NewGitAncestryCache(),
+	}
+	if req.ConfigTarget != "" || len(deployConfigs) == 0 && len(req.AutoDiscoveryOrigins) == 0 {
+		c.targets.Add(strings.TrimSpace(req.ConfigTarget))
 	}
 
 	seen := set.New[deployConfig.AutoDiscoveryOrigin]()
@@ -203,17 +221,28 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	cloneURL := c.req.Repository.SourceUrl
 
 	labelURL := labels[docker.DocoCDLabels.Source.URL]
+	if strings.TrimSpace(cloneURL) == "" || strings.TrimSpace(labelURL) == "" {
+		c.pending = true
+
+		stackLog.Warn("keeping obsolete stack because its source ownership is unknown")
+
+		return deployConfig.AutoDiscoveryConfig{}, false
+	}
+
 	if c.req.Repository.Source == config.SourceTypeOCI &&
 		(strings.TrimSpace(cloneURL) == "" || config.OciUrl(cloneURL).Validate() != nil ||
 			strings.TrimSpace(labelURL) == "" || config.OciUrl(labelURL).Validate() != nil) {
 		stackLog.Warn("skipping obsolete OCI stack with missing or invalid source URL")
+
+		c.pending = true
 
 		return deployConfig.AutoDiscoveryConfig{}, false
 	}
 
 	cloneURLRepoName := c.sourceRepoName(cloneURL)
 	labelURLRepoName := c.sourceRepoName(labelURL)
-	match := cloneURLRepoName == labelURLRepoName
+	match := strings.TrimSpace(cloneURL) != "" && strings.TrimSpace(labelURL) != "" &&
+		cloneURLRepoName != "" && cloneURLRepoName == labelURLRepoName
 
 	stackLog.Debug("checking auto-discovered stack for repository match",
 		slog.Group("repo_url",
@@ -242,15 +271,23 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 	if len(owners) == 0 {
 		// No current auto-discovery config scans the stack's directory, fall back to the
 		// policy the stack was deployed with.
-		if stages.IsStaleRevision(c.req.Repository.MirrorDir, c.req.Repository.Revision, deployed, c.ancestry, stackLog) {
-			return deployConfig.AutoDiscoveryConfig{}, false
-		}
-
 		policy := docker.ParseAutoDiscoveryConfig(labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig])
 		if !policy.Delete {
 			stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
 
 			return deployConfig.AutoDiscoveryConfig{}, false
+		}
+
+		if !c.configRevisionAllowsRemoval(stackLog, labels) {
+			return deployConfig.AutoDiscoveryConfig{}, false
+		}
+
+		if c.req.Repository.Source != config.SourceTypeOCI {
+			if _, sameSource := artifactRelativeDir(labels[docker.DocoCDLabels.Deployment.WorkingDir],
+				c.sourceRepoName(cloneURL)); sameSource &&
+				!c.revisionAllowsRemoval(stackLog, c.req.Repository.MirrorDir, c.req.Repository.Revision, deployed) {
+				return deployConfig.AutoDiscoveryConfig{}, false
+			}
 		}
 
 		return policy, true
@@ -276,11 +313,6 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 			return deployConfig.AutoDiscoveryConfig{}, false
 		}
 
-		if (!hasReferenceOwner || cleanupRevisionApplies(owner.Reference, deployedReference)) &&
-			stages.IsStaleRevision(owner.MirrorDir, owner.Revision, deployed, c.ancestry, stackLog) {
-			return deployConfig.AutoDiscoveryConfig{}, false
-		}
-
 		policy.Delete = policy.Delete && owner.Settings.Delete
 		policy.RemoveVolumes = policy.RemoveVolumes && owner.Settings.RemoveVolumes
 		policy.RemoveImages = policy.RemoveImages && owner.Settings.RemoveImages
@@ -292,7 +324,59 @@ func (c *obsoleteStackCleanup) servicePolicy(stackLog *slog.Logger, labels map[s
 		return deployConfig.AutoDiscoveryConfig{}, false
 	}
 
+	if !c.configRevisionAllowsRemoval(stackLog, labels) {
+		return deployConfig.AutoDiscoveryConfig{}, false
+	}
+
+	for _, owner := range owners {
+		if c.req.Repository.Source == config.SourceTypeOCI && owner.RepositoryURL == "" {
+			continue
+		}
+
+		if (!hasReferenceOwner || cleanupRevisionApplies(owner.Reference, deployedReference)) &&
+			!c.revisionAllowsRemoval(stackLog, owner.MirrorDir, owner.Revision, deployed) {
+			return deployConfig.AutoDiscoveryConfig{}, false
+		}
+	}
+
 	return policy, true
+}
+
+func (c *obsoleteStackCleanup) configRevisionAllowsRemoval(log *slog.Logger, labels map[string]string) bool {
+	if c.req.Repository.Source == config.SourceTypeOCI {
+		return true
+	}
+
+	deployed := labels[docker.DocoCDLabels.Source.ConfigRevision]
+	if deployed == "" {
+		// Legacy labels are comparable only when the deployment uses the config source itself.
+		if _, sameSource := artifactRelativeDir(labels[docker.DocoCDLabels.Deployment.WorkingDir],
+			c.sourceRepoName(c.req.Repository.SourceUrl)); !sameSource {
+			c.pending = true
+
+			log.Warn("keeping obsolete stack because its config-source revision is unknown")
+
+			return false
+		}
+
+		deployed = labels[docker.DocoCDLabels.Deployment.CommitSHA]
+	}
+
+	return c.revisionAllowsRemoval(log, c.req.Repository.MirrorDir, c.req.Repository.Revision, deployed)
+}
+
+func (c *obsoleteStackCleanup) revisionAllowsRemoval(log *slog.Logger, mirror, revision, deployed string) bool {
+	allowed, err := stages.RevisionContains(mirror, strings.TrimSpace(revision), strings.TrimSpace(deployed), c.ancestry)
+	if allowed && err == nil {
+		return true
+	}
+
+	c.pending = true
+
+	log.Warn("keeping obsolete stack because the scan is not proven current",
+		slog.String("scanned_revision", revision), slog.String("deployed_revision", deployed), logger.ErrAttr(err))
+
+	return false
 }
 
 // ociOwnerMatches separates independent tags sharing one source store. A digest-only source
@@ -316,6 +400,8 @@ func (c *obsoleteStackCleanup) ociOwnerMatches(stackLog *slog.Logger, labels map
 
 	stackOwner := ociCleanupReference(labels[docker.DocoCDLabels.Source.URL], stackRef)
 	if runOwner == "" || stackOwner == "" {
+		c.pending = true
+
 		stackLog.Warn("skipping obsolete OCI stack because its stable reference ownership is missing or ambiguous",
 			slog.String("run_reference", runOwner), slog.String("stack_reference", stackOwner))
 
@@ -459,6 +545,25 @@ func (c *obsoleteStackCleanup) remove(ctx context.Context, stackLog *slog.Logger
 	if deploymentFingerprint(current) != deploymentFingerprint(services) {
 		stackLog.Info("skipping removal of obsolete auto-discovered stack as it was redeployed during cleanup")
 
+		c.pending = true
+
+		return nil
+	}
+
+	currentPolicy, allowed := c.removalPolicy(stackLog, current)
+	if !allowed {
+		return nil
+	}
+
+	policy.RemoveVolumes = policy.RemoveVolumes && currentPolicy.RemoveVolumes
+	policy.RemoveImages = policy.RemoveImages && currentPolicy.RemoveImages
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if c.allowRemoval != nil && !c.allowRemoval(stackLog, stackName) {
+		c.pending = true
 		return nil
 	}
 
@@ -472,6 +577,15 @@ func (c *obsoleteStackCleanup) remove(ctx context.Context, stackLog *slog.Logger
 	dockerCli := c.dockerCli
 	if err := docker.DestroyStack(c.log, &ctx, &dockerCli, removeConfig, c.swarmMode); err != nil {
 		return err
+	}
+
+	remaining, err := docker.GetDeploymentServices(ctx, c.dockerCli.Client(), c.swarmMode, stackName)
+	if err != nil {
+		return fmt.Errorf("failed to verify obsolete stack removal: %w", err)
+	}
+
+	if len(remaining) > 0 {
+		return fmt.Errorf("obsolete stack %q still has %d workloads after removal", stackName, len(remaining))
 	}
 
 	stackLog.Info("removed obsolete auto-discovered stack")
@@ -507,6 +621,14 @@ func deploymentFingerprint(services map[docker.Service]map[string]string) string
 			labels[docker.DocoCDLabels.Deployment.Timestamp],
 			labels[docker.DocoCDLabels.Deployment.CommitSHA],
 			labels[docker.DocoCDLabels.Deployment.ConfigHash],
+			labels[docker.DocoCDLabels.Deployment.ConfigTarget],
+			labels[docker.DocoCDLabels.Deployment.TargetRef],
+			labels[docker.DocoCDLabels.Deployment.WorkingDir],
+			labels[docker.DocoCDLabels.Deployment.AutoDiscovery],
+			labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig],
+			labels[docker.DocoCDLabels.Source.URL],
+			labels[docker.DocoCDLabels.Source.Type],
+			labels[docker.DocoCDLabels.Source.ConfigRevision],
 		}, "\x00"))
 	}
 
