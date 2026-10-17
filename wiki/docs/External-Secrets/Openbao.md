@@ -18,7 +18,28 @@ To use OpenBao, you need to set the following environment variables:
 | `SECRET_PROVIDER_ACCESS_TOKEN`      | Access token for authenticating with the secret provider        |
 | `SECRET_PROVIDER_ACCESS_TOKEN_FILE` | Path to a file containing the access token inside the container |
 
+!!! note "Set `SECRET_PROVIDER_ACCESS_TOKEN` or `SECRET_PROVIDER_ACCESS_TOKEN_FILE`, not both."
+
 For the environment variables that control [automatic certificate rotation](#automatic-certificate-rotation), see below.
+
+### Access token rotation
+
+With `SECRET_PROVIDER_ACCESS_TOKEN_FILE`, Doco-CD reads the file again every time it fetches something from
+OpenBao. If the token in the file changes during runtime, the next request simply uses the new one and you don't have
+to restart anything. A token set with `SECRET_PROVIDER_ACCESS_TOKEN` is only read at startup.
+SOPS-encrypted token files work as well.
+
+!!! note "Doco-CD does not renew the token itself"
+    Let something else handle that, for example [OpenBao Agent](https://openbao.org/docs/agent-and-proxy/agent/), 
+    and have it write each new token to the file.
+
+If the file is missing, empty or can't be decrypted, the request fails with an error. Doco-CD never falls
+back to the previous token. As soon as the token file is valid again, the next request works.
+
+!!! tip "Mount the directory, not the file"
+    Write the new token to a temporary file and move it over the old one, so Doco-CD never reads a
+    half-written token. Then mount the directory that contains the token file. A single bind-mounted
+    file keeps pointing at the old file after it is replaced on the host.
 
 ## Deployment configuration
 
