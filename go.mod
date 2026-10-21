@@ -26,7 +26,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.9.2+incompatible
-	github.com/docker/compose/v5 v5.6.0
+	github.com/docker/compose/v5 v5.6.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getkin/kin-openapi v0.151.0
 	github.com/getsops/sops/v3 v3.13.3
