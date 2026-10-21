@@ -71,7 +71,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 
 FROM gcr.io/distroless/base-debian13@sha256:65be09d063b5d4737995ca5a17bb7e12ed990412751ec8ec212c9d74db257639 AS distroless-base
 
-FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS ssh-client
+FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS ssh-client
 
 # Copy the distroless base filesystem so we can skip libraries already present there.
 COPY --from=distroless-base / /distroless-root/
