@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -51,6 +52,27 @@ func shouldSkipDeployment(retryAfterFailure bool,
 		!ignoredChangesNeedDeploy &&
 		!imagesChanged &&
 		len(mismatchServices) == 0
+}
+
+// failedDeployRetryChange returns the change that makes a retry re-apply a failed deployment.
+// It is scoped to the services the failure was attributed to, as long as the project still has
+// all of them. Otherwise its service list is empty, which force-recreates the whole project:
+// the failed part (e.g. a lifecycle hook) is not attributable to one service.
+func failedDeployRetryChange(failure docker.DeploymentFailure, project *types.Project) docker.Change {
+	change := docker.Change{Type: docker.ChangeTypeFailedDeployRetry}
+	if len(failure.Services) == 0 || project == nil {
+		return change
+	}
+
+	for _, name := range failure.Services {
+		if _, ok := project.Services[name]; !ok {
+			return change
+		}
+	}
+
+	change.Services = slices.Clone(failure.Services)
+
+	return change
 }
 
 // shouldTryCachedProjectSkip reports whether the warm-skip cache may be consulted.
@@ -356,7 +378,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 	// Only a failed deploy stage leaves half-applied containers behind (e.g. a
 	// lifecycle hook that never finished), and a plain re-up of an unchanged
-	// project would touch nothing. Force recreate so the retry re-runs it all.
+	// project would touch nothing. Force recreate so the retry re-runs it all,
+	// or only the services that did not start when the failure names them:
+	// the rest of the project was already applied.
 	retryForceRecreate := retryAfterFailure && lastFailure.Stage == string(StageDeploy)
 
 	// Services whose artifact was removed must be recreated even if nothing changed, see staleArtifactServices.
@@ -453,10 +477,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		if retryForceRecreate {
-			// An empty service list force-recreates the whole project.
-			s.DeployState.changedServices = append(s.DeployState.changedServices, docker.Change{
-				Type: docker.ChangeTypeFailedDeployRetry,
-			})
+			s.DeployState.changedServices = append(s.DeployState.changedServices, failedDeployRetryChange(lastFailure, s.Docker.Project))
 		}
 
 		if len(staleArtifacts) > 0 {
@@ -634,11 +655,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		if retryForceRecreate {
-			// Empty service list force-recreates the whole project: the failed
-			// part (e.g. a lifecycle hook) is not attributable to one service.
-			changedServices = append(changedServices, docker.Change{
-				Type: docker.ChangeTypeFailedDeployRetry,
-			})
+			changedServices = append(changedServices, failedDeployRetryChange(lastFailure, s.Docker.Project))
 		}
 
 		if len(staleArtifacts) > 0 {

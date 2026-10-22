@@ -1026,3 +1026,41 @@ func TestDropSchedulerHeldMismatches_NoTracker(t *testing.T) {
 		t.Fatalf("expected mismatches to pass through unchanged, got %v", got)
 	}
 }
+
+func TestFailedDeployRetryChange(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Services: types.Services{
+			"api": {Name: "api"},
+			"web": {Name: "web"},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		services []string
+		project  *types.Project
+		want     []string // nil means force the whole project
+	}{
+		{name: "unattributed failure forces whole project"},
+		{name: "attributed failure only forces its services", services: []string{"api"}, project: project, want: []string{"api"}},
+		{name: "service no longer in project forces whole project", services: []string{"api", "removed"}, project: project},
+		{name: "unloaded project forces whole project", services: []string{"api"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := failedDeployRetryChange(docker.DeploymentFailure{Stage: string(StageDeploy), Services: tt.services}, tt.project)
+			if got.Type != docker.ChangeTypeFailedDeployRetry {
+				t.Fatalf("Type = %q, want %q", got.Type, docker.ChangeTypeFailedDeployRetry)
+			}
+
+			if !slices.Equal(got.Services, tt.want) {
+				t.Fatalf("Services = %v, want %v", got.Services, tt.want)
+			}
+		})
+	}
+}

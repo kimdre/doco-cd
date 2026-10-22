@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -23,7 +24,8 @@ func TestDeploymentFailureRoundtrip(t *testing.T) {
 		Stack:      stack,
 		CommitSHA:  "573a16e",
 		Stage:      "deploy",
-		Error:      "hook exited with status 1",
+		Error:      "service web is unhealthy",
+		Services:   []string{"web"},
 		FailedAt:   time.Now().UTC().Truncate(time.Second),
 	}
 
@@ -34,8 +36,16 @@ func TestDeploymentFailureRoundtrip(t *testing.T) {
 		t.Fatal("expected failure record after recording")
 	}
 
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("record mismatch: got %+v, want %+v", got, want)
+	}
+
+	// The record must not share its services with the failures handed in or out.
+	want.Services[0] = "changed-by-caller"
+	got.Services[0] = "changed-by-reader"
+
+	if again, _ := GetDeploymentFailure(repo, stack); !slices.Equal(again.Services, []string{"web"}) {
+		t.Fatalf("recorded services = %v, want [web]", again.Services)
 	}
 
 	ClearDeploymentFailure(repo, stack)
@@ -88,6 +98,11 @@ func TestForcedRecreateServices(t *testing.T) {
 			name:    "unscoped change forces whole project",
 			changes: []Change{{Type: "configs", Services: []string{"web"}}, {Type: ChangeTypeFailedDeployRetry}},
 			want:    nil,
+		},
+		{
+			name:    "scoped retry only forces the failed services",
+			changes: []Change{{Type: "configs", Services: []string{"web"}}, {Type: ChangeTypeFailedDeployRetry, Services: []string{"db"}}},
+			want:    []string{"db", "web"},
 		},
 	}
 

@@ -490,11 +490,12 @@ func assessStartedServiceStates(containers []api.ContainerSummary, targetService
 		}
 
 		if status.unhealthy {
-			return false, nil, fmt.Errorf("service %s is unhealthy", serviceName)
+			return false, nil, newServiceStartError([]string{serviceName}, fmt.Errorf("service %s is unhealthy", serviceName))
 		}
 
 		if status.terminal != "" && !status.running {
-			return false, nil, fmt.Errorf("service %s has a %s container", serviceName, status.terminal)
+			return false, nil, newServiceStartError([]string{serviceName},
+				fmt.Errorf("service %s has a %s container", serviceName, status.terminal))
 		}
 
 		if !status.running {
@@ -523,6 +524,36 @@ type oneShotExitError struct {
 
 func (e *oneShotExitError) Error() string {
 	return fmt.Sprintf("one-shot service %s exited with code %d", e.service, e.code)
+}
+
+// ServiceStartError reports long-running services that did not become ready
+// after the deployment created and started them. Everything else in the
+// project was already applied, so a retry only needs to recreate these.
+type ServiceStartError struct {
+	Services []string
+	err      error
+}
+
+func newServiceStartError(services []string, err error) *ServiceStartError {
+	return &ServiceStartError{Services: slices.Clone(services), err: err}
+}
+
+func (e *ServiceStartError) Error() string {
+	return e.err.Error()
+}
+
+func (e *ServiceStartError) Unwrap() error {
+	return e.err
+}
+
+// FailedStartServices returns the services a deployment failure is attributed
+// to, or nil if the failure is not a ServiceStartError.
+func FailedStartServices(err error) []string {
+	if startErr, ok := errors.AsType[*ServiceStartError](err); ok {
+		return slices.Clone(startErr.Services)
+	}
+
+	return nil
 }
 
 // projectContainerLister abstracts container listing so the wait loop can be
@@ -597,8 +628,8 @@ func waitForStartedServicesWith(ctx context.Context, listContainers projectConta
 			lastOneShotFailure = ""
 
 			if time.Now().After(deadline) {
-				return lifecycle.MarkTimedOut(fmt.Errorf("timed out after %s waiting for services to become ready: %s",
-					timeout, strings.Join(waiting, ", ")))
+				return lifecycle.MarkTimedOut(newServiceStartError(waiting,
+					fmt.Errorf("timed out after %s waiting for services to become ready: %s", timeout, strings.Join(waiting, ", "))))
 			}
 		}
 

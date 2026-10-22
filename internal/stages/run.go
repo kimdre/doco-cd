@@ -330,6 +330,7 @@ func (s *StageManager) recordDeploymentFailure(stageName StageName, cause error)
 		CommitSHA:  s.Repository.Revision,
 		Stage:      string(stageName),
 		Error:      cause.Error(),
+		Services:   docker.FailedStartServices(cause),
 	}, lifecycle.IsCanceled(cause))
 }
 
