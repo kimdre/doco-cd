@@ -38,7 +38,7 @@ require (
 	github.com/google/go-containerregistry v0.22.1
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
-	github.com/infisical/go-sdk v0.8.0
+	github.com/infisical/go-sdk v0.9.0
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
 	github.com/moby/buildkit v0.34.1
 	github.com/moby/moby/api v1.56.1
