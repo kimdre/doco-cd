@@ -195,6 +195,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		s.Log = s.Log.With(
 			slog.String("stack", s.DeployConfig.Name),
 			slog.String("repository", s.Repository.Name),
+			slog.String("revision", s.Repository.Revision),
 		)
 
 		return nil
@@ -365,12 +366,14 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		s.Log = s.Log.With(
 			slog.String("stack", s.DeployConfig.Name),
 			slog.String("repository", s.Repository.Name),
+			slog.String("revision", s.Repository.Revision),
 		)
 	} else {
 		s.Log = s.Log.With(
 			slog.String("stack", s.DeployConfig.Name),
 			slog.String("repository", s.Repository.Name),
 			slog.String("reference", s.DeployConfig.Reference),
+			slog.String("revision", s.Repository.Revision),
 		)
 	}
 
