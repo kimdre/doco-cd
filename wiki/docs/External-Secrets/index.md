@@ -143,6 +143,51 @@ Files can also be [SOPS-encrypted](../Advanced/Encryption.md), the same way encr
 !!! note "Inline entries take precedence"
     `external_secrets_files` are merged first, then `external_secrets` entries are applied on top. If the same name is defined in both, the inline value from `external_secrets` wins.
 
+### Fetching Secrets in Bulk
+
+If a stack needs many secrets, you do not have to list each one in `external_secrets`.
+Set `external_secrets_paths` to a list of provider paths instead. Doco-CD fetches every secret below each path and makes it available as a variable:
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets_paths:
+  - path: 0db45926-c97c-40d4-a3aa-fefd5d5fb492:prod:/myapp/   # Provider specific path, see the provider pages
+    prefix: MYAPP_                                           # Optional, added in front of every variable name
+    recursive: true                                          # Optional, also fetch secrets in sub folders
+```
+
+| Key         | Description                                                                                  | Default |
+|-------------|----------------------------------------------------------------------------------------------|---------|
+| `path`      | Provider specific path. Required, see the provider pages for the format.                     |         |
+| `prefix`    | Text added in front of every variable name.                                                  | `""`    |
+| `recursive` | Also fetch secrets in sub folders. Ignored by providers without folders.                     | `false` |
+
+Variable names are built from the secret names. All letters become upper case and every other character, such as `-`, `.` or `/`, becomes an underscore.
+A name that starts with a digit gets an underscore in front. With the example above, a secret named `db-password` is available as `$MYAPP_DB_PASSWORD` in your Compose file.
+
+!!! note "Supported providers"
+    Bulk fetching is available for [Infisical](Infisical.md#fetching-all-secrets-of-a-path), [OpenBao](Openbao.md#fetching-all-secrets-of-a-path) (KV v2),
+    [AWS Secrets Manager](AWS-Secrets-Manager.md#fetching-all-secrets-of-a-path), [Azure Key Vault](Azure-Key-Vault.md#fetching-all-secrets-of-a-path)
+    and [Bitwarden Secrets Manager](Bitwarden-Secrets-Manager.md#fetching-all-secrets-of-a-path).
+    The [1Password](1Password.md) and [Webhook](Webhook.md) providers do not support it. The deployment fails with an error if you use `external_secrets_paths` with them.
+
+!!! note "Precedence"
+    Secrets from `external_secrets_paths` have the lowest priority. The order is:
+    `external_secrets_paths` < `external_secrets_files` < `external_secrets`.
+    If a name is defined more than once, the entry with the higher priority wins.
+
+!!! warning "Name collisions fail the deployment"
+    If two secrets in `external_secrets_paths` result in the same variable name (for example `db-password` and `DB_PASSWORD`), the deployment fails.
+    Use a different `prefix` for each path to avoid this. The error message names the colliding secrets but never contains secret values.
+
+!!! info "Things to know"
+    - The variables are only available for [Compose interpolation](#using-external-secrets-in-deployments). A secret reaches a container only if your Compose file references it.
+    - A path without any secrets does not fail the deployment. Doco-CD logs a warning instead.
+    - Changed secret values trigger a redeployment in the same way as values from `external_secrets`.
+    - [`INTERPOLATE_EXTERNAL_SECRETS`](#with-interpolation) also applies to `path`. [`INTERPOLATE_RESOLVED_SECRETS`](#referencing-other-resolved-secrets) applies to the fetched values.
+    - Fetching everything below a path needs list permissions in the provider. Grant the access token only the paths it needs.
+    - A [nested `.doco-cd.yml`](../Deploy-Settings.md#merge-behavior) with `external_secrets_paths` replaces the list of the base config.
+
 ### Referencing Other Resolved Secrets
 
 A resolved secret's value can itself reference another external secret by name, letting you compose one secret from others without duplicating values in your Compose file.

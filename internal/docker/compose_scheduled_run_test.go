@@ -44,6 +44,17 @@ func (s *stubSecretProvider) ResolveSecretReferences(_ context.Context, _ map[st
 	return s.resolved, s.err
 }
 
+// stubBulkProvider adds bulk path support to stubSecretProvider.
+type stubBulkProvider struct {
+	stubSecretProvider
+
+	byPath map[string]map[string]string
+}
+
+func (s *stubBulkProvider) GetSecretsByPath(_ context.Context, path string, _ bool) (map[string]string, error) {
+	return s.byPath[path], nil
+}
+
 // newStubProvider returns a secretprovider.SecretProvider backed by stub.
 func newStubProvider(resolved map[string]string, err error) secretprovider.SecretProvider {
 	var sp secretprovider.SecretProvider = &stubSecretProvider{resolved: resolved, err: err}
@@ -1075,6 +1086,56 @@ func TestPrepareComposeScheduledDeployConfig(t *testing.T) {
 
 		if cfg.Internal.Environment["API_KEY"] != "abc123" {
 			t.Fatalf("expected API_KEY from provider, got %q", cfg.Internal.Environment["API_KEY"])
+		}
+	})
+
+	t.Run("resolves bulk secret paths", func(t *testing.T) {
+		t.Parallel()
+
+		provider := &stubBulkProvider{
+			resolved: map[string]string{"SECRET": "explicit"},
+			byPath: map[string]map[string]string{
+				"apps": {"db-password": "bulk-pw", "SECRET": "bulk-secret"},
+			},
+		}
+
+		cfg := &deploy.Config{
+			Name:             "project-a",
+			WorkingDirectory: ".",
+			ExternalSecrets: map[string]secrettypes.ExternalSecretRef{
+				"SECRET": {LegacyRef: "store/secret"}, //nolint:gosec // test data, not real credentials
+			},
+			ExternalSecretsPaths: []secrettypes.ExternalSecretsPath{{Path: "apps", Prefix: "APP_"}},
+		}
+
+		repoPath := t.TempDir()
+		if err := prepareComposeScheduledDeployConfig(context.Background(), cfg, repoPath, repoPath, provider, ScheduledComposeOptions{}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got := cfg.Internal.Environment["APP_DB_PASSWORD"]; got != "bulk-pw" {
+			t.Fatalf("expected APP_DB_PASSWORD from bulk path, got %q", got)
+		}
+
+		if got := cfg.Internal.Environment["SECRET"]; got != "explicit" {
+			t.Fatalf("expected explicit secret to win, got %q", got)
+		}
+	})
+
+	t.Run("bulk secret paths need a provider with bulk support", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &deploy.Config{
+			Name:                 "project-a",
+			WorkingDirectory:     ".",
+			ExternalSecretsPaths: []secrettypes.ExternalSecretsPath{{Path: "apps"}},
+		}
+
+		repoPath := t.TempDir()
+
+		err := prepareComposeScheduledDeployConfig(context.Background(), cfg, repoPath, repoPath, newStubProvider(nil, nil), ScheduledComposeOptions{})
+		if !errors.Is(err, secrettypes.ErrBulkNotSupported) {
+			t.Fatalf("expected ErrBulkNotSupported, got %v", err)
 		}
 	})
 

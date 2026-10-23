@@ -42,7 +42,10 @@ var (
 	pkiRoleRefRegexp = regexp.MustCompile(PKIRoleRefFormat)
 )
 
-var ErrInvalidSecretReference = errors.New("invalid secret reference")
+var (
+	ErrInvalidSecretReference = errors.New("invalid secret reference")
+	ErrDuplicateSecretName    = errors.New("duplicate secret name")
+)
 
 type Provider struct {
 	// Client keeps the startup token. With a token file, operations use copies with the current token.
@@ -199,6 +202,23 @@ func (p *Provider) GetSecret(ctx context.Context, ref string) (string, error) {
 	}
 
 	return strValue, nil
+}
+
+// GetSecretsByPath retrieves all values below a KVv2 path.
+// The path format is "kv:<namespace(optional)>:<secretEngine>:<path>". The path can be a secret
+// or a folder. See GetSecretsByPath in kv2.go for the returned names.
+func (p *Provider) GetSecretsByPath(ctx context.Context, path string, recursive bool) (map[string]string, error) {
+	namespace, engineName, secretPath, err := parseBulkPath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := p.namespaceClient(namespace, false)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetSecretsByPath(ctx, c, engineName, secretPath, recursive)
 }
 
 // GetSecrets retrieves multiple secrets from Secrets Manager using the provided list of secret references.
@@ -608,4 +628,28 @@ func parseReference(ref string) (namespace, engineType, engineName, id, key stri
 	}
 
 	return "", "", "", "", "", fmt.Errorf("%w: expected format 'kv:<namespace(optional)>:<secretEngine>:<secretName>:<key>', got %q", ErrInvalidSecretReference, ref)
+}
+
+// parseBulkPath parses a path with the format "kv:<namespace(optional)>:<secretEngine>:<path>".
+func parseBulkPath(path string) (namespace, engineName, secretPath string, err error) {
+	const defaultNamespace = "root"
+
+	const format = "expected format 'kv:<namespace(optional)>:<secretEngine>:<path>'"
+
+	parts := strings.Split(path, ":")
+
+	switch len(parts) {
+	case 3:
+		namespace, engineName, secretPath = defaultNamespace, parts[1], parts[2]
+	case 4:
+		namespace, engineName, secretPath = parts[1], parts[2], parts[3]
+	default:
+		return "", "", "", fmt.Errorf("%w: %s, got %q", ErrInvalidSecretReference, format, path)
+	}
+
+	if parts[0] != "kv" || namespace == "" || engineName == "" {
+		return "", "", "", fmt.Errorf("%w: %s, got %q", ErrInvalidSecretReference, format, path)
+	}
+
+	return namespace, engineName, secretPath, nil
 }

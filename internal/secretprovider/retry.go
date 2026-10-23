@@ -3,6 +3,7 @@ package secretprovider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"net"
 	"net/http"
@@ -153,6 +154,22 @@ func (r *RetryingSecretProvider) DeploymentHasRevokedCertificate(ctx context.Con
 	return retry.NewWithData[bool](newOptsWithContext(ctx)...).Do(
 		func() (bool, error) {
 			return checker.DeploymentHasRevokedCertificate(ctx, certState)
+		},
+	)
+}
+
+// GetSecretsByPath delegates to the wrapped provider when it can fetch secrets by path, while
+// still applying the same retry policy used for other provider operations. It returns
+// secrettypes.ErrBulkNotSupported when the wrapped provider has no such capability.
+func (r *RetryingSecretProvider) GetSecretsByPath(ctx context.Context, path string, recursive bool) (map[string]string, error) {
+	bulk, ok := r.inner.(BulkSecretProvider)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", secrettypes.ErrBulkNotSupported, r.inner.Name())
+	}
+
+	return retry.NewWithData[map[string]string](newOptsWithContext(ctx)...).Do(
+		func() (map[string]string, error) {
+			return bulk.GetSecretsByPath(ctx, path, recursive)
 		},
 	)
 }

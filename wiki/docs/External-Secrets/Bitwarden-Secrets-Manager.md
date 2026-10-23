@@ -35,3 +35,25 @@ name: myapp
 external_secrets:
   DB_PASSWORD: 138e3a97-ed58-431c-b366-b35500663411
 ```
+
+## Fetching all secrets of a path
+
+Use [`external_secrets_paths`](index.md#fetching-secrets-in-bulk) to fetch every secret of an organization or project at once.
+The `path` uses this syntax:
+
+```
+organizationId[:projectId]
+```
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets_paths:
+  - path: 4f9d2b1e-0000-0000-0000-000000000000:7a3c5e9f-0000-0000-0000-000000000000
+    prefix: MYAPP_
+```
+
+- Without a `projectId`, all secrets the machine account can access in the organization are fetched.
+- With a `projectId`, only secrets of that project are fetched.
+- The variable name is built from the secret key, for example `db-password` becomes `MYAPP_DB_PASSWORD`.
+- Secret keys must be unique inside one path. The deployment fails if two secrets have the same key.
+- `recursive` has no effect.

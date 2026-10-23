@@ -61,3 +61,21 @@ external_secrets:
 
 Secret references must use `name` or `name/version`. Full Azure secret
 identifier URLs are not supported.
+
+## Fetching all secrets of a path
+
+Use [`external_secrets_paths`](index.md#fetching-secrets-in-bulk) to fetch every secret whose name starts with a prefix at once.
+Key Vault has no folders, so the `path` is a name prefix. Use `/` to fetch all secrets of the vault.
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets_paths:
+  - path: myapp-
+    prefix: APP_
+```
+
+- With the path above, the secret `myapp-db-password` becomes `APP_DB_PASSWORD`. The prefix of the path is removed from the name first, the `prefix` option is added afterwards.
+- Like Key Vault names, the name prefix is not case-sensitive.
+- Disabled secrets are skipped. The latest version of each secret is used.
+- `recursive` has no effect.
+- The identity needs the `secrets/list` and `secrets/get` permissions. The **Key Vault Secrets User** role includes both.

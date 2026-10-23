@@ -51,6 +51,10 @@ external_secrets:
   DB_PASSWORD: "op://vault/item/field"
 ```
 
+!!! note "No bulk fetching"
+    1Password does not support [`external_secrets_paths`](index.md#fetching-secrets-in-bulk). Each secret must be listed in `external_secrets`.
+    The deployment fails if `external_secrets_paths` is set.
+
 ## Client-Side Caching
 
 Optional client-side caching[^1] reduces 1Password API calls when using service account authentication. Enable and configure caching with the following environment variables:

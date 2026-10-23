@@ -88,6 +88,7 @@ type Config struct {
 	Profiles             []string                                 `yaml:"profiles" json:"profiles" default:"[]" doco:"allowOverride"`                                                                                             // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
 	ExternalSecrets      map[string]secrettypes.ExternalSecretRef `yaml:"external_secrets" json:"external_secrets" doco:"allowOverride"`                                                                                          // ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook store_ref/remote_ref).
 	ExternalSecretsFiles []string                                 `yaml:"external_secrets_files" json:"external_secrets_files" default:"[]" doco:"allowOverride"`                                                                 // ExternalSecretsFiles is a list of YAML files, each holding a map of env var name to external secret reference (same shape as ExternalSecrets). Files are merged first, then ExternalSecrets entries are applied on top (inline wins on key collision).
+	ExternalSecretsPaths []secrettypes.ExternalSecretsPath        `yaml:"external_secrets_paths" json:"external_secrets_paths" default:"[]" doco:"allowOverride"`                                                                 // ExternalSecretsPaths lists secret provider paths. All secrets below each path are fetched and made available as variables named after the secrets (upper case, other characters replaced by underscore). Explicit ExternalSecrets entries win on name collision. Supported by Infisical, OpenBao, AWS Secrets Manager, Azure Key Vault and Bitwarden Secrets Manager.
 	AutoDiscovery        AutoDiscoveryConfig                      `yaml:"auto_discovery" json:"auto_discovery"`                                                                                                                   // AutoDiscovery configures autodiscovery of services to deploy in the working directory
 	Retry                RetryConfig                              `yaml:"retry,omitempty" json:"retry,omitzero" doco:"allowOverride"`                                                                                             // Retry limits automatic retries of a failed desired state and adds an optional fixed delay. Omitted means unlimited retries without delay.
 	Pause                bool                                     `yaml:"pause,omitempty" json:"pause,omitzero" default:"false" doco:"allowOverride"`                                                                             // Pause freezes deployment updates without stopping workloads or changing last-deployed recovery.
@@ -204,6 +205,12 @@ func (c *Config) Validate() error {
 
 	if err := validation.Validate(c); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+
+	for i, secretsPath := range c.ExternalSecretsPaths {
+		if err := secretsPath.Validate(); err != nil {
+			return fmt.Errorf("%w: external_secrets_paths[%d]: %v", ErrInvalidConfig, i, err)
+		}
 	}
 
 	if c.GitDepth < 0 {

@@ -56,3 +56,22 @@ external_secrets:
   JSON_STRING: "arn:aws:secretsmanager:eu-west-1:1234567890:secret:myapp"  # '{"username":"foo","password":"bar"}'
   APP_PASSWORD: "arn:aws:secretsmanager:eu-west-1:1234567890:secret:myapp/password" # bar
 ```
+
+## Fetching all secrets of a path
+
+Use [`external_secrets_paths`](index.md#fetching-secrets-in-bulk) to fetch every secret below a name prefix at once.
+The `path` is a secret name prefix, usually written like a folder (for example `prod/myapp/`). Use `/` to fetch all secrets of the region.
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets_paths:
+  - path: prod/myapp/
+    prefix: MYAPP_
+    recursive: true
+```
+
+- The variable name is built from the part of the secret name after the prefix. With the path above, the secret `prod/myapp/db/password` becomes `MYAPP_DB_PASSWORD`.
+- With `recursive: false`, secrets whose name still contains a `/` after the prefix are skipped.
+- Secrets are always fetched as plain strings. Binary secrets are skipped, and a JSON value is not split into fields.
+- The IAM user needs the `secretsmanager:ListSecrets`, `secretsmanager:BatchGetSecretValue` and `secretsmanager:GetSecretValue` permissions.
+  Restrict `secretsmanager:GetSecretValue` to the secrets you want to fetch, for example with a resource ARN pattern.
