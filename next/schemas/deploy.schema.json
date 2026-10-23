@@ -395,6 +395,48 @@
       "description": "ExternalSecretsFiles is a list of YAML files, each holding a map of env var name to external secret reference (same shape as ExternalSecrets). Files are merged first, then ExternalSecrets entries are applied on top (inline wins on key collision).",
       "default": []
     },
+    "external_secrets_paths": {
+      "type": [
+        "null",
+        "array"
+      ],
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "path": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ],
+            "description": "Path is the provider specific location to read from. The format is the same as\na secret reference of the provider, but without the final key or secret part."
+          },
+          "prefix": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ],
+            "description": "Prefix is added to every variable name created from this path."
+          },
+          "recursive": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Recursive also reads secrets in nested paths, if the provider supports it."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "ExternalSecretsPaths lists secret provider paths. All secrets below each path are fetched and made available as variables named after the secrets (upper case, other characters replaced by underscore). Explicit ExternalSecrets entries win on name collision. Supported by Infisical, OpenBao, AWS Secrets Manager, Azure Key Vault and Bitwarden Secrets Manager.",
+      "default": []
+    },
     "auto_discovery": {
       "type": [
         "boolean",
@@ -662,5 +704,5 @@
   },
   "title": "Doco-CD deployment configuration",
   "type": "object",
-  "x-doco-cd-version": "937f0811ad1761fa0df6e7c0009684656345ea36"
+  "x-doco-cd-version": "61698678d9b29084c63460fda308b7671240b210"
 }
