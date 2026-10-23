@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -22,7 +23,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/source/store"
@@ -949,33 +949,23 @@ func prepareComposeScheduledDeployConfig(
 	maps.Copy(deployConfig.Internal.Environment, deployConfig.Environment)
 	deploy.MergeExternalSecretsFromFiles(deployConfig)
 
-	if secretProvider == nil || len(deployConfig.ExternalSecrets) == 0 {
+	if secretProvider == nil || (len(deployConfig.ExternalSecrets) == 0 && len(deployConfig.ExternalSecretsPaths) == 0) {
 		return nil
 	}
 
-	interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(deployConfig.ExternalSecrets, opts.InterpolateExternalSecrets)
-	if err != nil {
-		return fmt.Errorf("interpolate external secrets for scheduled service %s: %w", deployConfig.Name, err)
-	}
-
-	deployConfig.ExternalSecrets = interpolatedRefs
-
-	encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(interpolatedRefs)
-	if err != nil {
-		return fmt.Errorf("encode external secrets for scheduled service %s: %w", deployConfig.Name, err)
-	}
-
-	resolvedSecrets, err := secretProvider.ResolveSecretReferences(ctx, encodedSecrets)
+	resolved, err := secretprovider.ResolveExternalSecrets(ctx, secretProvider,
+		deployConfig.ExternalSecrets, deployConfig.ExternalSecretsPaths,
+		secretprovider.ResolveOptions{
+			InterpolateRefs:     opts.InterpolateExternalSecrets,
+			InterpolateResolved: opts.InterpolateResolvedSecrets,
+		}, slog.Default().With(slog.String("deployment", deployConfig.Name)))
 	if err != nil {
 		return fmt.Errorf("resolve external secrets for scheduled service %s: %w", deployConfig.Name, err)
 	}
 
-	resolvedSecrets, err = secrettypes.InterpolateResolvedSecrets(resolvedSecrets, opts.InterpolateResolvedSecrets)
-	if err != nil {
-		return fmt.Errorf("interpolate resolved secrets for scheduled service %s: %w", deployConfig.Name, err)
-	}
+	deployConfig.ExternalSecrets = resolved.Refs
 
-	maps.Copy(deployConfig.Internal.Environment, resolvedSecrets)
+	maps.Copy(deployConfig.Internal.Environment, resolved.Values)
 
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/bitwarden/sdk-go/v2"
 
@@ -89,6 +90,52 @@ func (p *Provider) GetSecrets(_ context.Context, ids []string) (map[string]strin
 	}
 
 	return result, nil
+}
+
+// getByIDsBatchSize is the number of secrets requested per GetByIDS call.
+const getByIDsBatchSize = 100
+
+// GetSecretsByPath retrieves all secrets of an organization or of one project in it.
+// The path format is "organizationId[:projectId]". Without a project ID, all secrets that the
+// access token can read are returned. The returned names are the secret keys. Bitwarden has no
+// folders, so the recursive argument has no effect.
+func (p *Provider) GetSecretsByPath(_ context.Context, path string, _ bool) (map[string]string, error) {
+	organizationID, projectID, err := parseSecretPath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	identifiers, err := p.Client.Secrets().List(organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(identifiers.Data))
+
+	for _, identifier := range identifiers.Data {
+		if projectID == "" || slices.Contains(identifier.ProjectIDS, projectID) {
+			ids = append(ids, identifier.ID)
+		}
+	}
+
+	out := make(map[string]string, len(ids))
+
+	for batch := range slices.Chunk(ids, getByIDsBatchSize) {
+		secrets, err := p.Client.Secrets().GetByIDS(batch)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, secret := range secrets.Data {
+			if _, exists := out[secret.Key]; exists {
+				return nil, fmt.Errorf("%w: more than one secret has the key %q", ErrDuplicateSecretKey, secret.Key)
+			}
+
+			out[secret.Key] = secret.Value
+		}
+	}
+
+	return out, nil
 }
 
 // ResolveSecretReferences resolves the provided map of environment variable names to secret IDs

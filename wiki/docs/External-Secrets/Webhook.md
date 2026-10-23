@@ -126,6 +126,10 @@ external_secrets:
       property: api_key
 ```
 
+!!! note "No bulk fetching"
+    The webhook provider does not support [`external_secrets_paths`](index.md#fetching-secrets-in-bulk). Each secret must be listed in `external_secrets`.
+    The deployment fails if `external_secrets_paths` is set.
+
 ## Template Parameters
 
 All templated store fields (`url`, `headers`, `body`, `json_path`) can access the following objects:

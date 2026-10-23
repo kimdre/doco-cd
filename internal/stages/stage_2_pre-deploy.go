@@ -25,6 +25,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 	sourcecache "github.com/kimdre/doco-cd/internal/source/cache"
 )
 
@@ -263,37 +264,29 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	)
 
 	// Compare external secrets if a secret provider is configured
-	if s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
-		stageLog.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
+	if s.SecretProvider != nil && (len(s.DeployConfig.ExternalSecrets) > 0 || len(s.DeployConfig.ExternalSecretsPaths) > 0) {
+		stageLog.Debug("resolving external secrets",
+			slog.Any("external_secrets", s.DeployConfig.ExternalSecrets),
+			slog.Any("external_secrets_paths", s.DeployConfig.ExternalSecretsPaths),
+		)
 
-		interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(s.DeployConfig.ExternalSecrets, s.AppConfig.InterpolateExternalSecrets)
+		resolved, err := secretprovider.ResolveExternalSecrets(ctx, s.SecretProvider,
+			s.DeployConfig.ExternalSecrets, s.DeployConfig.ExternalSecretsPaths,
+			secretprovider.ResolveOptions{
+				InterpolateRefs:     s.AppConfig.InterpolateExternalSecrets,
+				InterpolateResolved: s.AppConfig.InterpolateResolvedSecrets,
+			}, stageLog)
 		if err != nil {
-			return fmt.Errorf("failed to interpolate external secret references: %w", err)
+			return err
 		}
 
-		s.DeployConfig.ExternalSecrets = interpolatedRefs
-
-		encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(interpolatedRefs)
-		if err != nil {
-			return fmt.Errorf("failed to encode external secret references: %w", err)
-		}
-
-		// Resolve external secrets
-		resolvedSecrets, err := s.SecretProvider.ResolveSecretReferences(ctx, encodedSecrets)
-		if err != nil {
-			return fmt.Errorf("failed to resolve external secrets: %w", err)
-		}
-
-		resolvedSecrets, err = secrettypes.InterpolateResolvedSecrets(resolvedSecrets, s.AppConfig.InterpolateResolvedSecrets)
-		if err != nil {
-			return fmt.Errorf("failed to interpolate resolved secrets: %w", err)
-		}
+		s.DeployConfig.ExternalSecrets = resolved.Refs
 
 		if s.DeployConfig.Internal.Environment == nil {
 			s.DeployConfig.Internal.Environment = make(map[string]string)
 		}
 
-		maps.Copy(s.DeployConfig.Internal.Environment, resolvedSecrets)
+		maps.Copy(s.DeployConfig.Internal.Environment, resolved.Values)
 	}
 
 	var err error

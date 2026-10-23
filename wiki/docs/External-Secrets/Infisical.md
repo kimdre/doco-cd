@@ -43,6 +43,26 @@ external_secrets:
   USERNAME: 0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:Test/Sub/TEST_SECRET
 ```
 
+## Fetching all secrets of a path
+
+Use [`external_secrets_paths`](index.md#fetching-secrets-in-bulk) to fetch every secret in an Infisical environment or folder at once.
+The `path` uses the same syntax as a secret reference, without the key:
+
+`projectId:env:[/some/path/]`
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets_paths:
+  - path: 0db45926-c97c-40d4-a3aa-fefd5d5fb492:prod:/myapp/
+    prefix: MYAPP_
+    recursive: true
+```
+
+- Without a folder, the root folder (`/`) of the environment is used.
+- With `recursive: true`, secrets in sub folders are included. Their variable names contain the sub folder name, for example `MYAPP_SUB_KEY` for the secret `KEY` in `/myapp/sub/`.
+- [Infisical secret references][infisical-secret-reference-docs] in values are expanded by Infisical. If a value still contains a reference expression afterwards, the deployment fails, as described [below](#infisical-secret-references).
+- The machine identity needs read access to the folder and to the secrets in it.
+
 ## Infisical secret references
 
 You can reference other Infisical secrets, including imported secrets, in a secret's value, see their [documentation][infisical-secret-reference-docs].

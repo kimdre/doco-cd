@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -12,14 +13,25 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	smtypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 const Name = "aws_sm"
 
+// batchGetLimit is the maximum number of secrets BatchGetSecretValue accepts in one request.
+const batchGetLimit = 20
+
+// bulkClient is the part of the Secrets Manager API used to fetch secrets by name prefix.
+type bulkClient interface {
+	secretsmanager.ListSecretsAPIClient
+	secretsmanager.BatchGetSecretValueAPIClient
+}
+
 type Provider struct {
 	client *secretsmanager.Client
+	bulk   bulkClient
 }
 
 func (p *Provider) Name() string {
@@ -45,7 +57,9 @@ func NewProvider(ctx context.Context, region, accessKeyID, secretAccessKey strin
 		return nil, err
 	}
 
-	return &Provider{client: secretsmanager.NewFromConfig(cfg)}, nil
+	client := secretsmanager.NewFromConfig(cfg)
+
+	return &Provider{client: client, bulk: client}, nil
 }
 
 // getPathFromARN extracts the path from the ARN if it exists and returns the base ARN and the path separately.
@@ -182,6 +196,99 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 			out[envVar] = val
 		} else {
 			out[envVar] = ""
+		}
+	}
+
+	return out, nil
+}
+
+// GetSecretsByPath retrieves all secrets whose name starts with the given path.
+// The path acts as a folder: a trailing slash is added when missing and "/" selects all secrets.
+// The returned names have the path removed. Without recursion, names with further slashes are skipped.
+// Only secrets with a string value are returned.
+func (p *Provider) GetSecretsByPath(ctx context.Context, path string, recursive bool) (map[string]string, error) {
+	prefix := path
+	if prefix != "" && !strings.HasSuffix(prefix, PathDelimiter) {
+		prefix += PathDelimiter
+	}
+
+	if prefix == PathDelimiter {
+		prefix = ""
+	}
+
+	var filters []smtypes.Filter
+	if prefix != "" {
+		filters = []smtypes.Filter{{Key: smtypes.FilterNameStringTypeName, Values: []string{prefix}}}
+	}
+
+	// Names relative to the path, mapped to the full secret name.
+	names := make(map[string]string)
+
+	paginator := secretsmanager.NewListSecretsPaginator(p.bulk, &secretsmanager.ListSecretsInput{Filters: filters})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, entry := range page.SecretList {
+			fullName := aws.ToString(entry.Name)
+
+			relative := strings.TrimPrefix(fullName, prefix)
+			if prefix == "" {
+				relative = strings.TrimPrefix(relative, PathDelimiter)
+			}
+
+			if !strings.HasPrefix(fullName, prefix) || relative == "" {
+				continue
+			}
+
+			if !recursive && strings.Contains(relative, PathDelimiter) {
+				continue
+			}
+
+			names[relative] = fullName
+		}
+	}
+
+	return p.batchGetByName(ctx, names)
+}
+
+// batchGetByName fetches the secret values for the given map of relative name to full secret name.
+func (p *Provider) batchGetByName(ctx context.Context, names map[string]string) (map[string]string, error) {
+	relativeByFull := make(map[string]string, len(names))
+	fullNames := make([]string, 0, len(names))
+
+	for relative, full := range names {
+		relativeByFull[full] = relative
+
+		fullNames = append(fullNames, full)
+	}
+
+	slices.Sort(fullNames)
+
+	out := make(map[string]string, len(names))
+
+	for chunk := range slices.Chunk(fullNames, batchGetLimit) {
+		result, err := p.bulk.BatchGetSecretValue(ctx, &secretsmanager.BatchGetSecretValueInput{SecretIdList: chunk})
+		if err != nil {
+			return nil, err
+		}
+
+		if len(result.Errors) > 0 {
+			first := result.Errors[0]
+
+			return nil, fmt.Errorf("get secret %q: %s: %s", aws.ToString(first.SecretId), aws.ToString(first.ErrorCode), aws.ToString(first.Message))
+		}
+
+		for _, entry := range result.SecretValues {
+			if entry.SecretString == nil {
+				continue
+			}
+
+			if relative, ok := relativeByFull[aws.ToString(entry.Name)]; ok {
+				out[relative] = aws.ToString(entry.SecretString)
+			}
 		}
 	}
 

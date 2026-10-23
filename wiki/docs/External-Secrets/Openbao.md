@@ -101,6 +101,34 @@ services:
         target: /etc/ssl/certs/example.crt
 ```
 
+## Fetching all secrets of a path
+
+Use [`external_secrets_paths`](index.md#fetching-secrets-in-bulk) to fetch every key of one or more KV v2 secrets at once.
+The `path` uses this syntax:
+
+```
+kv:<namespace(optional)>:<secretEngine>:<path>
+```
+
+The `path` can point to a single secret or to a folder:
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets_paths:
+  - path: kv:secret:myapp          # A folder or a single secret in the `secret` engine
+    prefix: MYAPP_
+    recursive: true                # Also read secrets in sub folders
+  - path: kv:my-namespace:secret:shared/db
+    prefix: DB_
+```
+
+- For a single secret, every key with a string value becomes a variable, for example the key `password` becomes `DB_PASSWORD`.
+- For a folder, the secret name is part of the variable name, for example the key `password` in `myapp/db` becomes `MYAPP_DB_PASSWORD`.
+- With `recursive: false`, only the secrets directly in the folder are read. With `recursive: true`, sub folders are read as well (up to 16 levels).
+- Keys with values that are not strings (numbers, lists or objects) are ignored.
+- Only the `kv` (version 2) engine is supported. `pki:` and `pki-role:` references cannot be fetched in bulk.
+- The token needs the `list` capability on `<secretEngine>/metadata/<path>` to read folders and the `read` capability on `<secretEngine>/data/<path>`.
+
 ## Full certificate chain
 
 A `pki:` or `pki-role:` reference resolves to the **leaf certificate only**. Many TLS servers

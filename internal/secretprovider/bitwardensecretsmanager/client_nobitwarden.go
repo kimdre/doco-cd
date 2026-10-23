@@ -34,6 +34,11 @@ func (p *Provider) GetSecrets(_ context.Context, ids []string) (map[string]strin
 	return nil, ErrNotSupported
 }
 
+// GetSecretsByPath returns an error indicating Bitwarden is not supported in this build.
+func (p *Provider) GetSecretsByPath(_ context.Context, _ string, _ bool) (map[string]string, error) {
+	return nil, ErrNotSupported
+}
+
 // ResolveSecretReferences returns an error indicating Bitwarden is not supported in this build.
 func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
 	return nil, ErrNotSupported

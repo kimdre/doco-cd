@@ -2,6 +2,7 @@ package secretprovider
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 
@@ -128,4 +129,15 @@ func (p *SecretProviderAdapter) ResolveSecretReferences(ctx context.Context, sec
 	}
 
 	return out, nil
+}
+
+// GetSecretsByPath forwards the call to the internal value provider when it implements
+// BulkSecretProvider. Otherwise it returns secrettypes.ErrBulkNotSupported.
+func (p *SecretProviderAdapter) GetSecretsByPath(ctx context.Context, path string, recursive bool) (map[string]string, error) {
+	bulk, ok := p.impl.(BulkSecretProvider)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", secrettypes.ErrBulkNotSupported, p.name)
+	}
+
+	return bulk.GetSecretsByPath(ctx, path, recursive)
 }

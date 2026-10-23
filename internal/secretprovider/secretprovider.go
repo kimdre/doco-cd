@@ -43,6 +43,14 @@ type DeploymentCertificateRevocationChecker interface {
 	DeploymentHasRevokedCertificate(ctx context.Context, certState string) (bool, error)
 }
 
+// BulkSecretProvider is an optional capability for secret providers that can fetch all
+// secrets below a path in one call. The returned map holds the secret name relative to
+// the path as key and the secret value as value. Providers without this capability
+// return secrettypes.ErrBulkNotSupported.
+type BulkSecretProvider interface {
+	GetSecretsByPath(ctx context.Context, path string, recursive bool) (map[string]string, error)
+}
+
 // The SecretValueProviderFunc type is an adapter to allow the use of ordinary
 // functions as secret providers. If f is a function with the appropriate signature,
 // SecretValueProviderFunc(f) is a SecretValueProvider that calls f.
