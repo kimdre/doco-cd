@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -527,7 +528,7 @@ func TestRetryStageRunnerQueuedCancellationDoesNotSpend(t *testing.T) {
 	}, order)
 
 	after, _ := sm.lastDeploymentFailure()
-	if !errors.Is(err, context.Canceled) || before != after {
+	if !errors.Is(err, context.Canceled) || !reflect.DeepEqual(before, after) {
 		t.Fatalf("queued cancellation spent/changed retry state: %v %+v %+v", err, before, after)
 	}
 	// A canceled queued run must release its target lock.
@@ -584,7 +585,7 @@ func TestRetryStageRunnerShutdownAndHandoverPreserveExhaustion(t *testing.T) {
 			err := sm.runStageOrder(t.Context(), nil, retryStageOrder(sm, func(context.Context) error { return cause }))
 
 			after, _ := sm.lastDeploymentFailure()
-			if !errors.Is(err, cause) || before != after {
+			if !errors.Is(err, cause) || !reflect.DeepEqual(before, after) {
 				t.Fatalf("lifecycle no-op changed exhaustion: %v %+v %+v", err, before, after)
 			}
 		})
@@ -661,7 +662,7 @@ func TestRetryStageRunnerPreDeploySkipsLeaveBudgetUntouched(t *testing.T) {
 			}
 
 			after, _ := sm.lastDeploymentFailure()
-			if before != after {
+			if !reflect.DeepEqual(before, after) {
 				t.Fatal("skip consumed retry or changed delay")
 			}
 		})

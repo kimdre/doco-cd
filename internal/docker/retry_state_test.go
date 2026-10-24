@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -270,7 +271,7 @@ func TestDeploymentRetryCancellationPreservesRecoveryAndBudget(t *testing.T) {
 	attempt.Fail(DeploymentFailure{Stage: "deploy", Error: "canceled"}, true)
 
 	after, _ := store.Get(target)
-	if after != before {
+	if !reflect.DeepEqual(after, before) {
 		t.Fatalf("shutdown interruption changed actual failure: before=%+v after=%+v", before, after)
 	}
 
@@ -281,7 +282,7 @@ func TestDeploymentRetryCancellationPreservesRecoveryAndBudget(t *testing.T) {
 	attempt.Fail(DeploymentFailure{Error: "manual canceled"}, true)
 
 	after, _ = store.Get(target)
-	if after != before {
+	if !reflect.DeepEqual(after, before) {
 		t.Fatal("canceled manual retry erased exhaustion")
 	}
 
@@ -316,7 +317,7 @@ func TestDeploymentRetryAdmissionWithoutMutationDoesNotSpend(t *testing.T) {
 	}
 
 	after, _ := store.Get(target)
-	if after != before {
+	if !reflect.DeepEqual(after, before) {
 		t.Fatal("ordinary skip or queued cancellation changed failure")
 	}
 }

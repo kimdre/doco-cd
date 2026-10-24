@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -22,9 +23,10 @@ the labels again - accepted trade-off, see the review of #1711.
 
 const (
 	// ChangeTypeFailedDeployRetry marks a deployment retry after a recorded
-	// failure. A Change of this type carries no service scope: the whole
-	// project is force-recreated, because the failed part (e.g. a lifecycle
-	// hook) is not attributable to one service.
+	// failure. It is scoped to DeploymentFailure.Services when the failure was
+	// attributed to services that did not start. Otherwise it carries no
+	// service scope and the whole project is force-recreated, because the
+	// failed part (e.g. a lifecycle hook) is not attributable to one service.
 	ChangeTypeFailedDeployRetry = "failed_deploy_retry"
 
 	// maxRecordedErrorLength caps the stored error text, the full error is in the logs.
@@ -38,6 +40,7 @@ type DeploymentFailure struct {
 	CommitSHA   string
 	Stage       string
 	Error       string
+	Services    []string // Services is set when the failure is attributed to services that did not start, see ServiceStartError.
 	FailedAt    time.Time
 	RetriesUsed int
 }
@@ -151,7 +154,14 @@ func truncateDeploymentFailure(failure DeploymentFailure) DeploymentFailure {
 		failure.Error = string(r[:maxRecordedErrorLength])
 	}
 
-	return failure
+	return failure.clone()
+}
+
+// clone returns a copy of the failure that shares no slices with it, so a stored failure cannot be changed through a returned one.
+func (f DeploymentFailure) clone() DeploymentFailure {
+	f.Services = slices.Clone(f.Services)
+
+	return f
 }
 
 // Get returns the recorded failure for a target, if any.
@@ -161,7 +171,7 @@ func (s *DeploymentFailureStore) Get(target DeploymentTarget) (DeploymentFailure
 
 	state, ok := s.failures[target.normalized()]
 
-	return state.failure, ok
+	return state.failure.clone(), ok
 }
 
 // Clear removes the recorded failure for a target, if any.
@@ -241,7 +251,7 @@ func (s *DeploymentFailureStore) Admit(target DeploymentTarget, desired Deployme
 		return attempt, nil
 	}
 
-	decision := &DeploymentRetrySuppression{Failure: state.failure}
+	decision := &DeploymentRetrySuppression{Failure: state.failure.clone()}
 	if policy.Limit != nil && state.failure.RetriesUsed >= *policy.Limit {
 		decision.Reason = RetryReasonBudgetExhausted
 	} else if deadline := state.failure.FailedAt.Add(time.Duration(policy.Delay)); policy.Delay > 0 && s.now().Before(deadline) {

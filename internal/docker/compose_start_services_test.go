@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -27,6 +28,80 @@ func TestWaitForStartedServicesTimeoutIsTypedFailure(t *testing.T) {
 		set.New[string](), set.New[string](), time.Nanosecond)
 	if !errors.Is(err, lifecycle.ErrTimedOut) || lifecycle.IsCancellation(err) {
 		t.Fatalf("readiness timeout must be a typed failure, not lifecycle cancellation: %v", err)
+	}
+}
+
+func TestWaitForStartedServicesAttributesFailureToServices(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		containers []api.ContainerSummary
+		timeout    time.Duration
+		want       []string
+	}{
+		{
+			name: "unhealthy",
+			containers: []api.ContainerSummary{
+				runningContainer("web"),
+				{State: "running", Health: "unhealthy", Labels: map[string]string{api.ServiceLabel: "api"}},
+			},
+			timeout: 30 * time.Second,
+			want:    []string{"api"},
+		},
+		{
+			name: "restarting",
+			containers: []api.ContainerSummary{
+				runningContainer("web"),
+				{State: "restarting", Labels: map[string]string{api.ServiceLabel: "api"}},
+			},
+			timeout: 30 * time.Second,
+			want:    []string{"api"},
+		},
+		{
+			name: "timed out waiting",
+			containers: []api.ContainerSummary{
+				runningContainer("web"),
+				{State: "running", Health: "starting", Labels: map[string]string{api.ServiceLabel: "api"}},
+				{State: "created", Labels: map[string]string{api.ServiceLabel: "worker"}},
+			},
+			timeout: time.Nanosecond,
+			want:    []string{"api", "worker"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			lister := func(context.Context) ([]api.ContainerSummary, error) {
+				return tt.containers, nil
+			}
+
+			err := waitForStartedServicesWith(t.Context(), lister, []string{"api", "web", "worker"},
+				set.New[string](), set.New[string](), tt.timeout)
+			if err == nil {
+				t.Fatal("expected the start wait to fail")
+			}
+
+			// The stages wrap the error before recording the failure.
+			wrapped := fmt.Errorf("failed to deploy stack: %w", err)
+			if got := FailedStartServices(wrapped); !slices.Equal(got, tt.want) {
+				t.Fatalf("FailedStartServices() = %v, want %v (error: %v)", got, tt.want, err)
+			}
+		})
+	}
+}
+
+func TestFailedStartServicesIgnoresOtherFailures(t *testing.T) {
+	t.Parallel()
+
+	if got := FailedStartServices(errors.New("post-start hook exited with status 1")); got != nil {
+		t.Fatalf("FailedStartServices() = %v, want nil", got)
+	}
+
+	if got := FailedStartServices(&oneShotExitError{service: "migrate", code: 1}); got != nil {
+		t.Fatalf("FailedStartServices() = %v, want nil for one-shot failures", got)
 	}
 }
 
