@@ -69,7 +69,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=bind,target=. \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o / ./cmd/healthcheck
 
-FROM gcr.io/distroless/base-debian13@sha256:44a80dc28b49f47396e72ab2dc644b3f849880335de09625762faed207bb891d AS distroless-base
+FROM gcr.io/distroless/base-debian13@sha256:f5e95195e998742ff590b7569bae479accce1226e51ae6c3118954030121cdcb AS distroless-base
 
 FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS ssh-client
 
