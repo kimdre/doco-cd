@@ -23,7 +23,7 @@ func getStackFilter(namespace string) client.Filters {
 }
 
 func GetStackServices(ctx context.Context, apiclient client.APIClient, namespace string) ([]swarm.Service, error) {
-	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{Filters: getStackFilter(namespace)})
+	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{Filters: getStackFilter(namespace), Status: true})
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +51,20 @@ func GetServicesByLabelKey(ctx context.Context, apiclient client.APIClient, labe
 	filter := make(client.Filters).Add("label", labelKey)
 
 	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{Filters: filter})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
+}
+
+// GetServicesWithStatusByLabel retrieves the services that carry the label
+// with the given value. The result includes the task counts in ServiceStatus,
+// which Docker only fills on request.
+func GetServicesWithStatusByLabel(ctx context.Context, apiclient client.APIClient, labelKey, labelValue string) ([]swarm.Service, error) {
+	filter := make(client.Filters).Add("label", labelKey+"="+labelValue)
+
+	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{Filters: filter, Status: true})
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +111,7 @@ func getStackTasks(ctx context.Context, apiclient client.APIClient, namespace st
 func GetStacks(ctx context.Context, apiclient client.APIClient) (map[string][]swarm.Service, error) {
 	stacks := make(map[string][]swarm.Service)
 
-	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{})
+	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{Status: true})
 	if err != nil {
 		return nil, err
 	}
