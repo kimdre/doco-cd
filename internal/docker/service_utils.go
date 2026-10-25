@@ -274,6 +274,9 @@ func getDeployStatus(ctx context.Context, client client.APIClient, swarmMode boo
 // getServiceStatusFromContainerStatus returns a map of service names to their current status.
 // Compose lifecycle-hook runners are not service replicas and do not carry the doco-cd deployment labels,
 // so they are excluded.
+// Containers without a Compose service label are also excluded. They are not replicas of any service,
+// for example helper containers that other tools start with only the project label.
+// Compose ignores them too, so a deployment cannot remove them and they must not count as drift.
 func getServiceStatusFromContainerStatus(projectName string, containers []container.Summary) map[Service]ServiceStatus {
 	result := make(map[Service]ServiceStatus)
 
@@ -283,6 +286,9 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 		}
 
 		serviceName := cont.Labels[api.ServiceLabel]
+		if strings.TrimSpace(serviceName) == "" {
+			continue
+		}
 
 		status, ok := result[Service(serviceName)]
 		if !ok {
