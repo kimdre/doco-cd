@@ -508,7 +508,7 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 		return fmt.Errorf("failed to generate project: %w", err)
 	}
 
-	err = service.Pull(ctx, project, api.PullOptions{Quiet: true})
+	err = pullProjectImages(ctx, service, project, api.PullOptions{Quiet: true})
 	if err != nil {
 		imageRefs := make([]string, 0, len(project.Services))
 		for _, svc := range project.Services {
