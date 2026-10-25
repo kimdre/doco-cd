@@ -114,7 +114,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 	setDeploymentPhase(setPhase, "pulling images")
 
-	err = service.Pull(ctx, project, api.PullOptions{
+	err = pullProjectImages(ctx, service, project, api.PullOptions{
 		Quiet:           true,
 		IgnoreBuildable: true,
 	})
