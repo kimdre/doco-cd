@@ -179,6 +179,12 @@ func (r *ContextRegistry) Get(ctx context.Context, name string) (ContextClient, 
 		}
 	}
 
+	return r.getKnown(ctx, name)
+}
+
+// getKnown returns a ContextClient for a normalized context name without a refresh.
+// Use it after Names, so the context store is not read again for each context.
+func (r *ContextRegistry) getKnown(ctx context.Context, name string) (ContextClient, error) {
 	cli, err := r.clientForKnownContext(name)
 	if err != nil {
 		return ContextClient{}, err

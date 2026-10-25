@@ -36,6 +36,7 @@ func init() {
 		GitMirrorPacks, GitMirrorSizeBytes, GitMirrorCompactionsTotal, GitMirrorCompactionDuration,
 		ArtifactGCRemovedTotal, ArtifactGCKept,
 		SourceGCEvictedTotal,
+		serviceStates,
 	)
 
 	gitInternal.SetMirrorPackObserver(func(stats gitInternal.MirrorPackStats) {
@@ -256,6 +257,21 @@ var (
 		Help:      "Duration of bare git mirror packfile compactions by mode in seconds",
 		Buckets:   prometheus.ExponentialBuckets(0.05, 2, 12),
 	}, []string{"repository", "mode"})
+	ServiceDesiredTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "service_desired_tasks",
+		Help:      "Number of tasks Docker Swarm wants to run for a deployed service",
+	}, []string{"context", "stack", "service"})
+	ServiceRunningTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "service_running_tasks",
+		Help:      "Number of tasks of a deployed Docker Swarm service that are running",
+	}, []string{"context", "stack", "service"})
+	ServiceUpdateState = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "service_update_state",
+		Help:      "Update state of a deployed Docker Swarm service, 1 for the current state and 0 for all others",
+	}, []string{"context", "stack", "service", "state"})
 	ArtifactGCRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "artifact_gc_removed_total",

@@ -647,6 +647,10 @@ func run() error {
 		return err
 	}
 
+	if c.DockerSwarmFeatures {
+		prometheus.SetServiceStateSource(docker.NewServiceStateSource(contexts, log.Logger))
+	}
+
 	prometheus.RegisterServer(c.MetricsPort, c.HttpTLSCertFile, c.HttpTLSKeyFile, log)
 
 	if c.PprofEnabled {
