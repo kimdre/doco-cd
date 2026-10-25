@@ -683,7 +683,6 @@ func (s *StageManager) commitStatusParams() commitstatus.RequestParams {
 		PayloadFullName:  repoFullName,
 		ProviderOverride: s.AppConfig.GitScmProvider,
 		APIBaseURL:       string(s.AppConfig.GitScmApiUrl),
-		AccessToken:      s.AppConfig.GitAccessToken,
 		ContextName:      s.resolveCommitStatusContext(),
 		Target:           s.commitStatusTarget,
 		Scope:            docker.NormalizeContextName(s.DeployConfig.Context),

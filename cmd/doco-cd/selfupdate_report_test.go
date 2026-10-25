@@ -78,7 +78,6 @@ func (r *commitStatusRecorder) statuses() []postedCommitStatus {
 func (r *commitStatusRecorder) appConfig() *app.Config {
 	return &app.Config{
 		GitCommitStatus: true,
-		GitAccessToken:  "token",
 		GitScmProvider:  string(commitstatus.ProviderGitea),
 		GitScmApiUrl:    config.HttpUrl(r.URL),
 	}
@@ -161,7 +160,8 @@ func TestSelfUpdateReporterPostsFinalCommitStatus(t *testing.T) {
 }
 
 func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
-	gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{
+	// The journaled repository URL points to the local test server, so its host must be in scope too.
+	gitInternal.ConfigureAuthResolver([]gitInternal.ScopedAuthConfig{{Domains: []string{"github.com", "127.0.0.1"}}}, "", "", "", "", gitInternal.GitHubAppConfig{
 		ID: "12345", PrivateKey: "test-private-key",
 	})
 
@@ -175,7 +175,7 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 
 	t.Cleanup(func() {
 		restoreProvider()
-		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
+		configureTestGitAuth()
 	})
 
 	for _, tc := range []struct {
@@ -282,7 +282,6 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 
 			cfg := &app.Config{
 				GitCommitStatus: tc.statusEnabled,
-				GitAccessToken:  "fallback-must-not-be-used",
 				GitScmProvider:  string(commitstatus.ProviderGitHub),
 				GitScmApiUrl:    config.HttpUrl(server.URL),
 			}

@@ -642,7 +642,6 @@ func migrateLegacyRecreateRef(
 		BaseDir:                 sourceRepoPath,
 		SSHPrivateKey:           loadOpts.SSHPrivateKey,
 		SSHPrivateKeyPassphrase: loadOpts.SSHPrivateKeyPassphrase,
-		AccessToken:             loadOpts.GitAccessToken,
 		SkipTLSVerify:           loadOpts.SkipTLSVerify,
 		ProxyOptions:            loadOpts.HttpProxy,
 		CloneSubmodules:         loadOpts.GitCloneSubmodules,

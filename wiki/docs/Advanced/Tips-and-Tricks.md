@@ -108,6 +108,7 @@ services:
     For any other user, use the `ssh://user@host/path` format (e.g. `ssh://me@myserver.org/home/me/myrepo.git`).
 
 For repositories served via HTTP(S), set [`GIT_ACCESS_TOKEN`](../Git-Settings.md#authentication) to the password and [`GIT_ACCESS_TOKEN_USER`](../Git-Settings.md#authentication) to the username required by your server.
+Add the server host to [`GIT_AUTH_DOMAINS`](../Git-Settings.md#credential-scope), or doco-cd does not send the credentials.
 
 ### Polling via native Git
 

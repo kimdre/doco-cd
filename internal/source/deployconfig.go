@@ -22,7 +22,6 @@ func (p *Preparer) resolveDeployConfigs(ctx context.Context, req Request, discov
 	gitOpts := &deploy.GitOptions{
 		SSHPrivateKey:           p.appConfig.SSHPrivateKey,
 		SSHPrivateKeyPassphrase: p.appConfig.SSHPrivateKeyPassphrase,
-		GitAccessToken:          p.appConfig.GitAccessToken,
 		SkipTLSVerification:     p.appConfig.SkipTLSVerification,
 		HttpProxy:               p.appConfig.HttpProxy,
 		GitCloneSubmodules:      p.appConfig.GitCloneSubmodules,

@@ -37,7 +37,6 @@ func (p *Preparer) prepareGit(ctx context.Context, req Request, storeBaseDir, in
 		Private:                 req.Private,
 		SSHPrivateKey:           p.appConfig.SSHPrivateKey,
 		SSHPrivateKeyPassphrase: p.appConfig.SSHPrivateKeyPassphrase,
-		AccessToken:             p.appConfig.GitAccessToken,
 		SkipTLSVerify:           p.appConfig.SkipTLSVerification,
 		ProxyOptions:            p.appConfig.HttpProxy,
 		CloneSubmodules:         p.appConfig.GitCloneSubmodules,

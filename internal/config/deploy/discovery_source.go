@@ -351,7 +351,6 @@ func (s *discoverySource) newStore(cloneURL, baseDir string, c *Config) (*store.
 		BaseDir:                 baseDir,
 		SSHPrivateKey:           s.opts.SSHPrivateKey,
 		SSHPrivateKeyPassphrase: s.opts.SSHPrivateKeyPassphrase,
-		AccessToken:             s.opts.GitAccessToken,
 		SkipTLSVerify:           s.opts.SkipTLSVerification,
 		ProxyOptions:            s.opts.HttpProxy,
 		CloneSubmodules:         s.opts.GitCloneSubmodules,

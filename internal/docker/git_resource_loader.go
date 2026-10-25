@@ -37,7 +37,6 @@ type gitResourceLoader struct {
 	cloneDepth      int
 	privateKey      string
 	keyPassphrase   string
-	accessToken     string
 	known           map[string]string
 	knownMu         sync.RWMutex
 }
@@ -79,7 +78,6 @@ type gitResourceLoaderConfig struct {
 	CloneDepth      int
 	PrivateKey      string
 	KeyPassphrase   string
-	AccessToken     string
 }
 
 // newRemoteResourceLoaders configures Git includes independently of the Docker CLI.
@@ -96,7 +94,6 @@ func newRemoteResourceLoaders(opts ComposeLoadOptions, dockerCli command.Cli, re
 			CloneDepth:      opts.GitCloneDepth,
 			PrivateKey:      opts.SSHPrivateKey,
 			KeyPassphrase:   opts.SSHPrivateKeyPassphrase,
-			AccessToken:     opts.GitAccessToken,
 		}),
 	}
 	if dockerCli != nil {
@@ -146,7 +143,6 @@ func newGitResourceLoader(cfg gitResourceLoaderConfig) *gitResourceLoader {
 		cloneDepth:      cfg.CloneDepth,
 		privateKey:      cfg.PrivateKey,
 		keyPassphrase:   cfg.KeyPassphrase,
-		accessToken:     cfg.AccessToken,
 		known:           map[string]string{},
 	}
 }
@@ -279,7 +275,6 @@ func (g *gitResourceLoader) checkout(ctx context.Context, path, remote, ref stri
 		BaseDir:                 path,
 		SSHPrivateKey:           g.privateKey,
 		SSHPrivateKeyPassphrase: g.keyPassphrase,
-		AccessToken:             g.accessToken,
 		SkipTLSVerify:           g.skipTLSVerify,
 		ProxyOptions:            g.proxyOptions,
 		CloneSubmodules:         g.cloneSubmodules,

@@ -88,6 +88,8 @@ func TestHandler_TriggerPollHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	appConfig.ConfigureGitAuth()
+
 	appConfig.ApiSecret = "test-api-secret"
 
 	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
@@ -186,6 +188,8 @@ func TestHandler_TriggerPollHandlerWithoutWait_DetachesRequestContext(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	appConfig.ConfigureGitAuth()
 
 	appConfig.ApiSecret = "test-api-secret"
 

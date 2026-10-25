@@ -74,7 +74,7 @@ services:
 
 3. Lastly, add the config file as secret and mount it to `/root/.docker/config.json`:
 
-    ```yaml title="docker-compose.yml" hl_lines="16-18 20-22"
+    ```yaml title="docker-compose.yml" hl_lines="17-19 21-23"
     services:
       app:
         container_name: doco-cd
@@ -86,6 +86,7 @@ services:
         environment:
           TZ: Europe/Berlin
           GIT_ACCESS_TOKEN: xxx
+          GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
           WEBHOOK_SECRET: xxx
         volumes:
           - /var/run/docker.sock:/var/run/docker.sock

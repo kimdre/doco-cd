@@ -99,13 +99,13 @@ type RequestParams struct {
 	// SourceIsGit must be true for commit statuses to be posted/read; OCI (or
 	// any other non-Git) sources are always skipped.
 	SourceIsGit bool
-	// SourceURL is the repository URL used both for credential resolution and,
-	// when PayloadWebURL/PayloadFullName are empty, as the repository identity.
+	// SourceURL is the repository identity when PayloadWebURL/PayloadFullName are empty.
 	SourceURL string
 	// CommitSHA is the resolved commit the status applies to. Empty skips.
 	CommitSHA string
 	// PayloadWebURL optionally overrides SourceURL as the repository URL (e.g.
-	// the browsable web URL from a webhook payload).
+	// the browsable web URL from a webhook payload). Credentials are resolved
+	// for this repository URL, because the status is sent to its host.
 	PayloadWebURL string
 	// PayloadFullName optionally overrides the "owner/repo" full name derived
 	// from the repository URL (e.g. from a webhook payload).
@@ -115,9 +115,6 @@ type RequestParams struct {
 	ProviderOverride string
 	// APIBaseURL optionally overrides the inferred SCM API base URL (e.g. app.Config.GitScmApiUrl).
 	APIBaseURL string
-	// AccessToken is the configured fallback access token (e.g. app.Config.GitAccessToken),
-	// used when no scoped/GitHub App credential is resolved for SourceURL.
-	AccessToken string
 	// ContextName is the commit status context label (e.g. "doco-cd/demo").
 	// Empty defaults to DeployContext.
 	ContextName string
@@ -139,15 +136,14 @@ type Request struct {
 	Target       *Target
 }
 
-// ResolveRequest resolves a Request from params, applying credential
-// precedence (a resolved scoped/GitHub App token takes priority over
-// params.AccessToken), repository URL/full name fallback, and provider/API
-// URL/context defaults. logger receives Debug/Warn diagnostics for skip
-// reasons and token-resolution failures.
+// ResolveRequest resolves a Request from params. It selects the HTTP(S)
+// credential that GIT_AUTH_DOMAINS scopes to the repository host, and applies
+// the repository URL/full name fallback and provider/API URL/context defaults.
+// logger receives Debug/Warn diagnostics for skip reasons and token-resolution failures.
 //
 // ok is false when the caller should skip posting/getting a commit status:
 // commit statuses are disabled, the source is not Git, no commit SHA is
-// available, or no credentials are configured.
+// available, or no credentials are scoped to the repository host.
 func ResolveRequest(logger *slog.Logger, params RequestParams) (Request, bool) {
 	if !params.Enabled || !params.SourceIsGit {
 		return Request{}, false
@@ -160,30 +156,29 @@ func ResolveRequest(logger *slog.Logger, params RequestParams) (Request, bool) {
 		return Request{}, false
 	}
 
-	resolved := git.ResolveAuthConfig(params.SourceURL, "", "", "")
-
-	token, err := git.ResolveHTTPToken(params.SourceURL, resolved)
-
-	usesApp := err == nil && token != "" && resolved.GitAccessToken == "" &&
-		resolved.GitHubApp.ID != "" && resolved.GitHubApp.PrivateKey != ""
-	if err != nil {
-		logger.Warn("failed to resolve commit status token", slog.String("error", err.Error()))
-	}
-
-	if token == "" {
-		token = params.AccessToken
-	}
-
-	if token == "" {
-		logger.Debug("skipping commit status: no access token configured")
-
-		return Request{}, false
-	}
-
+	// Credentials are resolved for the repository that receives the status.
+	// A clone URL on a scoped host must not authorize a token for another host.
 	repoURL := strings.TrimSpace(params.PayloadWebURL)
 	if repoURL == "" {
 		repoURL = params.SourceURL
 	}
+
+	resolved := git.ResolveAuthConfig(repoURL, "", "")
+
+	token, err := git.ResolveHTTPToken(repoURL, resolved)
+	if err != nil {
+		logger.Warn("failed to resolve commit status token", slog.String("error", err.Error()))
+
+		return Request{}, false
+	}
+
+	if token == "" {
+		logger.Debug("skipping commit status: no access token is scoped to the repository host")
+
+		return Request{}, false
+	}
+
+	usesApp := resolved.HTTPMethod() == git.HTTPAuthGitHubApp
 
 	repoFullName := strings.TrimSpace(params.PayloadFullName)
 	if repoFullName == "" {

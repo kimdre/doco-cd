@@ -79,11 +79,15 @@ For example
 
 ```dotenv
 GIT_ACCESS_TOKEN=xxx
+GIT_AUTH_DOMAINS=- domains: [github.com]
 WEBHOOK_SECRET=test_secret
 SOPS_AGE_KEY=AGE-SECRET-KEY-xxx
 APPRISE_NOTIFY_URLS=xxx
 API_SECRET=xxx
 ```
+
+Doco-CD sends `GIT_ACCESS_TOKEN` only to the hosts in `GIT_AUTH_DOMAINS`, and it does not start if a token is set without them.
+The Makefile test targets read the `.env` file too, so the tests need `GIT_AUTH_DOMAINS` as well.
 
 Run the following command to build and run the doco-cd dev container:
 

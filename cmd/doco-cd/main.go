@@ -20,7 +20,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
-	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/git/ssh"
 	"github.com/kimdre/doco-cd/internal/graceful"
@@ -134,6 +133,17 @@ func detectDataMountPoint(
 	return mountPoint, nil
 }
 
+func configureGitAuth(log *slog.Logger, c *app.Config) {
+	c.ConfigureGitAuth()
+
+	if credential := c.GlobalGitHTTPCredentialName(); c.GitAuthAllowAnyHost && credential != "" {
+		log.Warn("GIT_AUTH_ALLOW_ANY_HOST is enabled: the global Git credential is sent to every HTTP(S) host "+
+			"without a GIT_AUTH_DOMAINS match, including hosts from webhooks, API calls, and repository content. "+
+			"Set GIT_AUTH_DOMAINS instead to limit the hosts",
+			slog.String("credential", credential))
+	}
+}
+
 func main() {
 	// Deprecated: use the standalone /healthcheck binary instead. Keep this
 	// compatibility path for existing healthcheck configurations.
@@ -186,18 +196,7 @@ func run() error {
 		return fmt.Errorf("failed to configure notifications: %w", err)
 	}
 
-	git.ConfigureAuthResolver(
-		c.GitAuthDomains,
-		c.SSHPrivateKey,
-		c.SSHPrivateKeyPassphrase,
-		c.GitAccessToken,
-		c.GitAccessTokenUser,
-		git.GitHubAppConfig{
-			ID:             c.GitHubAppID,
-			PrivateKey:     c.GitHubAppPrivateKey,
-			InstallationID: c.GitHubAppInstallationID,
-		},
-	)
+	configureGitAuth(log.Logger, c)
 
 	if err = ssh.ConfigureKnownHostsFile(c.SSHKnownHostsFile); err != nil {
 		return fmt.Errorf("failed to configure SSH known_hosts: %w", err)

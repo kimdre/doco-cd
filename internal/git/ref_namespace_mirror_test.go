@@ -34,7 +34,7 @@ func TestCloneOrUpdateBareMirror_RefNamespaceRefusesUnsafeRepair(t *testing.T) {
 
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 	if _, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, oldRef.String(), mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0); err != nil {
+		false, "", "", false, transport.ProxyOptions{}, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,7 +78,7 @@ func TestCloneOrUpdateBareMirror_RefNamespaceRefusesUnsafeRepair(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&output, nil))
 
 	repo, err := git.CloneOrUpdateBareMirror(log, "file://"+srcPath, "release", mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if err == nil || repo != nil || !errors.Is(err, git.ErrFetchFailed) {
 		t.Fatalf("unsafe namespace recovery = %v, %v", repo, err)
 	}

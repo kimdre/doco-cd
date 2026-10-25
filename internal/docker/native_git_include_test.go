@@ -28,8 +28,7 @@ func TestGitResourceLoaderNativeGitIncludeIgnoresHTTPToken(t *testing.T) {
 	baseURL := test.StartGitDaemon(t, root)
 	resource := baseURL + "repo.git#main:docker"
 	loader := newGitResourceLoader(gitResourceLoaderConfig{
-		CacheBase:   t.TempDir(),
-		AccessToken: "native-include-http-token-must-be-ignored",
+		CacheBase: t.TempDir(),
 	})
 
 	if !loader.Accept(resource) {
@@ -38,7 +37,7 @@ func TestGitResourceLoaderNativeGitIncludeIgnoresHTTPToken(t *testing.T) {
 
 	loaded, err := loader.Load(context.Background(), resource)
 	if err != nil {
-		t.Fatalf("load native Git include with HTTP token configured: %v", err)
+		t.Fatalf("load native Git include: %v", err)
 	}
 
 	if filepath.Base(loaded) != "docker-compose.yml" || filepath.Base(filepath.Dir(loaded)) != "docker" {

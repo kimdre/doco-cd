@@ -38,7 +38,6 @@ func TestNewComposeLoadOptions(t *testing.T) {
 		GitCloneDepth:           5,
 		SSHPrivateKey:           "private-key",
 		SSHPrivateKeyPassphrase: "passphrase",
-		GitAccessToken:          "access-token",
 		OciInsecureRegistries:   []string{"registry.example.com"},
 		DataHostPath:            "/host/data",
 		DataMountPath:           "/data",

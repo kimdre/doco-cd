@@ -3,6 +3,7 @@ package commitstatus_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"gotest.tools/v3/assert"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/common/httpclient"
 )
 
 func TestParseProvider(t *testing.T) {
@@ -355,6 +357,38 @@ func TestPost_DoesNotRetryPermanentAPIErrors(t *testing.T) {
 		commitstatus.Status{State: commitstatus.StateSuccess})
 	assert.Assert(t, err != nil, "expected post to fail for 401")
 	assert.Equal(t, attempts, 1)
+}
+
+// The API token must not follow a redirect to another origin, and the post must not be retried.
+func TestPost_BlocksCrossOriginRedirect(t *testing.T) {
+	t.Parallel()
+
+	targetHits := 0
+
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		targetHits++
+
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer target.Close()
+
+	attempts := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+
+		//nolint:gosec // The test sends a cross-origin redirect on purpose, to check that the client blocks it.
+		http.Redirect(w, r, target.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer srv.Close()
+
+	err := commitstatus.Post(context.Background(),
+		commitstatus.ProviderGitea,
+		srv.URL, srv.URL+"/owner/repo", "owner/repo", "abc123", "token",
+		commitstatus.Status{State: commitstatus.StateSuccess})
+	assert.Assert(t, errors.Is(err, httpclient.ErrCrossOriginRedirect), "got error %v", err)
+	assert.Equal(t, attempts, 1)
+	assert.Equal(t, targetHits, 0)
 }
 
 func TestPost_InvalidConfiguredAPIBaseURL(t *testing.T) {

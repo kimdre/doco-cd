@@ -30,6 +30,10 @@ The token is used to authenticate with your Git provider (GitHub, GitLab, Bitbuc
 After you create the token, pass it to Doco-CD as an environment variable or as a file.
 The right way depends on where the Compose file of Doco-CD lives.
 
+Also set [`GIT_AUTH_DOMAINS`](Git-Settings.md#credential-scope) to the hosts that may receive the token.
+Doco-CD does not send the token to other hosts, and it does not start if the token has no hosts.
+The examples below use `github.com`. Replace it with the host of your Git provider.
+
 === "Compose file on the Docker host"
 
     Use this if you keep the Compose file of Doco-CD on the Docker host and not in Git (standalone install).
@@ -40,6 +44,7 @@ The right way depends on where the Compose file of Doco-CD lives.
     
         ```ini title=".env"
         GIT_ACCESS_TOKEN=your_read_only_token
+        GIT_AUTH_DOMAINS=- domains: [github.com]
         ```
     
         Run `chmod 600 .env` so other users of the host cannot read it. Then start or recreate Doco-CD with `docker compose up -d`.
@@ -59,6 +64,7 @@ The right way depends on where the Compose file of Doco-CD lives.
           app:
             environment:
               GIT_ACCESS_TOKEN_FILE: /run/secrets/git_access_token
+              GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
             secrets:
               - git_access_token
     
@@ -101,6 +107,7 @@ The right way depends on where the Compose file of Doco-CD lives.
           doco-cd:
             environment:
               GIT_ACCESS_TOKEN_FILE: /run/secrets/git_access_token
+              GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
             secrets:
               - git_access_token
     
@@ -144,6 +151,7 @@ The right way depends on where the Compose file of Doco-CD lives.
               doco-cd:
                 environment:
                   GIT_ACCESS_TOKEN_FILE: /run/secrets/git_access_token
+                  GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
                   SOPS_AGE_KEY_FILE: /run/secrets/sops_age_key
                 secrets:
                   - git_access_token
@@ -203,6 +211,7 @@ The right way depends on where the Compose file of Doco-CD lives.
           doco-cd:
             environment:
               GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN}
+              GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
               SECRET_PROVIDER: bitwarden_sm
               SECRET_PROVIDER_ACCESS_TOKEN_FILE: /run/secrets/secret_provider_access_token
             secrets:

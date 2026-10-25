@@ -769,7 +769,6 @@ func scheduledDiscoveryGitOptions(ref composeScheduledServiceRef, load ComposeLo
 	return &deploy.GitOptions{
 		SSHPrivateKey:           load.SSHPrivateKey,
 		SSHPrivateKeyPassphrase: load.SSHPrivateKeyPassphrase,
-		GitAccessToken:          load.GitAccessToken,
 		SkipTLSVerification:     load.SkipTLSVerify,
 		HttpProxy:               load.HttpProxy,
 		GitCloneSubmodules:      load.GitCloneSubmodules,

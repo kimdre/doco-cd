@@ -116,6 +116,8 @@ func TestDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c.ConfigureGitAuth()
+
 	c.GitCommitStatus = false
 
 	log := logger.New(logger.LevelCritical).Logger
@@ -189,7 +191,7 @@ func TestDeploy(t *testing.T) {
 	repoPath := filepath.Join(tmpDir, repoName)
 	localRepoPath := filepath.Join(t.TempDir(), repoName)
 
-	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,15 +6,19 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/common/httpclient"
 )
 
 const testRepoURL = "https://github.com/acme/deploy.git"
@@ -125,8 +129,9 @@ func setupResolver(t *testing.T) *fakeGitHub {
 	prevClient, prevNow := apiHTTPClient, nowFn
 
 	apiHTTPClient = &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: rewriteTransport{host: strings.TrimPrefix(server.URL, "http://")},
+		Timeout:       5 * time.Second,
+		Transport:     rewriteTransport{host: strings.TrimPrefix(server.URL, "http://")},
+		CheckRedirect: prevClient.CheckRedirect,
 	}
 	nowFn = fake.currentTime
 
@@ -336,5 +341,20 @@ func TestAPIStatusErrorMessage(t *testing.T) {
 	want := `GitHub API request failed with status 404: {"message":"Not Found"}`
 	if err.Error() != want {
 		t.Fatalf("Error() = %q, want %q", err.Error(), want)
+	}
+}
+
+// The App JWT must not follow a redirect to another origin.
+func TestAPIHTTPClient_BlocksCrossOriginRedirect(t *testing.T) {
+	first, _ := url.Parse("https://api.github.com/app/installations/1/access_tokens")
+	next, _ := url.Parse("https://evil.example.com/app/installations/1/access_tokens")
+
+	if apiHTTPClient.CheckRedirect == nil {
+		t.Fatal("apiHTTPClient has no redirect policy")
+	}
+
+	err := apiHTTPClient.CheckRedirect(&http.Request{URL: next}, []*http.Request{{URL: first}})
+	if !errors.Is(err, httpclient.ErrCrossOriginRedirect) {
+		t.Fatalf("CheckRedirect() error = %v, want ErrCrossOriginRedirect", err)
 	}
 }

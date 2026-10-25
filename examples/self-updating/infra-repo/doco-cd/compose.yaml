@@ -17,9 +17,11 @@ services:
         - url: https://github.com/example/infra.git
           reference: main
           interval: 300
-      # Private repository: uncomment this line, the "secrets" lines below
+      # Private repository: uncomment these two lines, the "secrets" lines below
       # and the top-level "secrets" block. See the Getting Started guide.
+      # GIT_AUTH_DOMAINS lists the hosts that receive the token.
       # GIT_ACCESS_TOKEN_FILE: /run/secrets/git_access_token
+      # GIT_AUTH_DOMAINS: "- domains: [github.com]"
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

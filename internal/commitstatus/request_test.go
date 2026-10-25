@@ -165,7 +165,8 @@ func newTestLogger() *slog.Logger {
 }
 
 func TestResolveRequest_FallsBackToGitHubAppToken(t *testing.T) {
-	gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{
+	scoped := []gitInternal.ScopedAuthConfig{{Domains: []string{"github.com", "ghe.example"}}}
+	gitInternal.ConfigureAuthResolver(scoped, "", "", "", "", gitInternal.GitHubAppConfig{
 		ID:         "12345",
 		PrivateKey: "test-private-key",
 	})
@@ -234,14 +235,15 @@ func TestResolveRequest_FallsBackToGitHubAppToken(t *testing.T) {
 	}
 }
 
-func TestResolveRequest_PrefersExplicitToken(t *testing.T) {
-	gitInternal.ConfigureAuthResolver(nil, "", "", "pat-token", "", gitInternal.GitHubAppConfig{
+func TestResolveRequest_PrefersScopedToken(t *testing.T) {
+	scoped := []gitInternal.ScopedAuthConfig{{Domains: []string{"github.com"}, GitAccessToken: "pat-token"}}
+	gitInternal.ConfigureAuthResolver(scoped, "", "", "", "", gitInternal.GitHubAppConfig{
 		ID:         "12345",
 		PrivateKey: "test-private-key",
 	})
 
 	restoreProvider := gitInternal.SwapGitHubAppTokenProviderForTest(func(_ string, _ gitInternal.GitHubAppConfig) (string, error) {
-		t.Fatal("github app token provider should not be called when an explicit token is set")
+		t.Fatal("github app token provider should not be called when a scoped token is set")
 		return "", nil
 	})
 
@@ -256,14 +258,13 @@ func TestResolveRequest_PrefersExplicitToken(t *testing.T) {
 		SourceURL:        "https://github.com/org/repo.git",
 		CommitSHA:        "deadbeef",
 		ProviderOverride: "github",
-		AccessToken:      "pat-token",
 	})
 	if !ok {
 		t.Fatal("expected ResolveRequest to succeed")
 	}
 
 	if req.Token != "pat-token" {
-		t.Fatalf("expected explicit access token, got '%s'", req.Token)
+		t.Fatalf("expected scoped access token, got '%s'", req.Token)
 	}
 
 	if req.Target == nil || req.Target.Backend != commitstatus.BackendStatus {
@@ -289,13 +290,57 @@ func TestResolveRequest_SkipsWhenNoCredentialsConfigured(t *testing.T) {
 	}
 }
 
+// A global token must not be sent to a reporting host that GIT_AUTH_DOMAINS does not list.
+// The status goes to the payload web URL, so a scoped clone URL must not authorize it.
+func TestResolveRequest_SkipsUnscopedReportingHost(t *testing.T) {
+	scoped := []gitInternal.ScopedAuthConfig{{Domains: []string{"github.com"}}}
+	gitInternal.ConfigureAuthResolver(scoped, "", "", "pat-token", "", gitInternal.GitHubAppConfig{
+		ID:         "12345",
+		PrivateKey: "test-private-key",
+	})
+
+	restoreProvider := gitInternal.SwapGitHubAppTokenProviderForTest(func(repoURL string, _ gitInternal.GitHubAppConfig) (string, error) {
+		t.Errorf("github app token provider called for unscoped reporting host %s", repoURL)
+		return "", nil
+	})
+
+	t.Cleanup(func() {
+		restoreProvider()
+		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
+	})
+
+	tests := []commitstatus.RequestParams{
+		{SourceURL: "https://attacker.example/org/repo.git"},
+		{SourceURL: "https://github.com/org/repo.git", PayloadWebURL: "https://attacker.example/org/repo"},
+		{SourceURL: "git@github.com:org/repo.git", PayloadWebURL: "https://attacker.example/org/repo"},
+	}
+
+	for _, params := range tests {
+		params.Enabled = true
+		params.SourceIsGit = true
+		params.CommitSHA = "deadbeef"
+
+		if req, ok := commitstatus.ResolveRequest(newTestLogger(), params); ok {
+			t.Fatalf("ResolveRequest(%+v) = %+v, want skip", params, req)
+		}
+	}
+
+	// The SSH clone URL and web URL point to the same scoped host.
+	req, ok := commitstatus.ResolveRequest(newTestLogger(), commitstatus.RequestParams{
+		Enabled: true, SourceIsGit: true, CommitSHA: "deadbeef",
+		SourceURL: "git@github.com:org/repo.git", PayloadWebURL: "https://github.com/org/repo",
+	})
+	if !ok || req.Token != "pat-token" {
+		t.Fatalf("ResolveRequest() for scoped web URL = %+v, %v, want global token", req, ok)
+	}
+}
+
 func TestResolveRequest_SkipsWhenDisabled(t *testing.T) {
 	_, ok := commitstatus.ResolveRequest(newTestLogger(), commitstatus.RequestParams{
 		Enabled:     false,
 		SourceIsGit: true,
 		SourceURL:   "https://github.com/org/repo.git",
 		CommitSHA:   "deadbeef",
-		AccessToken: "pat-token",
 	})
 	if ok {
 		t.Fatal("expected ResolveRequest to skip when commit statuses are disabled")
@@ -308,7 +353,6 @@ func TestResolveRequest_SkipsForNonGitSource(t *testing.T) {
 		SourceIsGit: false,
 		SourceURL:   "ghcr.io/org/artifact:latest",
 		CommitSHA:   "deadbeef",
-		AccessToken: "pat-token",
 	})
 	if ok {
 		t.Fatal("expected ResolveRequest to skip for non-git sources")
@@ -320,7 +364,6 @@ func TestResolveRequest_SkipsWhenNoCommitSHA(t *testing.T) {
 		Enabled:     true,
 		SourceIsGit: true,
 		SourceURL:   "https://github.com/org/repo.git",
-		AccessToken: "pat-token",
 	})
 	if ok {
 		t.Fatal("expected ResolveRequest to skip when no commit SHA is available")
@@ -328,7 +371,8 @@ func TestResolveRequest_SkipsWhenNoCommitSHA(t *testing.T) {
 }
 
 func TestResolveRequest_FallsBackRepoURLAndFullName(t *testing.T) {
-	gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
+	scoped := []gitInternal.ScopedAuthConfig{{Domains: []string{"github.com"}}}
+	gitInternal.ConfigureAuthResolver(scoped, "", "", "pat-token", "", gitInternal.GitHubAppConfig{})
 	t.Cleanup(func() {
 		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
 	})
@@ -338,7 +382,6 @@ func TestResolveRequest_FallsBackRepoURLAndFullName(t *testing.T) {
 		SourceIsGit: true,
 		SourceURL:   "https://github.com/org/repo.git",
 		CommitSHA:   "deadbeef",
-		AccessToken: "pat-token",
 	})
 	if !ok {
 		t.Fatal("expected ResolveRequest to succeed")

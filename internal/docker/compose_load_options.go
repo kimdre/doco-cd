@@ -28,8 +28,6 @@ type ComposeLoadOptions struct {
 	// SSHPrivateKey and SSHPrivateKeyPassphrase configure SSH authentication for Git remote includes.
 	SSHPrivateKey           string
 	SSHPrivateKeyPassphrase string
-	// GitAccessToken configures HTTP(S) authentication for Git remote includes.
-	GitAccessToken string
 	// OciInsecureRegistries lists registries for OCI Compose includes with TLS verification disabled.
 	OciInsecureRegistries []string
 	// DataHostPath and DataMountPath are used as a fallback base directory for the Git include
@@ -67,7 +65,6 @@ func NewComposeLoadOptions(c *app.Config) ComposeLoadOptions {
 		GitCloneDepth:           c.GitCloneDepth,
 		SSHPrivateKey:           c.SSHPrivateKey,
 		SSHPrivateKeyPassphrase: c.SSHPrivateKeyPassphrase,
-		GitAccessToken:          c.GitAccessToken,
 		OciInsecureRegistries:   c.OciInsecureRegistries,
 		DataHostPath:            c.DataHostPath,
 		DataMountPath:           c.DataMountPath,

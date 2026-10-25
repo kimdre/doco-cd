@@ -151,6 +151,8 @@ func TestMain(m *testing.M) {
 		}
 	}()
 
+	configureTestGitAuth()
+
 	m.Run()
 }
 
@@ -326,6 +328,8 @@ env_files:
 	if err != nil {
 		t.Fatalf("failed to get app config: %s", err.Error())
 	}
+
+	useConfiguredGitAuth(t, appConfig)
 
 	appConfig.GitCommitStatus = false
 

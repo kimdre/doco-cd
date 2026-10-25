@@ -344,7 +344,6 @@ func postSkippedWebhookCommitStatus(ctx context.Context, appConfig *app.Config, 
 		PayloadFullName:  payload.FullName,
 		ProviderOverride: appConfig.GitScmProvider,
 		APIBaseURL:       string(appConfig.GitScmApiUrl),
-		AccessToken:      appConfig.GitAccessToken,
 		ContextName:      commitstatus.ContextForRun(customTarget),
 	})
 	if !ok {
@@ -493,9 +492,9 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// Only attempt SSH clone when URL-specific credentials include an SSH private key.
 	// If a clone URL override is configured, do not switch back to the payload SSH URL.
-	resolvedSSH := git.ResolveAuthConfig(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
+	resolvedSSH := git.ResolveAuthConfig(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
 	if sourceType == config.SourceTypeGit && shouldUsePayloadSSHURL(cloneURLOverrideApplied, payload.SSHUrl, resolvedSSH) {
-		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
+		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
 		if authErr != nil {
 			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata, authErr, notifier)
 

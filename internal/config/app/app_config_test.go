@@ -12,6 +12,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
@@ -115,6 +116,9 @@ func TestGetConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Isolate the Git credentials from the environment. The global token needs a scope.
+			setGitAuthEnv(t, "", "- domains: [github.com]")
+
 			if tt.dockerSecrets != nil {
 				secretsPath := path.Join(t.TempDir(), "/run/secrets/")
 
@@ -209,17 +213,195 @@ func TestGetConfig(t *testing.T) {
 	}
 }
 
+// setGitAuthEnv sets the global token and GIT_AUTH_DOMAINS and clears other Git credential variables.
+func setGitAuthEnv(t *testing.T, token, authDomains string) {
+	t.Helper()
+
+	t.Setenv("GIT_ACCESS_TOKEN", token)
+	t.Setenv("GIT_ACCESS_TOKEN_FILE", "")
+	t.Setenv("GIT_AUTH_DOMAINS", authDomains)
+	t.Setenv("GIT_AUTH_DOMAINS_FILE", "")
+	t.Setenv("GIT_AUTH_ALLOW_ANY_HOST", "false")
+	t.Setenv("GITHUB_APP_ID", "")
+	t.Setenv("GITHUB_APP_PRIVATE_KEY", "")
+	t.Setenv("GITHUB_APP_PRIVATE_KEY_FILE", "")
+}
+
 func TestGetConfig_GlobalGitHubAppValidation(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")
 	t.Setenv("WEBHOOK_SECRET", "secret")
-	t.Setenv("GIT_ACCESS_TOKEN", "")
-	t.Setenv("GIT_ACCESS_TOKEN_FILE", "")
+	setGitAuthEnv(t, "", "- domains: [github.com]")
 	t.Setenv("GITHUB_APP_ID", "12345")
 	t.Setenv("GITHUB_APP_PRIVATE_KEY", "test-private-key")
 
 	if _, err := GetConfig(); err != nil {
 		t.Fatalf("expected global GitHub App config to be accepted, got %v", err)
+	}
+}
+
+func TestGetConfig_GlobalGitCredentialScope(t *testing.T) {
+	tests := []struct {
+		name         string
+		token        string
+		app          bool
+		incomplete   bool
+		authDomains  string
+		allowAnyHost bool
+		wantErr      error
+		wantInErr    string
+	}{
+		{name: "token without scope", token: "token", wantErr: ErrUnscopedGitCredential, wantInErr: "GIT_ACCESS_TOKEN"},
+		{
+			name: "token with only credentialed entries", token: "token",
+			authDomains: "- domains: [gitlab.com]\n  git_access_token: gl-token",
+			wantErr:     ErrUnscopedGitCredential,
+		},
+		{name: "app without scope", app: true, wantErr: ErrUnscopedGitCredential, wantInErr: "GITHUB_APP_ID"},
+		{name: "token without scope and allow any host", token: "token", allowAnyHost: true},
+		{name: "app without scope and allow any host", app: true, allowAnyHost: true},
+		{name: "token with domains-only entry", token: "token", authDomains: "- domains: [github.com]"},
+		{
+			name: "token with SSH-only entry", token: "token",
+			authDomains: "- domains: [github.com]\n  ssh_private_key: key",
+		},
+		{name: "incomplete app without scope is ignored", app: true, incomplete: true},
+		{name: "no global credential without scope"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", "info")
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			setGitAuthEnv(t, tt.token, tt.authDomains)
+
+			t.Setenv("GIT_AUTH_ALLOW_ANY_HOST", strconv.FormatBool(tt.allowAnyHost))
+
+			if tt.app {
+				t.Setenv("GITHUB_APP_ID", "12345")
+
+				if !tt.incomplete {
+					t.Setenv("GITHUB_APP_PRIVATE_KEY", "test-private-key")
+				}
+			}
+
+			_, err := GetConfig()
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("GetConfig() error = %v, want nil", err)
+				}
+
+				return
+			}
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("GetConfig() error = %v, want %v", err, tt.wantErr)
+			}
+
+			if !strings.Contains(err.Error(), tt.wantInErr) || !strings.Contains(err.Error(), "GIT_AUTH_DOMAINS") {
+				t.Fatalf("GetConfig() error = %q, want a migration hint for %s", err, tt.wantInErr)
+			}
+		})
+	}
+}
+
+func TestGetConfig_GitAuthAllowAnyHost(t *testing.T) {
+	t.Cleanup(func() {
+		git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{})
+	})
+
+	tests := []struct {
+		name        string
+		value       string
+		authDomains string
+		unset       bool
+		want        bool
+		wantErr     error
+	}{
+		{name: "enabled without scope", value: "true", want: true},
+		{name: "enabled with scope", value: "true", authDomains: "- domains: [github.com]", want: true},
+		{name: "disabled by default", authDomains: "- domains: [github.com]", unset: true},
+		{name: "explicitly disabled", value: "false", authDomains: "- domains: [github.com]"},
+		{name: "invalid value", value: "not-a-bool", wantErr: config.ErrParseConfigFailed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", "info")
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			setGitAuthEnv(t, "global-token", tt.authDomains)
+			t.Setenv("GIT_AUTH_ALLOW_ANY_HOST", tt.value)
+
+			if tt.unset {
+				if err := os.Unsetenv("GIT_AUTH_ALLOW_ANY_HOST"); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			cfg, err := GetConfig()
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) || !strings.Contains(err.Error(), "GitAuthAllowAnyHost") {
+					t.Fatalf("GetConfig() error = %v, want %v for GitAuthAllowAnyHost", err, tt.wantErr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if cfg.GitAuthAllowAnyHost != tt.want {
+				t.Fatalf("GitAuthAllowAnyHost = %v, want %v", cfg.GitAuthAllowAnyHost, tt.want)
+			}
+
+			cfg.ConfigureGitAuth()
+
+			for _, host := range []string{"github.com", "unlisted.example"} {
+				repoURL := "https://" + host + "/org/repo.git"
+				resolved := git.ResolveAuthConfig(repoURL, "", "")
+
+				token, err := git.ResolveHTTPToken(repoURL, resolved)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				wantToken := ""
+				if host == "github.com" || tt.want {
+					wantToken = "global-token"
+				}
+
+				if token != wantToken {
+					t.Fatalf("token for %s = %q, want %q", host, token, wantToken)
+				}
+			}
+		})
+	}
+}
+
+func TestGetConfig_GitAuthDomainsRejectsInvalidPatterns(t *testing.T) {
+	for _, authDomains := range []string{
+		"- git_access_token: token",
+		"- domains: []\n  git_access_token: token",
+		"- domains: ['*']\n  git_access_token: token",
+		"- domains: ['https://github.com']\n  git_access_token: token",
+		"- domains: ['github.com:443']\n  git_access_token: token",
+		"- domains: ['github.com/org']\n  git_access_token: token",
+		"- domains: ['']\n  git_access_token: token",
+	} {
+		t.Run(authDomains, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", "info")
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			setGitAuthEnv(t, "", authDomains)
+
+			for _, allowAnyHost := range []bool{false, true} {
+				t.Setenv("GIT_AUTH_ALLOW_ANY_HOST", strconv.FormatBool(allowAnyHost))
+
+				if _, err := GetConfig(); err == nil {
+					t.Fatalf("GetConfig() accepted GIT_AUTH_DOMAINS %q with allow-any-host=%v", authDomains, allowAnyHost)
+				}
+			}
+		})
 	}
 }
 

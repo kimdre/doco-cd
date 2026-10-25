@@ -84,7 +84,7 @@ Inline deployment definitions replace repository definitions, so their `pause` s
 
 With a YAML anchor (See [Fragments](https://docs.docker.com/reference/compose-file/fragments/) and [Extensions](https://docs.docker.com/reference/compose-file/extension/) in Docker Compose), you can define the poll configuration outside the service definition.
 
-```yaml title="docker-compose.yaml" hl_lines="1-6 19"
+```yaml title="docker-compose.yaml" hl_lines="1-6 20"
 x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/example/some-repo.git
@@ -102,6 +102,7 @@ services:
     environment:
       TZ: Europe/Berlin
       GIT_ACCESS_TOKEN: xxx
+      GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
       WEBHOOK_SECRET: xxx
       <<: *poll-config
     volumes:
@@ -114,7 +115,7 @@ volumes:
 
 #### Inline configuration
 
-```yaml title="docker-compose.yaml" hl_lines="12-16"
+```yaml title="docker-compose.yaml" hl_lines="13-17"
 services:
   app:
     container_name: doco-cd
@@ -125,6 +126,7 @@ services:
     environment:
       TZ: Europe/Berlin
       GIT_ACCESS_TOKEN: xxx
+      GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
       WEBHOOK_SECRET: xxx
       POLL_CONFIG: |
         - url: https://github.com/example/some-repo.git
@@ -150,7 +152,7 @@ volumes:
 
 1. Or as a Go duration: 5m
 
-```yaml title="docker-compose.yaml" hl_lines="12 16"
+```yaml title="docker-compose.yaml" hl_lines="13 17"
 services:
   app:
     container_name: doco-cd
@@ -161,6 +163,7 @@ services:
     environment:
       TZ: Europe/Berlin
       GIT_ACCESS_TOKEN: xxx
+      GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
       WEBHOOK_SECRET: xxx
       POLL_CONFIG_FILE: /poll-config.yaml
     volumes:
@@ -173,7 +176,7 @@ volumes:
 ```
 
 #### Using a docker compose config
-```yaml title="docker-compose.yaml" hl_lines="12 16-18 23-31"
+```yaml title="docker-compose.yaml" hl_lines="13 17-19 24-32"
 services:
   app:
     container_name: doco-cd
@@ -184,6 +187,7 @@ services:
     environment:
       TZ: Europe/Berlin
       GIT_ACCESS_TOKEN: xxx
+      GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
       WEBHOOK_SECRET: xxx
       POLL_CONFIG_FILE: /poll-config.yml
     volumes:

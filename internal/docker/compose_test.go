@@ -236,6 +236,8 @@ func TestDeployCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c.ConfigureGitAuth()
+
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
@@ -1601,7 +1603,9 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	c.ConfigureGitAuth()
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
@@ -1926,6 +1930,8 @@ func TestInjectSecretsToProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c.ConfigureGitAuth()
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -2021,6 +2027,8 @@ func TestRestartProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c.ConfigureGitAuth()
+
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
@@ -2046,6 +2054,8 @@ func TestStopProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c.ConfigureGitAuth()
+
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
@@ -2070,6 +2080,8 @@ func TestStartProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	c.ConfigureGitAuth()
 
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
@@ -2146,6 +2158,8 @@ func TestStopAndStartProjectServices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	c.ConfigureGitAuth()
 
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
@@ -2231,6 +2245,8 @@ func TestStopProjectServices_HonoursContainerStopTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c.ConfigureGitAuth()
+
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
@@ -2294,6 +2310,8 @@ func TestStopAndStartProjectServices_SchedulerSequence_WithDependsOn(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	c.ConfigureGitAuth()
 
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
@@ -2374,6 +2392,8 @@ func TestRemoveProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c.ConfigureGitAuth()
+
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
@@ -2432,6 +2452,8 @@ func TestGetProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c.ConfigureGitAuth()
+
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
@@ -2460,6 +2482,8 @@ func TestGetProjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	c.ConfigureGitAuth()
 
 	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {

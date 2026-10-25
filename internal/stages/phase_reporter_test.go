@@ -264,7 +264,7 @@ func newPhaseTestManager(t *testing.T, server *httptest.Server) *StageManager {
 
 	sm := newTestStageManager(t)
 	sm.AppConfig = &app.Config{
-		GitCommitStatus: true, GitScmProvider: "github", GitScmApiUrl: config.HttpUrl(server.URL), GitAccessToken: "test-token",
+		GitCommitStatus: true, GitScmProvider: "github", GitScmApiUrl: config.HttpUrl(server.URL),
 	}
 	sm.Repository.SourceUrl = "https://github.com/owner/repo"
 	sm.Repository.Revision = "deadbeef"

@@ -36,7 +36,6 @@ type GitStoreOptions struct {
 	Private                 bool
 	SSHPrivateKey           string
 	SSHPrivateKeyPassphrase string
-	AccessToken             string
 	SkipTLSVerify           bool
 	ProxyOptions            transport.ProxyOptions
 	// CloneSubmodules enables submodule materialization in Publish, via
@@ -98,7 +97,7 @@ func (s *GitStore) Resolve(ctx context.Context, ref string) (Revision, error) {
 	// materializes them itself, from tree objects, via git.ExportTree.
 	if _, err := git.CloneOrUpdateBareMirror(s.opts.Log,
 		s.opts.CloneURL, ref, s.mirrorDir,
-		s.opts.Private, s.opts.SSHPrivateKey, s.opts.SSHPrivateKeyPassphrase, s.opts.AccessToken,
+		s.opts.Private, s.opts.SSHPrivateKey, s.opts.SSHPrivateKeyPassphrase,
 		s.opts.SkipTLSVerify, s.opts.ProxyOptions, s.opts.Depth); err != nil {
 		return "", fmt.Errorf("resolve %q: %w", ref, err)
 	}
@@ -163,7 +162,6 @@ func (s *GitStore) Publish(ctx context.Context, revision Revision) (Artifact, er
 		SkipAbsoluteSymlinks:    s.opts.SkipAbsoluteSymlinks,
 		SSHPrivateKey:           s.opts.SSHPrivateKey,
 		SSHPrivateKeyPassphrase: s.opts.SSHPrivateKeyPassphrase,
-		AccessToken:             s.opts.AccessToken,
 		SkipTLSVerify:           s.opts.SkipTLSVerify,
 		ProxyOptions:            s.opts.ProxyOptions,
 		Depth:                   s.opts.Depth,

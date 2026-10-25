@@ -35,12 +35,45 @@ type GitHubAppConfig struct {
 }
 
 // ResolvedAuthConfig contains the final credentials selected for a given repository URL.
+// It holds at most one HTTP(S) credential: an access token or a GitHub App.
+// The HTTP(S) credential is bound to the host it was resolved for.
 type ResolvedAuthConfig struct {
 	SSHPrivateKey           string
 	SSHPrivateKeyPassphrase string
 	GitAccessToken          string
 	HTTPAuthUser            string // HTTPAuthUser is the Basic Auth username for token auth; empty defaults to DefaultHTTPAuthUser.
 	GitHubApp               GitHubAppConfig
+
+	// httpHost is the normalized host that the HTTP(S) credential belongs to.
+	httpHost string
+}
+
+// HTTPAuthMethod identifies the HTTP(S) credential selected for a repository host.
+type HTTPAuthMethod int
+
+const (
+	// HTTPAuthNone means that no HTTP(S) credential is scoped to the host.
+	HTTPAuthNone HTTPAuthMethod = iota
+	// HTTPAuthToken means that an access token is used.
+	HTTPAuthToken
+	// HTTPAuthGitHubApp means that a GitHub App installation token is minted.
+	HTTPAuthGitHubApp
+)
+
+// HTTPMethod reports which HTTP(S) credential was selected.
+func (r ResolvedAuthConfig) HTTPMethod() HTTPAuthMethod {
+	switch {
+	case r.GitAccessToken != "":
+		return HTTPAuthToken
+	case r.GitHubApp.complete():
+		return HTTPAuthGitHubApp
+	default:
+		return HTTPAuthNone
+	}
+}
+
+func (c GitHubAppConfig) complete() bool {
+	return c.ID != "" && c.PrivateKey != ""
 }
 
 type authResolver struct {
@@ -50,6 +83,7 @@ type authResolver struct {
 	globalToken         string
 	globalHTTPAuthUser  string
 	globalGitHubApp     GitHubAppConfig
+	allowAnyHost        bool
 }
 
 var (
@@ -57,11 +91,23 @@ var (
 	configuredResolver = authResolver{}
 )
 
+// AuthResolverOption changes optional behavior of the Git credential resolver.
+type AuthResolverOption func(*authResolver)
+
+// WithAllowAnyHost sends the global HTTP(S) credential also to hosts without a matching GIT_AUTH_DOMAINS entry.
+// This is insecure: a URL from a webhook, an API call, or a repository can then receive the global credential.
+func WithAllowAnyHost(allow bool) AuthResolverOption {
+	return func(r *authResolver) {
+		r.allowAnyHost = allow
+	}
+}
+
 // ConfigureAuthResolver configures domain-scoped and global Git credentials.
 // This should be called when application config is loaded or updated.
 func ConfigureAuthResolver(scoped []ScopedAuthConfig,
 	globalPrivateKey, globalKeyPassphrase, globalToken, globalHTTPAuthUser string,
 	globalGitHubApp GitHubAppConfig,
+	opts ...AuthResolverOption,
 ) {
 	authResolverMu.Lock()
 	defer authResolverMu.Unlock()
@@ -77,6 +123,10 @@ func ConfigureAuthResolver(scoped []ScopedAuthConfig,
 			PrivateKey:     strings.TrimSpace(globalGitHubApp.PrivateKey),
 			InstallationID: globalGitHubApp.InstallationID,
 		},
+	}
+
+	for _, opt := range opts {
+		opt(&configuredResolver)
 	}
 }
 
@@ -104,17 +154,135 @@ func SwapGitHubAppTokenProviderForTest(provider func(string, GitHubAppConfig) (s
 	}
 }
 
-// ResolveAuthConfig resolves credentials for a repository URL using exact domain matches,
-// then the most specific wildcard suffix, and finally global fallback credentials.
-// GitHub App credentials are never resolved for gist URLs, because installation tokens
-// cannot access gists; those fall back to an access token or anonymous access.
-func ResolveAuthConfig(url, privateKey, keyPassphrase, token string) ResolvedAuthConfig {
-	resolved := resolveAuthConfig(url, privateKey, keyPassphrase, token)
-	if isGistURL(url) {
-		resolved.GitHubApp = GitHubAppConfig{}
+// ResolveAuthConfig resolves credentials for a repository URL.
+//
+// SSH keys come from the matching GIT_AUTH_DOMAINS entry, then the global key, then privateKey.
+// Without a matching entry, privateKey wins over the global key.
+//
+// HTTP(S) credentials are only selected when the host matches a GIT_AUTH_DOMAINS entry.
+// Exact domains win over wildcards, and the longest wildcard suffix wins over shorter ones.
+// For the matching entry the order is: entry token, entry GitHub App, global token, global GitHub App.
+// Hosts without a matching entry get no HTTP(S) credential, so a token cannot reach an unknown host.
+// WithAllowAnyHost disables this protection: hosts without a matching entry then get the global credential.
+// GitHub App credentials are never used for gist URLs, because installation tokens cannot access gists.
+func ResolveAuthConfig(url, privateKey, keyPassphrase string) ResolvedAuthConfig {
+	authResolverMu.RLock()
+
+	resolver := configuredResolver
+
+	authResolverMu.RUnlock()
+
+	host := parseGitHost(url)
+
+	resolved := ResolvedAuthConfig{
+		SSHPrivateKey:           privateKey,
+		SSHPrivateKeyPassphrase: keyPassphrase,
+	}
+
+	if host == "" {
+		return resolved
+	}
+
+	if strings.TrimSpace(privateKey) == "" && strings.TrimSpace(resolver.globalPrivateKey) != "" {
+		resolved.SSHPrivateKey = strings.TrimSpace(resolver.globalPrivateKey)
+		resolved.SSHPrivateKeyPassphrase = resolver.globalKeyPassphrase
+	}
+
+	entry, ok := resolver.match(host)
+	if !ok {
+		if resolver.allowAnyHost {
+			// An empty entry has no own credential, so only the global credential can be selected.
+			resolver.selectHTTPCredential(ScopedAuthConfig{}, isGistURL(url), &resolved)
+
+			if resolved.HTTPMethod() != HTTPAuthNone {
+				resolved.httpHost = host
+			}
+		}
+
+		return resolved
+	}
+
+	// A matched entry uses its own SSH key, then the global key.
+	switch {
+	case strings.TrimSpace(entry.SSHPrivateKey) != "":
+		resolved.SSHPrivateKey = strings.TrimSpace(entry.SSHPrivateKey)
+		resolved.SSHPrivateKeyPassphrase = entry.SSHPrivateKeyPassphrase
+	case strings.TrimSpace(resolver.globalPrivateKey) != "":
+		resolved.SSHPrivateKey = strings.TrimSpace(resolver.globalPrivateKey)
+		resolved.SSHPrivateKeyPassphrase = resolver.globalKeyPassphrase
+	}
+
+	resolver.selectHTTPCredential(entry, isGistURL(url), &resolved)
+
+	if resolved.HTTPMethod() != HTTPAuthNone {
+		resolved.httpHost = host
 	}
 
 	return resolved
+}
+
+// match returns the GIT_AUTH_DOMAINS entry for a normalized host.
+// An exact domain match wins. Otherwise the wildcard with the longest suffix wins.
+func (r authResolver) match(host string) (ScopedAuthConfig, bool) {
+	for _, entry := range r.scoped {
+		for _, domain := range entry.Domains {
+			if normalizeHost(domain) == host {
+				return entry, true
+			}
+		}
+	}
+
+	bestIdx := -1
+	bestSuffixLen := -1
+
+	for i, entry := range r.scoped {
+		for _, domain := range entry.Domains {
+			suffix, ok := wildcardSuffix(domain)
+			if !ok {
+				continue
+			}
+
+			if wildcardMatches(host, suffix) && len(suffix) > bestSuffixLen {
+				bestIdx = i
+				bestSuffixLen = len(suffix)
+			}
+		}
+	}
+
+	if bestIdx < 0 {
+		return ScopedAuthConfig{}, false
+	}
+
+	return r.scoped[bestIdx], true
+}
+
+// selectHTTPCredential sets exactly one HTTP(S) credential for a matching entry.
+// The entry's own credential wins over the inherited global credential.
+// GitHub Apps are skipped for gists, so a gist falls back to a token or anonymous access.
+func (r authResolver) selectHTTPCredential(entry ScopedAuthConfig, gist bool, resolved *ResolvedAuthConfig) {
+	user := strings.TrimSpace(entry.GitAccessTokenUser)
+	if user == "" {
+		user = r.globalHTTPAuthUser
+	}
+
+	entryApp := GitHubAppConfig{
+		ID:             strings.TrimSpace(entry.GitHubAppID),
+		PrivateKey:     strings.TrimSpace(entry.GitHubAppPrivateKey),
+		InstallationID: entry.GitHubAppInstallationID,
+	}
+
+	switch {
+	case strings.TrimSpace(entry.GitAccessToken) != "":
+		resolved.GitAccessToken = strings.TrimSpace(entry.GitAccessToken)
+		resolved.HTTPAuthUser = user
+	case entryApp.complete() && !gist:
+		resolved.GitHubApp = entryApp
+	case strings.TrimSpace(r.globalToken) != "":
+		resolved.GitAccessToken = strings.TrimSpace(r.globalToken)
+		resolved.HTTPAuthUser = user
+	case r.globalGitHubApp.complete() && !gist:
+		resolved.GitHubApp = r.globalGitHubApp
+	}
 }
 
 // isGistURL reports whether an HTTP(S) URL points to a GitHub gist, served from a
@@ -132,144 +300,6 @@ func isGistURL(rawURL string) bool {
 	firstSegment, _, _ := strings.Cut(strings.TrimPrefix(parsed.Path, "/"), "/")
 
 	return strings.EqualFold(firstSegment, "gist")
-}
-
-func resolveAuthConfig(url, privateKey, keyPassphrase, token string) ResolvedAuthConfig {
-	authResolverMu.RLock()
-
-	resolver := configuredResolver
-
-	authResolverMu.RUnlock()
-
-	host := parseGitHost(url)
-	if host == "" {
-		return ResolvedAuthConfig{
-			SSHPrivateKey:           privateKey,
-			SSHPrivateKeyPassphrase: keyPassphrase,
-			GitAccessToken:          token,
-		}
-	}
-
-	resolvedGlobalPrivateKey := strings.TrimSpace(resolver.globalPrivateKey)
-	resolvedGlobalPassphrase := resolver.globalKeyPassphrase
-	resolvedGlobalToken := strings.TrimSpace(resolver.globalToken)
-	resolvedGlobalGitHubApp := resolver.globalGitHubApp
-
-	if resolvedGlobalPrivateKey != "" && strings.TrimSpace(privateKey) == "" {
-		privateKey = resolvedGlobalPrivateKey
-		keyPassphrase = resolvedGlobalPassphrase
-	}
-
-	if resolvedGlobalToken != "" && strings.TrimSpace(token) == "" {
-		token = resolvedGlobalToken
-	}
-
-	resolved := ResolvedAuthConfig{
-		SSHPrivateKey:           privateKey,
-		SSHPrivateKeyPassphrase: keyPassphrase,
-		GitAccessToken:          token,
-		HTTPAuthUser:            resolver.globalHTTPAuthUser,
-		GitHubApp:               resolvedGlobalGitHubApp,
-	}
-
-	if len(resolver.scoped) == 0 {
-		return resolved
-	}
-
-	// Exact domain matches always win.
-	for _, entry := range resolver.scoped {
-		for _, domain := range entry.Domains {
-			if normalizeHost(domain) == host {
-				return pickCredentials(entry, resolver, resolved)
-			}
-		}
-	}
-
-	// Then choose the wildcard with the longest suffix (most specific).
-	bestIdx := -1
-	bestSuffixLen := -1
-
-	for i, entry := range resolver.scoped {
-		for _, domain := range entry.Domains {
-			suffix, ok := wildcardSuffix(domain)
-			if !ok {
-				continue
-			}
-
-			if wildcardMatches(host, suffix) && len(suffix) > bestSuffixLen {
-				bestIdx = i
-				bestSuffixLen = len(suffix)
-			}
-		}
-	}
-
-	if bestIdx >= 0 {
-		return pickCredentials(resolver.scoped[bestIdx], resolver, resolved)
-	}
-
-	return resolved
-}
-
-// ResolveScopedCredentials resolves credentials for a repository URL using exact domain matches,
-// then the most specific wildcard suffix, and finally global fallback credentials.
-func ResolveScopedCredentials(url, privateKey, keyPassphrase, token string) (string, string, string) {
-	resolved := ResolveAuthConfig(url, privateKey, keyPassphrase, token)
-
-	return resolved.SSHPrivateKey, resolved.SSHPrivateKeyPassphrase, resolved.GitAccessToken
-}
-
-func pickCredentials(entry ScopedAuthConfig, resolver authResolver, base ResolvedAuthConfig) ResolvedAuthConfig {
-	resolvedPrivateKey := strings.TrimSpace(entry.SSHPrivateKey)
-	resolvedPassphrase := entry.SSHPrivateKeyPassphrase
-	resolvedToken := strings.TrimSpace(entry.GitAccessToken)
-	resolvedHTTPAuthUser := strings.TrimSpace(entry.GitAccessTokenUser)
-	resolvedGitHubApp := GitHubAppConfig{
-		ID:             strings.TrimSpace(entry.GitHubAppID),
-		PrivateKey:     strings.TrimSpace(entry.GitHubAppPrivateKey),
-		InstallationID: entry.GitHubAppInstallationID,
-	}
-
-	if resolvedPrivateKey == "" {
-		resolvedPrivateKey = strings.TrimSpace(resolver.globalPrivateKey)
-		resolvedPassphrase = resolver.globalKeyPassphrase
-	}
-
-	if resolvedToken == "" {
-		resolvedToken = strings.TrimSpace(resolver.globalToken)
-	}
-
-	if resolvedHTTPAuthUser == "" {
-		resolvedHTTPAuthUser = resolver.globalHTTPAuthUser
-	}
-
-	if resolvedGitHubApp.ID == "" || resolvedGitHubApp.PrivateKey == "" {
-		resolvedGitHubApp = resolver.globalGitHubApp
-	}
-
-	if resolvedPrivateKey == "" {
-		resolvedPrivateKey = base.SSHPrivateKey
-		resolvedPassphrase = base.SSHPrivateKeyPassphrase
-	}
-
-	if resolvedToken == "" {
-		resolvedToken = base.GitAccessToken
-	}
-
-	if resolvedHTTPAuthUser == "" {
-		resolvedHTTPAuthUser = base.HTTPAuthUser
-	}
-
-	if resolvedGitHubApp.ID == "" || resolvedGitHubApp.PrivateKey == "" {
-		resolvedGitHubApp = base.GitHubApp
-	}
-
-	return ResolvedAuthConfig{
-		SSHPrivateKey:           resolvedPrivateKey,
-		SSHPrivateKeyPassphrase: resolvedPassphrase,
-		GitAccessToken:          resolvedToken,
-		HTTPAuthUser:            resolvedHTTPAuthUser,
-		GitHubApp:               resolvedGitHubApp,
-	}
 }
 
 func normalizeHost(host string) string {
@@ -330,17 +360,23 @@ func wildcardMatches(host, suffix string) bool {
 	return strings.HasSuffix(host, "."+suffix)
 }
 
-// GetAuthMethod determines the appropriate authentication method based on the URL and provided credentials.
-func GetAuthMethod(url, privateKey, keyPassphrase, token string) (transport.AuthMethod, error) {
+// GetAuthMethod determines the authentication method for a repository URL.
+// HTTP(S) credentials come only from the configured resolver, see ResolveAuthConfig.
+func GetAuthMethod(url, privateKey, keyPassphrase string) (transport.AuthMethod, error) {
 	// Local and native Git transports cannot use HTTP or SSH credentials.
 	if IsLocalFile(url) || IsNativeGit(url) {
 		return nil, nil
 	}
 
-	resolved := ResolveAuthConfig(url, privateKey, keyPassphrase, token)
+	resolved := ResolveAuthConfig(url, privateKey, keyPassphrase)
 
 	if IsSSH(url) {
 		return SSHAuth(resolved.SSHPrivateKey, resolved.SSHPrivateKeyPassphrase)
+	}
+
+	// Fail instead of cloning anonymously when an HTTP(S) URL has no usable host.
+	if isHTTPURL(url) && parseGitHost(url) == "" {
+		return nil, ErrInvalidRepositoryHost
 	}
 
 	httpToken, err := ResolveHTTPToken(url, resolved)
@@ -355,26 +391,39 @@ func GetAuthMethod(url, privateKey, keyPassphrase, token string) (transport.Auth
 	return HttpTokenAuth(resolved.HTTPAuthUser, httpToken), nil
 }
 
-// ResolveHTTPToken returns the access token to use for HTTP(S) requests (git transport as well as
-// SCM API calls like commit status posting) against a repository URL. It prefers an explicit
-// GitAccessToken and falls back to minting a short-lived GitHub App installation token from
-// resolved.GitHubApp when no access token is configured. Returns an empty string (and no error)
-// when neither credential is configured.
+// ResolveHTTPToken returns the access token for HTTP(S) requests to a repository URL.
+// This covers Git transport and SCM API calls such as commit status posting.
+// It uses resolved.GitAccessToken, or mints a short-lived GitHub App installation token.
+// It returns an empty string and no error when no HTTP(S) credential was selected.
+// The URL host must be the host that ResolveAuthConfig resolved the credential for.
+// This stops a credential for one host from being sent to another host.
 func ResolveHTTPToken(url string, resolved ResolvedAuthConfig) (string, error) {
-	if resolved.GitAccessToken != "" {
+	method := resolved.HTTPMethod()
+	if method == HTTPAuthNone {
+		return "", nil
+	}
+
+	if host := parseGitHost(url); host == "" || resolved.httpHost == "" || host != resolved.httpHost {
+		return "", ErrCredentialHostMismatch
+	}
+
+	if method == HTTPAuthToken {
 		return resolved.GitAccessToken, nil
 	}
 
-	if resolved.GitHubApp.ID != "" && resolved.GitHubApp.PrivateKey != "" {
-		installationToken, err := githubAppTokenProvider(url, resolved.GitHubApp)
-		if err != nil {
-			return "", fmt.Errorf("failed to resolve GitHub App installation token: %w", err)
-		}
-
-		return installationToken, nil
+	installationToken, err := githubAppTokenProvider(url, resolved.GitHubApp)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve GitHub App installation token: %w", err)
 	}
 
-	return "", nil
+	return installationToken, nil
+}
+
+// isHTTPURL reports whether a URL uses the http or https scheme.
+func isHTTPURL(rawURL string) bool {
+	scheme, _, ok := strings.Cut(strings.TrimSpace(rawURL), "://")
+
+	return ok && (strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https"))
 }
 
 // IsSSH checks if a given URL is an SSH URL.

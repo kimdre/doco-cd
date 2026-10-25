@@ -15,6 +15,7 @@ import (
 	"github.com/avast/retry-go/v5"
 
 	"github.com/kimdre/doco-cd/internal/common/errdecode"
+	"github.com/kimdre/doco-cd/internal/common/httpclient"
 )
 
 const (
@@ -52,6 +53,12 @@ func azureDevOpsAuthToken(token string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(pat))
 }
 
+// newAPIClient returns a client for SCM API requests that carry credentials.
+// Redirects to another origin are blocked, so the credential stays with the API host.
+func newAPIClient() *http.Client {
+	return &http.Client{Timeout: 15 * time.Second, CheckRedirect: httpclient.SameOriginRedirects}
+}
+
 func doPost(ctx context.Context, apiURL, authHeaderValue string, body any) error {
 	return doWrite(ctx, http.MethodPost, apiURL, authHeaderValue, body, nil)
 }
@@ -86,7 +93,7 @@ func doWriteRequest(ctx context.Context, method, apiURL, authHeaderValue string,
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := newAPIClient()
 
 	req, reqErr := http.NewRequestWithContext(ctx, method, apiURL, bytes.NewReader(jsonData)) // #nosec G107
 	if reqErr != nil {
@@ -101,7 +108,7 @@ func doWriteRequest(ctx context.Context, method, apiURL, authHeaderValue string,
 	if postErr != nil {
 		return &commitStatusPostRetryError{
 			err:       fmt.Errorf("failed to post commit status: %w", postErr),
-			retryable: true,
+			retryable: !errors.Is(postErr, httpclient.ErrCrossOriginRedirect),
 		}
 	}
 
@@ -145,7 +152,7 @@ func doGet(ctx context.Context, apiURL, authHeaderValue string, dst any) error {
 	req.Header.Set("Authorization", authHeaderValue)
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := newAPIClient()
 
 	resp, err := client.Do(req)
 	if err != nil {

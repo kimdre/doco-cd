@@ -27,7 +27,6 @@ func TestPostSkippedWebhookPreservesFailedRetryStatus(t *testing.T) {
 
 	postSkippedWebhookCommitStatus(t.Context(), &app.Config{
 		GitCommitStatus: true,
-		GitAccessToken:  "test-token",
 		GitScmProvider:  string(commitstatus.ProviderGitea),
 		GitScmApiUrl:    config.HttpUrl(server.URL),
 	}, logger.New(logger.LevelCritical).Logger, webhook.ParsedPayload{

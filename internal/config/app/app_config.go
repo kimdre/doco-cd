@@ -24,6 +24,8 @@ const Name = "doco-cd" // Name of the application
 var (
 	Version            = "dev" // Version of the application, to be set during build time
 	ErrInvalidLogLevel = validation.TextError{Err: errors.New("invalid log level, must be one of debug, info, warn, error")}
+	// ErrUnscopedGitCredential is returned when a global HTTP(S) Git credential has no GIT_AUTH_DOMAINS scope.
+	ErrUnscopedGitCredential = errors.New("global Git HTTP(S) credentials must be scoped with GIT_AUTH_DOMAINS")
 )
 
 // Config is used to configure this application
@@ -60,6 +62,7 @@ type Config struct {
 	GitAuthDomainsYAML            string                 `env:"GIT_AUTH_DOMAINS"`                                                                                // GitAuthDomainsYAML is the YAML configuration for domain-scoped Git credentials
 	GitAuthDomainsFile            string                 `env:"GIT_AUTH_DOMAINS_FILE,file"`                                                                      // GitAuthDomainsFile is the file containing the YAML configuration for domain-scoped Git credentials
 	GitAuthDomains                []git.ScopedAuthConfig `yaml:"-"`                                                                                              // GitAuthDomains holds parsed domain-scoped Git credentials
+	GitAuthAllowAnyHost           bool                   `env:"GIT_AUTH_ALLOW_ANY_HOST,notEmpty" envDefault:"false"`                                             // GitAuthAllowAnyHost sends global HTTP(S) Git credentials to all hosts without a GIT_AUTH_DOMAINS match. Insecure.
 	GitCloneDepth                 int                    `env:"GIT_CLONE_DEPTH,notEmpty" envDefault:"0" validate:"min=0"`                                        // GitCloneDepth limits the number of commits to fetch. 0 means full clone (no depth limit). A positive value enables shallow clones.
 	GitCloneSubmodules            bool                   `env:"GIT_CLONE_SUBMODULES,notEmpty" envDefault:"true"`                                                 // GitCloneSubmodules controls whether git submodules are cloned
 	SSHPrivateKey                 string                 `env:"SSH_PRIVATE_KEY"`                                                                                 // SSHPrivateKey is the SSH private key used for SSH authentication with Git repositories
@@ -346,7 +349,23 @@ func (cfg *Config) validateGitAuthConfig() error {
 		cfg.GitHubAppInstallationID = 0
 	}
 
+	inheritsGlobalHTTP := false
+
 	for i, entry := range cfg.GitAuthDomains {
+		if len(entry.Domains) == 0 {
+			return fmt.Errorf("GIT_AUTH_DOMAINS[%d]: at least one domain is required", i)
+		}
+
+		for _, domain := range entry.Domains {
+			if err := git.ValidateDomainPattern(domain); err != nil {
+				return fmt.Errorf("GIT_AUTH_DOMAINS[%d]: %w", i, err)
+			}
+		}
+
+		if !entry.HasHTTPCredential() {
+			inheritsGlobalHTTP = true
+		}
+
 		hasToken := strings.TrimSpace(entry.GitAccessToken) != ""
 		hasSSH := strings.TrimSpace(entry.SSHPrivateKey) != ""
 		hasApp := strings.TrimSpace(entry.GitHubAppID) != "" || strings.TrimSpace(entry.GitHubAppPrivateKey) != ""
@@ -362,7 +381,46 @@ func (cfg *Config) validateGitAuthConfig() error {
 		}
 	}
 
+	// Global HTTP(S) credentials are only sent to hosts of GIT_AUTH_DOMAINS entries without their own
+	// HTTP(S) credential. Without such an entry the global credential is never used, which is a config error.
+	// GIT_AUTH_ALLOW_ANY_HOST is the explicit opt-out: the global credential then goes to all unmatched hosts.
+	if (globalToken != "" || hasCompleteGlobalApp) && !inheritsGlobalHTTP && !cfg.GitAuthAllowAnyHost {
+		return fmt.Errorf("%w: %s is set, but no GIT_AUTH_DOMAINS entry lists the hosts that may receive it. "+
+			"Add an entry without its own HTTP(S) credential, for example GIT_AUTH_DOMAINS='- domains: [github.com]', "+
+			"or move the credential into a scoped GIT_AUTH_DOMAINS entry", ErrUnscopedGitCredential, cfg.GlobalGitHTTPCredentialName())
+	}
+
 	return nil
+}
+
+// GlobalGitHTTPCredentialName returns the environment variable names of the configured global HTTP(S) Git credential.
+// It returns an empty string when no global HTTP(S) credential is set.
+func (cfg *Config) GlobalGitHTTPCredentialName() string {
+	switch {
+	case cfg.GitHubAppID != "" && cfg.GitHubAppPrivateKey != "":
+		return "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY"
+	case strings.TrimSpace(cfg.GitAccessToken) != "":
+		return "GIT_ACCESS_TOKEN"
+	default:
+		return ""
+	}
+}
+
+// ConfigureGitAuth applies the Git credentials of the config to the global Git credential resolver.
+func (cfg *Config) ConfigureGitAuth() {
+	git.ConfigureAuthResolver(
+		cfg.GitAuthDomains,
+		cfg.SSHPrivateKey,
+		cfg.SSHPrivateKeyPassphrase,
+		cfg.GitAccessToken,
+		cfg.GitAccessTokenUser,
+		git.GitHubAppConfig{
+			ID:             cfg.GitHubAppID,
+			PrivateKey:     cfg.GitHubAppPrivateKey,
+			InstallationID: cfg.GitHubAppInstallationID,
+		},
+		git.WithAllowAnyHost(cfg.GitAuthAllowAnyHost),
+	)
 }
 
 // parsePollConfig parses the PollConfig from either the PollConfigYAML string or the PollConfigFile.

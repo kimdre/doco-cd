@@ -190,6 +190,7 @@ See the [Bootstrap section](Advanced/Self-Updating.md#bootstrap) of the Self-Upd
 
     Then uncomment the three `git_access_token` blocks marked in `your-deploy-repo/doco-cd/compose.yaml`.
     They mount the file into the container and set `GIT_ACCESS_TOKEN_FILE`.
+    Also uncomment `GIT_AUTH_DOMAINS` and replace `github.com` with your Git host. Doco-CD sends the token only to these hosts.
     The bootstrap script reads the token from your shell, so export it before you run the script in step 5:
 
     ```sh
@@ -419,6 +420,7 @@ How you pass the credentials to Doco-CD depends on the option you chose:
     ```ini title=".env"
     # For a private HTTPS repository:
     GIT_ACCESS_TOKEN=your_read_only_token
+    GIT_AUTH_DOMAINS=- domains: [github.com]
     # For webhooks:
     WEBHOOK_SECRET=your_random_webhook_secret
     ```
@@ -439,7 +441,7 @@ See [Git Settings](Git-Settings.md#authentication) for per-domain credentials an
 | Repository clone or authentication fails                  | Confirm the repository is reachable from the Docker host. For a private HTTPS repository, check that the token can read repository contents and that Doco-CD received it (Option A: the token file; Option B: `.env`). For SSH, follow the [SSH key setup](Setup-SSH-Key.md). |
 | The log says `configuration file not found in repository` | Confirm `.doco-cd.yml` is in the root of the repository and that you pushed it to the branch Doco-CD polls. If your Compose file is in a subdirectory, check that `working_dir` names it relative to the repository root.                                                     |
 | Compose reports an error or a port is already in use      | Run `docker compose config --quiet` in your deployment repository to check its Compose files. Resolve any host port conflict in the application's Compose file. Doco-CD's own ports are separate from the ports of your applications.                                         |
-| The Doco-CD container restarts or stays `unhealthy`       | Read its log. Doco-CD checks its settings at startup and names the setting it cannot use, for example `POLL_CONFIG` with invalid YAML, or both `GIT_ACCESS_TOKEN` and `GIT_ACCESS_TOKEN_FILE` set.                                                                            |
+| The Doco-CD container restarts or stays `unhealthy`       | Read its log. Doco-CD checks its settings at startup and names the setting it cannot use, for example `POLL_CONFIG` with invalid YAML, both `GIT_ACCESS_TOKEN` and `GIT_ACCESS_TOKEN_FILE` set, or a token without `GIT_AUTH_DOMAINS`.                                     |
 | The bootstrap script fails (Option A)                     | Read the error that the script prints. Check the repository URL, the branch, and the token. Fix the cause and run the script again.                                                                                                                                           |
 
 For more detail in the log, set `LOG_LEVEL: debug` in Doco-CD's environment. See [App Settings](App-Settings.md) for all settings.

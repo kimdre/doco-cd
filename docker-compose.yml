@@ -18,6 +18,8 @@ services:
       # Use an IANA time zone, for example Etc/UTC or Europe/Berlin.
       TZ: Europe/Berlin
       GIT_ACCESS_TOKEN: ${GIT_ACCESS_TOKEN:-}
+      # Hosts that may receive GIT_ACCESS_TOKEN. Change GIT_AUTH_DOMAINS if your Git host is not github.com.
+      GIT_AUTH_DOMAINS: "${GIT_AUTH_DOMAINS:-- domains: [github.com]}"
       # Add WEBHOOK_SECRET to .env and uncomment to enable webhooks:
       # WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET in .env}
       # Uncomment and replace the URL to enable polling:

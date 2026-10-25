@@ -52,7 +52,7 @@ func TestSSHHostKeyMismatchFailsClosed(t *testing.T) {
 					git.MainBranch,
 					filepath.Join(t.TempDir(), "repository"),
 					true,
-					clientKeyPEM, "", "",
+					clientKeyPEM, "",
 					false,
 					transport.ProxyOptions{},
 					0,

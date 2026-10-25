@@ -254,7 +254,6 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			BaseDir:                 s.Repository.PathInternal,
 			SSHPrivateKey:           s.AppConfig.SSHPrivateKey,
 			SSHPrivateKeyPassphrase: s.AppConfig.SSHPrivateKeyPassphrase,
-			AccessToken:             s.AppConfig.GitAccessToken,
 			SkipTLSVerify:           s.AppConfig.SkipTLSVerification,
 			ProxyOptions:            s.AppConfig.HttpProxy,
 			CloneSubmodules:         s.AppConfig.GitCloneSubmodules,

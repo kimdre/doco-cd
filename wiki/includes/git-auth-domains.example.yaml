@@ -23,3 +23,7 @@
   # GitLab deploy token: git_access_token_user must be the deploy token's username.
   git_access_token: "gldt-xxxxxxxxxxxxxxxxxxxx"
   git_access_token_user: gitlab+deploy-token-1234567
+
+# No own HTTP credential: these hosts receive the global GIT_ACCESS_TOKEN or GitHub App.
+- domains:
+    - git.example.com

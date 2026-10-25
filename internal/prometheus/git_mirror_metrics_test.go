@@ -67,7 +67,7 @@ func setupMetricsMirror(t *testing.T) (string, string) {
 	// The first call clones; only the second one fetches into the mirror.
 	for range 2 {
 		if _, err := gitInternal.CloneOrUpdateBareMirror(nil, cloneURL, gitInternal.MainBranch, mirrorPath,
-			false, "", "", "", false, transport.ProxyOptions{}, 0); err != nil {
+			false, "", "", false, transport.ProxyOptions{}, 0); err != nil {
 			t.Fatalf("CloneOrUpdateBareMirror() error = %v", err)
 		}
 	}
@@ -118,7 +118,7 @@ func TestGitMirrorPacksReportedAfterCloneAndFetch(t *testing.T) {
 		GitMirrorSizeBytes.DeleteLabelValues(gitInternal.GetRepoName(cloneURL))
 
 		if _, err := gitInternal.CloneOrUpdateBareMirror(nil, cloneURL, gitInternal.MainBranch, mirrorPath,
-			false, "", "", "", false, transport.ProxyOptions{}, 0); err != nil {
+			false, "", "", false, transport.ProxyOptions{}, 0); err != nil {
 			t.Fatalf("%s: CloneOrUpdateBareMirror() error = %v", operation, err)
 		}
 

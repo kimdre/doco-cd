@@ -8,7 +8,6 @@ const DefaultReference = "refs/heads/main"
 type GitOptions struct {
 	SSHPrivateKey           string
 	SSHPrivateKeyPassphrase string
-	GitAccessToken          string
 	SkipTLSVerification     bool
 	HttpProxy               transport.ProxyOptions
 	GitCloneSubmodules      bool

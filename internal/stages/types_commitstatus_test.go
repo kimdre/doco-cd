@@ -41,15 +41,14 @@ func newTestStageManagerForCommitStatus(appConfig *app.Config, repoURL string) *
 // commitstatus.ResolveRequest in internal/commitstatus. This only verifies that the
 // StageManager wires its own configuration/repository state through correctly.
 func TestResolveCommitStatusRequest_DelegatesToCommitStatusPackage(t *testing.T) {
-	gitInternal.ConfigureAuthResolver(nil, "", "", "pat-token", "", gitInternal.GitHubAppConfig{})
+	gitInternal.ConfigureAuthResolver([]gitInternal.ScopedAuthConfig{{Domains: []string{"github.com"}}}, "", "", "pat-token", "", gitInternal.GitHubAppConfig{})
 	t.Cleanup(func() {
-		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
+		configureTestGitAuth()
 	})
 
 	sm := newTestStageManagerForCommitStatus(&app.Config{
 		GitCommitStatus: true,
 		GitScmProvider:  "github",
-		GitAccessToken:  "pat-token",
 	}, "https://github.com/org/repo.git")
 
 	req, ok := sm.resolveCommitStatusRequest()
@@ -58,7 +57,7 @@ func TestResolveCommitStatusRequest_DelegatesToCommitStatusPackage(t *testing.T)
 	}
 
 	if req.Token != "pat-token" {
-		t.Fatalf("expected explicit access token, got '%s'", req.Token)
+		t.Fatalf("expected scoped global access token, got '%s'", req.Token)
 	}
 
 	if req.Context != "doco-cd/stack" {
@@ -67,11 +66,6 @@ func TestResolveCommitStatusRequest_DelegatesToCommitStatusPackage(t *testing.T)
 }
 
 func TestPostQueuedCommitStatusUsesDeploymentContext(t *testing.T) {
-	gitInternal.ConfigureAuthResolver(nil, "", "", "pat-token", "", gitInternal.GitHubAppConfig{})
-	t.Cleanup(func() {
-		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
-	})
-
 	var received map[string]string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +81,6 @@ func TestPostQueuedCommitStatusUsesDeploymentContext(t *testing.T) {
 		GitCommitStatus: true,
 		GitScmProvider:  "gitea",
 		GitScmApiUrl:    config.HttpUrl(server.URL),
-		GitAccessToken:  "pat-token",
 	}, server.URL+"/org/repo.git")
 	sm.JobTrigger = JobTriggerWebhook
 
@@ -140,7 +133,7 @@ func TestPostSuccessfulCommitStatusSummary(t *testing.T) {
 	sm.Log = slog.Default()
 	sm.AppConfig = &app.Config{
 		GitCommitStatus: true, GitScmProvider: "github",
-		GitScmApiUrl: config.HttpUrl(server.URL), GitAccessToken: "test-token",
+		GitScmApiUrl: config.HttpUrl(server.URL),
 	}
 	sm.Repository.SourceUrl = "https://github.com/owner/repo"
 	sm.DeployConfig.Internal.ConfigTarget = "homelab"
@@ -205,7 +198,7 @@ func TestPostSuccessfulCommitStatusPreservesLegacyDescription(t *testing.T) {
 
 			sm := newTestStageManagerForCommitStatus(&app.Config{
 				GitCommitStatus: true, GitScmProvider: provider,
-				GitScmApiUrl: config.HttpUrl(server.URL), GitAccessToken: "test-token",
+				GitScmApiUrl: config.HttpUrl(server.URL),
 			}, server.URL+"/owner/repo")
 
 			sm.PostCommitStatus(t.Context(), commitstatus.StateSuccess, "Successful in 3s")

@@ -65,7 +65,7 @@ func TestGetReferenceSet_LocalResolution(t *testing.T) {
 
 	featureHash := commitFile(t, originRepo, originPath, "feature.txt", "feature\n", "feature commit")
 
-	clonedRepo, err := CloneOrUpdateBareMirror(nil, originPath, MainBranch, clonePath, false, "", "", "", false, transport.ProxyOptions{}, 0)
+	clonedRepo, err := CloneOrUpdateBareMirror(nil, originPath, MainBranch, clonePath, false, "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("clone: %v", err)
 	}

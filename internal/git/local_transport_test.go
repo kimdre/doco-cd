@@ -36,7 +36,7 @@ func TestCloneOrUpdateBareMirror_LocalFileURL_GitDirFile(t *testing.T) {
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	repo, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("CloneOrUpdateBareMirror() with .git file error = %v", err)
 	}

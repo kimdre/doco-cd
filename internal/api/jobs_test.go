@@ -173,6 +173,8 @@ func TestHandler_TriggerScheduledJobHandlerValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	appConfig.ConfigureGitAuth()
+
 	appConfig.ApiSecret = "test-api-secret"
 
 	h := Handler{
@@ -466,6 +468,8 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	appConfig.ConfigureGitAuth()
+
 	appConfig.ApiSecret = "test-api-secret"
 
 	tests := []struct {
@@ -662,6 +666,8 @@ func TestTriggerScheduledJobHandlerMalformedWaitDoesNotTrigger(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	appConfig.ConfigureGitAuth()
+
 	appConfig.ApiSecret = "test-api-secret"
 
 	triggered := false
@@ -711,6 +717,8 @@ func TestHandler_GetScheduledJobsHandlerValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	appConfig.ConfigureGitAuth()
 
 	appConfig.ApiSecret = "test-api-secret"
 

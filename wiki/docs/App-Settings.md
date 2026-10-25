@@ -12,6 +12,7 @@ The settings can be set via environment variables, a `.env` file, or Docker secr
 
     ```ini title=".env"
     GIT_ACCESS_TOKEN=<your Git token>
+    GIT_AUTH_DOMAINS=- domains: [github.com]
     ```
 
     ```yaml title="docker-compose.yml" hl_lines="8-15 23-28"
@@ -159,6 +160,7 @@ The settings in the `.env` file must be in the format `#!ini KEY=VALUE` or `#!ya
 Example `.env` file:
 ```ini title=".env"
 GIT_ACCESS_TOKEN=xxx
+GIT_AUTH_DOMAINS=- domains: [github.com]
 WEBHOOK_SECRET=xxx
 ```
 
@@ -208,6 +210,7 @@ services:
   app:
     environment:
       GIT_ACCESS_TOKEN: xxx
+      GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
       WEBHOOK_SECRET: xxx
 ```
 
@@ -250,7 +253,7 @@ echo "<random secret>" | docker secret create webhook_secret -
 ```
 
 ### Reference Docker Secrets in `docker-compose.yml`
-```yaml title="docker-compose.yml" hl_lines="10-16 24-29"
+```yaml title="docker-compose.yml" hl_lines="10-17 25-30"
 services:
   app:
     container_name: doco-cd
@@ -261,6 +264,7 @@ services:
     environment:
       TZ: Europe/Berlin
       GIT_ACCESS_TOKEN_FILE: /run/secrets/git_access_token # (1)!
+      GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
       WEBHOOK_SECRET_FILE: /run/secrets/webhook_secret
     secrets: # (2)!
       - git_access_token

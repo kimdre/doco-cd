@@ -176,11 +176,12 @@ Each variable should point to the encrypted file path inside the container.
 
     Then set the `GIT_ACCESS_TOKEN_FILE` environment variable in your `docker-compose.yml` file to the encrypted file path:
     
-    ```yaml title="docker-compose.yml" hl_lines="3-6 8-11"
+    ```yaml title="docker-compose.yml" hl_lines="3-7 9-12"
     services:
       app:
         environment:
           GIT_ACCESS_TOKEN_FILE: /path/to/git-access-token
+          GIT_AUTH_DOMAINS: "- domains: [github.com]" # hosts that receive the token
         secrets:
           - git_access_token
      

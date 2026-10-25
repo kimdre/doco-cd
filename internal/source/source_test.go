@@ -33,7 +33,7 @@ import (
 )
 
 func TestEarlySourceFailureReportsNativeTimeout(t *testing.T) {
-	git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{ID: "42", PrivateKey: "test-key"})
+	git.ConfigureAuthResolver([]git.ScopedAuthConfig{{Domains: []string{"github.com"}}}, "", "", "", "", git.GitHubAppConfig{ID: "42", PrivateKey: "test-key"})
 
 	restore := git.SwapGitHubAppTokenProviderForTest(func(string, git.GitHubAppConfig) (string, error) {
 		return "installation-token", nil
@@ -41,7 +41,7 @@ func TestEarlySourceFailureReportsNativeTimeout(t *testing.T) {
 
 	t.Cleanup(func() {
 		restore()
-		git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{})
+		configureTestGitAuth()
 	})
 
 	var received struct {
@@ -423,7 +423,6 @@ func TestPrepare_GitCloneFailure_PostsEarlyCommitStatus(t *testing.T) {
 
 	p := newTestPreparer(t, &app.Config{
 		GitCommitStatus: true,
-		GitAccessToken:  "token",
 		GitScmProvider:  "gitea",
 	})
 
@@ -471,7 +470,6 @@ func TestPrepare_DeployConfigFailure_PostsEarlyCommitStatus(t *testing.T) {
 
 	p := newTestPreparer(t, &app.Config{
 		GitCommitStatus: true,
-		GitAccessToken:  "token",
 		GitScmProvider:  "gitea",
 	})
 

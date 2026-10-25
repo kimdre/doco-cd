@@ -36,6 +36,11 @@ Two match strategies are supported:
 
 Rules are matched in order of specificity (longest key first).
 
+!!! info "Credentials follow the rewritten host"
+    Doco-CD selects HTTP(S) credentials for the URL **after** the rewrite.  
+    Add the target host to [`GIT_AUTH_DOMAINS`](../Git-Settings.md#credential-scope), not the original host.
+    Commit status reporting for webhook events uses the repository URL from the payload, so it needs the original host in scope too.
+
 ??? warning "Native Git transport security risks"
     An explicit prefix rule can select a native Git daemon, for example
     ```json

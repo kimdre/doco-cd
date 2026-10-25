@@ -37,7 +37,6 @@ func TestAutostartDisabledPollSkipHasNoDeploymentSideEffects(t *testing.T) {
 	s.AppConfig.GitCommitStatus = true
 	s.AppConfig.GitScmProvider = "gitea"
 	s.AppConfig.GitScmApiUrl = config.HttpUrl(server.URL)
-	s.AppConfig.GitAccessToken = "test-token"
 	s.Repository.Source = config.SourceTypeGit
 	s.Repository.SourceUrl = server.URL + "/owner/repo.git"
 	s.Repository.Revision = "0123456789abcdef0123456789abcdef01234567"

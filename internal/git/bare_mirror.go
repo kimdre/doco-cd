@@ -32,7 +32,7 @@ func CloneOrUpdateBareMirror(
 	log *slog.Logger,
 	cloneURL, ref, path string,
 	private bool,
-	sshPrivateKey, sshPrivateKeyPassphrase, gitAccessToken string,
+	sshPrivateKey, sshPrivateKeyPassphrase string,
 	skipTLSVerify bool, proxyOpts transport.ProxyOptions,
 	depth int,
 ) (*git.Repository, error) {
@@ -40,13 +40,14 @@ func CloneOrUpdateBareMirror(
 		log = slog.Default()
 	}
 
-	auth, err := GetAuthMethod(cloneURL, sshPrivateKey, sshPrivateKeyPassphrase, gitAccessToken)
+	auth, err := GetAuthMethod(cloneURL, sshPrivateKey, sshPrivateKeyPassphrase)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth method: %w", err)
 	}
 
 	if auth == nil && private {
-		return nil, ErrMissingAuthToken
+		return nil, fmt.Errorf("%w: no HTTP(S) credentials are scoped to host %q, add it to GIT_AUTH_DOMAINS",
+			ErrMissingAuthToken, parseGitHost(cloneURL))
 	}
 
 	depth = effectiveDepth(cloneURL, depth)

@@ -9,6 +9,15 @@ BINARY_NAME=doco-cd
 ifneq (,$(wildcard ./.env))
     include .env
     export
+
+    # Make keeps quotes as part of a value. Strip one matching pair of single or
+    # double quotes like Docker Compose does, so quoted and unquoted values both work.
+    dotenv_space := $(subst ,, )
+    dotenv_mark := @@SPACE@@
+    dotenv_strip = $(if $(filter "%",$(1)),$(patsubst "%",%,$(1)),$(patsubst '%',%,$(1)))
+    dotenv_unquote = $(subst $(dotenv_mark),$(dotenv_space),$(call dotenv_strip,$(subst $(dotenv_space),$(dotenv_mark),$($(1)))))
+    dotenv_vars := $(shell sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=.*/\2/p' .env)
+    $(foreach var,$(dotenv_vars),$(eval $(var):=$(subst $$,$$$$,$(call dotenv_unquote,$(var)))))
 endif
 
 BUILD_FLAGS:=

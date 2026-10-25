@@ -501,7 +501,7 @@ func TestCloneOrUpdateBareMirror_CompactsPacksWhileReadersRun(t *testing.T) {
 		t.Helper()
 
 		repo, err := CloneOrUpdateBareMirror(discardLog, cloneURL, MainBranch, mirrorPath,
-			false, "", "", "", false, transport.ProxyOptions{}, 0)
+			false, "", "", false, transport.ProxyOptions{}, 0)
 		if err != nil {
 			t.Fatalf("CloneOrUpdateBareMirror() error = %v", err)
 		}

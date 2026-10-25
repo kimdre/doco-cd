@@ -47,8 +47,10 @@ func TestGetReferenceSet(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
+	c.ConfigureGitAuth()
+
 	repo, err := git.CloneOrUpdateBareMirror(nil, cloneUrl, git.MainBranch, t.TempDir(), false,
-		c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, false, c.HttpProxy, 0)
+		c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, false, c.HttpProxy, 0)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}

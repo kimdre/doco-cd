@@ -14,6 +14,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/kimdre/doco-cd/internal/common/httpclient"
 )
 
 const (
@@ -32,7 +34,7 @@ type Config struct {
 }
 
 var (
-	apiHTTPClient = &http.Client{Timeout: 15 * time.Second}
+	apiHTTPClient = &http.Client{Timeout: 15 * time.Second, CheckRedirect: httpclient.SameOriginRedirects}
 	nowFn         = time.Now
 
 	tokenCacheMu sync.RWMutex

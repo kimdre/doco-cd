@@ -17,7 +17,7 @@ import (
 )
 
 func TestQueuedGitHubCheckPrecedesDeploymentAdmission(t *testing.T) {
-	git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{ID: "42", PrivateKey: "test-key"})
+	git.ConfigureAuthResolver([]git.ScopedAuthConfig{{Domains: []string{"github.com"}}}, "", "", "", "", git.GitHubAppConfig{ID: "42", PrivateKey: "test-key"})
 
 	restore := git.SwapGitHubAppTokenProviderForTest(func(string, git.GitHubAppConfig) (string, error) {
 		return "installation-token", nil

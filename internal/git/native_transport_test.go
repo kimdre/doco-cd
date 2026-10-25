@@ -19,8 +19,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/test"
 )
 
-const nativeGitTestToken = "native-git-http-token-must-be-ignored" // #nosec G101 -- Sentinel verifies that native Git ignores credentials.
-
 func TestNativeGitBareMirrorCloneAndFetch(t *testing.T) {
 	source, sourcePath, sourceURL := nativeTestRepository(t)
 
@@ -36,7 +34,7 @@ func TestNativeGitBareMirrorCloneAndFetch(t *testing.T) {
 	updated := commitLocalTestFile(t, source, sourcePath, "README.md", "updated over native Git\n", "update README")
 
 	mirror, err = git.CloneOrUpdateBareMirror(nil, sourceURL, git.MainBranch, mirrorPath,
-		false, "", "", nativeGitTestToken, false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("fetch native Git mirror: %v", err)
 	}
@@ -184,9 +182,9 @@ func TestNativeGitPrivateSourceRejectsHTTPToken(t *testing.T) {
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	_, err := git.CloneOrUpdateBareMirror(nil, sourceURL, git.MainBranch, mirrorPath,
-		true, "", "", nativeGitTestToken, false, transport.ProxyOptions{}, 0)
+		true, "", "", false, transport.ProxyOptions{}, 0)
 	if !errors.Is(err, git.ErrMissingAuthToken) {
-		t.Fatalf("private native Git source error = %v, want %v despite configured HTTP token", err, git.ErrMissingAuthToken)
+		t.Fatalf("private native Git source error = %v, want %v", err, git.ErrMissingAuthToken)
 	}
 
 	if _, err := os.Stat(mirrorPath); !os.IsNotExist(err) {
@@ -277,7 +275,6 @@ func TestNativeGitRelativeSubmodulePinnedCommit(t *testing.T) {
 	exportPath := filepath.Join(t.TempDir(), "export")
 	if err := git.ExportTree(exportPath, mirror, parentCommit, git.ExportOptions{
 		SubmoduleCacheDir: filepath.Join(t.TempDir(), "submodules"),
-		AccessToken:       nativeGitTestToken,
 	}); err != nil {
 		t.Fatalf("export native relative submodule: %v", err)
 	}
@@ -305,7 +302,7 @@ func cloneNativeTestMirror(t *testing.T, sourceURL, ref string, depth int) (*gog
 	path := filepath.Join(t.TempDir(), "mirror")
 
 	repo, err := git.CloneOrUpdateBareMirror(nil, sourceURL, ref, path,
-		false, "", "", nativeGitTestToken, false, transport.ProxyOptions{}, depth)
+		false, "", "", false, transport.ProxyOptions{}, depth)
 	if err != nil {
 		t.Fatalf("clone native Git mirror at %s: %v", ref, err)
 	}

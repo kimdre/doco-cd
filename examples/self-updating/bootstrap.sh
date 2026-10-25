@@ -9,6 +9,8 @@ set -eu
 IMAGE="ghcr.io/kimdre/doco-cd:0.125.1"
 DATA_VOLUME="doco-cd_data"
 REPO_URL="https://github.com/example/infra.git"
+# Hosts that may receive GIT_ACCESS_TOKEN. Use the host of REPO_URL.
+GIT_AUTH_DOMAINS="${GIT_AUTH_DOMAINS:-"- domains: [github.com]"}"
 
 docker volume create "$DATA_VOLUME" >/dev/null
 
@@ -19,6 +21,8 @@ docker run --rm \
   -v "$DATA_VOLUME":/data \
   -e SELF_UPDATE_ENABLED=true \
   -e GIT_ACCESS_TOKEN="${GIT_ACCESS_TOKEN:-}" \
+  -e GIT_AUTH_DOMAINS="$GIT_AUTH_DOMAINS" \
+  -e GIT_AUTH_ALLOW_ANY_HOST="${GIT_AUTH_ALLOW_ANY_HOST:-false}" \
   -e POLL_CONFIG="- url: $REPO_URL
   reference: main" \
   "$IMAGE" apply-self --bootstrap

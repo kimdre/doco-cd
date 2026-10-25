@@ -50,10 +50,9 @@ type ExportOptions struct {
 	// repository (already fetched by the caller) and to any submodule
 	// mirrors this export fetches. Credentials are resolved per submodule
 	// URL, so a submodule on another host (or a gist) may fall back to
-	// anonymous access.
+	// anonymous access. HTTP(S) credentials come only from GIT_AUTH_DOMAINS.
 	SSHPrivateKey           string
 	SSHPrivateKeyPassphrase string
-	AccessToken             string
 	SkipTLSVerify           bool
 	ProxyOptions            transport.ProxyOptions
 	// Depth bounds how much history a submodule fetch pulls; 0 fetches
@@ -480,7 +479,7 @@ func exportSubmodule(ctx exportCtx, target string, entry object.TreeEntry, cfg *
 		// credentials is rejected by its remote instead.
 		if _, fetchErr := CloneOrUpdateBareMirror(ctx.opts.Log,
 			resolvedURL, entry.Hash.String(), mirrorDir,
-			false, ctx.opts.SSHPrivateKey, ctx.opts.SSHPrivateKeyPassphrase, ctx.opts.AccessToken,
+			false, ctx.opts.SSHPrivateKey, ctx.opts.SSHPrivateKeyPassphrase,
 			ctx.opts.SkipTLSVerify, ctx.opts.ProxyOptions, ctx.opts.Depth); fetchErr != nil {
 			return fmt.Errorf("fetch submodule %s: %w", resolvedURL, fetchErr)
 		}

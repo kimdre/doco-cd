@@ -129,7 +129,6 @@ func (r *selfUpdateReporter) postCommitStatus(
 		PayloadFullName:  info.FullName,
 		ProviderOverride: r.appConfig.GitScmProvider,
 		APIBaseURL:       string(r.appConfig.GitScmApiUrl),
-		AccessToken:      r.appConfig.GitAccessToken,
 		ContextName:      info.Context,
 		Target:           target,
 	})

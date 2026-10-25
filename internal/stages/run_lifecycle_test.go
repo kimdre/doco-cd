@@ -42,7 +42,7 @@ func TestHandleStageFailurePostsNativeTimeoutConclusion(t *testing.T) {
 
 	sm := newFailureTestManager(t, "app-native-timeout")
 	sm.AppConfig = &app.Config{
-		GitCommitStatus: true, GitScmProvider: "github", GitScmApiUrl: config.HttpUrl(server.URL), GitAccessToken: "test-token",
+		GitCommitStatus: true, GitScmProvider: "github", GitScmApiUrl: config.HttpUrl(server.URL),
 	}
 	sm.Repository.SourceUrl = "https://github.com/owner/repo"
 	sm.Repository.Revision = "deadbeef"
@@ -97,7 +97,7 @@ func TestFailureCheckDetails(t *testing.T) {
 			sm := newFailureTestManager(t, "failure-details-"+tt.name)
 			sm.AppConfig = &app.Config{
 				GitCommitStatus: true, GitScmProvider: "github",
-				GitScmApiUrl: config.HttpUrl(server.URL), GitAccessToken: "test-token",
+				GitScmApiUrl: config.HttpUrl(server.URL),
 			}
 			sm.Repository.SourceUrl = "https://github.com/owner/repo"
 			sm.Repository.Revision = "deadbeef"

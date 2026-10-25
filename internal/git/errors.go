@@ -25,6 +25,9 @@ var (
 	ErrRemoteURLMismatch          = errors.New("remote URL does not match expected URL")
 	ErrGetHeadFailed              = errors.New("failed to get HEAD reference")
 	ErrLegacyCheckoutNotMigrated  = errors.New("legacy checkout has not been migrated to the store layout yet")
+	ErrCredentialHostMismatch     = errors.New("git credentials were resolved for a different host")
+	ErrInvalidRepositoryHost      = errors.New("repository URL has no valid host")
+	ErrInvalidAuthDomain          = errors.New("invalid GIT_AUTH_DOMAINS domain pattern")
 )
 
 // IsRefUnreachableError returns true when the error indicates the requested ref

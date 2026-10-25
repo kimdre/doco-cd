@@ -49,7 +49,7 @@ import (
 )
 
 func TestPostSkippedWebhookUsesNativeGitHubConclusion(t *testing.T) {
-	git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{ID: "42", PrivateKey: "test-key"})
+	git.ConfigureAuthResolver([]git.ScopedAuthConfig{{Domains: []string{"github.com"}}}, "", "", "", "", git.GitHubAppConfig{ID: "42", PrivateKey: "test-key"})
 
 	restore := git.SwapGitHubAppTokenProviderForTest(func(string, git.GitHubAppConfig) (string, error) {
 		return "installation-token", nil
@@ -57,7 +57,7 @@ func TestPostSkippedWebhookUsesNativeGitHubConclusion(t *testing.T) {
 
 	t.Cleanup(func() {
 		restore()
-		git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{})
+		configureTestGitAuth()
 	})
 
 	var received struct {
@@ -126,6 +126,9 @@ func TestPostSkippedWebhookCommitStatusUsesRunContext(t *testing.T) {
 
 	var received postedStatus
 
+	git.ConfigureAuthResolver([]git.ScopedAuthConfig{{Domains: []string{"git.example.com"}}}, "", "", testGitAccessToken, "", git.GitHubAppConfig{})
+	t.Cleanup(configureTestGitAuth)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/version" {
 			_, _ = w.Write([]byte(`{"version":"1.25.0"}`))
@@ -157,7 +160,6 @@ func TestPostSkippedWebhookCommitStatusUsesRunContext(t *testing.T) {
 
 			postSkippedWebhookCommitStatus(t.Context(), &app.Config{
 				GitCommitStatus: true,
-				GitAccessToken:  "token",
 				GitScmProvider:  string(commitstatus.ProviderGitea),
 				GitScmApiUrl:    config.HttpUrl(server.URL),
 			}, logger.New(logger.LevelCritical).Logger, webhook.ParsedPayload{
@@ -353,7 +355,6 @@ func TestWebhookHandlerSkippedCommitStatusIncludesTarget(t *testing.T) {
 	defer server.Close()
 
 	h.appConfig.GitCommitStatus = true
-	h.appConfig.GitAccessToken = "token"
 	h.appConfig.GitScmProvider = string(commitstatus.ProviderGitea)
 	h.appConfig.GitScmApiUrl = config.HttpUrl(server.URL)
 
@@ -612,6 +613,8 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	useConfiguredGitAuth(t, appConfig)
+
 	appConfig.GitCommitStatus = false
 
 	if !SwarmModeEnabled {
@@ -860,6 +863,8 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	useConfiguredGitAuth(t, appConfig)
 
 	appConfig.GitCommitStatus = false
 

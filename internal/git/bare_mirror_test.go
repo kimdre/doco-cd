@@ -24,7 +24,7 @@ func TestCloneOrUpdateBareMirror_ClonesBareAndFetchesRef(t *testing.T) {
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	repo, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("CloneOrUpdateBareMirror() error = %v", err)
 	}
@@ -63,7 +63,7 @@ func TestCloneOrUpdateBareMirror_RefusesFreshCloneOverUnmigratedLegacyCheckout(t
 	mirrorPath := filepath.Join(repoDir, "mirror")
 
 	_, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if !errors.Is(err, git.ErrLegacyCheckoutNotMigrated) {
 		t.Fatalf("CloneOrUpdateBareMirror() error = %v, want %v", err, git.ErrLegacyCheckoutNotMigrated)
 	}
@@ -82,7 +82,7 @@ func TestCloneOrUpdateBareMirror_FetchesNewCommitsOnUpdate(t *testing.T) {
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	repo, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("initial CloneOrUpdateBareMirror() error = %v", err)
 	}
@@ -95,7 +95,7 @@ func TestCloneOrUpdateBareMirror_FetchesNewCommitsOnUpdate(t *testing.T) {
 	commitLocalTestFile(t, srcRepo, srcPath, "CHANGED.md", "changed\n", "second commit")
 
 	repo, err = git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("update CloneOrUpdateBareMirror() error = %v", err)
 	}
@@ -124,7 +124,7 @@ func TestCloneOrUpdateBareMirror_RequiresAuthForPrivate(t *testing.T) {
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	_, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		true, "", "", "", false, transport.ProxyOptions{}, 0)
+		true, "", "", false, transport.ProxyOptions{}, 0)
 	if !errors.Is(err, git.ErrMissingAuthToken) {
 		t.Fatalf("error = %v, want %v", err, git.ErrMissingAuthToken)
 	}
@@ -139,7 +139,7 @@ func TestCloneOrUpdateBareMirror_InvalidReference(t *testing.T) {
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	_, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, "refs/heads/does-not-exist", mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if !errors.Is(err, git.ErrInvalidReference) {
 		t.Fatalf("error = %v, want %v", err, git.ErrInvalidReference)
 	}
@@ -158,7 +158,7 @@ func TestCloneOrUpdateBareMirror_ReadOnlyHelpersWorkAgainstBareMirror(t *testing
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	repo, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("CloneOrUpdateBareMirror() error = %v", err)
 	}
@@ -171,7 +171,7 @@ func TestCloneOrUpdateBareMirror_ReadOnlyHelpersWorkAgainstBareMirror(t *testing
 	commitLocalTestFile(t, srcRepo, srcPath, "CHANGED.md", "changed\n", "second commit")
 
 	repo, err = git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("update CloneOrUpdateBareMirror() error = %v", err)
 	}
@@ -221,7 +221,7 @@ func TestCloneOrUpdateBareMirror_ReclonesOnDepthChange(t *testing.T) {
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	if _, err := git.CloneOrUpdateBareMirror(nil, cloneUrlTest, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0); err != nil {
+		false, "", "", false, transport.ProxyOptions{}, 0); err != nil {
 		t.Fatalf("full clone CloneOrUpdateBareMirror() error = %v", err)
 	}
 
@@ -232,7 +232,7 @@ func TestCloneOrUpdateBareMirror_ReclonesOnDepthChange(t *testing.T) {
 	// A subsequent call requesting a shallow depth must re-clone rather than
 	// leave the existing full mirror in place.
 	repo, err := git.CloneOrUpdateBareMirror(nil, cloneUrlTest, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 1)
+		false, "", "", false, transport.ProxyOptions{}, 1)
 	if err != nil {
 		t.Fatalf("shallow re-clone CloneOrUpdateBareMirror() error = %v", err)
 	}
@@ -266,7 +266,7 @@ func TestCloneOrUpdateBareMirror_LocalFileURL_BareSourceRepository(t *testing.T)
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	repo, err := git.CloneOrUpdateBareMirror(nil, "file://"+barePath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 0)
+		false, "", "", false, transport.ProxyOptions{}, 0)
 	if err != nil {
 		t.Fatalf("CloneOrUpdateBareMirror() from bare source error = %v", err)
 	}
@@ -291,7 +291,7 @@ func TestCloneOrUpdateBareMirror_LocalFileURL_IgnoresShallowDepth(t *testing.T) 
 	mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 	if _, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 1); err != nil {
+		false, "", "", false, transport.ProxyOptions{}, 1); err != nil {
 		t.Fatalf("CloneOrUpdateBareMirror() with depth error = %v", err)
 	}
 
@@ -301,7 +301,7 @@ func TestCloneOrUpdateBareMirror_LocalFileURL_IgnoresShallowDepth(t *testing.T) 
 
 	// A subsequent depth-limited update must not re-clone in a loop or fail.
 	if _, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-		false, "", "", "", false, transport.ProxyOptions{}, 1); err != nil {
+		false, "", "", false, transport.ProxyOptions{}, 1); err != nil {
 		t.Fatalf("update CloneOrUpdateBareMirror() with depth error = %v", err)
 	}
 }
@@ -376,7 +376,7 @@ func TestCloneOrUpdateBareMirror_RepairsCorruptionModes(t *testing.T) {
 			mirrorPath := filepath.Join(t.TempDir(), "mirror")
 
 			repo, err := git.CloneOrUpdateBareMirror(nil, "file://"+srcPath, git.MainBranch, mirrorPath,
-				false, "", "", "", false, transport.ProxyOptions{}, 0)
+				false, "", "", false, transport.ProxyOptions{}, 0)
 			if err != nil {
 				t.Fatalf("initial CloneOrUpdateBareMirror() error = %v", err)
 			}
@@ -393,7 +393,7 @@ func TestCloneOrUpdateBareMirror_RepairsCorruptionModes(t *testing.T) {
 			log := slog.New(slog.NewTextHandler(&logBuf, nil))
 
 			repairedRepo, err := git.CloneOrUpdateBareMirror(log, "file://"+srcPath, git.MainBranch, mirrorPath,
-				false, "", "", "", false, transport.ProxyOptions{}, 0)
+				false, "", "", false, transport.ProxyOptions{}, 0)
 			if err != nil {
 				t.Fatalf("repair via CloneOrUpdateBareMirror() error = %v", err)
 			}

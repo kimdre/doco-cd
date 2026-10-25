@@ -20,7 +20,7 @@ import (
 func cloneTestRepoBranch(t *testing.T, dir, cloneURL, ref string, private bool, c *app.Config) *gogit.Repository {
 	t.Helper()
 
-	auth, err := git.GetAuthMethod(cloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	auth, err := git.GetAuthMethod(cloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("failed to get auth method: %v", err)
 	}

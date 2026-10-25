@@ -46,6 +46,8 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
+	c.ConfigureGitAuth()
+
 	p := webhook.ParsedPayload{
 		Ref:       git.SwarmModeBranch,
 		CommitSHA: plumbing.NewHash("244b6f9a5b3dc546ab3822d9c0744846f539c6ef"),

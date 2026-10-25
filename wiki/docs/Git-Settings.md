@@ -50,18 +50,108 @@ Supported authentication methods:
 - SSH authentication with private keys.
 - If you need different credentials for different hosts, use [Domain-scoped Authentication](#domain-scoped-authentication).
 
-| Key                               | Type   | Description                                                                                                                                                                                                                                                                             | Default                                          |
-|-----------------------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
-| `GIT_ACCESS_TOKEN`                | string | Access token for cloning repositories (required for private repositories) via **HTTP**. See [Setup Access Token](Setup-Access-Token.md), [Required Token Permissions](#required-token-permissions), and [Domain-scoped Authentication](#domain-scoped-authentication).                  | Optional for public repositories but recommended |
-| `GIT_ACCESS_TOKEN_USER`           | string | Username paired with `GIT_ACCESS_TOKEN` for **HTTP(S)** clone/fetch. Most providers accept any non-empty value, but some require a specific username for their token (e.g. a GitLab **deploy token** uses `gitlab+deploy-token-1234567`). Set it when your provider needs one.          | `oauth2`                                         |
-| `GIT_ACCESS_TOKEN_FILE`           | string | Path to the file containing the Git Access Token (mutually exclusive with `GIT_ACCESS_TOKEN`).                                                                                                                                                                                          |                                                  |
-| `GIT_AUTH_DOMAINS`                | list   | YAML list of domain-scoped Git credentials (HTTP token, SSH key, and GitHub App credentials). Supports exact domains and wildcard subdomains like `*.example.com` (see [Domain-scoped authentication](#domain-scoped-authentication)). Mutually exclusive with `GIT_AUTH_DOMAINS_FILE`. |                                                  |
-| `GIT_AUTH_DOMAINS_FILE`           | string | Path to a file containing the YAML configuration for `GIT_AUTH_DOMAINS` (mutually exclusive with `GIT_AUTH_DOMAINS`).                                                                                                                                                                   |                                                  |
-| `SSH_PRIVATE_KEY`                 | string | The private key used for cloning repositories via SSH. See [Setup SSH Key](Setup-SSH-Key.md) and [Domain-scoped Authentication](#domain-scoped-authentication).                                                                                                                         |                                                  |
-| `SSH_PRIVATE_KEY_FILE`            | string | Path to the file containing the SSH private key.                                                                                                                                                                                                                                        |                                                  |
-| `SSH_PRIVATE_KEY_PASSPHRASE`      | string | Passphrase for the SSH private key (if the key was generated with a passphrase).                                                                                                                                                                                                        |                                                  |
-| `SSH_PRIVATE_KEY_PASSPHRASE_FILE` | string | Path to the file containing the SSH private key passphrase.                                                                                                                                                                                                                             |                                                  |
-| `SSH_KNOWN_HOSTS_FILE`            | string | Optional path to an operator-managed `known_hosts` file for Git SSH servers. When set, doco-cd never changes this file and rejects unknown or changed host keys.                                                                                                                        |                                                  |
+!!! warning "HTTP(S) credentials are scoped to hosts"
+    By default, Doco-CD sends an HTTP(S) credential only to hosts that match an entry in `GIT_AUTH_DOMAINS`.
+    This includes the global `GIT_ACCESS_TOKEN` and the global [GitHub App](#github-apps).
+    A repository URL can come from a webhook payload, an API or MCP poll trigger, a deployment config, a Compose `include`, or a submodule.
+    The host scope prevents a credential from going to a host that you did not approve.
+
+    If you set a global HTTP(S) credential, you must also set `GIT_AUTH_DOMAINS` with at least one entry that the credential applies to.
+    Otherwise doco-cd does not start. See [Credential Scope](#credential-scope) for the rules and the migration steps.
+    You can turn off the scope with `GIT_AUTH_ALLOW_ANY_HOST`, but this is insecure (see [Disabling the Scope](#disabling-the-scope)).
+
+| Key                               | Type   | Description                                                                                                                                                                                                                                                                                                      | Default                                          |
+|-----------------------------------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
+| `GIT_ACCESS_TOKEN`                | string | Access token for cloning repositories (required for private repositories) via **HTTP**. Requires `GIT_AUTH_DOMAINS` to set the hosts that receive it (see [Credential Scope](#credential-scope)). See [Setup Access Token](Setup-Access-Token.md) and [Required Token Permissions](#required-token-permissions). | Optional for public repositories but recommended |
+| `GIT_ACCESS_TOKEN_USER`           | string | Username paired with `GIT_ACCESS_TOKEN` for **HTTP(S)** clone/fetch. Most providers accept any non-empty value, but some require a specific username for their token (e.g. a GitLab **deploy token** uses `gitlab+deploy-token-1234567`). Set it when your provider needs one.                                   | `oauth2`                                         |
+| `GIT_ACCESS_TOKEN_FILE`           | string | Path to the file containing the Git Access Token (mutually exclusive with `GIT_ACCESS_TOKEN`).                                                                                                                                                                                                                   |                                                  |
+| `GIT_AUTH_DOMAINS`                | list   | YAML list of domain-scoped Git credentials (HTTP token, SSH key, and GitHub App credentials). Supports exact domains and wildcard subdomains like `*.example.com` (see [Domain-scoped authentication](#domain-scoped-authentication)). Mutually exclusive with `GIT_AUTH_DOMAINS_FILE`.                          |                                                  |
+| `GIT_AUTH_DOMAINS_FILE`           | string | Path to a file containing the YAML configuration for `GIT_AUTH_DOMAINS` (mutually exclusive with `GIT_AUTH_DOMAINS`).                                                                                                                                                                                            |                                                  |
+| `GIT_AUTH_ALLOW_ANY_HOST`         | bool   | **Insecure.** Sends the global `GIT_ACCESS_TOKEN` or global GitHub App to every HTTP(S) host that no `GIT_AUTH_DOMAINS` entry matches. Use it only if you accept the risk (see [Disabling the Scope](#disabling-the-scope)).                                                                                     | `false`                                          |
+| `SSH_PRIVATE_KEY`                 | string | The private key used for cloning repositories via SSH. See [Setup SSH Key](Setup-SSH-Key.md) and [Domain-scoped Authentication](#domain-scoped-authentication).                                                                                                                                                  |                                                  |
+| `SSH_PRIVATE_KEY_FILE`            | string | Path to the file containing the SSH private key.                                                                                                                                                                                                                                                                 |                                                  |
+| `SSH_PRIVATE_KEY_PASSPHRASE`      | string | Passphrase for the SSH private key (if the key was generated with a passphrase).                                                                                                                                                                                                                                 |                                                  |
+| `SSH_PRIVATE_KEY_PASSPHRASE_FILE` | string | Path to the file containing the SSH private key passphrase.                                                                                                                                                                                                                                                      |                                                  |
+| `SSH_KNOWN_HOSTS_FILE`            | string | Optional path to an operator-managed `known_hosts` file for Git SSH servers. When set, doco-cd never changes this file and rejects unknown or changed host keys.                                                                                                                                                 |                                                  |
+
+### Credential Scope
+
+Doco-CD selects the HTTP(S) credential for each URL by its host:
+
+1. Doco-CD finds the `GIT_AUTH_DOMAINS` entry that matches the host (see [Matching Behavior](#matching-behavior)).
+2. If the entry has its own `git_access_token` or GitHub App, doco-cd uses it.
+3. If the entry has no HTTP(S) credential of its own (only `domains`, or only an SSH key), doco-cd uses the global `GIT_ACCESS_TOKEN` or the global GitHub App.
+4. If no entry matches the host, doco-cd sends no HTTP(S) credential. Public repositories still work anonymously. Private repositories fail with an error that names the host. [`GIT_AUTH_ALLOW_ANY_HOST`](#disabling-the-scope) changes this step.
+
+The port is not part of the match. An entry for `git.example.com` applies to `https://git.example.com:8443/...` too.
+
+SSH keys are not affected by these rules. SSH URLs use the matched entry key, then the global `SSH_PRIVATE_KEY`.
+
+#### Migrating from Global Credentials
+
+Versions before v0.130.0 sent the global `GIT_ACCESS_TOKEN` or global GitHub App credentials to every HTTP(S) host, 
+see the [Git credential security advisory](https://github.com/kimdre/doco-cd/security/advisories/GHSA-ggcr-c46c-q2gj).
+By default, doco-cd now refuses to start with an error like this if a global HTTP(S) credential has no scope:
+
+```text
+global Git HTTP(S) credentials must be scoped with GIT_AUTH_DOMAINS: GIT_ACCESS_TOKEN is set, but no GIT_AUTH_DOMAINS entry lists the hosts that may receive it. ...
+```
+
+To fix it, add an entry with only `domains` for each host that the global credential is for:
+
+```yaml title="docker-compose.yml"
+services:
+  doco-cd:
+    environment:
+      GIT_ACCESS_TOKEN: xxx
+      GIT_AUTH_DOMAINS: |
+        - domains:
+            - github.com
+```
+
+Things to check during the migration:
+
+- Add every host that you clone from with the global credential. This includes hosts of Compose Git `include` URLs and submodules.
+- If you use [`SOURCE_URL_REWRITES`](Advanced/Source-URL-Rewrites.md), doco-cd selects the credential for the host **after** the rewrite. Add the rewritten host, not the original host.
+- An entry with its own `git_access_token` or GitHub App now takes precedence over the global credential for its hosts. Before, the global `GIT_ACCESS_TOKEN` won over a domain-scoped GitHub App.
+- Every entry must have at least one valid domain. Domains with a scheme, path, port, or a wildcard that is not a leading `*.` are rejected at startup.
+- If you [roll back](Advanced/Self-Updating.md) to an older version, that version ignores the scope and sends the global credential to every HTTP(S) host again.
+- For a [self-updating](Advanced/Self-Updating.md) installation, add `GIT_AUTH_DOMAINS` to the managed Compose file before or together with the version upgrade. Older versions accept an entry with only `domains`, so you can add it first. If the new version does not start because the scope is missing, doco-cd rolls back and does not retry until a new commit arrives. Push a commit that adds the scope to retry the update.
+- If you run `bootstrap.sh` from the [self-updating example](https://github.com/kimdre/doco-cd/tree/main/examples/self-updating), it forwards `GIT_AUTH_DOMAINS` and uses `github.com` if you do not set it.
+
+#### Limits of the Scope
+
+The scope controls which hosts receive a credential. It does not control which repositories doco-cd deploys from.
+
+- Doco-CD still clones public repositories from unlisted hosts anonymously.
+- A scoped wildcard such as `*.example.com` trusts every subdomain. Use exact domains if other people can create subdomains.
+- An attacker who can make a listed host serve content, or who can intercept plain `http://` traffic to it, can still get the credential. Use HTTPS.
+- Webhook requests still need a valid `WEBHOOK_SECRET`. Keep it secret, because anyone with it can trigger deployments of any repository URL.
+
+#### Disabling the Scope
+
+If you do not want to maintain `GIT_AUTH_DOMAINS`, you can turn off the scope for the global credential:
+
+```yaml title="docker-compose.yml"
+services:
+  doco-cd:
+    environment:
+      GIT_ACCESS_TOKEN: xxx
+      GIT_AUTH_ALLOW_ANY_HOST: "true"
+```
+
+??? danger "This brings back the [credential leak](https://github.com/kimdre/doco-cd/security/advisories/GHSA-ggcr-c46c-q2gj)"
+    With `GIT_AUTH_ALLOW_ANY_HOST`, doco-cd sends the global `GIT_ACCESS_TOKEN` or global GitHub App to every HTTP(S) host that no `GIT_AUTH_DOMAINS` entry matches.
+    Anyone who can choose a repository URL can then get the credential. This includes webhook senders with the `WEBHOOK_SECRET`, API and MCP clients, and everyone who can change a deployed repository, its Compose `include` URLs, or its submodules.
+    For a GitHub App, doco-cd sends a short-lived signed App JWT to the API of that host, not the App's private key. The JWT can be used to create installation tokens for the App.
+    Doco-CD logs a warning at every start while this setting is active and a global HTTP(S) credential is configured, including `apply-self` runs.
+
+Use it only if every source of repository URLs is trusted, and if the credential has the smallest possible permissions (for example a fine-grained token with read-only access to selected repositories).
+
+The setting changes only hosts without a matching entry. `GIT_AUTH_DOMAINS` entries keep their rules, the redirect protection of the API clients stays active, and commit status reporting still uses the credential of the repository host.
+
+The repository's `docker-compose.yml` forwards `GIT_AUTH_ALLOW_ANY_HOST` from `.env` with a default of `false`.
+For a self-updating installation, set the option in the managed Compose service too. `bootstrap.sh` forwards it only to the one-shot bootstrap container.
 
 ### SSH Host-Key Verification
 
@@ -127,7 +217,7 @@ Each entry in the list has the following structure:
     - domain1.com
     - domain2.com
     - '*.example.com'
-  git_access_token: xxx             # (Optional) HTTP token for git access
+  git_access_token: xxx             # (Optional) HTTP token for git access. If omitted, the global credential is used
   git_access_token_user: oauth2     # (Optional) Username for git_access_token (e.g. gitlab+deploy-token-1234567)
   ssh_private_key: |                # (Optional) SSH private key content
     -----BEGIN OPENSSH PRIVATE KEY-----
@@ -140,7 +230,7 @@ Each entry in the list has the following structure:
 
 | Field                        | Type   | Required | Description                                                                                                                                                                                       |
 |------------------------------|--------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `domains`                    | list   | Yes      | List of domain names to apply these credentials to. Supports exact domains and wildcard patterns.                                                                                                 |
+| `domains`                    | list   | Yes      | List of host names to apply these credentials to. Supports exact domains and wildcard patterns. Must not contain a scheme, path, or port. An entry with only `domains` scopes the global HTTP(S) credential to these hosts. |
 | `git_access_token`           | string | No       | HTTP(S) access token for authenticating with the Git provider. Cannot be used with `ssh_private_key`.                                                                                             |
 | `git_access_token_user`      | string | No       | Username paired with `git_access_token`. Defaults to `oauth2`. Set it when your provider needs a specific username for the token (e.g. a GitLab deploy token uses `gitlab+deploy-token-1234567`). |
 | `ssh_private_key`            | string | No       | SSH private key content (multi-line). Cannot be used with `git_access_token`.                                                                                                                     |
@@ -161,7 +251,8 @@ Each entry in the list has the following structure:
 - Exact domain match wins over wildcard entries.
 - If multiple wildcard patterns match, the longest suffix wins (most specific).
 - Wildcards only match subdomains. Example: `*.example.com` matches `git.example.com`, but not `example.com`.
-- If no domain entry matches, doco-cd falls back to global `GIT_ACCESS_TOKEN` / `SSH_PRIVATE_KEY` values if set.
+- If the matched entry has no HTTP(S) credential of its own, doco-cd uses the global `GIT_ACCESS_TOKEN` or GitHub App for HTTP(S) URLs.
+- If no domain entry matches, doco-cd sends no HTTP(S) credential. For SSH URLs, it uses the global `SSH_PRIVATE_KEY` if set.
 - Submodule remotes are resolved independently, so each submodule can use credentials for its own domain.
 
 #### Examples
@@ -202,7 +293,12 @@ Each entry in the list has the following structure:
 [GitHub Apps](https://docs.github.com/en/apps) are supported natively and can be configured globally (see below) or [per domain](#domain-scoped-authentication). 
 Doco-CD will auto-detect the installation by repository _owner/name_ and mint short-lived installation access tokens.
 The detected installation ID is cached for an hour, and looked up again earlier if the App is reinstalled; set `GITHUB_APP_INSTALLATION_ID` to skip the lookup entirely.
-Installation tokens cannot access [gists](https://docs.github.com/en/get-started/writing-on-github/editing-and-sharing-content-with-gists), so gist URLs (for example, gist submodules) use a configured access token or anonymous access instead.
+
+A global GitHub App needs a `GIT_AUTH_DOMAINS` entry without its own HTTP(S) credential, for example `#!yaml - domains: [github.com]`, the same as a global `GIT_ACCESS_TOKEN` (see [Credential Scope](#credential-scope)).
+Doco-CD calls the GitHub API with the App credentials only for hosts in that scope. These calls do not follow redirects to another host.
+
+!!! note "Installation tokens cannot access [gists](https://docs.github.com/en/get-started/writing-on-github/editing-and-sharing-content-with-gists)"
+    gist URLs (for example, gist submodules) use a configured access token or anonymous access instead.
 
 | Key                             | Type   | Description                                                                                                                                                                  | Default value     |
 |---------------------------------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
@@ -325,6 +421,8 @@ When doco-cd [updates itself](Advanced/Self-Updating.md), the instance that fini
 
 Token-based reporting needs permission to **write commit statuses** through the provider API, whether credentials come from the global [`GIT_ACCESS_TOKEN`](#authentication) or a [domain-scoped token](#domain-scoped-authentication) in `GIT_AUTH_DOMAINS`.
 
+Doco-CD uses the credential that is [scoped](#credential-scope) to the repository host for reporting. If no credential is scoped to that host, doco-cd logs a warning and does not report. Reporting requests do not follow redirects to another host, so the credential cannot go to a different server.
+
 If an access token is also used to clone Git repositories over HTTP(S) (see [Authentication](#authentication)), add the permission below **in addition to** the existing clone permissions required by your provider (see [Required Token Permissions](#required-token-permissions) above).
 
 === "GitHub"
@@ -412,6 +510,8 @@ services:
   app:
     environment:
       GIT_ACCESS_TOKEN: xxx         # token must be allowed to write commit statuses
+      GIT_AUTH_DOMAINS: |           # hosts that receive GIT_ACCESS_TOKEN
+        - domains: [github.com]
       GIT_COMMIT_STATUS: "true"
       # GIT_SCM_PROVIDER: gitlab   # uncomment for self-hosted GitLab at a custom domain
       # GIT_SCM_API_URL: https://git.example.com  # optional explicit API base URL override

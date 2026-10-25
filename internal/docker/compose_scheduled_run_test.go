@@ -1896,7 +1896,6 @@ func TestScheduledDiscoveryGitOptions(t *testing.T) {
 		GitCloneDepth:           5,
 		SSHPrivateKey:           "key",
 		SSHPrivateKeyPassphrase: "passphrase",
-		GitAccessToken:          "token",
 		DataMountPath:           "/data",
 	}
 
@@ -1905,7 +1904,6 @@ func TestScheduledDiscoveryGitOptions(t *testing.T) {
 	want := deploy.GitOptions{
 		SSHPrivateKey:           "key",
 		SSHPrivateKeyPassphrase: "passphrase",
-		GitAccessToken:          "token",
 		SkipTLSVerification:     true,
 		GitCloneSubmodules:      true,
 		GitCloneDepth:           5,
