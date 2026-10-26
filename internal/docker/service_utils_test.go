@@ -95,6 +95,9 @@ func TestGetServiceStatusFromContainerStatus_PreservesRealContainers(t *testing.
 	emptyHookLabels := Labels{api.ProjectLabel: project, api.ServiceLabel: "app", api.HookLabel: ""}
 	hookLabels := Labels{api.ProjectLabel: project, api.ServiceLabel: "app", api.HookLabel: "pre_start"}
 	otherLabels := Labels{api.ProjectLabel: "other-project", api.ServiceLabel: "app"}
+	projectOnlyLabels := Labels{api.ProjectLabel: project, "com.example.helper": "true"}
+	emptyServiceLabels := Labels{api.ProjectLabel: project, api.ServiceLabel: ""}
+	blankServiceLabels := Labels{api.ProjectLabel: project, api.ServiceLabel: "  "}
 
 	tests := []struct {
 		name       string
@@ -114,6 +117,29 @@ func TestGetServiceStatusFromContainerStatus_PreservesRealContainers(t *testing.
 			name:       "other project",
 			containers: []container.Summary{{State: container.StateRunning, Labels: otherLabels}},
 			want:       map[Service]ServiceStatus{},
+		},
+		{
+			name:       "project label without service label",
+			containers: []container.Summary{{State: container.StateRunning, Labels: projectOnlyLabels}},
+			want:       map[Service]ServiceStatus{},
+		},
+		{
+			name:       "empty service label",
+			containers: []container.Summary{{State: container.StateRunning, Labels: emptyServiceLabels}},
+			want:       map[Service]ServiceStatus{},
+		},
+		{
+			name:       "blank service label",
+			containers: []container.Summary{{State: container.StateRunning, Labels: blankServiceLabels}},
+			want:       map[Service]ServiceStatus{},
+		},
+		{
+			name: "container without service label next to real service",
+			containers: []container.Summary{
+				{State: container.StateRunning, Labels: projectOnlyLabels},
+				{State: container.StateRunning, Labels: labels},
+			},
+			want: map[Service]ServiceStatus{"app": {Labels: labels, Replicas: 1, Containers: 1}},
 		},
 		{
 			name:       "unmanaged running service",
@@ -227,6 +253,39 @@ func TestGetLatestServiceStatus_IgnoresHookMetadata(t *testing.T) {
 				t.Fatalf("deployment status = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+// Helper containers that other tools start with only the Compose project label must not cause a
+// service mismatch. Otherwise, every poll redeploys the stack while the container exists.
+func TestServiceInventory_IgnoresContainersWithoutServiceLabel(t *testing.T) {
+	t.Parallel()
+
+	const project = "ops"
+
+	appLabels := Labels{api.ProjectLabel: project, api.ServiceLabel: "app"}
+	helperLabels := Labels{api.ProjectLabel: project, "com.example.helper": "true"}
+
+	containers := []container.Summary{
+		{State: container.StateRunning, Labels: helperLabels},
+		{State: container.StateRunning, Labels: appLabels},
+	}
+
+	inventory := getServiceStatusFromContainerStatus(project, containers)
+	status := getLatestServiceStatus(&sync.Map{}, inventory, "https://github.com/owner/repo.git", project)
+
+	want := map[Service]ServiceStatus{"app": {Labels: appLabels, Replicas: 1, Containers: 1}}
+	if !reflect.DeepEqual(status.DeployedStatus, want) {
+		t.Fatalf("deployed status = %#v, want %#v", status.DeployedStatus, want)
+	}
+
+	mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, types.Services{"app": {Name: "app"}})
+	if err != nil {
+		t.Fatalf("CheckServiceMismatch() error = %v", err)
+	}
+
+	if len(mismatches) != 0 {
+		t.Fatalf("CheckServiceMismatch() = %#v, want no mismatches", mismatches)
 	}
 }
 
