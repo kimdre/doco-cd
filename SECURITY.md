@@ -20,6 +20,35 @@ You can always find all release notes on GitHub:
 
 - <https://github.com/kimdre/doco-cd/releases>
 
+## Trust Model
+
+Doco-CD deploys what your repositories describe. It talks to the Docker daemon, so the following actors are trusted
+with root-equivalent access to the Docker host:
+
+- Anyone who can push to a repository that doco-cd deploys (including its `.doco-cd.yml` and compose files).
+- Anyone who holds the `WEBHOOK_SECRET` (webhook requests can point doco-cd at any remote repository).
+- Anyone who holds the `API_SECRET` (REST API and MCP server).
+
+These actors can deploy arbitrary workloads, for example privileged containers, bind mounts of the host filesystem,
+or a mount of the Docker socket. Doco-CD does not try to sandbox them.
+
+Because of this, file paths in deployment configuration are trusted and are read from the doco-cd container filesystem
+without being confined to the repository. This applies to:
+
+- `env_files` and `external_secrets_files` in the deploy config (relative paths resolve against `working_dir` and can
+  use `..`, absolute paths in `env_files` are read as given and are an intended feature).
+- `env_file`, `configs` and `secrets` entries with a `file` source, and `build` secrets in compose files.
+
+Reports that only show that these actors can read files or environment variables that are reachable from the doco-cd
+container are out of scope, as they can already do the same with a deployed container.
+
+To reduce the impact of a compromised repository or secret:
+
+- Limit who can push to repositories that doco-cd deploys and protect the deployed branches.
+- Keep `WEBHOOK_SECRET` and `API_SECRET` private and rotate them if they leak.
+- Keep `PASS_ENV` disabled, so the doco-cd environment is not passed to deployments.
+- Mount only the files that doco-cd needs into its container.
+
 ## Reporting a Vulnerability
 
 If you believe you have found a security vulnerability, please report it to us through coordinated disclosure.
