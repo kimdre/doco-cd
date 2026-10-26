@@ -240,6 +240,10 @@ The docker compose deployment can be configured inside the [deployment configura
 Doco-CD parses `env_files` using the same dotenv engine as Docker Compose itself ([`compose-go`](https://github.com/compose-spec/compose-go)), so the syntax 
 (comments, quoting, `export`, variable substitution, etc.) matches the [Compose `.env` file reference](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/#env-file).
 
+Relative `env_files` paths are resolved against the `working_dir`. Absolute paths are read as given from the doco-cd 
+container filesystem, for example a secret file that you mounted into the container. 
+Paths are not confined to the repository (see the [trust model](Security.md#trust-model)).
+
 One notable difference from a plain `.env` file: variables resolved from an earlier `env_files` entry (or from `environment`) 
 can be referenced with `${VAR}` in a later one, e.g. to conditionally override or pass through a value:
 

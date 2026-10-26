@@ -129,7 +129,8 @@ DB_PASSWORD: a8f1e4eb-d76d-47b4-aa3c-103733e77fce
 LABEL_SECRET: cfd0c4a9-16d4-44c8-9a80-c6143a7c7b71
 ```
 
-File paths are resolved relative to the same directory as [dotenv files](../Deploy-Settings.md#dotenv-file-format). Like `env_files`, you can use the `remote:<filepath>` syntax to load a file from the remote repository when `repository_url` is also specified:
+File paths are resolved relative to the same directory as [dotenv files](../Deploy-Settings.md#dotenv-file-format) and are not confined to the repository (see the [trust model](../Security.md#trust-model)). 
+Like `env_files`, you can use the `remote:<filepath>` syntax to load a file from the remote repository when `repository_url` is also specified:
 
 ```yaml title=".doco-cd.yml"
 name: myapp
