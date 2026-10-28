@@ -17,7 +17,7 @@ const (
 )
 
 // pullProjectImages pulls the images of a project.
-// It retries only when the daemon drops the content lease of the pull.
+// It retries only when the pull loses its lease or layer files.
 func pullProjectImages(ctx context.Context, service api.Compose, project *types.Project, opts api.PullOptions) error {
 	return retryImagePull(ctx, imagePullDelay, func() error {
 		return service.Pull(ctx, project, opts)
