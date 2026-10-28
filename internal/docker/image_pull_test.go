@@ -3,42 +3,16 @@ package docker
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 )
-
-func TestIsTransientPullError(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{name: "nil", err: nil, want: false},
-		{name: "lost lease", err: errors.New("unable to lease content: lease does not exist: not found"), want: true},
-		{name: "wrapped lost lease", err: fmt.Errorf("failed to pull images: %w", errors.New("Unable to lease content: Lease does not exist")), want: true},
-		{name: "failed commit", err: errors.New("failed commit on ref \"layer-sha256:abc\": rename: no such file or directory"), want: true},
-		{name: "access denied", err: errors.New("pull access denied for nginx, repository does not exist"), want: false},
-		{name: "network", err: errors.New("dial tcp: connection refused"), want: false},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			if got := isTransientPullError(tc.err); got != tc.want {
-				t.Errorf("isTransientPullError() = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
 
 func TestRetryImagePull(t *testing.T) {
 	t.Parallel()
 
 	errLease := errors.New("unable to lease content: lease does not exist: not found")
+	errExtract := errors.New("failed to extract layer: failed to Lchown /snapshot/usr/bin/bao: no such file or directory")
+	errPermission := errors.New("failed to extract layer: failed to Lchown /snapshot/usr/bin/bao: permission denied")
 	errDenied := errors.New("pull access denied")
 
 	testCases := []struct {
@@ -49,7 +23,10 @@ func TestRetryImagePull(t *testing.T) {
 	}{
 		{name: "success", results: []error{nil}, wantCalls: 1},
 		{name: "recovers after lost lease", results: []error{errLease, errLease, nil}, wantCalls: 3},
+		{name: "recovers after layer extraction loses file", results: []error{errExtract, nil}, wantCalls: 2},
 		{name: "gives up after max attempts", results: []error{errLease, errLease, errLease, errLease, errLease}, wantCalls: imagePullAttempts, wantErr: errLease},
+		{name: "gives up after repeated missing layer files", results: []error{errExtract, errExtract, errExtract, errExtract, nil}, wantCalls: imagePullAttempts, wantErr: errExtract},
+		{name: "does not retry extraction permission denied", results: []error{errPermission, nil}, wantCalls: 1, wantErr: errPermission},
 		{name: "does not retry other errors", results: []error{errDenied, nil}, wantCalls: 1, wantErr: errDenied},
 	}
 

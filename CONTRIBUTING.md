@@ -49,6 +49,9 @@ The CI pipeline will fail, if the code is not formatted correctly.
 Always add unit tests to verify your code. 
 Run the tests with `make test` or `make test-verbose` and run specific tests with `make test-run <testName>` (Verbose with `make test-run "-v <testName>"`).
 
+Docker test setup uses bounded retries for missing images, lost content leases, and missing files during layer extraction caused by concurrent image pruning ([moby/moby#53321](https://github.com/moby/moby/issues/53321)).
+This recovery keeps CI tests parallel. Other startup errors fail immediately.
+
 #### Deployment configuration schema
 
 The editor schema in `wiki/docs/schemas/deploy.schema.json` is generated from the deployment configuration types, their Go field comments, and `default` tags.

@@ -21,6 +21,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/docker/imagepull"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
@@ -380,7 +381,7 @@ compose_files:
 			retry.Attempts(3),
 			retry.Delay(1*time.Second),
 			retry.RetryIf(func(err error) bool {
-				return strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error())
+				return imagepull.IsTransientError(err) || strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error())
 			}),
 		).Do(func() error {
 			return DeployStack(ctx, DeployRequest{
