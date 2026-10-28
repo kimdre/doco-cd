@@ -20,6 +20,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+
+	"github.com/kimdre/doco-cd/internal/docker/imagepull"
 )
 
 // ComposeStack represents a running compose stack for tests.
@@ -207,25 +209,16 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		}
 	})
 
-	err = retry.New(
-		retry.Delay(1*time.Second),
-		retry.DelayType(retry.BackOffDelay),
-		retry.Attempts(3),
-		retry.RetryIf(func(err error) bool {
-			// Retry if error contains "No such image"
-			return strings.Contains(strings.ToLower(err.Error()), "no such image")
-		}),
-	).Do(
-		func() error {
-			return svc.Up(ctx, project, api.UpOptions{
-				Create: api.CreateOptions{RemoveOrphans: true},
-				Start: api.StartOptions{
-					Project:     project,
-					Wait:        !o.noWait,
-					WaitTimeout: o.waitTimeout,
-				},
-			})
+	err = retryComposeUp(ctx, time.Second, func() error {
+		return svc.Up(ctx, project, api.UpOptions{
+			Create: api.CreateOptions{RemoveOrphans: true},
+			Start: api.StartOptions{
+				Project:     project,
+				Wait:        !o.noWait,
+				WaitTimeout: o.waitTimeout,
+			},
 		})
+	})
 	if err != nil {
 		t.Fatalf("failed to start compose stack %q: %v", stackName, err)
 	}
@@ -238,6 +231,18 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 	}
 
 	return stack
+}
+
+func retryComposeUp(ctx context.Context, delay time.Duration, up func() error) error {
+	return retry.New(
+		retry.Context(ctx),
+		retry.Delay(delay),
+		retry.DelayType(retry.BackOffDelay),
+		retry.Attempts(3),
+		retry.RetryIf(func(err error) bool {
+			return imagepull.IsTransientError(err) || strings.Contains(strings.ToLower(err.Error()), "no such image")
+		}),
+	).Do(up)
 }
 
 // writeComposeYAML writes a compose YAML string to a temporary file and returns its path.
