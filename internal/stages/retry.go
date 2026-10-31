@@ -221,7 +221,7 @@ func (s *StageManager) prepareDeploymentRetry(ctx context.Context, stageLog *slo
 			}
 		}
 
-		return nil
+		return s.issueDeferredCertificates(ctx)
 	}
 
 	level := slog.LevelDebug

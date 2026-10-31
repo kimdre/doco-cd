@@ -6,9 +6,12 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"strings"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
+
+const pkiRoleRefPrefix = "pki-role:"
 
 // ResolveOptions controls how ResolveExternalSecrets interpolates values.
 type ResolveOptions struct {
@@ -16,6 +19,11 @@ type ResolveOptions struct {
 	InterpolateRefs bool
 	// InterpolateResolved expands references to other resolved secrets inside the secret values.
 	InterpolateResolved bool
+	// DeferPKIRoles leaves pki-role references unissued. Each of their variables and its key and
+	// full-chain companions holds its reference as a placeholder, the same value the project hash
+	// normalizes issued certificates to, and Deferred lists the references for IssueDeferred.
+	// It has no effect with InterpolateResolved, since another value could embed a placeholder.
+	DeferPKIRoles bool
 }
 
 // ResolvedExternalSecrets is the result of ResolveExternalSecrets.
@@ -24,6 +32,8 @@ type ResolvedExternalSecrets struct {
 	Refs map[string]secrettypes.ExternalSecretRef
 	// Values maps variable names to secret values.
 	Values secrettypes.ResolvedSecrets
+	// Deferred holds the pki-role references left unissued under DeferPKIRoles.
+	Deferred map[string]secrettypes.ExternalSecretRef
 }
 
 // ResolveExternalSecrets fetches the secrets of a deployment.
@@ -57,8 +67,13 @@ func ResolveExternalSecrets(
 		return ResolvedExternalSecrets{}, err
 	}
 
-	if len(interpolatedRefs) > 0 {
-		encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(interpolatedRefs)
+	explicitRefs, deferred := interpolatedRefs, map[string]secrettypes.ExternalSecretRef(nil)
+	if opts.DeferPKIRoles && !opts.InterpolateResolved {
+		explicitRefs, deferred = splitPKIRoleRefs(interpolatedRefs)
+	}
+
+	if len(explicitRefs) > 0 {
+		encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(explicitRefs)
 		if err != nil {
 			return ResolvedExternalSecrets{}, fmt.Errorf("failed to encode external secret references: %w", err)
 		}
@@ -71,12 +86,64 @@ func ResolveExternalSecrets(
 		maps.Copy(values, explicit)
 	}
 
+	for envVar, ref := range deferred {
+		values[envVar] = ref.LegacyRef
+		values[envVar+secrettypes.PKIRoleKeySuffix] = ref.LegacyRef + secrettypes.PKIRoleKeySuffix
+		values[envVar+secrettypes.PKIFullChainSuffix] = ref.LegacyRef + secrettypes.PKIFullChainSuffix
+	}
+
 	values, err = secrettypes.InterpolateResolvedSecrets(values, opts.InterpolateResolved)
 	if err != nil {
 		return ResolvedExternalSecrets{}, fmt.Errorf("failed to interpolate resolved secrets: %w", err)
 	}
 
-	return ResolvedExternalSecrets{Refs: interpolatedRefs, Values: values}, nil
+	return ResolvedExternalSecrets{Refs: interpolatedRefs, Values: values, Deferred: deferred}, nil
+}
+
+// IssueDeferred issues the certificates of the pki-role references that ResolveExternalSecrets
+// deferred, returning the values that replace their placeholders.
+func IssueDeferred(ctx context.Context, provider SecretProvider, deferred map[string]secrettypes.ExternalSecretRef) (secrettypes.ResolvedSecrets, error) {
+	if len(deferred) == 0 {
+		return nil, nil
+	}
+
+	encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(deferred)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode external secret references: %w", err)
+	}
+
+	issued, err := provider.ResolveSecretReferences(ctx, encodedSecrets)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve external secrets: %w", err)
+	}
+
+	return issued, nil
+}
+
+// splitPKIRoleRefs separates the pki-role references from the others. It defers none when a
+// reference already names a pki-role variable's key or full-chain companion, so the provider
+// still rejects that conflict.
+func splitPKIRoleRefs(refs map[string]secrettypes.ExternalSecretRef) (others, pkiRoles map[string]secrettypes.ExternalSecretRef) {
+	others = make(map[string]secrettypes.ExternalSecretRef, len(refs))
+	pkiRoles = make(map[string]secrettypes.ExternalSecretRef)
+
+	for envVar, ref := range refs {
+		if strings.HasPrefix(ref.LegacyRef, pkiRoleRefPrefix) {
+			pkiRoles[envVar] = ref
+		} else {
+			others[envVar] = ref
+		}
+	}
+
+	for envVar := range pkiRoles {
+		for _, suffix := range [2]string{secrettypes.PKIRoleKeySuffix, secrettypes.PKIFullChainSuffix} {
+			if _, exists := refs[envVar+suffix]; exists {
+				return refs, nil
+			}
+		}
+	}
+
+	return others, pkiRoles
 }
 
 // resolvePaths fetches the secrets of all paths and adds them to dst.

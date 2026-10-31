@@ -55,7 +55,7 @@ By default, the root namespace is used (`root` or `/`), but you can specify a di
   ```
   pki:<namespace(optional)>:<secretEngine>:<commonName>
   ```
-- A valid PKI role reference (issues a **new** certificate on every deployment/rotation, see [Automatic Certificate Rotation](#automatic-certificate-rotation)) should use the syntax:
+- A valid PKI role reference (issues a **new** certificate on every deployment/rotation, see [Automatic Certificate Rotation](#automatic-certificate-rotation); a poll or webhook that finds nothing to deploy issues none) should use the syntax:
   ```
   pki-role:<namespace(optional)>:<secretEngine>:<role>:<commonName>
   ```

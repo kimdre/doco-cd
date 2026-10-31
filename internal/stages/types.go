@@ -34,6 +34,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -310,6 +311,9 @@ type StageManager struct {
 	inProgressPosted bool
 	retryAttempt     *docker.DeploymentAttempt
 	retryDesired     *docker.DeploymentDesiredState
+	// deferredCerts holds the pki-role references pre-deploy left unissued. Their
+	// certificates are issued only once a deployment is admitted.
+	deferredCerts map[string]secrettypes.ExternalSecretRef
 	// shortCommit memoizes the short form of the commit SHA shown in
 	// notifications, so a deployment computes it once rather than per message.
 	shortCommitMu sync.Mutex
