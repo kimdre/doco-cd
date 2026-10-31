@@ -51,7 +51,7 @@ require (
 	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.73.1
 	github.com/sigstore/cosign/v3 v3.1.4
-	github.com/sigstore/sigstore v1.11.1
+	github.com/sigstore/sigstore v1.11.2
 	github.com/stretchr/testify v1.12.1
 	github.com/swaggest/swgui v1.8.9
 	github.com/testcontainers/testcontainers-go v0.44.0
