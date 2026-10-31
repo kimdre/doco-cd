@@ -11,19 +11,17 @@ import (
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
-const pkiRoleRefPrefix = "pki-role:"
-
 // ResolveOptions controls how ResolveExternalSecrets interpolates values.
 type ResolveOptions struct {
 	// InterpolateRefs expands variables in secret references and secret paths.
 	InterpolateRefs bool
 	// InterpolateResolved expands references to other resolved secrets inside the secret values.
 	InterpolateResolved bool
-	// DeferPKIRoles leaves pki-role references unissued. Each of their variables and its key and
+	// DeferPKIRoleRefs leaves pki-role references unissued. Each of their variables and its key and
 	// full-chain companions holds its reference as a placeholder, the same value the project hash
 	// normalizes issued certificates to, and Deferred lists the references for IssueDeferred.
 	// It has no effect with InterpolateResolved, since another value could embed a placeholder.
-	DeferPKIRoles bool
+	DeferPKIRoleRefs bool
 }
 
 // ResolvedExternalSecrets is the result of ResolveExternalSecrets.
@@ -32,7 +30,7 @@ type ResolvedExternalSecrets struct {
 	Refs map[string]secrettypes.ExternalSecretRef
 	// Values maps variable names to secret values.
 	Values secrettypes.ResolvedSecrets
-	// Deferred holds the pki-role references left unissued under DeferPKIRoles.
+	// Deferred holds the pki-role references left unissued under DeferPKIRoleRefs.
 	Deferred map[string]secrettypes.ExternalSecretRef
 }
 
@@ -68,7 +66,7 @@ func ResolveExternalSecrets(
 	}
 
 	explicitRefs, deferred := interpolatedRefs, map[string]secrettypes.ExternalSecretRef(nil)
-	if opts.DeferPKIRoles && !opts.InterpolateResolved {
+	if opts.DeferPKIRoleRefs && !opts.InterpolateResolved {
 		explicitRefs, deferred = splitPKIRoleRefs(interpolatedRefs)
 	}
 
@@ -128,7 +126,7 @@ func splitPKIRoleRefs(refs map[string]secrettypes.ExternalSecretRef) (others, pk
 	pkiRoles = make(map[string]secrettypes.ExternalSecretRef)
 
 	for envVar, ref := range refs {
-		if strings.HasPrefix(ref.LegacyRef, pkiRoleRefPrefix) {
+		if strings.HasPrefix(ref.LegacyRef, secrettypes.PKIRoleRefPrefix) {
 			pkiRoles[envVar] = ref
 		} else {
 			others[envVar] = ref

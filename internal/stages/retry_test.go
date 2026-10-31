@@ -819,17 +819,21 @@ func TestAdmittedDeploymentIssuesDeferredCertificates(t *testing.T) {
 	sm := newDeferredCertManager(t, "deferred-cert-admitted", provider)
 	placeholderHash := sm.Docker.ProjectHash
 
-	if err := sm.prepareDeploymentRetry(t.Context(), sm.Log); err != nil {
+	order := retryStageOrder(sm, func(context.Context) error {
+		env := sm.Docker.Project.Services["web"].Environment
+		if env["CERT"] == nil || *env["CERT"] != "certificate-1" || env["CERT_KEY"] == nil || *env["CERT_KEY"] != "key-1" {
+			t.Fatalf("deploy stage must see the issued certificate and key, got %v", env)
+		}
+
+		return nil
+	})
+
+	if err := sm.runStageOrder(t.Context(), nil, order); err != nil {
 		t.Fatal(err)
 	}
 
 	if got := provider.issued.Load(); got != 1 {
 		t.Fatalf("expected one issuance for an admitted deployment, got %d", got)
-	}
-
-	env := sm.Docker.Project.Services["web"].Environment
-	if env["CERT"] == nil || *env["CERT"] != "certificate-1" || env["CERT_KEY"] == nil || *env["CERT_KEY"] != "key-1" {
-		t.Fatalf("project must carry the issued certificate and key, got %v", env)
 	}
 
 	if sm.Docker.ProjectHash != placeholderHash {
@@ -841,22 +845,55 @@ func TestAdmittedDeploymentIssuesDeferredCertificates(t *testing.T) {
 	}
 }
 
+func TestRejectedDeploymentDoesNotIssueDeferredCertificates(t *testing.T) {
+	t.Parallel()
+
+	provider := &issuingSecretProvider{}
+	sm := newDeferredCertManager(t, "deferred-cert-rejected", provider)
+	paused := func(context.Context) (func(), error) {
+		return nil, fmt.Errorf("deployments paused: %w", ErrSkipDeployment)
+	}
+	order := retryStageOrder(sm, func(context.Context) error {
+		t.Fatal("rejected deploy stage was reached")
+		return nil
+	})
+
+	if err := sm.runStageOrder(t.Context(), paused, order); !errors.Is(err, ErrSkipDeployment) {
+		t.Fatalf("expected admission to skip the deployment, got %v", err)
+	}
+
+	if got := provider.issued.Load(); got != 0 {
+		t.Fatalf("a deployment rejected by admission issued %d certificates", got)
+	}
+}
+
 func TestSuppressedRetryDoesNotIssueDeferredCertificates(t *testing.T) {
 	t.Parallel()
 
 	provider := &issuingSecretProvider{}
 	sm := newDeferredCertManager(t, "deferred-cert-suppressed", provider)
-	deferred := sm.deferredCerts
 	recordRetryTestFailure(t, sm, StageDeploy)
 
-	issuedBefore := provider.issued.Load()
+	order := retryStageOrder(sm, func(context.Context) error {
+		t.Fatal("suppressed deploy stage was reached")
+		return nil
+	})
 
-	sm.deferredCerts = deferred
-	if err := sm.prepareDeploymentRetry(t.Context(), sm.Log); !errors.Is(err, ErrRetrySuppressed) {
+	if err := sm.runStageOrder(t.Context(), nil, order); !errors.Is(err, ErrRetrySuppressed) {
 		t.Fatalf("expected the retry to be suppressed, got %v", err)
 	}
 
-	if got := provider.issued.Load(); got != issuedBefore {
-		t.Fatalf("a suppressed retry issued %d certificates", got-issuedBefore)
+	if got := provider.issued.Load(); got != 0 {
+		t.Fatalf("a suppressed retry issued %d certificates", got)
+	}
+}
+
+func TestDeployStageRefusesUnissuedCertificates(t *testing.T) {
+	t.Parallel()
+
+	sm := newDeferredCertManager(t, "deferred-cert-guard", &issuingSecretProvider{})
+
+	if err := sm.RunDeployStage(t.Context(), sm.Log); !errors.Is(err, errDeferredCertificatesNotIssued) {
+		t.Fatalf("deploy stage must refuse pki-role placeholders, got %v", err)
 	}
 }

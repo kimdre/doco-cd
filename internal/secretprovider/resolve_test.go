@@ -278,7 +278,7 @@ func TestSecretProviderAdapter_GetSecretsByPath(t *testing.T) {
 	}
 }
 
-func TestResolveExternalSecrets_DeferPKIRoles(t *testing.T) {
+func TestResolveExternalSecrets_DeferPKIRoleRefs(t *testing.T) {
 	t.Parallel()
 
 	mock := newBulkMock(nil)
@@ -288,7 +288,7 @@ func TestResolveExternalSecrets_DeferPKIRoles(t *testing.T) {
 	}
 
 	got, err := ResolveExternalSecrets(t.Context(), mock, refs, nil,
-		ResolveOptions{DeferPKIRoles: true}, discardLogger())
+		ResolveOptions{DeferPKIRoleRefs: true}, discardLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -331,14 +331,14 @@ func TestResolveExternalSecrets_DeferPKIRoles(t *testing.T) {
 	}
 }
 
-func TestResolveExternalSecrets_DeferPKIRolesOnlyPKIRoles(t *testing.T) {
+func TestResolveExternalSecrets_DeferPKIRoleRefsOnly(t *testing.T) {
 	t.Parallel()
 
 	mock := newBulkMock(nil)
 	refs := map[string]secrettypes.ExternalSecretRef{"CERT": {LegacyRef: "pki-role:pki:web:app.example"}}
 
 	got, err := ResolveExternalSecrets(t.Context(), mock, refs, nil,
-		ResolveOptions{DeferPKIRoles: true}, discardLogger())
+		ResolveOptions{DeferPKIRoleRefs: true}, discardLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -352,7 +352,7 @@ func TestResolveExternalSecrets_DeferPKIRolesOnlyPKIRoles(t *testing.T) {
 	}
 }
 
-func TestResolveExternalSecrets_DeferPKIRolesFallsBack(t *testing.T) {
+func TestResolveExternalSecrets_DeferPKIRoleRefsFallsBack(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -363,7 +363,7 @@ func TestResolveExternalSecrets_DeferPKIRolesFallsBack(t *testing.T) {
 		{
 			name: "interpolated values",
 			refs: map[string]secrettypes.ExternalSecretRef{"CERT": {LegacyRef: "pki-role:pki:web:app.example"}},
-			opts: ResolveOptions{DeferPKIRoles: true, InterpolateResolved: true},
+			opts: ResolveOptions{DeferPKIRoleRefs: true, InterpolateResolved: true},
 		},
 		{
 			name: "companion conflict",
@@ -371,7 +371,7 @@ func TestResolveExternalSecrets_DeferPKIRolesFallsBack(t *testing.T) {
 				"CERT":     {LegacyRef: "pki-role:pki:web:app.example"},
 				"CERT_KEY": {LegacyRef: "kv:secret:app:key"},
 			},
-			opts: ResolveOptions{DeferPKIRoles: true},
+			opts: ResolveOptions{DeferPKIRoleRefs: true},
 		},
 		{
 			name: "deferral off",

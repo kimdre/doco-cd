@@ -23,6 +23,10 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		return err
 	}
 
+	if len(s.deferredCerts) > 0 {
+		return errDeferredCertificatesNotIssued
+	}
+
 	if s.retryAttempt != nil {
 		s.retryAttempt.Start()
 	}
