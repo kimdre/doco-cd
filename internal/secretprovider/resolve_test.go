@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"strings"
 	"testing"
 
@@ -349,6 +350,97 @@ func TestResolveExternalSecrets_DeferPKIRoleRefsOnly(t *testing.T) {
 
 	if len(got.Deferred) != 1 {
 		t.Errorf("unexpected deferred refs: %v", got.Deferred)
+	}
+}
+
+// TestResolveExternalSecrets_DeferPKIRoleRefsWithPaths checks that a deferred pki-role reference
+// keeps the precedence of an explicit reference over path secrets. Its placeholders replace path
+// secrets with the same variable names. After issuance, the environment is the same as without
+// deferral.
+func TestResolveExternalSecrets_DeferPKIRoleRefsWithPaths(t *testing.T) {
+	t.Parallel()
+
+	const certRef = "pki-role:pki:web:app.example"
+
+	newProvider := func() *bulkMockProvider {
+		mock := newBulkMock(map[string]map[string]string{
+			"apps/": {
+				"cert":      "path-cert",
+				"cert_key":  "path-key",
+				"cert_full": "path-full",
+				"db_user":   "path-user",
+			},
+		})
+		// Like OpenBao, the provider returns the key and full chain with each issued certificate.
+		mock.resolveSecretRefsFunc = func(_ context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
+			out := make(secrettypes.ResolvedSecrets, len(secrets))
+
+			for envVar, ref := range secrets {
+				if !strings.HasPrefix(ref, secrettypes.PKIRoleRefPrefix) {
+					out[envVar] = "resolved:" + ref
+
+					continue
+				}
+
+				out[envVar] = "issued-cert:" + ref
+				out[envVar+secrettypes.PKIRoleKeySuffix] = "issued-key:" + ref
+				out[envVar+secrettypes.PKIFullChainSuffix] = "issued-full:" + ref
+			}
+
+			return out, nil
+		}
+
+		return mock
+	}
+
+	refs := map[string]secrettypes.ExternalSecretRef{
+		"CERT":    {LegacyRef: certRef},
+		"DB_HOST": {LegacyRef: "kv:secret:app:host"},
+	}
+	paths := []secrettypes.ExternalSecretsPath{{Path: "apps/"}}
+
+	mock := newProvider()
+
+	got, err := ResolveExternalSecrets(t.Context(), mock, refs, paths,
+		ResolveOptions{DeferPKIRoleRefs: true}, discardLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantPlaceholders := map[string]string{
+		"CERT":      certRef,
+		"CERT_KEY":  certRef + secrettypes.PKIRoleKeySuffix,
+		"CERT_FULL": certRef + secrettypes.PKIFullChainSuffix,
+		"DB_HOST":   "resolved:kv:secret:app:host",
+		"DB_USER":   "path-user",
+	}
+	if !maps.Equal(got.Values, wantPlaceholders) {
+		t.Errorf("placeholders must replace path secrets with the same names\ngot:  %v\nwant: %v", got.Values, wantPlaceholders)
+	}
+
+	if calls := mock.resolveSecretRefsCalls.Load(); calls != 1 {
+		t.Errorf("only the kv reference may reach the provider before issuance, got %d calls", calls)
+	}
+
+	issued, err := IssueDeferred(t.Context(), mock, got.Deferred)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	deployed := maps.Clone(got.Values)
+	maps.Copy(deployed, issued)
+
+	eager, err := ResolveExternalSecrets(t.Context(), newProvider(), refs, paths, ResolveOptions{}, discardLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !maps.Equal(deployed, eager.Values) {
+		t.Errorf("issued values must match resolution without deferral\ngot:  %v\nwant: %v", deployed, eager.Values)
+	}
+
+	if deployed["CERT_KEY"] != "issued-key:"+certRef {
+		t.Errorf("CERT_KEY must come from the issued certificate, got %q", deployed["CERT_KEY"])
 	}
 }
 
