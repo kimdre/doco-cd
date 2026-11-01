@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"strings"
 	"testing"
 
@@ -275,5 +276,219 @@ func TestSecretProviderAdapter_GetSecretsByPath(t *testing.T) {
 	_, err = AdaptSecretValueProvider("plain", plainValueProvider{}).GetSecretsByPath(t.Context(), "p/", true)
 	if !errors.Is(err, secrettypes.ErrBulkNotSupported) {
 		t.Fatalf("expected ErrBulkNotSupported, got %v", err)
+	}
+}
+
+func TestResolveExternalSecrets_DeferPKIRoleRefs(t *testing.T) {
+	t.Parallel()
+
+	mock := newBulkMock(nil)
+	refs := map[string]secrettypes.ExternalSecretRef{
+		"DB_HOST": {LegacyRef: "kv:secret:app:host"},
+		"CERT":    {LegacyRef: "pki-role:pki:web:app.example"},
+	}
+
+	got, err := ResolveExternalSecrets(t.Context(), mock, refs, nil,
+		ResolveOptions{DeferPKIRoleRefs: true}, discardLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := map[string]string{
+		"DB_HOST":   "resolved:kv:secret:app:host",
+		"CERT":      "pki-role:pki:web:app.example",
+		"CERT_KEY":  "pki-role:pki:web:app.example_KEY",
+		"CERT_FULL": "pki-role:pki:web:app.example_FULL",
+	}
+	if len(got.Values) != len(want) {
+		t.Fatalf("unexpected values: %v", got.Values)
+	}
+
+	for name, value := range want {
+		if got.Values[name] != value {
+			t.Errorf("%s = %q, want %q", name, got.Values[name], value)
+		}
+	}
+
+	if len(got.Refs) != 2 {
+		t.Errorf("Refs must keep every reference, got %v", got.Refs)
+	}
+
+	if len(got.Deferred) != 1 || got.Deferred["CERT"].LegacyRef != "pki-role:pki:web:app.example" {
+		t.Errorf("unexpected deferred refs: %v", got.Deferred)
+	}
+
+	issued, err := IssueDeferred(t.Context(), mock, got.Deferred)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if issued["CERT"] != "resolved:pki-role:pki:web:app.example" {
+		t.Errorf("unexpected issued values: %v", issued)
+	}
+
+	if calls := mock.resolveSecretRefsCalls.Load(); calls != 2 {
+		t.Errorf("expected one resolution for kv and one for the deferred pki-role, got %d", calls)
+	}
+}
+
+func TestResolveExternalSecrets_DeferPKIRoleRefsOnly(t *testing.T) {
+	t.Parallel()
+
+	mock := newBulkMock(nil)
+	refs := map[string]secrettypes.ExternalSecretRef{"CERT": {LegacyRef: "pki-role:pki:web:app.example"}}
+
+	got, err := ResolveExternalSecrets(t.Context(), mock, refs, nil,
+		ResolveOptions{DeferPKIRoleRefs: true}, discardLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if calls := mock.resolveSecretRefsCalls.Load(); calls != 0 {
+		t.Errorf("a deferred pki-role must not reach the provider, got %d calls", calls)
+	}
+
+	if len(got.Deferred) != 1 {
+		t.Errorf("unexpected deferred refs: %v", got.Deferred)
+	}
+}
+
+// TestResolveExternalSecrets_DeferPKIRoleRefsWithPaths checks that a deferred pki-role reference
+// keeps the precedence of an explicit reference over path secrets. Its placeholders replace path
+// secrets with the same variable names. After issuance, the environment is the same as without
+// deferral.
+func TestResolveExternalSecrets_DeferPKIRoleRefsWithPaths(t *testing.T) {
+	t.Parallel()
+
+	const certRef = "pki-role:pki:web:app.example"
+
+	newProvider := func() *bulkMockProvider {
+		mock := newBulkMock(map[string]map[string]string{
+			"apps/": {
+				"cert":      "path-cert",
+				"cert_key":  "path-key",
+				"cert_full": "path-full",
+				"db_user":   "path-user",
+			},
+		})
+		// Like OpenBao, the provider returns the key and full chain with each issued certificate.
+		mock.resolveSecretRefsFunc = func(_ context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
+			out := make(secrettypes.ResolvedSecrets, len(secrets))
+
+			for envVar, ref := range secrets {
+				if !strings.HasPrefix(ref, secrettypes.PKIRoleRefPrefix) {
+					out[envVar] = "resolved:" + ref
+
+					continue
+				}
+
+				out[envVar] = "issued-cert:" + ref
+				out[envVar+secrettypes.PKIRoleKeySuffix] = "issued-key:" + ref
+				out[envVar+secrettypes.PKIFullChainSuffix] = "issued-full:" + ref
+			}
+
+			return out, nil
+		}
+
+		return mock
+	}
+
+	refs := map[string]secrettypes.ExternalSecretRef{
+		"CERT":    {LegacyRef: certRef},
+		"DB_HOST": {LegacyRef: "kv:secret:app:host"},
+	}
+	paths := []secrettypes.ExternalSecretsPath{{Path: "apps/"}}
+
+	mock := newProvider()
+
+	got, err := ResolveExternalSecrets(t.Context(), mock, refs, paths,
+		ResolveOptions{DeferPKIRoleRefs: true}, discardLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantPlaceholders := map[string]string{
+		"CERT":      certRef,
+		"CERT_KEY":  certRef + secrettypes.PKIRoleKeySuffix,
+		"CERT_FULL": certRef + secrettypes.PKIFullChainSuffix,
+		"DB_HOST":   "resolved:kv:secret:app:host",
+		"DB_USER":   "path-user",
+	}
+	if !maps.Equal(got.Values, wantPlaceholders) {
+		t.Errorf("placeholders must replace path secrets with the same names\ngot:  %v\nwant: %v", got.Values, wantPlaceholders)
+	}
+
+	if calls := mock.resolveSecretRefsCalls.Load(); calls != 1 {
+		t.Errorf("only the kv reference may reach the provider before issuance, got %d calls", calls)
+	}
+
+	issued, err := IssueDeferred(t.Context(), mock, got.Deferred)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	deployed := maps.Clone(got.Values)
+	maps.Copy(deployed, issued)
+
+	eager, err := ResolveExternalSecrets(t.Context(), newProvider(), refs, paths, ResolveOptions{}, discardLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !maps.Equal(deployed, eager.Values) {
+		t.Errorf("issued values must match resolution without deferral\ngot:  %v\nwant: %v", deployed, eager.Values)
+	}
+
+	if deployed["CERT_KEY"] != "issued-key:"+certRef {
+		t.Errorf("CERT_KEY must come from the issued certificate, got %q", deployed["CERT_KEY"])
+	}
+}
+
+func TestResolveExternalSecrets_DeferPKIRoleRefsFallsBack(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		refs map[string]secrettypes.ExternalSecretRef
+		opts ResolveOptions
+	}{
+		{
+			name: "interpolated values",
+			refs: map[string]secrettypes.ExternalSecretRef{"CERT": {LegacyRef: "pki-role:pki:web:app.example"}},
+			opts: ResolveOptions{DeferPKIRoleRefs: true, InterpolateResolved: true},
+		},
+		{
+			name: "companion conflict",
+			refs: map[string]secrettypes.ExternalSecretRef{
+				"CERT":     {LegacyRef: "pki-role:pki:web:app.example"},
+				"CERT_KEY": {LegacyRef: "kv:secret:app:key"},
+			},
+			opts: ResolveOptions{DeferPKIRoleRefs: true},
+		},
+		{
+			name: "deferral off",
+			refs: map[string]secrettypes.ExternalSecretRef{"CERT": {LegacyRef: "pki-role:pki:web:app.example"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mock := newBulkMock(nil)
+
+			got, err := ResolveExternalSecrets(t.Context(), mock, tt.refs, nil, tt.opts, discardLogger())
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(got.Deferred) != 0 {
+				t.Errorf("nothing may be deferred, got %v", got.Deferred)
+			}
+
+			if got.Values["CERT"] != "resolved:pki-role:pki:web:app.example" {
+				t.Errorf("CERT must be resolved by the provider, got %q", got.Values["CERT"])
+			}
+		})
 	}
 }

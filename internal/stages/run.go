@@ -209,6 +209,12 @@ func (s *StageManager) runStageOrder(ctx context.Context, admitMutation Mutation
 			admitMutation = nil
 		}
 
+		if stageName == StagePreDeploy {
+			if err := s.issueDeferredCertificates(ctx); err != nil {
+				return s.handleStageFailure(ctx, stageName, stageLog, err)
+			}
+		}
+
 		if shouldSendDeploymentStartedNotification(stageName, s.DeployConfig.Destroy.Enabled, startedNotified) {
 			if err := s.NotifyDeploymentStarted(); err != nil {
 				stageLog.Error("failed to send notification", slog.Any("error", err))

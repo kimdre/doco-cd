@@ -747,3 +747,153 @@ func TestRetryMergeRetainsMixedReasons(t *testing.T) {
 		t.Fatalf("mixed reasons merged incorrectly: %+v", merged)
 	}
 }
+
+// issuingSecretProvider issues a distinct certificate per resolution and counts them.
+type issuingSecretProvider struct {
+	issued atomic.Int32
+}
+
+func (p *issuingSecretProvider) Name() string { return "issuing" }
+func (p *issuingSecretProvider) Close()       {}
+
+func (p *issuingSecretProvider) GetSecret(context.Context, string) (string, error) {
+	return "", errors.New("unexpected GetSecret")
+}
+
+func (p *issuingSecretProvider) GetSecrets(context.Context, []string) (map[string]string, error) {
+	return nil, errors.New("unexpected GetSecrets")
+}
+
+func (p *issuingSecretProvider) ResolveSecretReferences(_ context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
+	n := p.issued.Add(1)
+	out := make(secrettypes.ResolvedSecrets)
+
+	for envVar := range secrets {
+		out[envVar] = fmt.Sprintf("certificate-%d", n)
+		out[envVar+secrettypes.PKIRoleKeySuffix] = fmt.Sprintf("key-%d", n)
+		out[envVar+secrettypes.PKIFullChainSuffix] = fmt.Sprintf("chain-%d", n)
+	}
+
+	return out, nil
+}
+
+func newDeferredCertManager(t *testing.T, stack string, provider *issuingSecretProvider) *StageManager {
+	t.Helper()
+
+	repoPath := t.TempDir()
+	compose := "services:\n  web:\n    image: test:latest\n    environment:\n      CERT: ${CERT:?}\n      CERT_KEY: ${CERT_KEY:?}\n"
+
+	if err := os.WriteFile(filepath.Join(repoPath, "compose.yaml"), []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sm := newRetryTestManager(t, stack)
+	sm.SecretProvider = provider
+	sm.Repository.PathInternal = repoPath
+	sm.Repository.PathExternal = repoPath
+	sm.DeployConfig.WorkingDirectory = "."
+	sm.DeployConfig.ComposeFiles = []string{"compose.yaml"}
+	sm.DeployConfig.EnvFiles = nil
+
+	ref := secrettypes.ExternalSecretRef{LegacyRef: "pki-role:pki:web:app.example"}
+	sm.DeployConfig.ExternalSecrets = map[string]secrettypes.ExternalSecretRef{"CERT": ref}
+	sm.DeployConfig.Internal.Environment = map[string]string{
+		"CERT":      ref.LegacyRef,
+		"CERT_KEY":  ref.LegacyRef + secrettypes.PKIRoleKeySuffix,
+		"CERT_FULL": ref.LegacyRef + secrettypes.PKIFullChainSuffix,
+	}
+	sm.deferredCerts = map[string]secrettypes.ExternalSecretRef{"CERT": ref}
+
+	sm.Docker.Project = nil
+	if _, err := sm.loadComposeProjectHash(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	return sm
+}
+
+func TestAdmittedDeploymentIssuesDeferredCertificates(t *testing.T) {
+	t.Parallel()
+
+	provider := &issuingSecretProvider{}
+	sm := newDeferredCertManager(t, "deferred-cert-admitted", provider)
+	placeholderHash := sm.Docker.ProjectHash
+
+	order := retryStageOrder(sm, func(context.Context) error {
+		env := sm.Docker.Project.Services["web"].Environment
+		if env["CERT"] == nil || *env["CERT"] != "certificate-1" || env["CERT_KEY"] == nil || *env["CERT_KEY"] != "key-1" {
+			t.Fatalf("deploy stage must see the issued certificate and key, got %v", env)
+		}
+
+		return nil
+	})
+
+	if err := sm.runStageOrder(t.Context(), nil, order); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := provider.issued.Load(); got != 1 {
+		t.Fatalf("expected one issuance for an admitted deployment, got %d", got)
+	}
+
+	if sm.Docker.ProjectHash != placeholderHash {
+		t.Fatal("issuing the deferred certificates changed the normalized project hash")
+	}
+
+	if len(sm.deferredCerts) != 0 {
+		t.Fatal("deferred certificates must be cleared once issued")
+	}
+}
+
+func TestRejectedDeploymentDoesNotIssueDeferredCertificates(t *testing.T) {
+	t.Parallel()
+
+	provider := &issuingSecretProvider{}
+	sm := newDeferredCertManager(t, "deferred-cert-rejected", provider)
+	paused := func(context.Context) (func(), error) {
+		return nil, fmt.Errorf("deployments paused: %w", ErrSkipDeployment)
+	}
+	order := retryStageOrder(sm, func(context.Context) error {
+		t.Fatal("rejected deploy stage was reached")
+		return nil
+	})
+
+	if err := sm.runStageOrder(t.Context(), paused, order); !errors.Is(err, ErrSkipDeployment) {
+		t.Fatalf("expected admission to skip the deployment, got %v", err)
+	}
+
+	if got := provider.issued.Load(); got != 0 {
+		t.Fatalf("a deployment rejected by admission issued %d certificates", got)
+	}
+}
+
+func TestSuppressedRetryDoesNotIssueDeferredCertificates(t *testing.T) {
+	t.Parallel()
+
+	provider := &issuingSecretProvider{}
+	sm := newDeferredCertManager(t, "deferred-cert-suppressed", provider)
+	recordRetryTestFailure(t, sm, StageDeploy)
+
+	order := retryStageOrder(sm, func(context.Context) error {
+		t.Fatal("suppressed deploy stage was reached")
+		return nil
+	})
+
+	if err := sm.runStageOrder(t.Context(), nil, order); !errors.Is(err, ErrRetrySuppressed) {
+		t.Fatalf("expected the retry to be suppressed, got %v", err)
+	}
+
+	if got := provider.issued.Load(); got != 0 {
+		t.Fatalf("a suppressed retry issued %d certificates", got)
+	}
+}
+
+func TestDeployStageRefusesUnissuedCertificates(t *testing.T) {
+	t.Parallel()
+
+	sm := newDeferredCertManager(t, "deferred-cert-guard", &issuingSecretProvider{})
+
+	if err := sm.RunDeployStage(t.Context(), sm.Log); !errors.Is(err, errDeferredCertificatesNotIssued) {
+		t.Fatalf("deploy stage must refuse pki-role placeholders, got %v", err)
+	}
+}

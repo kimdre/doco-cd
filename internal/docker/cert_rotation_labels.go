@@ -23,7 +23,7 @@ import (
 // prefix is recorded for visibility but is never auto-rotated.
 const (
 	pkiReadOnlyRefPrefix = "pki:"
-	pkiRoleRefPrefix     = "pki-role:"
+	pkiRoleRefPrefix     = secrettypes.PKIRoleRefPrefix
 )
 
 // pkiRoleKeySuffix is the suffix appended to a pki-role external secret's env

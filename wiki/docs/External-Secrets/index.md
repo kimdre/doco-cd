@@ -192,7 +192,7 @@ A name that starts with a digit gets an underscore in front. With the example ab
 ### Referencing Other Resolved Secrets
 
 A resolved secret's value can itself reference another external secret by name, letting you compose one secret from others without duplicating values in your Compose file.
-Set `INTERPOLATE_RESOLVED_SECRETS=true` to enable this feature. It is disabled by default:
+Set `#!ini INTERPOLATE_RESOLVED_SECRETS=true` to enable this feature. It is disabled by default:
 
 ```yaml title=".doco-cd.yml"
 name: myapp
@@ -214,3 +214,8 @@ With `INTERPOLATE_RESOLVED_SECRETS=true`, if the secret provider returns `postgr
     While enabled, secret values are parsed for Compose-style variables, so a literal `$` must be written as `$$`.
     A value of `pa$$word` is delivered as `pa$word`, and a value of `$DB_HOST` is replaced when another external secret is named `DB_HOST`.
     If any of your secret values contain literal `$` characters that you cannot escape at the source, leave this option disabled.
+
+!!! warning "OpenBao `pki-role` certificates are issued on every check"
+    Without this setting, Doco-CD issues [OpenBao `pki-role` certificates](Openbao.md#deployment-configuration) only when a deployment runs.
+    With this setting, Doco-CD needs the certificate values before it checks for changes.
+    Then every poll or webhook issues new certificates, also when nothing is deployed.

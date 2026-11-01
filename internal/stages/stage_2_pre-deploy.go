@@ -275,12 +275,14 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			secretprovider.ResolveOptions{
 				InterpolateRefs:     s.AppConfig.InterpolateExternalSecrets,
 				InterpolateResolved: s.AppConfig.InterpolateResolvedSecrets,
+				DeferPKIRoleRefs:    true,
 			}, stageLog)
 		if err != nil {
 			return err
 		}
 
 		s.DeployConfig.ExternalSecrets = resolved.Refs
+		s.deferredCerts = resolved.Deferred
 
 		if s.DeployConfig.Internal.Environment == nil {
 			s.DeployConfig.Internal.Environment = make(map[string]string)
@@ -857,7 +859,7 @@ func pkiRoleNormMap(externalSecrets map[string]secrettypes.ExternalSecretRef, en
 	norm := make(map[string]string)
 
 	for envVar, ref := range externalSecrets {
-		if !strings.HasPrefix(ref.LegacyRef, "pki-role:") {
+		if !strings.HasPrefix(ref.LegacyRef, secrettypes.PKIRoleRefPrefix) {
 			continue
 		}
 
@@ -876,6 +878,37 @@ func pkiRoleNormMap(externalSecrets map[string]secrettypes.ExternalSecretRef, en
 	}
 
 	return norm
+}
+
+// errDeferredCertificatesNotIssued stops a deployment that would start containers with pki-role
+// placeholders instead of certificates.
+var errDeferredCertificatesNotIssued = errors.New("pki-role certificates were not issued before deployment")
+
+// issueDeferredCertificates issues the pki-role certificates pre-deploy left as placeholders and
+// reloads the Compose project with them. It runs once the deployment is admitted, so a skipped,
+// paused, or out-of-window run issues nothing. The project hash stays valid, since it normalizes
+// issued certificates to the same placeholders.
+func (s *StageManager) issueDeferredCertificates(ctx context.Context) error {
+	if len(s.deferredCerts) == 0 {
+		return nil
+	}
+
+	issued, err := secretprovider.IssueDeferred(ctx, s.SecretProvider, s.deferredCerts)
+	if err != nil {
+		return err
+	}
+
+	maps.Copy(s.DeployConfig.Internal.Environment, issued)
+	s.deferredCerts = nil
+
+	s.DeployConfig.Internal.Hash, err = s.DeployConfig.Hash()
+	if err != nil {
+		return fmt.Errorf("failed to hash deploy configuration: %w", err)
+	}
+
+	_, err = s.loadComposeProjectHash(ctx)
+
+	return err
 }
 
 // selfUpdatePoisoned reports whether a previous self-update of this exact

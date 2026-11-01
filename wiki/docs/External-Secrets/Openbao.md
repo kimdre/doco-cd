@@ -60,6 +60,14 @@ By default, the root namespace is used (`root` or `/`), but you can specify a di
   pki-role:<namespace(optional)>:<secretEngine>:<role>:<commonName>
   ```
 
+!!! note "When `pki-role` certificates are issued"
+    Doco-CD issues `pki-role` certificates only when a deployment runs.
+    A poll or webhook that finds nothing to deploy issues none.
+    A deployment that is [paused](../Deploy-Settings.md#pause-settings) or blocked by a [sync window](../Advanced/Sync-Windows.md) also issues none.
+
+    With [`INTERPOLATE_RESOLVED_SECRETS=true`](index.md#referencing-other-resolved-secrets), Doco-CD needs the certificate values before it checks for changes.
+    Then every poll or webhook issues new certificates, also when nothing is deployed.
+
 Examples of valid references:
 
 - `kv:prod-secrets:db-prod:username` &rarr; Fetches the `username` key from the `db-prod` key-value secret in the `prod-secrets` secret engine in the `root` namespace.
