@@ -1,0 +1,6 @@
+name: e2e-readiness-retry
+working_dir: deploy
+swarm:
+  enabled: false
+reconciliation: false
+force_image_pull: false

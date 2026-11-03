@@ -472,29 +472,60 @@ func assessStartedServiceStates(containers []api.ContainerSummary, targetService
 	}
 
 	waiting := make([]string, 0, len(statusByService))
-	for serviceName, status := range statusByService {
+
+	var (
+		stateErr       error
+		oneShotErr     error
+		failedServices []string
+		oneShotPending bool
+	)
+
+	for _, serviceName := range set.SortedSlice(targetServices) {
+		status := statusByService[serviceName]
+
 		if oneShotServices.Contains(serviceName) {
 			if status.failedExit {
-				return false, nil, &oneShotExitError{service: serviceName, code: status.failedExitCode}
+				if oneShotErr == nil {
+					oneShotErr = &oneShotExitError{service: serviceName, code: status.failedExitCode}
+				}
+
+				continue
 			}
 
 			if status.dead {
-				return false, nil, fmt.Errorf("one-shot service %s has a dead container", serviceName)
+				if oneShotErr == nil {
+					oneShotErr = fmt.Errorf("one-shot service %s has a dead container", serviceName)
+				}
+
+				continue
 			}
 
 			if status.seen == 0 || status.completed != status.seen {
 				waiting = append(waiting, serviceName)
+				oneShotPending = true
 			}
 
 			continue
 		}
 
 		if status.unhealthy {
-			return false, nil, fmt.Errorf("service %s is unhealthy", serviceName)
+			if stateErr == nil {
+				stateErr = fmt.Errorf("service %s is unhealthy", serviceName)
+			}
+
+			failedServices = append(failedServices, serviceName)
+
+			continue
 		}
 
 		if status.terminal != "" && !status.running {
-			return false, nil, fmt.Errorf("service %s has a %s container", serviceName, status.terminal)
+			if stateErr == nil {
+				stateErr = fmt.Errorf("service %s has a %s container", serviceName, status.terminal)
+			}
+
+			failedServices = append(failedServices, serviceName)
+
+			continue
 		}
 
 		if !status.running {
@@ -502,9 +533,38 @@ func assessStartedServiceStates(containers []api.ContainerSummary, targetService
 		}
 	}
 
-	slices.Sort(waiting)
+	if oneShotErr != nil {
+		return false, nil, oneShotErr
+	}
+
+	if stateErr != nil {
+		// Incomplete one-shot work still needs conservative retry recovery.
+		if !oneShotPending && !hasUnstartableContainer(containers, failedServices) {
+			stateErr = &ServiceReadinessError{Services: failedServices, Cause: stateErr}
+		}
+
+		return false, nil, stateErr
+	}
 
 	return len(waiting) == 0, waiting, nil
+}
+
+// hasUnstartableContainer reports whether one of the services has a dead or paused container.
+// Compose convergence tries to start these containers and Docker rejects the start,
+// so a retry must recreate them.
+func hasUnstartableContainer(containers []api.ContainerSummary, services []string) bool {
+	for _, cont := range containers {
+		if !slices.Contains(services, strings.TrimSpace(cont.Labels[api.ServiceLabel])) {
+			continue
+		}
+
+		switch strings.ToLower(strings.TrimSpace(string(cont.State))) {
+		case "dead", "paused":
+			return true
+		}
+	}
+
+	return false
 }
 
 // startReadyStableSamples is how many consecutive ready samples (1s apart)
@@ -523,6 +583,34 @@ type oneShotExitError struct {
 
 func (e *oneShotExitError) Error() string {
 	return fmt.Sprintf("one-shot service %s exited with code %d", e.service, e.code)
+}
+
+// ServiceReadinessError reports a post-start failure of only long-running services.
+// A retry can converge the project without forcing container recreation.
+type ServiceReadinessError struct {
+	Services []string
+	Cause    error
+}
+
+func (e *ServiceReadinessError) Error() string {
+	if e.Cause == nil {
+		return "services are not ready: " + strings.Join(e.Services, ", ")
+	}
+
+	return e.Cause.Error()
+}
+
+func (e *ServiceReadinessError) Unwrap() error {
+	return e.Cause
+}
+
+// ReadinessFailureServices returns an independent copy of the services in a readiness-only failure.
+func ReadinessFailureServices(err error) []string {
+	if readinessErr, ok := errors.AsType[*ServiceReadinessError](err); ok {
+		return slices.Clone(readinessErr.Services)
+	}
+
+	return nil
 }
 
 // projectContainerLister abstracts container listing so the wait loop can be
@@ -597,8 +685,15 @@ func waitForStartedServicesWith(ctx context.Context, listContainers projectConta
 			lastOneShotFailure = ""
 
 			if time.Now().After(deadline) {
-				return lifecycle.MarkTimedOut(fmt.Errorf("timed out after %s waiting for services to become ready: %s",
-					timeout, strings.Join(waiting, ", ")))
+				timeoutErr := fmt.Errorf("timed out after %s waiting for services to become ready: %s",
+					timeout, strings.Join(waiting, ", "))
+
+				// One-shot timeouts and unstartable containers need more than convergence.
+				if !slices.ContainsFunc(waiting, oneShotServices.Contains) && !hasUnstartableContainer(containers, waiting) {
+					timeoutErr = &ServiceReadinessError{Services: waiting, Cause: timeoutErr}
+				}
+
+				return lifecycle.MarkTimedOut(timeoutErr)
 			}
 		}
 

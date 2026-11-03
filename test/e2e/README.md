@@ -66,6 +66,15 @@ container. Forced scheduled-job recovery remains separate for Compose and Swarm.
 Self-update strategies, network rollback, cross-stack updates, and all three
 process-crash windows retain their E2E coverage.
 
+`TestFailedDeployReadinessRetry` adds a service with a failing healthcheck to a
+healthy Compose project. Completed poll run outcomes and Docker state prove that
+two automatic retries preserve the healthy service, its network-sharing consumer,
+and the unhealthy service. A further retry starts a stopped container without
+replacing it. A runtime health change then succeeds on the same revision and
+containers, and later polls skip. Reconciliation is disabled to isolate ordinary
+retries. `TestFailedDeployRetry` separately retains lifecycle-hook failure
+recovery through forced recreation.
+
 Keep Swarm scheduled-job recovery serial: scheduler discovery scans the shared
 cluster, so different stack names do not isolate concurrent schedulers.
 

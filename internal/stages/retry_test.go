@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -16,6 +17,9 @@ import (
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/types/duration"
 	"github.com/kimdre/doco-cd/internal/config"
@@ -527,7 +531,7 @@ func TestRetryStageRunnerQueuedCancellationDoesNotSpend(t *testing.T) {
 	}, order)
 
 	after, _ := sm.lastDeploymentFailure()
-	if !errors.Is(err, context.Canceled) || before != after {
+	if !errors.Is(err, context.Canceled) || !reflect.DeepEqual(before, after) {
 		t.Fatalf("queued cancellation spent/changed retry state: %v %+v %+v", err, before, after)
 	}
 	// A canceled queued run must release its target lock.
@@ -584,7 +588,7 @@ func TestRetryStageRunnerShutdownAndHandoverPreserveExhaustion(t *testing.T) {
 			err := sm.runStageOrder(t.Context(), nil, retryStageOrder(sm, func(context.Context) error { return cause }))
 
 			after, _ := sm.lastDeploymentFailure()
-			if !errors.Is(err, cause) || before != after {
+			if !errors.Is(err, cause) || !reflect.DeepEqual(before, after) {
 				t.Fatalf("lifecycle no-op changed exhaustion: %v %+v %+v", err, before, after)
 			}
 		})
@@ -661,7 +665,7 @@ func TestRetryStageRunnerPreDeploySkipsLeaveBudgetUntouched(t *testing.T) {
 			}
 
 			after, _ := sm.lastDeploymentFailure()
-			if before != after {
+			if !reflect.DeepEqual(before, after) {
 				t.Fatal("skip consumed retry or changed delay")
 			}
 		})
@@ -731,6 +735,123 @@ func TestRetryOCIAndMissingResourcePreDeployAreGated(t *testing.T) {
 			err = sm.RunPreDeployStage(t.Context(), sm.Log)
 			if !errors.Is(err, ErrRetrySuppressed) {
 				t.Fatalf("%s with no runtime resources bypassed retry gate: %v", source, err)
+			}
+		})
+	}
+}
+
+type readinessRetryTestClient struct {
+	destroyOwnershipTestClient
+}
+
+func (*readinessRetryTestClient) ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+	return client.ContainerInspectResult{}, nil
+}
+
+func TestRetryReadinessPreDeployConvergesUnchangedSource(t *testing.T) {
+	t.Parallel()
+
+	for _, source := range []config.SourceType{config.SourceTypeGit, config.SourceTypeOCI} {
+		t.Run(string(source), func(t *testing.T) {
+			t.Parallel()
+
+			for _, tc := range []struct {
+				name        string
+				readiness   bool
+				force       bool
+				configDrift bool
+				wantChanges []docker.Change
+			}{
+				{name: "readiness", readiness: true},
+				{name: "hook", wantChanges: []docker.Change{{Type: docker.ChangeTypeFailedDeployRetry}}},
+				{name: "explicit-force", readiness: true, force: true},
+				{
+					name: "config-drift", readiness: true, configDrift: true,
+					wantChanges: []docker.Change{{Type: "auto_discovery_config_label", Services: []string{"web"}}},
+				},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+
+					sm := newRetryTestManager(t, "retry-readiness-"+string(source)+"-"+tc.name)
+					sm.Repository.Source = source
+
+					sm.Repository.Revision = strings.Repeat("a", 40)
+					if source == config.SourceTypeOCI {
+						sm.Repository.Revision = "sha256:" + strings.Repeat("a", 64)
+					}
+
+					sm.DeployConfig.Retry.Limit = new(2)
+					sm.DeployConfig.ForceImagePull = false
+					sm.DeployConfig.ForceRecreate = tc.force
+
+					apiClient := &readinessRetryTestClient{}
+					sm.Docker.Cmd = destroyOwnershipTestCli{apiClient: apiClient}
+
+					sourceDir := t.TempDir()
+					if err := os.WriteFile(filepath.Join(sourceDir, "compose.yaml"),
+						[]byte("services:\n  web:\n    image: test:latest\n"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+
+					sm.Repository.PathInternal = sourceDir
+					sm.Repository.PathExternal = sourceDir
+					sm.Docker.Project = nil
+
+					sm.Docker.ProjectHash = ""
+					if err := sm.RunPreDeployStage(t.Context(), sm.Log); err != nil {
+						t.Fatalf("original pre-deploy: %v", err)
+					}
+
+					sm.retryAttempt.Start()
+
+					cause := errors.New("hook exited with status 1")
+					if tc.readiness {
+						cause = &docker.ServiceReadinessError{
+							Services: []string{"web"}, Cause: errors.New("service web is unhealthy"),
+						}
+					}
+
+					sm.recordDeploymentFailure(StageDeploy, cause)
+
+					apiClient.containers = []container.Summary{{
+						ID: strings.Repeat("b", 64), Names: []string{"/" + sm.DeployConfig.Name + "-web-1"},
+						State: container.StateRunning, Image: "test:latest",
+						Labels: map[string]string{
+							api.ProjectLabel:                                   sm.DeployConfig.Name,
+							api.ServiceLabel:                                   "web",
+							api.ConfigHashLabel:                                "test-config-hash",
+							docker.DocoCDLabels.Source.Name:                    sm.Repository.Name,
+							docker.DocoCDLabels.Deployment.CommitSHA:           sm.Repository.Revision,
+							docker.DocoCDLabels.Deployment.ComposeHash:         sm.Docker.ProjectHash,
+							docker.DocoCDLabels.Deployment.AutoDiscoveryConfig: docker.MarshalAutoDiscoveryConfig(sm.DeployConfig.AutoDiscovery),
+						},
+					}}
+					if tc.configDrift {
+						apiClient.containers[0].Labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig] = "{enabled: true}"
+					}
+
+					sm.Docker.Project = nil
+
+					sm.Docker.ProjectHash = ""
+					if err := sm.RunPreDeployStage(t.Context(), sm.Log); err != nil {
+						t.Fatalf("unchanged failed %s deployment was skipped or suppressed: %v", source, err)
+					}
+
+					if !slices.EqualFunc(sm.DeployState.changedServices, tc.wantChanges, func(a, b docker.Change) bool {
+						return a.Type == b.Type && slices.Equal(a.Services, b.Services)
+					}) || sm.DeployConfig.ForceRecreate != tc.force {
+						t.Fatalf("retry changed recreation scope: changes=%+v force=%t",
+							sm.DeployState.changedServices, sm.DeployConfig.ForceRecreate)
+					}
+
+					sm.retryAttempt.Start()
+
+					failure, _ := sm.lastDeploymentFailure()
+					if failure.RetriesUsed != 1 {
+						t.Fatalf("readiness classification changed retry accounting: %+v", failure)
+					}
+				})
 			}
 		})
 	}

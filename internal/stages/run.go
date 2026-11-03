@@ -331,11 +331,12 @@ func (s *StageManager) recordDeploymentFailure(stageName StageName, cause error)
 	}
 
 	attempt.Fail(docker.DeploymentFailure{
-		Repository: s.Repository.Name,
-		Stack:      s.DeployConfig.Name,
-		CommitSHA:  s.Repository.Revision,
-		Stage:      string(stageName),
-		Error:      cause.Error(),
+		Repository:        s.Repository.Name,
+		Stack:             s.DeployConfig.Name,
+		CommitSHA:         s.Repository.Revision,
+		Stage:             string(stageName),
+		Error:             cause.Error(),
+		ReadinessServices: docker.ReadinessFailureServices(cause),
 	}, lifecycle.IsCanceled(cause))
 }
 

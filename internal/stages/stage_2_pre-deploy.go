@@ -54,6 +54,12 @@ func shouldSkipDeployment(retryAfterFailure bool,
 		len(mismatchServices) == 0
 }
 
+// failedDeployRetryNeedsRecreate reports whether a retry after a failed deploy stage must force recreation.
+// Compose readiness-only failures converge without recreation. Swarm keeps forced updates.
+func failedDeployRetryNeedsRecreate(failure docker.DeploymentFailure, swarmMode bool) bool {
+	return failure.Stage == string(StageDeploy) && (swarmMode || len(failure.ReadinessServices) == 0)
+}
+
 // shouldTryCachedProjectSkip reports whether the warm-skip cache may be consulted.
 // A changed auto-discovery config label must recreate the stack so
 // obsolete-stack cleanup reads current delete settings, and retries and mode
@@ -346,13 +352,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			slog.String("failed_commit", lastFailure.CommitSHA),
 			slog.Time("failed_at", lastFailure.FailedAt),
 			slog.String("error", lastFailure.Error),
+			slog.Any("readiness_services", lastFailure.ReadinessServices),
 		)
 	}
 
-	// Only a failed deploy stage leaves half-applied containers behind (e.g. a
-	// lifecycle hook that never finished), and a plain re-up of an unchanged
-	// project would touch nothing. Force recreate so the retry re-runs it all.
-	retryForceRecreate := retryAfterFailure && lastFailure.Stage == string(StageDeploy)
+	// Readiness-only failures can converge without resetting containers.
+	// Other deploy failures can leave unfinished hooks that require recreation.
+	retryForceRecreate := retryAfterFailure && failedDeployRetryNeedsRecreate(lastFailure, s.Docker.SwarmMode)
 
 	// Services whose artifact was removed must be recreated even if nothing changed, see staleArtifactServices.
 	staleArtifacts := staleArtifactServices(deployedState.DeployedStatus,

@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -27,6 +28,227 @@ func TestWaitForStartedServicesTimeoutIsTypedFailure(t *testing.T) {
 		set.New[string](), set.New[string](), time.Nanosecond)
 	if !errors.Is(err, lifecycle.ErrTimedOut) || lifecycle.IsCancellation(err) {
 		t.Fatalf("readiness timeout must be a typed failure, not lifecycle cancellation: %v", err)
+	}
+}
+
+func TestWaitForStartedServicesReadinessFailure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		containers []api.ContainerSummary
+		oneShot    set.Set[string]
+		want       []string
+		wantError  string
+		timedOut   bool
+	}{
+		{
+			name: "unhealthy",
+			containers: []api.ContainerSummary{
+				runningContainer("web"),
+				{State: "running", Health: "unhealthy", Labels: map[string]string{api.ServiceLabel: "api"}},
+			},
+			want:      []string{"api"},
+			wantError: "service api is unhealthy",
+		},
+		{
+			name:       "restarting",
+			containers: []api.ContainerSummary{{State: "restarting", Labels: map[string]string{api.ServiceLabel: "api"}}},
+			want:       []string{"api"},
+			wantError:  "service api has a restarting container",
+		},
+		{
+			name:       "exited",
+			containers: []api.ContainerSummary{{State: "exited", Labels: map[string]string{api.ServiceLabel: "api"}}},
+			want:       []string{"api"},
+			wantError:  "service api has a exited container",
+		},
+		{
+			name:       "dead",
+			containers: []api.ContainerSummary{{State: "dead", Labels: map[string]string{api.ServiceLabel: "api"}}},
+			wantError:  "service api has a dead container",
+		},
+		{
+			name: "unhealthy with dead replica",
+			containers: []api.ContainerSummary{
+				runningContainer("web"),
+				{State: "running", Health: "unhealthy", Labels: map[string]string{api.ServiceLabel: "api"}},
+				{State: "dead", Labels: map[string]string{api.ServiceLabel: "api"}},
+			},
+			wantError: "service api is unhealthy",
+		},
+		{
+			name: "paused timeout",
+			containers: []api.ContainerSummary{
+				runningContainer("web"),
+				{State: "paused", Labels: map[string]string{api.ServiceLabel: "api"}},
+			},
+			wantError: "timed out after 1ns waiting for services to become ready: api",
+			timedOut:  true,
+		},
+		{
+			name: "multiple failures",
+			containers: []api.ContainerSummary{
+				{State: "restarting", Labels: map[string]string{api.ServiceLabel: "web"}},
+				{State: "running", Health: "unhealthy", Labels: map[string]string{api.ServiceLabel: "api"}},
+			},
+			want:      []string{"api", "web"},
+			wantError: "service api is unhealthy",
+		},
+		{
+			name: "timeout",
+			containers: []api.ContainerSummary{
+				{State: "running", Health: "starting", Labels: map[string]string{api.ServiceLabel: "api"}},
+				{State: "created", Labels: map[string]string{api.ServiceLabel: "web"}},
+			},
+			want:      []string{"api", "web"},
+			wantError: "timed out after 1ns waiting for services to become ready: api, web",
+			timedOut:  true,
+		},
+		{
+			name:      "missing services",
+			want:      []string{"api", "web"},
+			wantError: "timed out after 1ns waiting for services to become ready: api, web",
+			timedOut:  true,
+		},
+		{
+			name: "completed one-shot",
+			containers: []api.ContainerSummary{
+				{State: "running", Health: "unhealthy", Labels: map[string]string{api.ServiceLabel: "api"}},
+				{State: "exited", ExitCode: 0, Labels: map[string]string{api.ServiceLabel: "web"}},
+			},
+			oneShot:   set.New[string]("web"),
+			want:      []string{"api"},
+			wantError: "service api is unhealthy",
+		},
+		{
+			name: "incomplete one-shot",
+			containers: []api.ContainerSummary{
+				{State: "running", Health: "unhealthy", Labels: map[string]string{api.ServiceLabel: "api"}},
+				runningContainer("web"),
+			},
+			oneShot:   set.New[string]("web"),
+			wantError: "service api is unhealthy",
+		},
+		{
+			name: "failed one-shot takes precedence",
+			containers: []api.ContainerSummary{
+				{State: "running", Health: "unhealthy", Labels: map[string]string{api.ServiceLabel: "api"}},
+				{State: "exited", ExitCode: 12, Labels: map[string]string{api.ServiceLabel: "web"}},
+			},
+			oneShot:   set.New[string]("web"),
+			wantError: "one-shot service web exited with code 12",
+		},
+		{
+			name: "dead one-shot takes precedence",
+			containers: []api.ContainerSummary{
+				{State: "running", Health: "unhealthy", Labels: map[string]string{api.ServiceLabel: "api"}},
+				{State: "dead", Labels: map[string]string{api.ServiceLabel: "web"}},
+			},
+			oneShot:   set.New[string]("web"),
+			wantError: "one-shot service web has a dead container",
+		},
+		{
+			name: "mixed timeout",
+			containers: []api.ContainerSummary{
+				{State: "running", Health: "starting", Labels: map[string]string{api.ServiceLabel: "api"}},
+				runningContainer("web"),
+			},
+			oneShot:   set.New[string]("web"),
+			wantError: "timed out after 1ns waiting for services to become ready: api, web",
+			timedOut:  true,
+		},
+		{
+			name:       "one-shot timeout",
+			containers: []api.ContainerSummary{runningContainer("api"), runningContainer("web")},
+			oneShot:    set.New[string]("web"),
+			wantError:  "timed out after 1ns waiting for services to become ready: web",
+			timedOut:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			lister := func(context.Context) ([]api.ContainerSummary, error) {
+				return tt.containers, nil
+			}
+
+			err := waitForStartedServicesWith(t.Context(), lister, []string{"api", "web"},
+				set.New[string](), tt.oneShot, time.Nanosecond)
+			if err == nil || err.Error() != tt.wantError {
+				t.Fatalf("readiness error = %v, want %q", err, tt.wantError)
+			}
+
+			wrapped := fmt.Errorf("failed to deploy stack: %w", err)
+			if got := ReadinessFailureServices(wrapped); !slices.Equal(got, tt.want) {
+				t.Fatalf("readiness services = %v, want %v", got, tt.want)
+			}
+
+			if errors.Is(wrapped, lifecycle.ErrTimedOut) != tt.timedOut || lifecycle.IsCancellation(wrapped) {
+				t.Fatalf("unexpected lifecycle classification: %v", wrapped)
+			}
+		})
+	}
+}
+
+func TestReadinessFailureServices(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("service api is unhealthy")
+	readinessErr := &ServiceReadinessError{Services: []string{"api"}, Cause: cause}
+	wrapped := fmt.Errorf("failed to deploy stack: %w", readinessErr)
+
+	got := ReadinessFailureServices(wrapped)
+	got[0] = "modified"
+
+	if readinessErr.Services[0] != "api" || !errors.Is(wrapped, cause) {
+		t.Fatal("readiness metadata must be independent and preserve the cause")
+	}
+
+	for _, err := range []error{nil, cause, &oneShotExitError{service: "migrate", code: 1}} {
+		if got := ReadinessFailureServices(err); got != nil {
+			t.Fatalf("unclassified error %v has readiness services %v", err, got)
+		}
+	}
+
+	noCause := &ServiceReadinessError{Services: []string{"api", "web"}}
+	if got := noCause.Error(); got != "services are not ready: api, web" || noCause.Unwrap() != nil {
+		t.Fatalf("readiness error without cause = %q", got)
+	}
+}
+
+func TestWaitForStartedServicesInspectionAndCancellation(t *testing.T) {
+	t.Parallel()
+
+	for _, cause := range []error{errors.New("inspect failed"), context.Canceled, context.DeadlineExceeded} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			t.Parallel()
+
+			lister := func(context.Context) ([]api.ContainerSummary, error) {
+				return nil, cause
+			}
+
+			err := waitForStartedServicesWith(t.Context(), lister, []string{"api"},
+				set.New[string](), set.New[string](), time.Second)
+			if !errors.Is(err, cause) || ReadinessFailureServices(err) != nil {
+				t.Fatalf("inspection failure must preserve its cause without readiness metadata: %v", err)
+			}
+		})
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	lister := func(context.Context) ([]api.ContainerSummary, error) {
+		return nil, nil
+	}
+
+	err := waitForStartedServicesWith(ctx, lister, []string{"api"},
+		set.New[string](), set.New[string](), time.Minute)
+	if !errors.Is(err, context.Canceled) || ReadinessFailureServices(err) != nil {
+		t.Fatalf("cancellation must not become a readiness failure: %v", err)
 	}
 }
 

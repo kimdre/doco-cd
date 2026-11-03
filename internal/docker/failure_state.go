@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/lock"
 )
@@ -22,9 +23,8 @@ the labels again - accepted trade-off, see the review of #1711.
 
 const (
 	// ChangeTypeFailedDeployRetry marks a deployment retry after a recorded
-	// failure. A Change of this type carries no service scope: the whole
-	// project is force-recreated, because the failed part (e.g. a lifecycle
-	// hook) is not attributable to one service.
+	// deploy-stage failure that needs forced recovery, such as an unfinished
+	// lifecycle hook. Readiness-only retries do not add this change.
 	ChangeTypeFailedDeployRetry = "failed_deploy_retry"
 
 	// maxRecordedErrorLength caps the stored error text, the full error is in the logs.
@@ -33,13 +33,14 @@ const (
 
 // DeploymentFailure records a failed deployment attempt of one stack.
 type DeploymentFailure struct {
-	Repository  string
-	Stack       string
-	CommitSHA   string
-	Stage       string
-	Error       string
-	FailedAt    time.Time
-	RetriesUsed int
+	Repository        string
+	Stack             string
+	CommitSHA         string
+	Stage             string
+	Error             string
+	FailedAt          time.Time
+	RetriesUsed       int
+	ReadinessServices []string // A nonempty list allows Compose convergence without forced recovery.
 }
 
 // DeploymentTarget isolates an outcome from identically named deployments in
@@ -145,8 +146,10 @@ func (s *DeploymentFailureStore) Acquire(ctx context.Context, target DeploymentT
 	return targetLock.Unlock, nil
 }
 
-// truncateDeploymentFailure truncates the error message to avoid storing excessively long strings.
+// truncateDeploymentFailure copies the failure and limits its stored error text.
 func truncateDeploymentFailure(failure DeploymentFailure) DeploymentFailure {
+	failure = *clone.New(&failure)
+
 	if r := []rune(failure.Error); len(r) > maxRecordedErrorLength {
 		failure.Error = string(r[:maxRecordedErrorLength])
 	}
@@ -161,7 +164,7 @@ func (s *DeploymentFailureStore) Get(target DeploymentTarget) (DeploymentFailure
 
 	state, ok := s.failures[target.normalized()]
 
-	return state.failure, ok
+	return *clone.New(&state.failure), ok
 }
 
 // Clear removes the recorded failure for a target, if any.
@@ -241,7 +244,7 @@ func (s *DeploymentFailureStore) Admit(target DeploymentTarget, desired Deployme
 		return attempt, nil
 	}
 
-	decision := &DeploymentRetrySuppression{Failure: state.failure}
+	decision := &DeploymentRetrySuppression{Failure: *clone.New(&state.failure)}
 	if policy.Limit != nil && state.failure.RetriesUsed >= *policy.Limit {
 		decision.Reason = RetryReasonBudgetExhausted
 	} else if deadline := state.failure.FailedAt.Add(time.Duration(policy.Delay)); policy.Delay > 0 && s.now().Before(deadline) {
