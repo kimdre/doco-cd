@@ -1,0 +1,13 @@
+services:
+  healthy:
+    image: alpine:3.22
+    command: ["tail", "-f", "/dev/null"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 1s
+      timeout: 1s
+      retries: 1
+  consumer:
+    image: alpine:3.22
+    command: ["tail", "-f", "/dev/null"]
+    network_mode: service:healthy

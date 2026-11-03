@@ -27,6 +27,35 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
+func TestFailedDeployRetryNeedsRecreate(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		failure docker.DeploymentFailure
+		swarm   bool
+		want    bool
+	}{
+		{name: "no failure"},
+		{name: "hook or unknown failure", failure: docker.DeploymentFailure{Stage: string(StageDeploy)}, want: true},
+		{name: "readiness failure", failure: docker.DeploymentFailure{Stage: string(StageDeploy), ReadinessServices: []string{"web"}}},
+		{name: "multiple readiness failures", failure: docker.DeploymentFailure{Stage: string(StageDeploy), ReadinessServices: []string{"web", "db"}}},
+		{name: "removed readiness service", failure: docker.DeploymentFailure{Stage: string(StageDeploy), ReadinessServices: []string{"old-service"}}},
+		{name: "swarm failure", failure: docker.DeploymentFailure{Stage: string(StageDeploy)}, swarm: true, want: true},
+		{name: "swarm ignores readiness metadata", failure: docker.DeploymentFailure{Stage: string(StageDeploy), ReadinessServices: []string{"web"}}, swarm: true, want: true},
+		{name: "post-deploy failure", failure: docker.DeploymentFailure{Stage: string(StagePostDeploy)}},
+		{name: "cleanup failure", failure: docker.DeploymentFailure{Stage: string(StageCleanup)}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := failedDeployRetryNeedsRecreate(tt.failure, tt.swarm); got != tt.want {
+				t.Fatalf("failedDeployRetryNeedsRecreate() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSwarmServiceLogIdentity(t *testing.T) {
 	t.Parallel()
 

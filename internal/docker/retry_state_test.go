@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -270,7 +272,7 @@ func TestDeploymentRetryCancellationPreservesRecoveryAndBudget(t *testing.T) {
 	attempt.Fail(DeploymentFailure{Stage: "deploy", Error: "canceled"}, true)
 
 	after, _ := store.Get(target)
-	if after != before {
+	if !reflect.DeepEqual(after, before) {
 		t.Fatalf("shutdown interruption changed actual failure: before=%+v after=%+v", before, after)
 	}
 
@@ -281,7 +283,7 @@ func TestDeploymentRetryCancellationPreservesRecoveryAndBudget(t *testing.T) {
 	attempt.Fail(DeploymentFailure{Error: "manual canceled"}, true)
 
 	after, _ = store.Get(target)
-	if after != before {
+	if !reflect.DeepEqual(after, before) {
 		t.Fatal("canceled manual retry erased exhaustion")
 	}
 
@@ -316,7 +318,7 @@ func TestDeploymentRetryAdmissionWithoutMutationDoesNotSpend(t *testing.T) {
 	}
 
 	after, _ := store.Get(target)
-	if after != before {
+	if !reflect.DeepEqual(after, before) {
 		t.Fatal("ordinary skip or queued cancellation changed failure")
 	}
 }
@@ -351,6 +353,43 @@ func TestDeploymentRetrySpendsAtDeployEntryAndRefundsHandover(t *testing.T) {
 
 	if _, suppressed := store.Admit(target, desired, policy, false); suppressed != nil {
 		t.Fatal("handover consumed the only automatic retry")
+	}
+}
+
+func TestDeploymentRetryFailureSnapshotIsolation(t *testing.T) {
+	t.Parallel()
+
+	store := NewDeploymentFailureStore(nil)
+	target, desired := retryTestState()
+	policy := deploy.RetryConfig{Limit: new(0)}
+	failure := DeploymentFailure{
+		Stage: "deploy", Error: "service api is unhealthy", ReadinessServices: []string{"api"},
+	}
+
+	attempt, _ := store.Admit(target, desired, policy, false)
+	attempt.Start()
+	attempt.Fail(failure, false)
+	failure.ReadinessServices[0] = "modified input"
+
+	got, _ := store.Get(target)
+	if !slices.Equal(got.ReadinessServices, []string{"api"}) {
+		t.Fatalf("stored failure aliases input metadata: %+v", got)
+	}
+
+	got.ReadinessServices[0] = "modified output"
+
+	for range 2 {
+		_, suppressed := store.Admit(target, desired, policy, false)
+		if suppressed == nil || !slices.Equal(suppressed.Failure.ReadinessServices, []string{"api"}) {
+			t.Fatalf("suppressed failure aliases caller metadata: %+v", suppressed)
+		}
+
+		suppressed.Failure.ReadinessServices[0] = "modified suppression"
+	}
+
+	again, _ := store.Get(target)
+	if !slices.Equal(again.ReadinessServices, []string{"api"}) {
+		t.Fatalf("suppression aliases stored failure: %+v", again)
 	}
 }
 

@@ -162,6 +162,7 @@ func (s *StageManager) logAdmittedDeploymentRetry(ctx context.Context, stageLog 
 		slog.String("failed_commit", failure.CommitSHA),
 		slog.Time("failed_at", failure.FailedAt),
 		slog.String("error", failure.Error),
+		slog.Any("readiness_services", failure.ReadinessServices),
 		slog.Group("retry",
 			slog.Int("used", failure.RetriesUsed),
 			slog.Any("limit", s.DeployConfig.Retry.Limit),

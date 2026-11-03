@@ -1,10 +1,13 @@
 package docker
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/common/types/clone"
 )
 
 func TestDeploymentFailureRoundtrip(t *testing.T) {
@@ -19,23 +22,32 @@ func TestDeploymentFailureRoundtrip(t *testing.T) {
 	}
 
 	want := DeploymentFailure{
-		Repository: repo,
-		Stack:      stack,
-		CommitSHA:  "573a16e",
-		Stage:      "deploy",
-		Error:      "hook exited with status 1",
-		FailedAt:   time.Now().UTC().Truncate(time.Second),
+		Repository:        repo,
+		Stack:             stack,
+		CommitSHA:         "573a16e",
+		Stage:             "deploy",
+		Error:             "service api is unhealthy",
+		FailedAt:          time.Now().UTC().Truncate(time.Second),
+		ReadinessServices: []string{"api"},
 	}
 
-	RecordDeploymentFailure(repo, stack, want)
+	input := *clone.New(&want)
+	RecordDeploymentFailure(repo, stack, input)
+	input.ReadinessServices[0] = "modified input"
 
 	got, ok := GetDeploymentFailure(repo, stack)
 	if !ok {
 		t.Fatal("expected failure record after recording")
 	}
 
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("record mismatch: got %+v, want %+v", got, want)
+	}
+
+	got.ReadinessServices[0] = "modified output"
+
+	if again, _ := GetDeploymentFailure(repo, stack); !reflect.DeepEqual(again, want) {
+		t.Fatalf("returned failure aliases stored metadata: %+v", again)
 	}
 
 	ClearDeploymentFailure(repo, stack)

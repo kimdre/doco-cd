@@ -583,6 +583,19 @@ and real failures take precedence.
 `retry` controls automatic retries after a failure in the deploy, post-deploy, or cleanup stage for both Compose projects and Swarm stacks.
 Omitting `retry` preserves unlimited automatic retries without an additional delay.
 
+When Compose fails doco-cd's post-start health or readiness checks for long-running services,
+the next retry uses normal convergence instead of forcing container recreation.
+Up-to-date containers stay in place, missing containers are created, stopped services are started,
+and readiness is checked again. This avoids restarting healthy services or resetting a slow-starting service on every retry.
+
+Deploy-stage failures involving lifecycle hooks, failed or incomplete one-shot work, dead or paused containers,
+or unclassified errors retain whole-project forced recreation so unfinished work can run again.
+Explicit `force_recreate`, forced drift reconciliation, and independent changes or recovery requirements still apply.
+Swarm retry behavior is unchanged.
+
+Retries do not repair a permanently failing healthcheck or change Docker restart policies.
+Fix the service or its healthcheck configuration when it cannot become healthy.
+
 | Key           | Type                  | Description                                                                                                                                                                                        | Default value       |
 |---------------|-----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------|
 | `limit`       | integer               | Maximum number of automatic retries after the original attempt. `0` disables automatic retries; a negative value is invalid.                                                                       | Omitted (unlimited) |
