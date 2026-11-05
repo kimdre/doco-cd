@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -268,9 +267,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 		err = service.Start(ctx, startProject.Name, startOpts)
 		if err != nil {
-			if !errors.Is(err, ErrNoContainerToStart) {
-				return err
-			}
+			return err
 		}
 
 		setDeploymentPhase(setPhase, "waiting for services to start")

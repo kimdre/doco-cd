@@ -13,7 +13,6 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -60,7 +59,7 @@ func captureSelfDriftSnapshot(ctx context.Context, apiClient client.APIClient, p
 
 		key := inspected.Network.Labels[api.NetworkLabel]
 		if desired, ok := project.Networks[key]; ok && !bool(desired.External) {
-			hash, hashErr := compose.NetworkHash(&desired)
+			hash, hashErr := composeNetworkHash(&desired)
 			if hashErr != nil {
 				return nil, fmt.Errorf("hash network %s for snapshot: %w", net.Name, hashErr)
 			}
@@ -203,7 +202,7 @@ func applySelfDriftProject(
 
 	if len(startServices) > 0 {
 		err = service.Start(ctx, project.Name, api.StartOptions{Project: startProject, Services: startServices})
-		if err != nil && !errors.Is(err, ErrNoContainerToStart) {
+		if err != nil {
 			return fmt.Errorf("start the updated services: %w", err)
 		}
 

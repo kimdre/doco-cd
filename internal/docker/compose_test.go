@@ -2427,10 +2427,10 @@ func TestProjectDownOptionsImageRemoval(t *testing.T) {
 	for _, testCase := range []struct {
 		name         string
 		removeImages bool
-		wantImages   string
+		wantImages   api.ImagePruneMode
 	}{
-		{name: "retain images", removeImages: false, wantImages: ""},
-		{name: "remove images", removeImages: true, wantImages: "all"},
+		{name: "retain images", removeImages: false, wantImages: api.ImagePruneNone},
+		{name: "remove images", removeImages: true, wantImages: api.ImagePruneAll},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()

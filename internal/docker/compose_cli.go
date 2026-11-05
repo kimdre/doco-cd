@@ -20,9 +20,8 @@ const (
 )
 
 var (
-	ErrNoContainerToStart = errors.New("no container to start")
-	ErrIsInUse            = errors.New("is in use")
-	ComposeVersion        string // Version of the docker compose module, will be set at runtime
+	ErrIsInUse     = errors.New("is in use")
+	ComposeVersion string // Version of the docker compose module, will be set at runtime
 )
 
 func init() {

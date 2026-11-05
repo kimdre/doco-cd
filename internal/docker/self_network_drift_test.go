@@ -8,7 +8,6 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -49,7 +48,7 @@ func TestSelfNetworkDriftDefersFullProject(t *testing.T) {
 	cfg := types.NetworkConfig{Name: "self-stack_backend", Labels: map[string]string{"generation": "new"}}
 	project.Networks = types.Networks{"backend": cfg}
 
-	hash, err := compose.NetworkHash(&cfg)
+	hash, err := composeNetworkHash(&cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

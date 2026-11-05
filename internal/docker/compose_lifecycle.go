@@ -360,9 +360,9 @@ func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName strin
 }
 
 func projectDownOptions(timeout time.Duration, removeVolumes, removeImages bool) api.DownOptions {
-	images := ""
+	images := api.ImagePruneNone
 	if removeImages {
-		images = "all"
+		images = api.ImagePruneAll
 	}
 
 	return api.DownOptions{
@@ -803,9 +803,6 @@ func recreateStandardProject(
 			Recreate:             api.RecreateForce,
 			RecreateDependencies: api.RecreateDiverged,
 			Timeout:              &timeout,
-		},
-		Start: api.StartOptions{
-			Project: project,
 		},
 	}); err != nil {
 		return fmt.Errorf("recreate compose project %s: %w", ref.Project, err)
