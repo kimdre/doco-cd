@@ -213,7 +213,6 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		return svc.Up(ctx, project, api.UpOptions{
 			Create: api.CreateOptions{RemoveOrphans: true},
 			Start: api.StartOptions{
-				Project:     project,
 				Wait:        !o.noWait,
 				WaitTimeout: o.waitTimeout,
 			},

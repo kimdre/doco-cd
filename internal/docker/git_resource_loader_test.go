@@ -708,7 +708,6 @@ func TestDeployComposeWithGitInclude(t *testing.T) {
 
 	if err := composeSvc.Up(ctx, project, api.UpOptions{
 		Create: api.CreateOptions{RemoveOrphans: true},
-		Start:  api.StartOptions{Project: project},
 	}); err != nil {
 		t.Fatalf("compose up: %v", err)
 	}
