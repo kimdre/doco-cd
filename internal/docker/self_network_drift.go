@@ -202,7 +202,7 @@ func applySelfDriftProject(
 
 	if len(startServices) > 0 {
 		err = service.Start(ctx, project.Name, api.StartOptions{Project: startProject, Services: startServices})
-		if err != nil && !errors.Is(err, ErrNoContainerToStart) {
+		if err != nil {
 			return fmt.Errorf("start the updated services: %w", err)
 		}
 

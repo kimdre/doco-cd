@@ -169,8 +169,8 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 	}
 
 	// Set the CustomLabels that compose uses internally to track containers
-	// by project/service. Without these, the Start phase cannot find the
-	// containers created by Create ("service X has no container to start").
+	// by project/service. Without these labels, Start cannot find the
+	// containers that Create made for the project.
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
 			api.ProjectLabel:     project.Name,
