@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
-	"github.com/docker/compose/v5/pkg/compose"
 
 	"github.com/kimdre/doco-cd/internal/common/types/duration"
 
@@ -96,32 +95,6 @@ func TestIsSelfStack(t *testing.T) {
 				t.Errorf("IsSelfStack = %v, want %v", got, tt.want)
 			}
 		})
-	}
-}
-
-// TestScaleDoesNotChangeServiceHash pins the compose behaviour the scale-out
-// strategy depends on: setting scale to 2 must not make the service look
-// diverged, or every poll would hand over again.
-func TestScaleDoesNotChangeServiceHash(t *testing.T) {
-	t.Parallel()
-
-	svc := selfUpdateTestProject("doco-cd", "app").Services["app"]
-
-	before, err := compose.ServiceHash(svc)
-	if err != nil {
-		t.Fatalf("hash before: %v", err)
-	}
-
-	two := 2
-	svc.Scale = &two
-
-	after, err := compose.ServiceHash(svc)
-	if err != nil {
-		t.Fatalf("hash after: %v", err)
-	}
-
-	if before != after {
-		t.Errorf("scale changed the service hash: %s != %s", before, after)
 	}
 }
 

@@ -11,7 +11,6 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/containerd/errdefs"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/api/types/volume"
 	"github.com/moby/moby/client"
@@ -49,7 +48,7 @@ func (c *selfUpdateVolumeClient) VolumeInspect(_ context.Context, name string, _
 func TestValidateSelfUpdateVolumesRejectsDataReplacement(t *testing.T) {
 	desired := types.VolumeConfig{Name: "stack_data", Driver: "local", Labels: types.Labels{"purpose": "data"}}
 
-	hash, err := compose.VolumeHash(desired)
+	hash, err := composeVolumeHash(desired)
 	if err != nil {
 		t.Fatal(err)
 	}

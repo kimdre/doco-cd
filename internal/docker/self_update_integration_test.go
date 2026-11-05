@@ -16,7 +16,6 @@ import (
 	composeCli "github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
@@ -133,28 +132,9 @@ func TestSelfUpdateIntegration_ScaleOutLeavesDivergedRunning(t *testing.T) {
 	project2 := loadSelfUpdateProject(ctx, t, stackName, fmt.Sprintf(selfUpdateSleepYAML, "unless-stopped", "2"))
 
 	svc2 := project2.Services["app"]
-
-	wantHash, err := compose.ServiceHash(svc2)
-	if err != nil {
-		t.Fatalf("service hash: %v", err)
-	}
-
-	if wantHash == hash1 {
-		t.Fatal("GEN change did not alter the service hash, test is not exercising divergence")
-	}
-
 	two := 2
 	svc2.Scale = &two
 	project2.Services["app"] = svc2
-
-	hashAfterScale, err := compose.ServiceHash(svc2)
-	if err != nil {
-		t.Fatalf("service hash after scale: %v", err)
-	}
-
-	if hashAfterScale != wantHash {
-		t.Errorf("scale changed the service hash: %s != %s", hashAfterScale, wantHash)
-	}
 
 	err = stack.Service.Create(ctx, project2, api.CreateOptions{
 		Services:             []string{"app"},
@@ -204,8 +184,9 @@ func TestSelfUpdateIntegration_ScaleOutLeavesDivergedRunning(t *testing.T) {
 		t.Errorf("container #2 number label = %q, want %q", got, "2")
 	}
 
-	if got := labels[api.ConfigHashLabel]; got != wantHash {
-		t.Errorf("container #2 config-hash = %q, want %q", got, wantHash)
+	hash2 := labels[api.ConfigHashLabel]
+	if hash2 == "" || hash2 == hash1 {
+		t.Fatalf("container #2 config-hash = %q, want a new hash different from #1 (%q)", hash2, hash1)
 	}
 
 	if got := insp2.Container.State.Status; got != "created" {
@@ -262,6 +243,13 @@ func TestSelfUpdateIntegration_ScaleOutLeavesDivergedRunning(t *testing.T) {
 	}
 
 	t.Logf("Q1 SCALE-BACK RESULT: %d containers: %v (id1=%s new=%s)", len(list), survivors, id1[:12], newID[:12])
+
+	// Compose stamped #2 at scale 2 and checks it at scale 1 here. If scale
+	// changed the service hash, Compose would recreate #2 and every poll would
+	// hand over again.
+	if len(list) != 1 || list[0].ID != newID {
+		t.Errorf("scale-back kept %v, want only container #2 %s", survivors, newID[:12])
+	}
 }
 
 // TestSelfUpdateIntegration_RestartPolicyDormantAfterAPIStop answers open question 2:
@@ -434,7 +422,7 @@ networks:
 
 	netCfg := project.Networks["backend"]
 
-	wantHash, err := compose.NetworkHash(&netCfg)
+	wantHash, err := composeNetworkHash(&netCfg)
 	if err != nil {
 		t.Fatalf("network hash: %v", err)
 	}
@@ -461,13 +449,73 @@ networks:
 	project2 := loadSelfUpdateProject(ctx, t, stackName, yamlFor("2"))
 	netCfg2 := project2.Networks["backend"]
 
-	hash2, err := compose.NetworkHash(&netCfg2)
+	hash2, err := composeNetworkHash(&netCfg2)
 	if err != nil {
 		t.Fatalf("network hash 2: %v", err)
 	}
 
 	if hash2 == wantHash {
 		t.Errorf("changing a network label did not change the hash")
+	}
+}
+
+// TestSelfUpdateIntegration_VolumeHashMatchesLiveLabel pins the volume hash
+// that the self-update volume check compares with the live label.
+func TestSelfUpdateIntegration_VolumeHashMatchesLiveLabel(t *testing.T) {
+	requireSelfUpdateIntegrationGate(t)
+
+	ctx := t.Context()
+	stackName := internaltest.ConvertTestName(t.Name())
+
+	yamlFor := func(label string) string {
+		return fmt.Sprintf(`
+services:
+  app:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    volumes:
+      - data:/data
+volumes:
+  data:
+    labels:
+      x: "%s"
+`, label)
+	}
+
+	stack := internaltest.ComposeUp(ctx, t,
+		internaltest.WithName(stackName),
+		internaltest.WithYAML(yamlFor("1")),
+	)
+
+	project := loadSelfUpdateProject(ctx, t, stackName, yamlFor("1"))
+
+	volCfg := project.Volumes["data"]
+	if volCfg.Name == "" {
+		volCfg.Name = project.Name + "_data"
+	}
+
+	wantHash, err := composeVolumeHash(volCfg)
+	if err != nil {
+		t.Fatalf("volume hash: %v", err)
+	}
+
+	vols, err := stack.Client.VolumeList(ctx, client.VolumeListOptions{
+		Filters: make(client.Filters).Add("label", api.ProjectLabel+"="+stackName),
+	})
+	if err != nil {
+		t.Fatalf("list volumes: %v", err)
+	}
+
+	if len(vols.Items) != 1 {
+		t.Fatalf("want 1 project volume, got %d", len(vols.Items))
+	}
+
+	liveHash := vols.Items[0].Labels[api.ConfigHashLabel]
+
+	t.Logf("VOLUME HASH RESULT: live=%q computed=%q match=%v", liveHash, wantHash, liveHash == wantHash)
+
+	if liveHash != wantHash {
+		t.Errorf("computed volume hash does not match the live label")
 	}
 }
 

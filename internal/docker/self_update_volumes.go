@@ -9,7 +9,6 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/containerd/errdefs"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/volume"
 	"github.com/moby/moby/client"
 
@@ -40,7 +39,7 @@ func validateSelfUpdateVolumes(ctx context.Context, apiClient client.APIClient, 
 			desired.Name = project.Name + "_" + key
 		}
 
-		hash, hashErr := compose.VolumeHash(desired)
+		hash, hashErr := composeVolumeHash(desired)
 		if hashErr != nil {
 			return fmt.Errorf("hash self stack volume %s: %w", desired.Name, hashErr)
 		}

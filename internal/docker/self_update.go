@@ -10,7 +10,6 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
@@ -160,7 +159,7 @@ func selfDriftedNetworks(ctx context.Context, apiClient client.APIClient, projec
 			continue
 		}
 
-		want, err := compose.NetworkHash(&cfg)
+		want, err := composeNetworkHash(&cfg)
 		if err != nil {
 			return nil, fmt.Errorf("hash network %s: %w", name, err)
 		}
