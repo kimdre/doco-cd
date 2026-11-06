@@ -1,8 +1,11 @@
 package encryption
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/getsops/sops/v3"
@@ -423,5 +426,101 @@ func TestDecryptFilesInDirectoryTolerant_SkipsUndecryptableFiles(t *testing.T) {
 
 	if string(content) != string(encrypted) {
 		t.Error("undecryptable file was modified, want it left as ciphertext")
+	}
+}
+
+// fakeUserError implements sops.UserError, like the SOPS data key errors.
+type fakeUserError struct{}
+
+func (fakeUserError) Error() string { return "no key could decrypt the data key" }
+
+func (fakeUserError) UserError() string { return "no key could decrypt the data key" }
+
+func TestIsKeyUnavailable(t *testing.T) {
+	t.Parallel()
+
+	var userErr sops.UserError = fakeUserError{}
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"generic error", errors.New("boom"), false},
+		{"metadata not found", sops.MetadataNotFound, false},
+		{"key not set", errSopsKeyNotSet, true},
+		{"wrapped key not set", fmt.Errorf("decrypt file: %w", errSopsKeyNotSet), true},
+		{"wrapped user error", fmt.Errorf("failed to decrypt content: %w", userErr), true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := IsKeyUnavailable(tc.err); got != tc.want {
+				t.Errorf("IsKeyUnavailable(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// A file encrypted for a recipient whose key is not available must be classified as key unavailable.
+func TestIsKeyUnavailable_MissingKey(t *testing.T) {
+	encrypted := []byte(readTestFile(t, "testdata/encrypted.yaml"))
+
+	t.Setenv(age.SopsAgeKeyEnv, "")
+	t.Setenv(age.SopsAgeKeyFileEnv, "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	for _, name := range []string{age.SopsAgeKeyCmdEnv, age.SopsAgeSshPrivateKeyCmdEnv} {
+		t.Setenv(name, "")
+
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatalf("unset %s: %v", name, err)
+		}
+	}
+
+	_, err := DecryptContent(encrypted, formats.Yaml)
+	if err == nil {
+		t.Fatal("DecryptContent() error = nil, want a data key error")
+	}
+
+	if !IsKeyUnavailable(fmt.Errorf("failed to decrypt content: %w", err)) {
+		t.Errorf("IsKeyUnavailable(%v) = false, want true", err)
+	}
+}
+
+// A file that fails the integrity check is broken, not encrypted for someone else.
+func TestIsKeyUnavailable_TamperedMAC(t *testing.T) {
+	encrypted := readTestFile(t, "testdata/encrypted.yaml")
+
+	const macPrefix = "mac: ENC[AES256_GCM,data:"
+
+	idx := strings.Index(encrypted, macPrefix)
+	if idx < 0 {
+		t.Fatal("fixture has no MAC")
+	}
+
+	// Change one character of the MAC ciphertext so that its authentication fails.
+	pos := idx + len(macPrefix)
+
+	replacement := "A"
+	if encrypted[pos] == 'A' {
+		replacement = "B"
+	}
+
+	tampered := encrypted[:pos] + replacement + encrypted[pos+1:]
+
+	SetupAgeKeyEnvVar(t)
+
+	_, err := DecryptContent([]byte(tampered), formats.Yaml)
+	if err == nil {
+		t.Fatal("DecryptContent() error = nil, want an integrity error")
+	}
+
+	if IsKeyUnavailable(err) {
+		t.Errorf("IsKeyUnavailable(%v) = true, want false", err)
 	}
 }

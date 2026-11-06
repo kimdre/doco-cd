@@ -71,6 +71,11 @@ type plaintextSource struct {
 // them use. A stack that does consume such a file still fails, with a
 // precise error, when LoadCompose reaches it.
 //
+// A file without an available key is logged at debug level. This is expected
+// in repositories that encrypt each environment for its own key, and a warning
+// per file on every revision would only be noise. Other decryption errors,
+// such as a failed integrity check, are logged as warnings.
+//
 // A file whose ciphertext is identical to one decrypted in an earlier artifact
 // under baseDir takes that artifact's plaintext instead of a key service call.
 // Most revisions change no secret, so this keeps the per-revision cost of a
@@ -85,7 +90,7 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 	sources := loadPlaintextSources(log, baseDir)
 	record := decryptRecord{Files: map[string]decryptedFile{}}
 
-	var reused, decrypted int
+	var reused, decrypted, skipped, failed int
 
 	decryptFile := func(path string) (bool, error) {
 		content, err := os.ReadFile(path) // #nosec G304 -- path comes from walking the artifact directory
@@ -140,12 +145,25 @@ func decryptArtifact(log *slog.Logger, baseDir, dir string) (decryptRecord, erro
 	}
 
 	_, err := encryption.DecryptFilesInDirectoryTolerant(dir, dir, decryptFile, func(path string, err error) {
+		if encryption.IsKeyUnavailable(err) {
+			skipped++
+
+			log.Debug("skipping file without an available decryption key",
+				slog.String("path", path), slog.Any("error", err))
+
+			return
+		}
+
+		failed++
+
 		log.Warn("skipping file that could not be decrypted",
 			slog.String("path", path), slog.Any("error", err))
 	})
 
-	if reused > 0 || decrypted > 0 {
-		log.Debug("decrypted artifact files", slog.Int("decrypted", decrypted), slog.Int("reused", reused))
+	if reused > 0 || decrypted > 0 || skipped > 0 || failed > 0 {
+		log.Debug("decrypted artifact files",
+			slog.Int("decrypted", decrypted), slog.Int("reused", reused),
+			slog.Int("skipped", skipped), slog.Int("failed", failed))
 	}
 
 	return record, err

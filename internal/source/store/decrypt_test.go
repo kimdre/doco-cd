@@ -1,7 +1,9 @@
 package store_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	agekey "filippo.io/age"
 	"github.com/getsops/sops/v3/age"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
@@ -165,6 +169,135 @@ func TestGitStore_PublishKeepsUndecryptableFileAsCiphertext(t *testing.T) {
 
 	if _, err := os.ReadFile(filepath.Join(artifact.Path, "compose.yaml")); err != nil {
 		t.Fatalf("read unrelated published file: %v", err)
+	}
+}
+
+func TestGitStore_PublishLogsDecryptionFailures(t *testing.T) {
+	t.Setenv(age.SopsAgeKeyEnv, "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	// Key commands and default key files must not supply the fixture's key.
+	for _, name := range []string{age.SopsAgeKeyCmdEnv, age.SopsAgeSshPrivateKeyCmdEnv} {
+		t.Setenv(name, "")
+
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatalf("unset %s: %v", name, err)
+		}
+	}
+
+	identity, err := agekey.GenerateX25519Identity()
+	if err != nil {
+		t.Fatalf("generate unrelated age key: %v", err)
+	}
+
+	keyFile := filepath.Join(t.TempDir(), "age-key.txt")
+	if err := os.WriteFile(keyFile, []byte(identity.String()), filesystem.PermOwner); err != nil {
+		t.Fatalf("write unrelated age key: %v", err)
+	}
+
+	fixture := readEncryptionFixture(t, "encrypted.yaml")
+
+	tests := []struct {
+		name         string
+		content      string
+		unrelatedKey bool
+		wantLevel    slog.Level
+		wantMessage  string
+		wantError    string
+		wantSummary  string
+	}{
+		{
+			name:         "different age recipient",
+			content:      fixture,
+			unrelatedKey: true,
+			wantLevel:    slog.LevelDebug,
+			wantMessage:  "skipping file without an available decryption key",
+			wantError:    "Error getting data key",
+			wantSummary:  "decrypted=0 reused=0 skipped=1 failed=0",
+		},
+		{
+			name:        "integrity failure",
+			content:     "unexpected_unencrypted: tampered\n" + fixture,
+			wantLevel:   slog.LevelWarn,
+			wantMessage: "skipping file that could not be decrypted",
+			wantError:   "Failed to verify data integrity",
+			wantSummary: "decrypted=0 reused=0 skipped=0 failed=1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encryption.SetupAgeKeyEnvVar(t)
+
+			if tt.unrelatedKey {
+				t.Setenv(age.SopsAgeKeyFileEnv, keyFile)
+			}
+
+			for _, minLevel := range []slog.Level{slog.LevelDebug, slog.LevelInfo} {
+				t.Run(minLevel.String(), func(t *testing.T) {
+					var logBuf bytes.Buffer
+
+					log := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: minLevel}))
+
+					repoPath := t.TempDir()
+					repo := initLocalTestRepo(t, repoPath)
+					commitTestFile(t, repo, repoPath, "secret.yaml", tt.content, "add encrypted file")
+					commitTestFile(t, repo, repoPath, "compose.yaml", "services: {}\n", "add compose file")
+
+					s, err := store.NewGitStore(store.GitStoreOptions{
+						Log:      log,
+						CloneURL: "file://" + repoPath,
+						BaseDir:  t.TempDir(),
+					})
+					if err != nil {
+						t.Fatalf("NewGitStore() error = %v", err)
+					}
+
+					artifact := publishRevision(t, s, "main")
+
+					if got := readArtifactFile(t, artifact, "secret.yaml"); got != tt.content {
+						t.Fatal("failed decryption changed the ciphertext")
+					}
+
+					if got := readArtifactFile(t, artifact, "compose.yaml"); got != "services: {}\n" {
+						t.Fatalf("unrelated compose file = %q, want unchanged content", got)
+					}
+
+					output := logBuf.String()
+
+					var records int
+
+					for line := range strings.SplitSeq(output, "\n") {
+						if !strings.Contains(line, "skipping file") {
+							continue
+						}
+
+						records++
+
+						if !strings.Contains(line, "level="+tt.wantLevel.String()) ||
+							!strings.Contains(line, tt.wantMessage) ||
+							!strings.Contains(line, "secret.yaml") ||
+							!strings.Contains(line, tt.wantError) {
+							t.Fatalf("unexpected decryption log record:\n%s", line)
+						}
+					}
+
+					wantRecords := 0
+					if tt.wantLevel >= minLevel {
+						wantRecords = 1
+					}
+
+					if records != wantRecords {
+						t.Fatalf("got %d decryption log records, want %d:\n%s", records, wantRecords, output)
+					}
+
+					if minLevel == slog.LevelDebug && !strings.Contains(output, tt.wantSummary) {
+						t.Fatalf("missing decryption summary %q:\n%s", tt.wantSummary, output)
+					}
+				})
+			}
+		})
 	}
 }
 

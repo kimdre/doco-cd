@@ -23,6 +23,27 @@ import (
 
 var errSopsKeyNotSet = errors.New("SOPS secret key is not set")
 
+// IsKeyUnavailable reports whether err means that this instance has no key
+// that can decrypt the file. This is the case when no SOPS key is configured,
+// or when SOPS cannot get the data key from any key group (for example, the
+// file is encrypted for a different age recipient).
+//
+// Other errors, such as a MAC mismatch, a corrupt file or an I/O error, return false.
+func IsKeyUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, errSopsKeyNotSet) {
+		return true
+	}
+
+	// SOPS uses UserError only for errors of the data key retrieval.
+	var userErr sops.UserError
+
+	return errors.As(err, &userErr)
+}
+
 // probedFormats lists the formats that are probed for paths without a format-specific extension.
 // Binary is probed first because its JSON envelope also parses as JSON and YAML,
 // and JSON before YAML because the YAML parser accepts JSON as well.

@@ -26,8 +26,11 @@ The key service is therefore only called for files that actually changed, which 
     A host that lost its key, or its access to the key service, still produces plaintext for files whose encrypted content did not change, from the copies it already holds.
     Re-encrypt the files, e.g. with `sops rotate` or `sops updatekeys`, so their content changes and the next revision needs the key again.
 
-If doco-cd has no key for a file, it's left encrypted and logged instead of failing the entire deployment.
-This is intentional: a repository may legitimately contain secrets encrypted for someone else.
+If doco-cd has no key for a file, it's left encrypted instead of failing the entire deployment.
+This is intentional: a repository may legitimately contain secrets encrypted for someone else,
+for example a repository with one doco-cd instance per environment, where each environment uses its own key.
+These files are logged at `debug` level only, so they do not fill the log with warnings on every new revision.
+Other decryption errors, for example a failed integrity (MAC) check, are logged as warnings.
 If a deployment actually uses an encrypted file, the deployment fails at that point, naming the file.
 
 Files a compose project references outside the repository (for example a bind mount pointing at an arbitrary host path) are decrypted as well,
