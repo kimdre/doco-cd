@@ -44,6 +44,10 @@ func deployComposeRuntime(ctx context.Context, req runtimeDeployRequest) error {
 	recreateMode := api.RecreateDiverged
 
 	switch {
+	case deployConfig.ForceRecreate:
+		recreateMode = api.RecreateForce
+
+		req.stackLog.Debug("force recreate enabled, recreating all services")
 	case len(req.request.DetectedChanges) > 0:
 		recreateMode = api.RecreateForce
 		forcedServices = forcedRecreateServices(req.request.DetectedChanges)
