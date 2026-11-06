@@ -672,8 +672,8 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 		// handleDeploy accepts the base CLI; it handles per-context routing internally.
 		req := group.request
 		req.Metadata = metadata
-		// Reconciliation deploys should always force recreate so missing containers are restored
-		// even when there are no Git/compose changes.
+		// Bypass no-change skips to restore missing containers without
+		// forcing recreation of healthy services.
 		req.DeployConfigs = cloneDeployConfigsWithForcedRecreate(group.configs)
 		req.Origin = syncwindow.OriginReconciliation
 

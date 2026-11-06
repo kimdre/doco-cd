@@ -105,7 +105,15 @@ type Config struct {
 		ConfigSourceRevision          string                                   `yaml:"-" json:"-"` // Immutable revision containing this deployment config
 		ConfigSourceWorkingDir        string                                   `yaml:"-" json:"-"` // Host path to the config source artifact
 		AutoDiscoveryOrigin           *AutoDiscoveryOrigin                     `yaml:"-" json:"-"` // Auto-discovery config that discovered this config, nil if it was not discovered
+		ForceRecreateByReconciliation bool                                     `yaml:"-" json:"-"` // ForceRecreate only bypasses deployment skips, not container convergence.
 	} `json:"-"` // Internal holds internal configuration values that are not set by the user
+}
+
+// ExplicitForceRecreate reports whether force_recreate was requested by the deploy config.
+// Reconciliation also sets ForceRecreate, but only so that its redeploys are not skipped:
+// they converge missing or changed containers and must not recreate the whole project.
+func (c *Config) ExplicitForceRecreate() bool {
+	return c.ForceRecreate && !c.Internal.ForceRecreateByReconciliation
 }
 
 // SwarmConfig contains Docker Swarm-specific deployment settings.
