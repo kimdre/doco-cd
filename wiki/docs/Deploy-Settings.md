@@ -653,6 +653,8 @@ In particular, `retry.limit` is separate from [reconciliation](#reconciliation-s
 
 Reconciliation is an optional event-driven check that compares the currently running Docker services/containers with the expected deployment state.
 When configured container events occur, doco-cd either reapplies the deployment or directly restarts the affected container, depending on the event type.
+For Compose deployments, a redeploy restores missing containers without forcing recreation of unchanged services.
+An explicit [`force_recreate`](#available-settings), detected changes, or other recovery requirements can still force recreation.
 Full redeploy reconciliation obeys the deployment's [retry policy](#retry-settings) but direct container restarts do not.
 
 !!! warning

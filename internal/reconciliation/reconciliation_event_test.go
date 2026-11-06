@@ -527,12 +527,16 @@ func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
 	dc1.Reconciliation.Events = []string{"die"}
 	dc2 := deployConfig.New("stack-b", "main")
 	dc2.ForceRecreate = false
+	explicit := deployConfig.New("stack-c", "main")
+	explicit.ForceRecreate = true
 
-	cloned := cloneDeployConfigsWithForcedRecreate([]*deployConfig.Config{dc1, dc2})
+	cloned := cloneDeployConfigsWithForcedRecreate([]*deployConfig.Config{dc1, dc2, explicit})
 
-	if len(cloned) != 2 {
-		t.Fatalf("expected 2 cloned deploy configs, got %d", len(cloned))
+	if len(cloned) != 3 {
+		t.Fatalf("expected 3 cloned deploy configs, got %d", len(cloned))
 	}
+
+	wantExplicit := []bool{false, false, true}
 
 	for i, dc := range cloned {
 		if dc == nil {
@@ -542,10 +546,25 @@ func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
 		if !dc.ForceRecreate {
 			t.Fatalf("expected ForceRecreate to be true for cloned config at index %d", i)
 		}
+
+		if got := dc.ExplicitForceRecreate(); got != wantExplicit[i] {
+			t.Fatalf("ExplicitForceRecreate() for cloned config at index %d = %v, want %v", i, got, wantExplicit[i])
+		}
 	}
 
-	if dc1.ForceRecreate || dc2.ForceRecreate {
+	if dc1.ForceRecreate || dc2.ForceRecreate || dc1.Internal.ForceRecreateByReconciliation || dc2.Internal.ForceRecreateByReconciliation {
 		t.Fatal("expected source deploy configs to remain unmodified")
+	}
+
+	if !explicit.ExplicitForceRecreate() {
+		t.Fatal("expected explicit force_recreate of the source deploy config to remain set")
+	}
+
+	recloned := cloneDeployConfigsWithForcedRecreate(cloned)
+	for i, dc := range recloned {
+		if got := dc.ExplicitForceRecreate(); got != wantExplicit[i] {
+			t.Fatalf("ExplicitForceRecreate() for re-cloned config at index %d = %v, want %v", i, got, wantExplicit[i])
+		}
 	}
 
 	cloned[0].Internal.Environment["VALUE"] = "after"

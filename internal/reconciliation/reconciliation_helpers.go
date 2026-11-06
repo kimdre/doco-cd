@@ -214,13 +214,16 @@ func matchCandidateStackName(identifier string, candidates []*deployConfig.Confi
 }
 
 // cloneDeployConfigsWithForcedRecreate creates a deep copy of the given slice of deployConfig.Config pointers,
-// setting the ForceRecreate field to true for each copied config. This is used to ensure that a reconciliation
-// deploy will forcefully recreate the associated containers/services.
+// setting the ForceRecreate field to true for each copied config. This ensures that a reconciliation deploy is
+// not skipped when there are no Git/compose changes, so missing or diverged containers/services are restored.
+// Unless force_recreate was set in the deploy config, the copy is marked so that Compose does not recreate
+// the containers that are still up to date.
 func cloneDeployConfigsWithForcedRecreate(dcs []*deployConfig.Config) []*deployConfig.Config {
 	reconcileDCs := make([]*deployConfig.Config, len(dcs))
 
 	for i, dc := range dcs {
 		dcCopy := clone.New(dc)
+		dcCopy.Internal.ForceRecreateByReconciliation = !dc.ExplicitForceRecreate()
 		dcCopy.ForceRecreate = true
 		reconcileDCs[i] = dcCopy
 	}
