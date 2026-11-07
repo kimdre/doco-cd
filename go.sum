@@ -101,8 +101,8 @@ github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPd
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5/go.mod h1:wHh0iHkYZB8zMSxRWpUBQtwG5a7fFgvEO+odwuTv2gs=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2/go.mod h1:WaHUgvxTVq04UNunO+XhnAqY/wQc+bxr74GqbsZ/Jqw=
-github.com/avast/retry-go/v5 v5.0.1 h1:J3bUcb/d52eCVRvD01B1B3dV9gQHCgcEs1K5ZpT26ZU=
-github.com/avast/retry-go/v5 v5.0.1/go.mod h1:kb/MOVQOBAxjo+kIre6StLXJro2ZPAQh5IO/6wICTjI=
+github.com/avast/retry-go/v5 v5.1.1 h1:xinK2CJs8zMswWeFFSYeqBbqx9RskWDDdzybrFrz4Q8=
+github.com/avast/retry-go/v5 v5.1.1/go.mod h1:kb/MOVQOBAxjo+kIre6StLXJro2ZPAQh5IO/6wICTjI=
 github.com/aws/aws-sdk-go-v2 v1.47.8 h1:fuClo7Un+Bi0EDTnSIPWxVEoJcze+wkGzNA4Vo3jRcQ=
 github.com/aws/aws-sdk-go-v2 v1.47.8/go.mod h1:I8lFSH4MGrZiw2m7miCrRYHsgpC1+HW8uiVGOiPYPcw=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 h1:GPRlPwz40I2B2VrBEASOA3Bi77NyeqejNLkifosX0rs=
