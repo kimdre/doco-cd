@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
+
+	"github.com/moby/moby/client"
 )
 
 // deploySwarmRuntime deploys a swarm stack using the provided request parameters.
@@ -34,6 +37,17 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) error {
 	// Pinning is an optimization: if it fails, services are simply updated to the new artifact.
 	if err = pinUnchangedSwarmServices(ctx, req.request.DockerCLI.Client(), cfg, deployConfig.Name, req.request.ExternalRepoPath, req.stackLog); err != nil {
 		req.stackLog.Warn("failed to keep unchanged services on their current artifact", slog.Any("error", err))
+	}
+
+	var imagesBefore map[string]string
+
+	if deployConfig.PruneImages {
+		imagesBefore, err = getDeployedServiceImageRefs(ctx, req.request.DockerCLI, true, deployConfig.Name, req.stackLog)
+		if err != nil {
+			req.recordError()
+
+			return fmt.Errorf("failed to get service images before deployment: %w", err)
+		}
 	}
 
 	if err = removeMismatchedRecreatableVolumes(ctx, req.request.DockerCLI.Client(), deployConfig.Name, req.project); err != nil {
@@ -73,15 +87,82 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) error {
 	}
 
 	if deployConfig.PruneImages {
-		req.phase.Set("pruning images on swarm nodes")
-		req.stackLog.Info("prune images on swarm nodes")
-
-		if err = RunImagePruneJob(ctx, req.request.DockerCLI, req.stackLog); err != nil {
+		if err = removeReplacedSwarmImages(ctx, req, imagesBefore); err != nil {
 			req.recordError()
 
-			return fmt.Errorf("failed to run image prune job: %w", err)
+			return err
 		}
 	}
 
 	return nil
+}
+
+// removeReplacedSwarmImages removes the images the deployment replaced from every node.
+func removeReplacedSwarmImages(ctx context.Context, req runtimeDeployRequest, imagesBefore map[string]string) error {
+	imagesInUse, err := clusterServiceImageRefs(ctx, req.request.DockerCLI.Client())
+	if err != nil {
+		return fmt.Errorf("failed to get service images after deployment: %w", err)
+	}
+
+	replaced := replacedImageRefs(imagesBefore, imagesInUse)
+	if len(replaced) == 0 {
+		return nil
+	}
+
+	req.phase.Set("removing replaced images on swarm nodes")
+	req.stackLog.Info("removing replaced images on swarm nodes", slog.Any("images", replaced))
+
+	if err = RunImageRemoveJob(ctx, req.request.DockerCLI, replaced, req.stackLog); err != nil {
+		return fmt.Errorf("failed to run image remove job: %w", err)
+	}
+
+	return nil
+}
+
+// clusterServiceImageRefs returns the image reference of every service in the cluster,
+// so an image another stack still uses is not treated as replaced.
+func clusterServiceImageRefs(ctx context.Context, apiClient client.APIClient) (map[string]string, error) {
+	result, err := apiClient.ServiceList(ctx, client.ServiceListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list swarm services: %w", err)
+	}
+
+	refs := make(map[string]string, len(result.Items))
+
+	for _, svc := range result.Items {
+		if svc.Spec.TaskTemplate.ContainerSpec != nil {
+			refs[svc.ID] = svc.Spec.TaskTemplate.ContainerSpec.Image
+		}
+	}
+
+	return refs, nil
+}
+
+// replacedImageRefs returns the refs in before whose image no ref in after uses,
+// comparing by digest when present so a new tag for the same image is not a replacement.
+func replacedImageRefs(before, after map[string]string) []string {
+	inUse := make(map[string]struct{}, len(after))
+	for _, ref := range after {
+		inUse[imageIdentity(ref)] = struct{}{}
+	}
+
+	var replaced []string
+
+	for _, ref := range before {
+		if _, ok := inUse[imageIdentity(ref)]; !ok {
+			replaced = append(replaced, ref)
+		}
+	}
+
+	slices.Sort(replaced)
+
+	return slices.Compact(replaced)
+}
+
+func imageIdentity(ref string) string {
+	if digest := digestFromReference(ref); digest != "" {
+		return digest
+	}
+
+	return ref
 }

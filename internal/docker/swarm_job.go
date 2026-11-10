@@ -30,7 +30,7 @@ const (
 	swarmOneOffCleanupTimeout = 30 * time.Second
 	maxSwarmServiceNameLength = 63
 	// swarmJobLockDir holds one lock file per named Swarm job service
-	// (e.g. the shared "image-prune" job every stack deployment can trigger).
+	// (e.g. the shared "image-remove" job every stack deployment can trigger).
 	// A plain in-process mutex only serializes callers within a single doco-cd
 	// process; "go test ./..." runs each package as its own process, and
 	// multiple doco-cd replicas can share one Swarm cluster, so without a
@@ -202,14 +202,18 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	return nil
 }
 
-// RunImagePruneJob runs a Docker Swarm global job to prune unused images on all nodes.
-func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli, logs ...*slog.Logger) error {
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, []string{"docker", "image", "prune", "--force"}, "image-prune", logs...)
-}
+// removeImagesScript removes each image by ID because a forced removal by reference
+// only untags an image a running container uses, while by ID the daemon refuses it.
+const removeImagesScript = `docker version >/dev/null || exit 1
+for ref in "$@"; do
+  id=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) || continue
+  docker image rm --force "$id" || true
+done`
 
 // RunImageRemoveJob runs a Docker Swarm global job to remove specified images.
+// A doco-cd replica on another host can supersede a run of the shared job before it removes them.
 func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []string, logs ...*slog.Logger) error {
-	args := append([]string{"docker", "image", "rm", "--force"}, images...)
+	args := append([]string{"sh", "-c", removeImagesScript, "sh"}, images...)
 	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, args, "image-remove", logs...)
 }
 

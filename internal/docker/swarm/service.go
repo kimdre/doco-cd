@@ -196,7 +196,7 @@ func waitForJobIteration(
 }
 
 // waitForJobTaskFailure polls a job service's tasks for terminal failures. A shared job
-// service (e.g. a cluster-wide image-prune job that any concurrent stack deployment can
+// service (e.g. a cluster-wide job that any concurrent stack deployment can
 // trigger) may be re-triggered by another caller while this waits, advancing the service to
 // a newer iteration. That does not mean our own trigger failed - someone else's run simply
 // superseded it - so failures are tracked against whichever iteration is current rather than

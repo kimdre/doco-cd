@@ -109,10 +109,10 @@ These endpoints are only needed when the corresponding setting is enabled.
 - Swarm stack/service management: `GET /services`, `POST /services/{id}/update`, `DELETE /services/{id}`, `DELETE /configs/{id}`, `DELETE /secrets/{id}`
 
 !!! danger "Image pruning in Swarm mode bypasses the proxy"
-    In Swarm mode, `prune_images` runs `docker image prune` inside a global job service that
-    **bind-mounts `/var/run/docker.sock` on every node**. That container talks to the local
-    daemon directly, so your socket proxy does not apply to it, and every node needs the raw
-    socket available. Set `prune_images: false` if this is unacceptable in your environment.
+    In Swarm mode, `prune_images` removes the images a deployment replaced by running
+    `docker image rm` inside a global job service that **bind-mounts `/var/run/docker.sock`
+    on every node**. That container talks to the local daemon directly, so your socket proxy
+    does not apply to it, and every node needs the raw socket available. Set `prune_images: false` if this is unacceptable in your environment.
 
 ### Building images
 
