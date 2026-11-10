@@ -2,7 +2,9 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"maps"
 	"slices"
 	"testing"
 
@@ -14,6 +16,48 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/test"
 )
+
+type serviceImagesTestClient struct {
+	client.APIClient
+	services []swarmTypes.Service
+	err      error
+}
+
+func (c *serviceImagesTestClient) ServiceList(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
+	return client.ServiceListResult{Items: c.services}, c.err
+}
+
+func TestClusterServiceImageRefs(t *testing.T) {
+	t.Parallel()
+
+	withImage := func(id, image string) swarmTypes.Service {
+		svc := swarmTypes.Service{ID: id}
+		svc.Spec.TaskTemplate.ContainerSpec = &swarmTypes.ContainerSpec{Image: image}
+
+		return svc
+	}
+
+	apiClient := &serviceImagesTestClient{services: []swarmTypes.Service{
+		withImage("a", "busybox:1.37@sha256:bbb"),
+		{ID: "no-container-spec"},
+		withImage("b", "nginx:1.27@sha256:ccc"),
+	}}
+
+	got, err := clusterServiceImageRefs(t.Context(), apiClient)
+	if err != nil {
+		t.Fatalf("clusterServiceImageRefs() error = %v", err)
+	}
+
+	want := map[string]string{"a": "busybox:1.37@sha256:bbb", "b": "nginx:1.27@sha256:ccc"}
+	if !maps.Equal(got, want) {
+		t.Errorf("clusterServiceImageRefs() = %v, want %v", got, want)
+	}
+
+	apiClient.err = errors.New("daemon unavailable")
+	if _, err = clusterServiceImageRefs(t.Context(), apiClient); !errors.Is(err, apiClient.err) {
+		t.Errorf("clusterServiceImageRefs() error = %v, want it to wrap %v", err, apiClient.err)
+	}
+}
 
 // TestRemoveReplacedSwarmImages checks that a replaced image is removed even though the old task's stopped container still references it.
 func TestRemoveReplacedSwarmImages(t *testing.T) {
@@ -99,6 +143,15 @@ func TestRemoveReplacedSwarmImages(t *testing.T) {
 		stackLog: logger,
 	}
 
+	// Nothing ran before the first deployment, so no job is started.
+	if err = removeReplacedSwarmImages(ctx, req, nil); err != nil {
+		t.Fatalf("removeReplacedSwarmImages without previous images failed: %v", err)
+	}
+
+	if _, err = apiClient.ImageInspect(ctx, oldRef); err != nil {
+		t.Fatalf("expected %s to be kept without previous images: %v", oldRef, err)
+	}
+
 	if err = removeReplacedSwarmImages(ctx, req, before); err != nil {
 		t.Fatalf("removeReplacedSwarmImages failed: %v", err)
 	}
@@ -176,6 +229,12 @@ func TestReplacedImageRefs(t *testing.T) {
 			before: map[string]string{"app": app136},
 			after:  map[string]string{"svc-a": app137, "svc-b": app136},
 			want:   nil,
+		},
+		{
+			name:   "references without digest",
+			before: map[string]string{"app": "app:1", "web": "web:latest"},
+			after:  map[string]string{"app": "app:2", "web": "web:latest"},
+			want:   []string{"app:1"},
 		},
 		{
 			name:   "several replaced and shared",
