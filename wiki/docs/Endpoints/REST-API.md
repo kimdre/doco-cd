@@ -32,6 +32,8 @@ services:
       API_KEYS: |
         - key: replace-with-a-reader-key
           role: read
+        - key: replace-with-an-inspector-key
+          role: inspect
         - key: replace-with-a-writer-key
           role: write
         - key: replace-with-an-admin-key
@@ -56,9 +58,13 @@ sops encrypt --age <age-public-key> --input-type binary --output-type binary \
 Mount `api-keys.enc` as a secret or file and set `API_KEYS_FILE` to its path
 inside the container. Keep the unencrypted file out of Git.
 
-The keys are loaded at startup. To rotate a key, add its replacement and
-restart doco-cd, update clients, then remove the old key and restart again.
-Changes to the environment or file do not take effect until restart.
+Doco-CD loads the keys only at startup. To rotate a key, add its replacement
+and recreate the doco-cd container, update clients, then remove the old key and
+recreate the container again. A restart does not apply changes to `API_KEYS`
+or other environment variables. Recreate the container instead, for example
+with `docker compose up -d` or a [self-update](../Advanced/Self-Updating.md)
+if doco-cd manages its own container. Changes to the content of a mounted
+`API_KEYS_FILE` take effect at the next start.
 
 !!! warning "Migration from API_SECRET"
     `API_SECRET` and `API_SECRET_FILE` are no longer supported. Remove both
@@ -83,21 +89,30 @@ profiling, and public OpenAPI endpoints have separate access rules.
 
 ### Roles
 
-Roles are cumulative: `write` includes `read`, and `full` includes both.
+Roles are cumulative: `inspect` includes `read`, `write` includes `inspect`,
+and `full` includes all other roles.
 
 | Minimum role  | REST operations |
 |---------------|-----------------|
-| `read`        | All GET operations under `/v1/api/`, including projects, stacks, deployment runs, scheduled jobs, and sync windows. |
+| `read`        | GET operations for deployment runs, scheduled jobs, and sync windows. |
+| `inspect`     | GET operations that list or get Compose projects and Swarm stacks. |
 | `write`       | POST operations to control projects or stacks, trigger scheduled jobs or polls, and compact Git mirrors. |
 | `full`        | DELETE operations that remove Compose projects or Swarm stacks. |
+
+!!! warning "Inspect keys can expose secrets"
+    Project and stack responses contain the raw Docker configuration. This
+    includes container commands, labels, and mounts, and the environment
+    variables of Swarm services. These values can contain secrets. Give the
+    `inspect` role only to trusted clients. Use the `read` role for clients
+    that only need deployment status.
 
 These roles also control [MCP tools](MCP-Server.md#available-tools).
 They restrict direct API operations, not the effects of deployments or jobs.
 For example, a write key can trigger a poll containing `destroy: true` or run
 a configured job that executes arbitrary commands, which can indirectly
 destroy data. The `full` role additionally allows direct project and stack
-removal. Treat write and full keys as privileged credentials. Read keys can
-expose deployment metadata.
+removal. Treat inspect, write, and full keys as privileged credentials. Read
+keys can expose deployment metadata.
 
 ## Query Parameters
 

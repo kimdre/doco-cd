@@ -45,9 +45,10 @@ func TestGetConfigAPIKeys(t *testing.T) {
 		{name: "blank document", input: " \n", wantErr: "YAML list"},
 		{
 			name:  "multiple roles",
-			input: "- key: sensitive-test-key\n  role: read\n- key: writer\n  role: write\n- key: admin\n  role: full",
+			input: "- key: sensitive-test-key\n  role: read\n- key: inspector\n  role: inspect\n- key: writer\n  role: write\n- key: admin\n  role: full",
 			want: restapi.Keyring{
 				{Key: secret, Role: restapi.RoleRead},
+				{Key: "inspector", Role: restapi.RoleInspect},
 				{Key: "writer", Role: restapi.RoleWrite},
 				{Key: "admin", Role: restapi.RoleFull},
 			},

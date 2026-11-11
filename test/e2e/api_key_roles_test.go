@@ -59,15 +59,17 @@ func TestAPIKeyRoles(t *testing.T) {
 	t.Parallel()
 
 	const (
-		project = "e2e-api-key-roles"
-		reader  = "e2e-api-reader"
-		writer  = "e2e-api-writer"
-		admin   = "e2e-api-admin"
+		project   = "e2e-api-key-roles"
+		reader    = "e2e-api-reader"
+		inspector = "e2e-api-inspector"
+		writer    = "e2e-api-writer"
+		admin     = "e2e-api-admin"
 	)
 
 	h := NewHarness(t, "api-key-roles")
 	h.EnableAPIKeys(admin, restapi.Keyring{
 		{Key: reader, Role: restapi.RoleRead},
+		{Key: inspector, Role: restapi.RoleInspect},
 		{Key: writer, Role: restapi.RoleWrite},
 		{Key: admin, Role: restapi.RoleFull},
 	})
@@ -86,11 +88,13 @@ func TestAPIKeyRoles(t *testing.T) {
 	h.APIRequestWithKey(http.MethodGet, projectPath, "", http.StatusUnauthorized)
 	h.APIRequestWithKey(http.MethodGet, projectPath, "invalid", http.StatusUnauthorized)
 
-	for _, key := range []string{reader, writer, admin} {
+	for _, key := range []string{inspector, writer, admin} {
 		h.APIRequestWithKey(http.MethodGet, projectPath, key, http.StatusOK)
 	}
 
+	h.APIRequestWithKey(http.MethodGet, projectPath, reader, http.StatusForbidden)
 	h.APIRequestWithKey(http.MethodPost, projectPath+"/stop", reader, http.StatusForbidden)
+	h.APIRequestWithKey(http.MethodPost, projectPath+"/stop", inspector, http.StatusForbidden)
 	h.APIRequestWithKey(http.MethodDelete, projectPath, reader, http.StatusForbidden)
 	h.APIRequestWithKey(http.MethodDelete, projectPath, writer, http.StatusForbidden)
 
@@ -102,7 +106,8 @@ func TestAPIKeyRoles(t *testing.T) {
 		key       string
 		wantCount int
 	}{
-		{reader, 9},
+		{reader, 5},
+		{inspector, 9},
 		{writer, 14},
 		{admin, 16},
 	} {
@@ -120,11 +125,21 @@ func TestAPIKeyRoles(t *testing.T) {
 
 			if testCase.key == reader {
 				_, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{
+					Name:      "get_project",
+					Arguments: map[string]any{"project_name": project},
+				})
+				if err == nil || !strings.Contains(strings.ToLower(err.Error()), "unknown tool") {
+					t.Fatalf("reader get_project call = %v, want unknown tool", err)
+				}
+			}
+
+			if testCase.key == reader || testCase.key == inspector {
+				_, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{
 					Name:      "control_project",
 					Arguments: map[string]any{"project_name": project, "action": "stop"},
 				})
 				if err == nil || !strings.Contains(strings.ToLower(err.Error()), "unknown tool") {
-					t.Fatalf("reader control call = %v, want unknown tool", err)
+					t.Fatalf("%s control call = %v, want unknown tool", testCase.key, err)
 				}
 			}
 
@@ -165,16 +180,18 @@ func TestAPIKeyRolesSwarm(t *testing.T) {
 	t.Parallel()
 
 	const (
-		stack  = "e2e-api-key-roles-swarm"
-		reader = "e2e-swarm-reader"
-		writer = "e2e-swarm-writer"
-		admin  = "e2e-swarm-admin"
+		stack     = "e2e-api-key-roles-swarm"
+		reader    = "e2e-swarm-reader"
+		inspector = "e2e-swarm-inspector"
+		writer    = "e2e-swarm-writer"
+		admin     = "e2e-swarm-admin"
 	)
 
 	h := NewHarness(t, "api-key-roles-swarm")
 	h.EnableRemoteSwarmContext()
 	h.EnableAPIKeys(admin, restapi.Keyring{
 		{Key: reader, Role: restapi.RoleRead},
+		{Key: inspector, Role: restapi.RoleInspect},
 		{Key: writer, Role: restapi.RoleWrite},
 		{Key: admin, Role: restapi.RoleFull},
 	})
@@ -202,11 +219,13 @@ func TestAPIKeyRolesSwarm(t *testing.T) {
 	h.APIRequestWithKey(http.MethodGet, stackPath+"?context=remote", "", http.StatusUnauthorized)
 	h.APIRequestWithKey(http.MethodGet, stackPath+"?context=remote", "invalid", http.StatusUnauthorized)
 
-	for _, key := range []string{reader, writer, admin} {
+	for _, key := range []string{inspector, writer, admin} {
 		h.APIRequestWithKey(http.MethodGet, stackPath+"?context=remote", key, http.StatusOK)
 	}
 
+	h.APIRequestWithKey(http.MethodGet, stackPath+"?context=remote", reader, http.StatusForbidden)
 	h.APIRequestWithKey(http.MethodPost, stackPath+"/scale?context=remote&replicas=0&wait=false", reader, http.StatusForbidden)
+	h.APIRequestWithKey(http.MethodPost, stackPath+"/scale?context=remote&replicas=0&wait=false", inspector, http.StatusForbidden)
 	h.APIRequestWithKey(http.MethodDelete, stackPath+"?context=remote", reader, http.StatusForbidden)
 	h.APIRequestWithKey(http.MethodDelete, stackPath+"?context=remote", writer, http.StatusForbidden)
 	waitReplicas(1)
@@ -215,8 +234,10 @@ func TestAPIKeyRolesSwarm(t *testing.T) {
 		key  string
 		tool string
 	}{
+		{reader, "get_stack"},
 		{reader, "control_stack"},
 		{reader, "remove_stack"},
+		{inspector, "control_stack"},
 		{writer, "remove_stack"},
 	} {
 		t.Run(testCase.key+"/"+testCase.tool, func(t *testing.T) {

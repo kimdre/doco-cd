@@ -22,6 +22,7 @@ func TestRESTOperationPermissions(t *testing.T) {
 
 	keys := restapi.Keyring{
 		{Key: "reader", Role: restapi.RoleRead},
+		{Key: "inspector", Role: restapi.RoleInspect},
 		{Key: "writer", Role: restapi.RoleWrite},
 		{Key: "admin", Role: restapi.RoleFull},
 	}
@@ -40,10 +41,10 @@ func TestRESTOperationPermissions(t *testing.T) {
 		{"list runs", http.MethodGet, "/runs?limit=0", restapi.RoleRead, h.GetDeploymentRunsHandler},
 		{"get run", http.MethodGet, "/run/", restapi.RoleRead, h.GetDeploymentRunHandler},
 		{"list jobs", http.MethodGet, "/jobs?context=unknown", restapi.RoleRead, h.GetScheduledJobsHandler},
-		{"list projects", http.MethodGet, "/projects?context=unknown", restapi.RoleRead, h.GetProjectsApiHandler},
-		{"get project", http.MethodGet, "/project/", restapi.RoleRead, h.ProjectApiHandler},
-		{"list stacks", http.MethodGet, "/stacks?context=unknown", restapi.RoleRead, h.GetStacksApiHandler},
-		{"get stack", http.MethodGet, "/stack/", restapi.RoleRead, h.StackApiHandler},
+		{"list projects", http.MethodGet, "/projects?context=unknown", restapi.RoleInspect, h.GetProjectsApiHandler},
+		{"get project", http.MethodGet, "/project/", restapi.RoleInspect, h.ProjectApiHandler},
+		{"list stacks", http.MethodGet, "/stacks?context=unknown", restapi.RoleInspect, h.GetStacksApiHandler},
+		{"get stack", http.MethodGet, "/stack/", restapi.RoleInspect, h.StackApiHandler},
 		{"list sync windows", http.MethodGet, "/sync-windows?origin=invalid", restapi.RoleRead, h.GetSyncWindowsHandler},
 		{"trigger job", http.MethodPost, "/job/run", restapi.RoleWrite, h.TriggerScheduledJobHandler},
 		{"control project", http.MethodPost, "/project/start", restapi.RoleWrite, h.ProjectActionApiHandler},
@@ -63,6 +64,7 @@ func TestRESTOperationPermissions(t *testing.T) {
 			{"missing", "", ""},
 			{"invalid", "invalid", ""},
 			{"read", "reader", restapi.RoleRead},
+			{"inspect", "inspector", restapi.RoleInspect},
 			{"write", "writer", restapi.RoleWrite},
 			{"full", "admin", restapi.RoleFull},
 		} {
@@ -105,6 +107,7 @@ func TestRESTWriteAccessRunsMaintenance(t *testing.T) {
 	h := &Handler{
 		appConfig: &app.Config{APIKeys: restapi.Keyring{
 			{Key: "reader", Role: restapi.RoleRead},
+			{Key: "inspector", Role: restapi.RoleInspect},
 			{Key: "writer", Role: restapi.RoleWrite},
 			{Key: "admin", Role: restapi.RoleFull},
 		}},
@@ -118,6 +121,7 @@ func TestRESTWriteAccessRunsMaintenance(t *testing.T) {
 		wantCalls int
 	}{
 		{"reader", http.StatusForbidden, 0},
+		{"inspector", http.StatusForbidden, 0},
 		{"writer", http.StatusAccepted, 1},
 		{"admin", http.StatusAccepted, 2},
 	} {
@@ -139,6 +143,7 @@ func TestRESTRemovalRejectsRestrictedKeysBeforeDocker(t *testing.T) {
 	h := &Handler{
 		appConfig: &app.Config{APIKeys: restapi.Keyring{
 			{Key: "reader", Role: restapi.RoleRead},
+			{Key: "inspector", Role: restapi.RoleInspect},
 			{Key: "writer", Role: restapi.RoleWrite},
 		}},
 		log: logger.New(logger.LevelCritical),
@@ -152,7 +157,7 @@ func TestRESTRemovalRejectsRestrictedKeysBeforeDocker(t *testing.T) {
 		{"project", "projectName", h.ProjectApiHandler},
 		{"stack", "stackName", h.StackApiHandler},
 	} {
-		for _, key := range []string{"reader", "writer"} {
+		for _, key := range []string{"reader", "inspector", "writer"} {
 			t.Run(endpoint.name+"/"+key, func(t *testing.T) {
 				t.Parallel()
 
@@ -250,12 +255,12 @@ func TestRESTOpenAPIPermissions(t *testing.T) {
 		opGetDeploymentRun:     restapi.RoleRead,
 		opListScheduledJobs:    restapi.RoleRead,
 		opTriggerScheduledJob:  restapi.RoleWrite,
-		opListComposeProjects:  restapi.RoleRead,
-		opGetComposeProject:    restapi.RoleRead,
+		opListComposeProjects:  restapi.RoleInspect,
+		opGetComposeProject:    restapi.RoleInspect,
 		opDeleteComposeProject: restapi.RoleFull,
 		opRunComposeProject:    restapi.RoleWrite,
-		opListSwarmStacks:      restapi.RoleRead,
-		opGetSwarmStack:        restapi.RoleRead,
+		opListSwarmStacks:      restapi.RoleInspect,
+		opGetSwarmStack:        restapi.RoleInspect,
 		opDeleteSwarmStack:     restapi.RoleFull,
 		opRunSwarmStack:        restapi.RoleWrite,
 		opTriggerPoll:          restapi.RoleWrite,

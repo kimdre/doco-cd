@@ -38,11 +38,12 @@ x-api-key: your-api-key
 ```
 
 !!! warning
-    Write and full keys can deploy, stop, restart, or scale workloads. A write
-    key can also trigger a deployment that indirectly destroys data or a job
-    that runs arbitrary commands. Only full keys can directly remove projects
-    or stacks. Protect all API keys, use HTTPS, and do not expose `/mcp` to
-    untrusted clients.
+    Inspect keys can read the raw Docker configuration of projects and
+    stacks, which can contain secrets. Write and full keys can deploy, stop,
+    restart, or scale workloads. A write key can also trigger a deployment
+    that indirectly destroys data or a job that runs arbitrary commands. Only
+    full keys can directly remove projects or stacks. Protect all API keys,
+    use HTTPS, and do not expose `/mcp` to untrusted clients.
 
 The server authenticates every request. It advertises only the tools permitted
 by the supplied key's role, and direct calls to other tools are unavailable.
@@ -125,12 +126,12 @@ Roles are cumulative; see [REST API roles](REST-API.md#roles).
 | `get_deployment_run`    | `read`        | `job_id`                                                                                       | Get a deployment run by job ID.                                                                                      |
 | `list_scheduled_jobs`   | `read`        | `stack` (filter), `context`                                                                    | List scheduler-managed jobs and their latest tracked run, optionally filtered by stack or Compose project.           |
 | `list_sync_windows`     | `read`        | `repository`, `deployment`, `context`, `manual`                                                | List [sync windows](../Advanced/Sync-Windows.md) and, if a target is given, whether it may be deployed right now.    |
-| `list_projects`         | `read`        | `all` (include stopped), `context`                                                             | List Docker Compose projects.                                                                                        |
-| `get_project`           | `read`        | `project_name`, `context`                                                                      | Get the containers of one Docker Compose project.                                                                    |
+| `list_projects`         | `inspect`     | `all` (include stopped), `context`                                                             | List Docker Compose projects.                                                                                        |
+| `get_project`           | `inspect`     | `project_name`, `context`                                                                      | Get the containers of one Docker Compose project.                                                                    |
 | `control_project`       | `write`       | `project_name`, `action` (start/stop/restart), `context`, `timeout`                            | Start, stop, or restart a Docker Compose project.                                                                    |
 | `destroy_project`       | `full`        | `project_name`, `volumes`, `images`, `context`                                                 | Remove a Docker Compose project and optionally its volumes and images. Reconciliation may recreate managed projects. |
-| `list_stacks`           | `read`        | `context`                                                                                      | List Docker Swarm stacks and their services.                                                                         |
-| `get_stack`             | `read`        | `stack_name`, `context`                                                                        | Get the services of one Docker Swarm stack.                                                                          |
+| `list_stacks`           | `inspect`     | `context`                                                                                      | List Docker Swarm stacks and their services.                                                                         |
+| `get_stack`             | `inspect`     | `stack_name`, `context`                                                                        | Get the services of one Docker Swarm stack.                                                                          |
 | `control_stack`         | `write`       | `stack_name`, `action` (scale/restart/run), `service`, `replicas`                              | Scale, restart, or run matching services in a Docker Swarm stack.                                                    |
 | `remove_stack`          | `full`        | `stack_name`, `context`                                                                        | Remove a Docker Swarm stack.                                                                                         |
 | `trigger_scheduled_job` | `write`       | `job_name`, `stack`, `context`, `wait` (default `true`)                                        | Trigger one configured scheduled job immediately.                                                                    |

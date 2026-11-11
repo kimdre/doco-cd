@@ -102,7 +102,8 @@ change the image and the API configuration in the same self-update commit:
    value in the new list with the `full` role. Add separate lower-role
    keys as needed. Protect the list as a secret.
 4. After the successor is healthy, migrate clients to their intended keys.
-   Remove the old key and restart doco-cd when it is no longer needed.
+   When the old key is no longer needed, remove it in another self-update
+   commit. A restart does not apply changes to the environment.
 
 The predecessor and successor can overlap while each uses its own
 configuration. If the upgrade fails, self-update restores the predecessor and

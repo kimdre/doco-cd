@@ -112,9 +112,9 @@ func newHandler(dependencies Dependencies) *Handler {
 	}
 
 	mcpLogger := slog.New(&sdkLogHandler{next: h.log.Handler()})
-	servers := make(map[restapi.Role]*sdkmcp.Server, 3)
+	servers := make(map[restapi.Role]*sdkmcp.Server, 4)
 
-	for _, role := range []restapi.Role{restapi.RoleRead, restapi.RoleWrite, restapi.RoleFull} {
+	for _, role := range []restapi.Role{restapi.RoleRead, restapi.RoleInspect, restapi.RoleWrite, restapi.RoleFull} {
 		server := sdkmcp.NewServer(
 			&sdkmcp.Implementation{Name: "doco-cd", Version: dependencies.Version},
 			&sdkmcp.ServerOptions{Logger: mcpLogger},
@@ -149,8 +149,12 @@ func (h *Handler) registerTools(server *sdkmcp.Server, role restapi.Role) {
 	h.addRunTools(server)
 	h.addScheduledJobReadTool(server)
 	h.addSyncWindowTool(server)
-	h.addProjectReadTools(server)
-	h.addStackReadTools(server)
+
+	// Project and stack details can contain secrets, for example Swarm service env.
+	if role.Allows(restapi.RoleInspect) {
+		h.addProjectReadTools(server)
+		h.addStackReadTools(server)
+	}
 
 	if role.Allows(restapi.RoleWrite) {
 		h.addProjectTools(server, role)

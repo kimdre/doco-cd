@@ -30,9 +30,11 @@ const (
 func roleForOperation(operation apiOperation) restapi.Role {
 	switch operation {
 	case opListDeploymentRuns, opGetDeploymentRun, opListScheduledJobs,
-		opListComposeProjects, opGetComposeProject, opListSwarmStacks,
-		opGetSwarmStack, opListSyncWindows:
+		opListSyncWindows:
 		return restapi.RoleRead
+	case opListComposeProjects, opGetComposeProject, opListSwarmStacks,
+		opGetSwarmStack:
+		return restapi.RoleInspect
 	case opTriggerScheduledJob, opRunComposeProject, opRunSwarmStack,
 		opTriggerPoll, opCompactMirrors:
 		return restapi.RoleWrite

@@ -24,16 +24,20 @@ var (
 type Role string
 
 const (
-	RoleRead  Role = "read"
-	RoleWrite Role = "write"
-	RoleFull  Role = "full"
+	RoleRead Role = "read"
+	// RoleInspect also allows project and stack details, which can contain secrets.
+	RoleInspect Role = "inspect"
+	RoleWrite   Role = "write"
+	RoleFull    Role = "full"
 )
 
 // Allows reports whether the role permits the required operation.
 func (role Role) Allows(required Role) bool {
 	switch required {
 	case RoleRead:
-		return role == RoleRead || role == RoleWrite || role == RoleFull
+		return role == RoleRead || role == RoleInspect || role == RoleWrite || role == RoleFull
+	case RoleInspect:
+		return role == RoleInspect || role == RoleWrite || role == RoleFull
 	case RoleWrite:
 		return role == RoleWrite || role == RoleFull
 	case RoleFull:
@@ -66,7 +70,7 @@ func (keys Keyring) Validate() error {
 		}
 
 		if !key.Role.Allows(RoleRead) {
-			return fmt.Errorf("API_KEYS entry %d: role must be read, write, or full", i+1)
+			return fmt.Errorf("API_KEYS entry %d: role must be read, inspect, write, or full", i+1)
 		}
 
 		if _, ok := seen[key.Key]; ok {

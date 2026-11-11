@@ -42,6 +42,7 @@ func newPermissionTestServer(t *testing.T) (*httptest.Server, *permissionRuns) {
 		Version: "test",
 		APIKeys: restapi.Keyring{
 			{Key: "reader", Role: restapi.RoleRead},
+			{Key: "inspector", Role: restapi.RoleInspect},
 			{Key: "writer", Role: restapi.RoleWrite},
 			{Key: "admin", Role: restapi.RoleFull},
 		},
@@ -64,10 +65,10 @@ func TestMCPRoleCatalogsAndCalls(t *testing.T) {
 		"get_deployment_run":    restapi.RoleRead,
 		"list_scheduled_jobs":   restapi.RoleRead,
 		"list_sync_windows":     restapi.RoleRead,
-		"list_projects":         restapi.RoleRead,
-		"get_project":           restapi.RoleRead,
-		"list_stacks":           restapi.RoleRead,
-		"get_stack":             restapi.RoleRead,
+		"list_projects":         restapi.RoleInspect,
+		"get_project":           restapi.RoleInspect,
+		"list_stacks":           restapi.RoleInspect,
+		"get_stack":             restapi.RoleInspect,
 		"control_project":       restapi.RoleWrite,
 		"control_stack":         restapi.RoleWrite,
 		"trigger_scheduled_job": restapi.RoleWrite,
@@ -91,7 +92,8 @@ func TestMCPRoleCatalogsAndCalls(t *testing.T) {
 		role      restapi.Role
 		wantCount int
 	}{
-		{"reader", restapi.RoleRead, 9},
+		{"reader", restapi.RoleRead, 5},
+		{"inspector", restapi.RoleInspect, 9},
 		{"writer", restapi.RoleWrite, 14},
 		{"admin", restapi.RoleFull, 16},
 	} {
@@ -199,7 +201,8 @@ func TestMCPRoleIsSelectedForEveryRequest(t *testing.T) {
 		wantCount int
 	}{
 		{"admin", 16},
-		{"reader", 9},
+		{"reader", 5},
+		{"inspector", 9},
 		{"writer", 14},
 		{"admin", 16},
 	} {
@@ -245,7 +248,8 @@ func TestMCPRoleCatalogsAreConcurrent(t *testing.T) {
 		key       string
 		wantCount int
 	}{
-		{"reader", 9},
+		{"reader", 5},
+		{"inspector", 9},
 		{"writer", 14},
 		{"admin", 16},
 	} {

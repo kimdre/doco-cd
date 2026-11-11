@@ -16,12 +16,19 @@ func TestRoleAllows(t *testing.T) {
 		wantAllowed bool
 	}{
 		{RoleRead, RoleRead, true},
+		{RoleRead, RoleInspect, false},
 		{RoleRead, RoleWrite, false},
 		{RoleRead, RoleFull, false},
+		{RoleInspect, RoleRead, true},
+		{RoleInspect, RoleInspect, true},
+		{RoleInspect, RoleWrite, false},
+		{RoleInspect, RoleFull, false},
 		{RoleWrite, RoleRead, true},
+		{RoleWrite, RoleInspect, true},
 		{RoleWrite, RoleWrite, true},
 		{RoleWrite, RoleFull, false},
 		{RoleFull, RoleRead, true},
+		{RoleFull, RoleInspect, true},
 		{RoleFull, RoleWrite, true},
 		{RoleFull, RoleFull, true},
 		{"unknown", RoleRead, false},
@@ -43,6 +50,7 @@ func TestKeyringAuthenticate(t *testing.T) {
 
 	keys := Keyring{
 		{Key: "reader", Role: RoleRead},
+		{Key: "inspector", Role: RoleInspect},
 		{Key: "writer", Role: RoleWrite},
 		{Key: "admin", Role: RoleFull},
 		{Key: "invalid-role", Role: "unknown"},
@@ -56,6 +64,7 @@ func TestKeyringAuthenticate(t *testing.T) {
 		ok   bool
 	}{
 		{"read", "reader", RoleRead, true},
+		{"inspect", "inspector", RoleInspect, true},
 		{"write", "writer", RoleWrite, true},
 		{"full", "admin", RoleFull, true},
 		{"missing", "", "", false},
@@ -88,7 +97,7 @@ func TestKeyringValidate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "empty", keys: nil},
-		{name: "valid", keys: Keyring{{Key: secret, Role: RoleRead}, {Key: "other", Role: RoleWrite}}},
+		{name: "valid", keys: Keyring{{Key: secret, Role: RoleRead}, {Key: "inspector", Role: RoleInspect}, {Key: "other", Role: RoleWrite}}},
 		{name: "valid spaces and tabs", keys: Keyring{{Key: "key with\ttab", Role: RoleRead}}},
 		{name: "valid non-ASCII", keys: Keyring{{Key: "key-\u00e4", Role: RoleRead}}},
 		{name: "empty key", keys: Keyring{{Role: RoleRead}}, wantErr: "key must not be empty"},
