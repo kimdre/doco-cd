@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"slices"
 
+	distreference "github.com/distribution/reference"
 	"github.com/moby/moby/client"
 )
 
@@ -138,19 +139,39 @@ func clusterServiceImageRefs(ctx context.Context, apiClient client.APIClient) (m
 	return refs, nil
 }
 
-// replacedImageRefs returns the refs in before whose image no ref in after uses,
-// comparing by digest when present so a new tag for the same image is not a replacement.
+// replacedImageRefs returns a repo@digest ref for each image in before that no service in after uses.
+// Only digest-pinned refs are candidates, since a tag can move before the removal runs, and a
+// candidate is kept while a service references its repository without a digest.
 func replacedImageRefs(before, after map[string]string) []string {
 	inUse := make(map[string]struct{}, len(after))
+	unpinnedRepos := make(map[string]struct{})
+
 	for _, ref := range after {
-		inUse[imageIdentity(ref)] = struct{}{}
+		repo, digest, ok := parseImageRef(ref)
+		if !ok {
+			return nil
+		}
+
+		if digest == "" {
+			unpinnedRepos[repo] = struct{}{}
+		} else {
+			inUse[digest] = struct{}{}
+		}
 	}
 
 	var replaced []string
 
 	for _, ref := range before {
-		if _, ok := inUse[imageIdentity(ref)]; !ok {
-			replaced = append(replaced, ref)
+		repo, digest, ok := parseImageRef(ref)
+		if !ok || digest == "" {
+			continue
+		}
+
+		_, used := inUse[digest]
+		_, ambiguous := unpinnedRepos[repo]
+
+		if !used && !ambiguous {
+			replaced = append(replaced, repo+"@"+digest)
 		}
 	}
 
@@ -159,10 +180,15 @@ func replacedImageRefs(before, after map[string]string) []string {
 	return slices.Compact(replaced)
 }
 
-func imageIdentity(ref string) string {
-	if digest := digestFromReference(ref); digest != "" {
-		return digest
+func parseImageRef(ref string) (repo, digest string, ok bool) {
+	named, err := distreference.ParseNormalizedNamed(ref)
+	if err != nil {
+		return "", "", false
 	}
 
-	return ref
+	if canonical, isCanonical := named.(distreference.Canonical); isCanonical {
+		digest = canonical.Digest().String()
+	}
+
+	return distreference.FamiliarName(named), digest, true
 }

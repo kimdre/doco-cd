@@ -3,12 +3,14 @@ package docker
 import (
 	"context"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/containerd/errdefs"
 	containerTypes "github.com/moby/moby/api/types/container"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -113,66 +115,91 @@ func TestRunImageRemoveJob(t *testing.T) {
 		t.Skip("Swarm mode is not enabled, skipping test")
 	}
 
-	// Pinned tags no other test pulls, so removing them cannot race another test.
-	const (
-		replacedImage = "busybox:1.36.1"
-		runningImage  = "busybox:1.35.0"
-	)
+	repo := "doco-cd-test/" + test.ConvertTestName(t.Name())
+	replacedRef := repo + ":replaced"
+	runningRef := repo + ":running"
 
-	replacedRef := pullImageWithDigestRef(ctx, t, apiClient, replacedImage)
-	runningRef := pullImageWithDigestRef(ctx, t, apiClient, runningImage)
-
-	// Registered first so it runs after the container cleanups.
-	t.Cleanup(func() {
-		for _, image := range []string{replacedImage, runningImage} {
-			_, _ = apiClient.ImageRemove(context.Background(), image, client.ImageRemoveOptions{})
-		}
-	})
+	commitUniqueTestImage(ctx, t, apiClient, replacedRef)
+	commitUniqueTestImage(ctx, t, apiClient, runningRef)
 
 	// A stopped container stands in for a task Swarm keeps in its task history.
-	createImageRemoveTestContainer(ctx, t, apiClient, replacedImage, false)
-	createImageRemoveTestContainer(ctx, t, apiClient, runningImage, true)
+	createImageRemoveTestContainer(ctx, t, apiClient, replacedRef, false)
+	createImageRemoveTestContainer(ctx, t, apiClient, runningRef, true)
 
-	missingRef := "busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+	missingRef := repo + "@sha256:" + strings.Repeat("0", 64)
+	retry := imageRemoveRetry{attempts: 2, period: time.Second}
+	name := imageRemoveJobPrefix + test.ConvertTestName(t.Name())
 
-	if err = RunImageRemoveJob(ctx, dockerCli, []string{replacedRef, runningRef, missingRef}); err != nil {
-		t.Fatalf("RunImageRemoveJob failed: %v", err)
+	if err = runImageRemoveJob(ctx, dockerCli, name, []string{replacedRef, runningRef, missingRef}, retry); err != nil {
+		t.Fatalf("runImageRemoveJob failed: %v", err)
 	}
 
 	if _, err = apiClient.ImageInspect(ctx, replacedRef); !errdefs.IsNotFound(err) {
 		t.Errorf("expected %s to be removed, inspect error: %v", replacedRef, err)
 	}
 
-	for _, ref := range []string{runningRef, runningImage} {
-		if _, err = apiClient.ImageInspect(ctx, ref); err != nil {
-			t.Errorf("expected %s used by a running container to be kept: %v", ref, err)
-		}
+	if _, err = apiClient.ImageInspect(ctx, runningRef); err != nil {
+		t.Errorf("expected %s used by a running container to be kept: %v", runningRef, err)
+	}
+
+	assertSwarmServiceRemoved(ctx, t, apiClient, name)
+
+	badName := name + "-invalid"
+
+	err = runImageRemoveJob(ctx, dockerCli, badName, []string{"Invalid::Ref"}, retry)
+	if err == nil {
+		t.Error("expected an invalid reference to fail the job")
+	}
+
+	assertSwarmServiceRemoved(ctx, t, apiClient, badName)
+}
+
+func assertSwarmServiceRemoved(ctx context.Context, t *testing.T, apiClient client.APIClient, name string) {
+	t.Helper()
+
+	if _, err := apiClient.ServiceInspect(ctx, name, client.ServiceInspectOptions{}); !errdefs.IsNotFound(err) {
+		t.Errorf("expected job service %s to be removed after the run, inspect error: %v", name, err)
 	}
 }
 
-// pullImageWithDigestRef pulls image and returns it in the tag@digest form Swarm stores in service specs.
-func pullImageWithDigestRef(ctx context.Context, t *testing.T, apiClient client.APIClient, image string) string {
+// commitUniqueTestImage commits busybox:latest as a new image tagged ref, so removing it by ID
+// cannot touch an image another test or workload on the daemon uses.
+func commitUniqueTestImage(ctx context.Context, t *testing.T, apiClient client.APIClient, ref string) {
 	t.Helper()
 
-	reader, err := apiClient.ImagePull(ctx, image, client.ImagePullOptions{})
+	const base = "busybox:latest"
+
+	if _, err := apiClient.ImageInspect(ctx, base); err != nil {
+		reader, pullErr := apiClient.ImagePull(ctx, base, client.ImagePullOptions{})
+		if pullErr != nil {
+			t.Skipf("cannot pull %s: %v", base, pullErr)
+		}
+
+		_, _ = io.Copy(io.Discard, reader)
+		_ = reader.Close()
+	}
+
+	created, err := apiClient.ContainerCreate(ctx, client.ContainerCreateOptions{Config: &containerTypes.Config{Image: base}})
 	if err != nil {
-		t.Skipf("cannot pull %s: %v", image, err)
+		t.Fatalf("failed to create container from %s: %v", base, err)
 	}
 
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
+	defer func() {
+		_, _ = apiClient.ContainerRemove(context.WithoutCancel(ctx), created.ID, client.ContainerRemoveOptions{Force: true})
+	}()
 
-	inspect, err := apiClient.ImageInspect(ctx, image)
+	committed, err := apiClient.ContainerCommit(ctx, created.ID, client.ContainerCommitOptions{
+		Reference: ref,
+		Changes:   []string{"LABEL cd.doco.test.image=" + ref},
+	})
 	if err != nil {
-		t.Fatalf("failed to inspect %s: %v", image, err)
+		t.Fatalf("failed to commit %s: %v", ref, err)
 	}
 
-	digest := digestFromRepoDigests(inspect.RepoDigests)
-	if digest == "" {
-		t.Fatalf("%s has no repo digest", image)
-	}
-
-	return image + "@" + digest
+	// Registered before the containers that use it, so it runs after their cleanups.
+	t.Cleanup(func() {
+		_, _ = apiClient.ImageRemove(context.WithoutCancel(ctx), committed.ID, client.ImageRemoveOptions{Force: true})
+	})
 }
 
 func createImageRemoveTestContainer(ctx context.Context, t *testing.T, apiClient client.APIClient, image string, start bool) {
@@ -183,7 +210,7 @@ func createImageRemoveTestContainer(ctx context.Context, t *testing.T, apiClient
 			Image: image,
 			Cmd:   []string{"sleep", "300"},
 		},
-		Name: test.ConvertTestName(t.Name()) + "-" + strings.NewReplacer(":", "-", ".", "-").Replace(image),
+		Name: test.ConvertTestName(t.Name()) + "-" + strings.NewReplacer("/", "-", ":", "-", ".", "-").Replace(image),
 	})
 	if err != nil {
 		t.Fatalf("failed to create container from %s: %v", image, err)
@@ -199,5 +226,52 @@ func createImageRemoveTestContainer(ctx context.Context, t *testing.T, apiClient
 
 	if _, err = apiClient.ContainerStart(ctx, result.ID, client.ContainerStartOptions{}); err != nil {
 		t.Fatalf("failed to start container from %s: %v", image, err)
+	}
+}
+
+type staleJobsTestClient struct {
+	client.APIClient
+	services []swarmTypes.Service
+	removed  []string
+}
+
+func (c *staleJobsTestClient) ServiceList(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
+	return client.ServiceListResult{Items: c.services}, nil
+}
+
+func (c *staleJobsTestClient) ServiceRemove(_ context.Context, id string, _ client.ServiceRemoveOptions) (client.ServiceRemoveResult, error) {
+	c.removed = append(c.removed, id)
+	return client.ServiceRemoveResult{}, nil
+}
+
+func TestRemoveStaleImageRemoveJobs(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	old := now.Add(-2 * staleImageRemoveJobAge)
+	recent := now.Add(-time.Minute)
+
+	service := func(id, name, trigger string, updatedAt time.Time) swarmTypes.Service {
+		svc := swarmTypes.Service{ID: id}
+		svc.UpdatedAt = updatedAt
+		svc.Spec.Name = name
+		svc.Spec.Labels = map[string]string{DocoCDLabels.Deployment.Trigger: trigger}
+
+		return svc
+	}
+
+	apiClient := &staleJobsTestClient{services: []swarmTypes.Service{
+		service("leftover", imageRemoveJobPrefix+"1", imageRemoveJobTitle, old),
+		service("running", imageRemoveJobPrefix+"2", imageRemoveJobTitle, recent),
+		service("legacy", legacyImagePruneJobName, "image-prune", old),
+		service("legacy-in-use", legacyImagePruneJobName, "image-prune", recent),
+		service("other-trigger", imageRemoveJobPrefix+"3", "webhook", old),
+		service("stack-service", "app_image-remove-worker", imageRemoveJobTitle, old),
+	}}
+
+	removeStaleImageRemoveJobs(t.Context(), apiClient, now, nil)
+
+	if want := []string{"leftover", "legacy"}; !slices.Equal(apiClient.removed, want) {
+		t.Errorf("removed services = %v, want %v", apiClient.removed, want)
 	}
 }

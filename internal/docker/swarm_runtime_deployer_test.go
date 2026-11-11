@@ -3,12 +3,18 @@ package docker
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"maps"
+	"net/netip"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/containerd/errdefs"
+	containerTypes "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
@@ -78,19 +84,9 @@ func TestRemoveReplacedSwarmImages(t *testing.T) {
 	stackName := test.ConvertTestName(t.Name())
 	logger := slog.New(slog.DiscardHandler)
 
-	const (
-		oldImage = "busybox:1.34.1"
-		newImage = "busybox:1.33.1"
-	)
-
-	oldRef := pullImageWithDigestRef(ctx, t, apiClient, oldImage)
-	newRef := pullImageWithDigestRef(ctx, t, apiClient, newImage)
-
-	t.Cleanup(func() {
-		for _, image := range []string{oldImage, newImage} {
-			_, _ = apiClient.ImageRemove(context.Background(), image, client.ImageRemoveOptions{})
-		}
-	})
+	repo := startTestRegistry(ctx, t, apiClient) + "/" + stackName
+	oldRef := pushUniqueTestImage(ctx, t, apiClient, repo+":old")
+	newRef := pushUniqueTestImage(ctx, t, apiClient, repo+":new")
 
 	replicas := uint64(1)
 
@@ -108,8 +104,20 @@ func TestRemoveReplacedSwarmImages(t *testing.T) {
 		t.Fatalf("failed to create service: %v", err)
 	}
 
+	// The task container outlives the service briefly, and the image cleanups that run after
+	// this one cannot remove an image a running container still uses.
 	t.Cleanup(func() {
 		_, _ = apiClient.ServiceRemove(context.Background(), created.ID, client.ServiceRemoveOptions{})
+
+		filter := make(client.Filters).Add("label", "com.docker.swarm.service.id="+created.ID)
+		for range 60 {
+			result, err := apiClient.ContainerList(context.Background(), client.ContainerListOptions{All: true, Filters: filter})
+			if err != nil || len(result.Items) == 0 {
+				return
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
 	})
 
 	if err = swarm.WaitOnServices(ctx, dockerCli, []string{created.ID}); err != nil {
@@ -165,15 +173,109 @@ func TestRemoveReplacedSwarmImages(t *testing.T) {
 	}
 }
 
+// startTestRegistry runs a registry on a loopback port, which the daemon trusts over plain HTTP,
+// and returns its address. Pushing to it gives a test image the repo digest Swarm pins services to.
+func startTestRegistry(ctx context.Context, t *testing.T, apiClient client.APIClient) string {
+	t.Helper()
+
+	const image = "registry:2"
+
+	reader, err := apiClient.ImagePull(ctx, image, client.ImagePullOptions{})
+	if err != nil {
+		t.Skipf("cannot pull %s: %v", image, err)
+	}
+
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+
+	port := network.MustParsePort("5000/tcp")
+
+	created, err := apiClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &containerTypes.Config{Image: image, ExposedPorts: network.PortSet{port: {}}},
+		HostConfig: &containerTypes.HostConfig{
+			PortBindings: network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1")}}},
+		},
+		Name: test.ConvertTestName(t.Name()) + "-registry",
+	})
+	if err != nil {
+		t.Fatalf("failed to create registry container: %v", err)
+	}
+
+	t.Cleanup(func() { //nolint:contextcheck // cleanup must run after the test context is cancelled.
+		_, _ = apiClient.ContainerRemove(context.Background(), created.ID, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+	})
+
+	if _, err = apiClient.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
+		t.Fatalf("failed to start registry container: %v", err)
+	}
+
+	inspect, err := apiClient.ContainerInspect(ctx, created.ID, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatalf("failed to inspect registry container: %v", err)
+	}
+
+	bindings := inspect.Container.NetworkSettings.Ports[port]
+	if len(bindings) == 0 {
+		t.Fatal("registry container has no published port")
+	}
+
+	return "127.0.0.1:" + bindings[0].HostPort
+}
+
+// pushUniqueTestImage commits a unique image as ref, pushes it and returns it in the
+// tag@digest form Swarm stores in service specs.
+func pushUniqueTestImage(ctx context.Context, t *testing.T, apiClient client.APIClient, ref string) string {
+	t.Helper()
+
+	commitUniqueTestImage(ctx, t, apiClient, ref)
+
+	var pushErr error
+
+	// The registry may still be starting, so retry the push briefly.
+	for range 20 {
+		var push client.ImagePushResponse
+
+		push, pushErr = apiClient.ImagePush(ctx, ref, client.ImagePushOptions{RegistryAuth: "e30="})
+		if pushErr == nil {
+			pushErr = push.Wait(ctx)
+			_ = push.Close()
+		}
+
+		if pushErr == nil {
+			break
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	if pushErr != nil {
+		t.Fatalf("failed to push %s: %v", ref, pushErr)
+	}
+
+	inspect, err := apiClient.ImageInspect(ctx, ref)
+	if err != nil {
+		t.Fatalf("failed to inspect %s: %v", ref, err)
+	}
+
+	digest := digestFromRepoDigests(inspect.RepoDigests)
+	if digest == "" {
+		t.Fatalf("%s has no repo digest after the push", ref)
+	}
+
+	return ref + "@" + digest
+}
+
 func TestReplacedImageRefs(t *testing.T) {
 	t.Parallel()
 
-	const (
-		app136  = "busybox:1.36@sha256:aaa"
-		app137  = "busybox:1.37@sha256:bbb"
-		nginx   = "nginx:1.27@sha256:ccc"
-		alpine  = "alpine:3.22@sha256:ddd"
-		alpine3 = "alpine:3.23@sha256:eee"
+	digest := func(c string) string { return "sha256:" + strings.Repeat(c, 64) }
+
+	var (
+		app136  = "busybox:1.36@" + digest("a")
+		app137  = "busybox:1.37@" + digest("b")
+		nginx   = "nginx:1.27@" + digest("c")
+		alpine  = "alpine:3.22@" + digest("d")
+		alpine3 = "alpine:3.23@" + digest("e")
 	)
 
 	tests := []struct {
@@ -198,13 +300,13 @@ func TestReplacedImageRefs(t *testing.T) {
 			name:   "tag changed",
 			before: map[string]string{"app": app136, "web": nginx},
 			after:  map[string]string{"app": app137, "web": nginx},
-			want:   []string{app136},
+			want:   []string{"busybox@" + digest("a")},
 		},
 		{
 			name:   "service removed",
 			before: map[string]string{"app": app136, "web": nginx},
 			after:  map[string]string{"app": app136},
-			want:   []string{nginx},
+			want:   []string{"nginx@" + digest("c")},
 		},
 		{
 			name:   "still used by another service",
@@ -216,12 +318,18 @@ func TestReplacedImageRefs(t *testing.T) {
 			name:   "image moved to another service",
 			before: map[string]string{"app": app136, "web": nginx},
 			after:  map[string]string{"app": nginx, "web": app137},
-			want:   []string{app136},
+			want:   []string{"busybox@" + digest("a")},
 		},
 		{
 			name:   "new tag for the same digest",
-			before: map[string]string{"app": "busybox:1.36@sha256:aaa"},
-			after:  map[string]string{"app": "busybox:stable@sha256:aaa"},
+			before: map[string]string{"app": "busybox:1.36@" + digest("a")},
+			after:  map[string]string{"app": "busybox:stable@" + digest("a")},
+			want:   nil,
+		},
+		{
+			name:   "digest-only reference to the same image",
+			before: map[string]string{"app": app136},
+			after:  map[string]string{"app": app137, "job": "docker.io/library/busybox@" + digest("a")},
 			want:   nil,
 		},
 		{
@@ -231,16 +339,40 @@ func TestReplacedImageRefs(t *testing.T) {
 			want:   nil,
 		},
 		{
-			name:   "references without digest",
+			name:   "references without digest are never removed",
 			before: map[string]string{"app": "app:1", "web": "web:latest"},
 			after:  map[string]string{"app": "app:2", "web": "web:latest"},
-			want:   []string{"app:1"},
+			want:   nil,
+		},
+		{
+			name:   "reference without digest whose repository is gone",
+			before: map[string]string{"app": "app:1"},
+			after:  map[string]string{"app": app137},
+			want:   nil,
+		},
+		{
+			name:   "repository still referenced without digest",
+			before: map[string]string{"app": app136, "web": nginx},
+			after:  map[string]string{"app": app137, "web": nginx, "scheduled": "busybox:1.36"},
+			want:   nil,
+		},
+		{
+			name:   "unparsable reference in use",
+			before: map[string]string{"app": app136},
+			after:  map[string]string{"app": app137, "other": "Invalid::Ref"},
+			want:   nil,
+		},
+		{
+			name:   "unparsable previous reference",
+			before: map[string]string{"app": app136, "web": "Invalid::Ref"},
+			after:  map[string]string{"app": app137},
+			want:   []string{"busybox@" + digest("a")},
 		},
 		{
 			name:   "several replaced and shared",
 			before: map[string]string{"app": app136, "worker": app136, "sidecar": alpine},
 			after:  map[string]string{"app": app137, "worker": app137, "sidecar": alpine3},
-			want:   []string{alpine, app136},
+			want:   []string{"alpine@" + digest("d"), "busybox@" + digest("a")},
 		},
 	}
 
