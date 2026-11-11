@@ -303,7 +303,7 @@ One stack at a time, least critical first.
       --data '[{"url": "https://git.example.com/example/deployments.git", "target": "prod"}]'
     ```
 
-    See [REST API](Endpoints/REST-API.md#polling) for the request body and [Authentication](Endpoints/REST-API.md#authentication) for `API_SECRET`.
+    See [REST API](Endpoints/REST-API.md#polling) for the request body and [Authentication](Endpoints/REST-API.md#authentication) for API keys. This request needs a `write` or `full` key.
     The API uses the `target` in this request body and ignores the mounted poll config. 
     Use the target configured for this host, or omit it only when deploying `.doco-cd.yml`.
 

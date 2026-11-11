@@ -34,10 +34,10 @@ type RunOperations interface {
 
 // Dependencies contains the runtime services and HTTP settings required by Handler.
 type Dependencies struct {
-	Version              string `validate:"required"`
-	APISecret            string `validate:"required"`
-	MaxPayloadSize       int64  `validate:"min=1"`
-	TrustedProxyHeader   string `default:"X-Forwarded-For"`
+	Version              string          `validate:"required"`
+	APIKeys              restapi.Keyring `validate:"required"`
+	MaxPayloadSize       int64           `validate:"min=1"`
+	TrustedProxyHeader   string          `default:"X-Forwarded-For"`
 	TrustedProxyNetworks []netip.Prefix
 	Logger               *logger.Logger          `validate:"required,nostructlevel"`
 	DockerCLI            command.Cli             `validate:"required,nostructlevel"`
@@ -49,7 +49,7 @@ type Dependencies struct {
 
 // Handler serves the stateless MCP HTTP transport and owns all MCP tools.
 type Handler struct {
-	apiSecret            string
+	apiKeys              restapi.Keyring
 	trustedProxyHeader   string
 	trustedProxyNetworks []netip.Prefix
 	log                  *logger.Logger
@@ -82,13 +82,23 @@ func NewHandler(dependencies Dependencies) (*Handler, error) {
 		return nil, errors.New("mcp logger is required")
 	}
 
+	if len(dependencies.APIKeys) == 0 {
+		return nil, errors.New("mcp API keys are required")
+	}
+
+	if err := dependencies.APIKeys.Validate(); err != nil {
+		return nil, fmt.Errorf("validate MCP API keys: %w", err)
+	}
+
 	return newHandler(dependencies), nil
 }
+
+type roleContextKey struct{}
 
 // newHandler registers MCP tools and builds the authenticated stateless HTTP transport.
 func newHandler(dependencies Dependencies) *Handler {
 	h := &Handler{
-		apiSecret:            dependencies.APISecret,
+		apiKeys:              append(restapi.Keyring(nil), dependencies.APIKeys...),
 		trustedProxyHeader:   strings.TrimSpace(dependencies.TrustedProxyHeader),
 		trustedProxyNetworks: append([]netip.Prefix(nil), dependencies.TrustedProxyNetworks...),
 		log: &logger.Logger{
@@ -102,14 +112,21 @@ func newHandler(dependencies Dependencies) *Handler {
 	}
 
 	mcpLogger := slog.New(&sdkLogHandler{next: h.log.Handler()})
-	server := sdkmcp.NewServer(
-		&sdkmcp.Implementation{Name: "doco-cd", Version: dependencies.Version},
-		&sdkmcp.ServerOptions{Logger: mcpLogger},
-	)
+	servers := make(map[restapi.Role]*sdkmcp.Server, 3)
 
-	h.registerTools(server)
-	h.transport = sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server {
-		return server
+	for _, role := range []restapi.Role{restapi.RoleRead, restapi.RoleWrite, restapi.RoleFull} {
+		server := sdkmcp.NewServer(
+			&sdkmcp.Implementation{Name: "doco-cd", Version: dependencies.Version},
+			&sdkmcp.ServerOptions{Logger: mcpLogger},
+		)
+		h.registerTools(server, role)
+		servers[role] = server
+	}
+
+	h.transport = sdkmcp.NewStreamableHTTPHandler(func(r *http.Request) *sdkmcp.Server {
+		role, _ := r.Context().Value(roleContextKey{}).(restapi.Role)
+
+		return servers[role]
 	}, &sdkmcp.StreamableHTTPOptions{
 		Stateless:                    true,
 		PropagateRequestCancellation: true,
@@ -122,31 +139,39 @@ func newHandler(dependencies Dependencies) *Handler {
 	return h
 }
 
-// registerTools installs the complete MCP tool catalog on server.
-func (h *Handler) registerTools(server *sdkmcp.Server) {
+// registerTools installs the tools available to a role.
+func (h *Handler) registerTools(server *sdkmcp.Server, role restapi.Role) {
+	if !role.Allows(restapi.RoleRead) {
+		return
+	}
+
 	h.addHealthTool(server)
 	h.addRunTools(server)
 	h.addScheduledJobReadTool(server)
 	h.addSyncWindowTool(server)
 	h.addProjectReadTools(server)
 	h.addStackReadTools(server)
-	h.addProjectTools(server)
-	h.addStackTools(server)
-	h.addScheduledJobTriggerTool(server)
-	h.addPollTool(server)
-	h.addStorageTools(server)
+
+	if role.Allows(restapi.RoleWrite) {
+		h.addProjectTools(server, role)
+		h.addStackTools(server, role)
+		h.addScheduledJobTriggerTool(server)
+		h.addPollTool(server)
+		h.addStorageTools(server)
+	}
 }
 
 // ServeHTTP authenticates a request before forwarding it to the MCP transport.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !restapi.ValidateApiKey(r, h.apiSecret) {
+	role, ok := h.apiKeys.Authenticate(r)
+	if !ok {
 		h.log.Error(restapi.ErrInvalidApiKey.Error(), slog.String("ip", h.requestIP(r)))
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 
 		return
 	}
 
-	h.transport.ServeHTTP(w, r)
+	h.transport.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), roleContextKey{}, role)))
 }
 
 // requestIP resolves the client address while honoring configured trusted proxies.

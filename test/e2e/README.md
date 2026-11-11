@@ -58,6 +58,8 @@ state shared by parallel tests:
 | Scheduled pre_start   | Unrelated webhook skips, repeated hooks without source recreation, hook failure/retry, and unsupported one-off rejection          |
 | Autostart drift       | Explicit and discovered stopped-service polling, cached skips, external start/stop, missing-container recovery, and config changes |
 | Self-update scale-out | Bootstrap adoption and labels, followed by healthy overlap and handover                                                           |
+| API key roles         | REST and MCP permissions for Compose and an isolated Swarm, including denied operations and authorized control and removal          |
+| API key migration     | Failed-upgrade rollback and self-update from a pinned legacy release to the working tree and back, checking configuration and access |
 
 Config decoding, successive artifact decryption, and detailed changelog filtering
 also have lower-level tests in `internal/config/deploy`, `internal/source/store`,
@@ -65,6 +67,8 @@ also have lower-level tests in `internal/config/deploy`, `internal/source/store`
 container. Forced scheduled-job recovery remains separate for Compose and Swarm.
 Self-update strategies, network rollback, cross-stack updates, and all three
 process-crash windows retain their E2E coverage.
+The API key migration test pulls a pinned `0.133.2` release image as its
+predecessor. Other self-update tests use the working-tree image for both tags.
 
 `TestFailedDeployReadinessRetry` adds a service with a failing healthcheck to a
 healthy Compose project. Completed poll run outcomes and Docker state prove that

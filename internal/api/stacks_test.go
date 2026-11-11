@@ -45,7 +45,7 @@ func TestStackActionApiHandlerValidationPrecedence(t *testing.T) {
 			mux.HandleFunc("/stack/{stackName}/{action}", h.StackActionApiHandler)
 
 			req := httptest.NewRequest(testCase.method, testCase.path, nil)
-			req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+			req.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 			mux.ServeHTTP(rr, req)
 
 			if rr.Code != testCase.wantStatus || !strings.Contains(rr.Body.String(), testCase.contains) {
@@ -66,7 +66,7 @@ func TestStackActionApiHandlerLooksUpStackBeforeValidation(t *testing.T) {
 	mux.HandleFunc("/stack/{stackName}/{action}", h.StackActionApiHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/stack/missing/invalid", nil)
-	req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	req.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 	mux.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), "stack not found: missing") {
@@ -220,7 +220,7 @@ func newStackActionRESTSuccessTestHandler(t *testing.T, services []dockerswarmty
 
 	return &Handler{
 		dockerCli: dockerCli,
-		appConfig: &app.Config{ApiSecret: "stack-test-secret"}, // #nosec G101 -- test fixture, not a real credential.
+		appConfig: &app.Config{APIKeys: testAPIKeys("stack-test-secret")}, // #nosec G101 -- test fixture, not a real credential.
 		log:       logger.New(logger.LevelCritical),
 	}
 }
@@ -233,7 +233,7 @@ func callStackActionREST(t *testing.T, h *Handler, requestPath string) *httptest
 	mux.HandleFunc("/stack/{stackName}/{action}", h.StackActionApiHandler)
 
 	req := httptest.NewRequest(http.MethodPost, requestPath, nil)
-	req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	req.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 	mux.ServeHTTP(rr, req)
 
 	return rr
@@ -286,7 +286,7 @@ func newStackActionRESTTestHandler(t *testing.T, services []dockerswarmtypes.Ser
 
 	return &Handler{
 		dockerCli: dockerCli,
-		appConfig: &app.Config{ApiSecret: "stack-test-secret"}, // #nosec G101 -- test fixture, not a real credential.
+		appConfig: &app.Config{APIKeys: testAPIKeys("stack-test-secret")}, // #nosec G101 -- test fixture, not a real credential.
 		log:       logger.New(logger.LevelCritical),
 	}
 }

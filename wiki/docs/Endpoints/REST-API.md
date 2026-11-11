@@ -21,15 +21,83 @@ Set `OPENAPI_ENABLED=true` to expose the public [OpenAPI](https://www.openapis.o
 
 ## Authentication
 
-Set the `API_SECRET` or `API_SECRET_FILE` environment variable in the container to enable the API, see [App Settings](../App-Settings.md#api-and-webhook-settings).
+Configure one or more keys with `API_KEYS` to enable the API. Each entry must
+have a unique, nonempty `key` and a `role`. A key must be a valid HTTP header
+value without leading or trailing spaces or tabs:
 
-Use the `x-api-key` header to authenticate requests to the API using the secret value.
+```yaml title="docker-compose.yml"
+services:
+  app:
+    environment:
+      API_KEYS: |
+        - key: replace-with-a-reader-key
+          role: read
+        - key: replace-with-a-writer-key
+          role: write
+        - key: replace-with-an-admin-key
+          role: full
+```
+
+Alternatively, set `API_KEYS_FILE` to the path of a file containing the same
+YAML list. The file may be plaintext or [SOPS-encrypted](../Advanced/Encryption.md).
+Provide the relevant SOPS decryption key to the container when using an
+encrypted file. Set only one of `API_KEYS` and `API_KEYS_FILE`.
+An empty list disables the REST API.
+
+SOPS cannot encrypt a top-level YAML list as a structured YAML file. Encrypt
+the list as binary data instead, and use an extensionless path or a `.enc` or
+`.txt` extension for the encrypted file and its path inside the container:
+
+```sh
+sops encrypt --age <age-public-key> --input-type binary --output-type binary \
+  api-keys.yaml > api-keys.enc
+```
+
+Mount `api-keys.enc` as a secret or file and set `API_KEYS_FILE` to its path
+inside the container. Keep the unencrypted file out of Git.
+
+The keys are loaded at startup. To rotate a key, add its replacement and
+restart doco-cd, update clients, then remove the old key and restart again.
+Changes to the environment or file do not take effect until restart.
+
+!!! warning "Migration from API_SECRET"
+    `API_SECRET` and `API_SECRET_FILE` are no longer supported. Remove both
+    variables from the container environment, even if they are empty, and
+    configure `API_KEYS` or `API_KEYS_FILE` instead. To preserve the previous
+    full access, assign the old key the `full` role. Doco-CD fails to
+    start while either legacy variable is present. See the
+    [self-update migration guidance](../Advanced/Self-Updating.md#api-key-migration)
+    if doco-cd manages its own container.
+
+Use the `x-api-key` header to authenticate requests with one configured key.
 
 Example:
 
 ```sh
 curl -H "x-api-key: your_api_key" http://example.com/v1/api/projects
 ```
+
+Missing or invalid credentials return `401 Unauthorized`. A valid key without
+the required role returns `403 Forbidden`. The health, webhook, metrics,
+profiling, and public OpenAPI endpoints have separate access rules.
+
+### Roles
+
+Roles are cumulative: `write` includes `read`, and `full` includes both.
+
+| Minimum role  | REST operations |
+|---------------|-----------------|
+| `read`        | All GET operations under `/v1/api/`, including projects, stacks, deployment runs, scheduled jobs, and sync windows. |
+| `write`       | POST operations to control projects or stacks, trigger scheduled jobs or polls, and compact Git mirrors. |
+| `full`        | DELETE operations that remove Compose projects or Swarm stacks. |
+
+These roles also control [MCP tools](MCP-Server.md#available-tools).
+They restrict direct API operations, not the effects of deployments or jobs.
+For example, a write key can trigger a poll containing `destroy: true` or run
+a configured job that executes arbitrary commands, which can indirectly
+destroy data. The `full` role additionally allows direct project and stack
+removal. Treat write and full keys as privileged credentials. Read keys can
+expose deployment metadata.
 
 ## Query Parameters
 

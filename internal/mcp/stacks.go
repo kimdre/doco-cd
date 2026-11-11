@@ -12,6 +12,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
 type listStacksInput struct {
@@ -84,7 +85,7 @@ func (h *Handler) addStackReadTools(server *sdkmcp.Server) {
 }
 
 // addStackTools registers Swarm stack mutation operations.
-func (h *Handler) addStackTools(server *sdkmcp.Server) {
+func (h *Handler) addStackTools(server *sdkmcp.Server, role restapi.Role) {
 	controlSchema := mustToolInputSchema[controlStackInput]("control_stack")
 	controlSchema.Properties["action"].Enum = []any{"scale", "restart", "run"}
 	controlSchema.Properties["replicas"].Minimum = new(0.0)
@@ -95,11 +96,14 @@ func (h *Handler) addStackTools(server *sdkmcp.Server) {
 		Annotations: destructiveAnnotations(false),
 		InputSchema: controlSchema,
 	}, instrumentTool(h.log, "control_stack", h.controlStack))
-	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "remove_stack",
-		Description: "Remove a Docker Swarm stack. Removal may be partial if Docker returns an error after deleting some resources.",
-		Annotations: destructiveAnnotations(true),
-	}, instrumentTool(h.log, "remove_stack", h.removeStack))
+
+	if role.Allows(restapi.RoleFull) {
+		sdkmcp.AddTool(server, &sdkmcp.Tool{
+			Name:        "remove_stack",
+			Description: "Remove a Docker Swarm stack. Removal may be partial if Docker returns an error after deleting some resources.",
+			Annotations: destructiveAnnotations(true),
+		}, instrumentTool(h.log, "remove_stack", h.removeStack))
+	}
 }
 
 // listStacks returns Swarm services grouped by stack namespace.

@@ -95,7 +95,7 @@ These endpoints are only needed when the corresponding setting is enabled.
 | [`reconciliation.enabled`](../Deploy-Settings.md)       | `true`  | `GET /events`, `POST /containers/{id}/restart`                                                                                                                   | read/write  |
 | `SCHEDULER_ENABLED`                                     | `true`  | See [below](#scheduler_enabled-endpoint-details)                                                                                                                 | read/write  |
 | [`wait_running_jobs`](../Deploy-Settings.md)            | `true`  | `GET /tasks` (Swarm), `GET /containers/json` (Compose)                                                                                                           | read        |
-| [REST API](../Endpoints/REST-API.md) (`API_SECRET` set) | off     | See [below](#rest-api-endpoint-details)                                                                                                                          | destructive |
+| [REST API](../Endpoints/REST-API.md) (`API_KEYS` set)   | off     | See [below](#rest-api-endpoint-details)                                                                                                                          | destructive |
 
 #### `SCHEDULER_ENABLED` endpoint details
 

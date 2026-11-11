@@ -36,7 +36,7 @@ func TestNewHandlerValidatesDependencies(t *testing.T) {
 
 	valid := Dependencies{
 		Version:        "test",
-		APISecret:      testMCPAPIKey,
+		APIKeys:        testMCPKeys(testMCPAPIKey),
 		MaxPayloadSize: 1024,
 		Logger:         logger.New(logger.LevelCritical),
 		DockerCLI:      dockerCli,
@@ -50,7 +50,14 @@ func TestNewHandlerValidatesDependencies(t *testing.T) {
 		mutate   func(*Dependencies)
 	}{
 		{name: "version", contains: "Dependencies.Version", mutate: func(deps *Dependencies) { deps.Version = "" }},
-		{name: "API secret", contains: "Dependencies.APISecret", mutate: func(deps *Dependencies) { deps.APISecret = "" }},
+		{name: "API keys", contains: "Dependencies.APIKeys", mutate: func(deps *Dependencies) { deps.APIKeys = nil }},
+		{name: "empty API keys", contains: "mcp API keys are required", mutate: func(deps *Dependencies) { deps.APIKeys = restapi.Keyring{} }},
+		{name: "invalid API role", contains: "role must be", mutate: func(deps *Dependencies) {
+			deps.APIKeys = restapi.Keyring{{Key: "test-key", Role: "invalid"}}
+		}},
+		{name: "duplicate API key", contains: "duplicate key", mutate: func(deps *Dependencies) {
+			deps.APIKeys = restapi.Keyring{{Key: "test-key", Role: restapi.RoleRead}, {Key: "test-key", Role: restapi.RoleWrite}}
+		}},
 		{name: "payload size", contains: "Dependencies.MaxPayloadSize", mutate: func(deps *Dependencies) { deps.MaxPayloadSize = 0 }},
 		{name: "logger", contains: "Dependencies.Logger", mutate: func(deps *Dependencies) { deps.Logger = nil }},
 		{name: "logger backend", contains: "logger is required", mutate: func(deps *Dependencies) { deps.Logger = &logger.Logger{} }},
@@ -147,7 +154,7 @@ func TestMCPServerLogging(t *testing.T) {
 
 			handler := newHandler(Dependencies{
 				Version:        "test",
-				APISecret:      testMCPAPIKey,
+				APIKeys:        testMCPKeys(testMCPAPIKey),
 				MaxPayloadSize: 1024,
 				Logger:         parent,
 			})
@@ -733,7 +740,7 @@ func TestInstrumentMCPToolLogsHandlerFailure(t *testing.T) {
 			}
 			mcpHandler := newHandler(Dependencies{
 				Version:        "test",
-				APISecret:      testMCPAPIKey,
+				APIKeys:        testMCPKeys(testMCPAPIKey),
 				MaxPayloadSize: 1024,
 				Logger:         log,
 			})

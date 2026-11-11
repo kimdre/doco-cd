@@ -535,7 +535,7 @@ func TestRegisterRoutesReturnsMissingMountErrors(t *testing.T) {
 		{
 			name: "MCP",
 			config: app.Config{
-				ApiSecret:  "secret", // #nosec G101 -- test fixture.
+				APIKeys:    testAPIKeys("secret"), // #nosec G101 -- test fixture.
 				McpEnabled: true,
 			},
 		},

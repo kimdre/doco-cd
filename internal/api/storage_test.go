@@ -39,7 +39,7 @@ func serveCompactMirrors(t *testing.T, runs RunOperations, method, target string
 	t.Helper()
 
 	h := Handler{
-		appConfig:        &app.Config{ApiSecret: testStorageAPISecret},
+		appConfig:        &app.Config{APIKeys: testAPIKeys(testStorageAPISecret)},
 		log:              logger.New(logger.LevelCritical),
 		controlPlaneRuns: runs,
 	}
@@ -237,7 +237,7 @@ func TestCompactMirrorsHandlerRequiresAPIKey(t *testing.T) {
 	t.Parallel()
 
 	h := Handler{
-		appConfig: &app.Config{ApiSecret: testStorageAPISecret},
+		appConfig: &app.Config{APIKeys: testAPIKeys(testStorageAPISecret)},
 		log:       logger.New(logger.LevelCritical),
 		controlPlaneRuns: &fakeCompactionRuns{
 			trigger: func(context.Context, string, controlplane.MirrorCompactionRequest, bool) (string, error) {

@@ -3,7 +3,9 @@ package app
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
@@ -41,8 +44,9 @@ type Config struct {
 	TrustedProxyNetworksString    string                 `env:"TRUSTED_PROXY_NETWORKS" envDefault:"127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128"` // TrustedProxyNetworksString is the comma-separated list of trusted proxy CIDRs.
 	TrustedProxyNetworks          []netip.Prefix         `yaml:"-"`                                                                                              // TrustedProxyNetworks holds parsed trusted proxy CIDR ranges.
 	TrustedProxyHeader            string                 `env:"TRUSTED_PROXY_HEADER" envDefault:"X-Forwarded-For"`                                               // TrustedProxyHeader is an optional header name containing the original client IP.
-	ApiSecret                     string                 `env:"API_SECRET"`                                                                                      // #nosec G117 -- ApiSecret is the secret token used to authenticate with the API
-	ApiSecretFile                 string                 `env:"API_SECRET_FILE,file"`                                                                            // ApiSecretFile is the file containing the ApiSecret
+	APIKeysYAML                   string                 `env:"API_KEYS" yaml:"-" json:"-"`                                                                      // APIKeysYAML is the YAML list of API keys.
+	APIKeysFile                   string                 `env:"API_KEYS_FILE,file" yaml:"-" json:"-"`                                                            // APIKeysFile is the file containing the API key list.
+	APIKeys                       restapi.Keyring        `yaml:"-" json:"-"`                                                                                     // APIKeys holds the parsed API keys and roles.
 	WebhookSecret                 string                 `env:"WEBHOOK_SECRET"`                                                                                  // WebhookSecret is the secret token used to authenticate the webhook
 	WebhookSecretFile             string                 `env:"WEBHOOK_SECRET_FILE,file"`                                                                        // WebhookSecretFile is the file containing the WebhookSecret
 	SourceURLRewritesYAML         string                 `env:"SOURCE_URL_REWRITES"`                                                                             // SourceURLRewritesYAML maps URL/domain/URI match rules to rewrite targets for git source URLs.
@@ -74,7 +78,7 @@ type Config struct {
 	DockerQuietDeploy             bool                   `env:"DOCKER_QUIET_DEPLOY,notEmpty" envDefault:"true"`                                                  // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
 	VersionCheckEnabled           bool                   `env:"VERSION_CHECK_ENABLED,notEmpty" envDefault:"true"`                                                // VersionCheckEnabled controls the startup release lookup and new-version announcement.
 	SchedulerEnabled              bool                   `env:"SCHEDULER_ENABLED,notEmpty" envDefault:"true"`                                                    // SchedulerEnabled controls whether the built-in scheduled job runner is started in this doco-cd instance
-	McpEnabled                    bool                   `env:"MCP_ENABLED,notEmpty" envDefault:"false"`                                                         // McpEnabled enables the built-in MCP server and requires API_SECRET.
+	McpEnabled                    bool                   `env:"MCP_ENABLED,notEmpty" envDefault:"false"`                                                         // McpEnabled enables the built-in MCP server and requires API keys.
 	OpenAPIEnabled                bool                   `env:"OPENAPI_ENABLED,notEmpty" envDefault:"false"`                                                     // OpenAPIEnabled exposes the runtime OpenAPI document and Swagger UI.
 	DockerSwarmFeatures           bool                   `env:"DOCKER_SWARM_FEATURES,notEmpty" envDefault:"true"`                                                // DockerSwarmFeatures enables the usage Docker Swarm features in the application if it has detected that it is running in a Docker Swarm environment
 	DockerSwarmConfigRetention    int                    `env:"DOCKER_SWARM_CONFIG_RETENTION,notEmpty" envDefault:"0" validate:"min=-1"`                         // DockerSwarmConfigRetention is the global default number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning.
@@ -128,10 +132,20 @@ type Config struct {
 
 // GetConfig returns the app Config.
 func GetConfig() (*Config, error) {
+	for _, name := range []string{"API_SECRET", "API_SECRET_FILE"} {
+		if _, present := os.LookupEnv(name); present {
+			return nil, fmt.Errorf("%s is no longer supported; remove it and configure API_KEYS or API_KEYS_FILE", name)
+		}
+	}
+
+	if os.Getenv("API_KEYS") != "" && os.Getenv("API_KEYS_FILE") != "" {
+		return nil, errors.New("set only one of API_KEYS or API_KEYS_FILE")
+	}
+
 	cfg := Config{}
 
 	mappings := []config.EnvVarFileMapping{
-		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: &cfg.ApiSecretFile, AllowUnset: true},
+		{EnvName: "API_KEYS", EnvValue: &cfg.APIKeysYAML, FileValue: &cfg.APIKeysFile, AllowUnset: true},
 		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: &cfg.AppriseNotifyUrlsFile, AllowUnset: true},
 		{EnvName: "APPRISE_NOTIFY_BODY_TEMPLATE", EnvValue: &cfg.AppriseNotifyBodyTemplate, FileValue: &cfg.AppriseNotifyBodyTemplateFile, AllowUnset: true},
 		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: &cfg.GitAccessTokenFile, AllowUnset: true},
@@ -150,8 +164,12 @@ func GetConfig() (*Config, error) {
 		return nil, fmt.Errorf("%w: %w", config.ErrParseConfigFailed, err)
 	}
 
-	if cfg.McpEnabled && cfg.ApiSecret == "" {
-		return nil, errors.New("MCP_ENABLED requires API_SECRET")
+	if err := cfg.parseAPIKeys(); err != nil {
+		return nil, err
+	}
+
+	if cfg.McpEnabled && len(cfg.APIKeys) == 0 {
+		return nil, errors.New("MCP_ENABLED requires at least one API key")
 	}
 
 	err = cfg.parsePollConfig()
@@ -282,6 +300,41 @@ func (cfg *Config) parseOciTrustPolicy() error {
 	}
 
 	cfg.OciTrustPolicy = config.NormalizeOciTrustPolicy(cfg.OciTrustPolicy)
+
+	return nil
+}
+
+func (cfg *Config) parseAPIKeys() error {
+	if strings.TrimSpace(cfg.APIKeysYAML) == "" {
+		if os.Getenv("API_KEYS_FILE") != "" {
+			return errors.New("API_KEYS_FILE must contain a YAML list")
+		}
+
+		if cfg.APIKeysYAML != "" {
+			return errors.New("API_KEYS must contain a YAML list")
+		}
+
+		return nil
+	}
+
+	decoder := yaml.NewDecoder(strings.NewReader(cfg.APIKeysYAML))
+	decoder.KnownFields(true)
+
+	var keys restapi.Keyring
+	if err := decoder.Decode(&keys); err != nil || keys == nil {
+		return errors.New("API_KEYS must be a YAML list of key and role mappings")
+	}
+
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return errors.New("API_KEYS must contain exactly one valid YAML document")
+	}
+
+	if err := keys.Validate(); err != nil {
+		return err
+	}
+
+	cfg.APIKeys = keys
 
 	return nil
 }

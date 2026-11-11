@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -79,9 +80,19 @@ func (h *Harness) SelfImageRepo() string {
 	return h.selfImageRepo
 }
 
-// prepareSelfUpdateFixture tags the freshly built image as v1 and v2 and writes
-// the .env the fixture interpolates. Both tags point at the same image, so an
-// image bump in the fixture is a pure config change with no rebuild.
+// SetSelfUpdatePredecessorImage uses a published image for the initial container.
+func (h *Harness) SetSelfUpdatePredecessorImage(image string) {
+	h.t.Helper()
+
+	if !h.selfUpdate || image == "" {
+		h.t.Fatal("self-update and a predecessor image are required")
+	}
+
+	h.selfPredecessorImage = image
+}
+
+// prepareSelfUpdateFixture tags the images and writes the fixture's .env file.
+// Unless a predecessor is provided, both tags use the freshly built image.
 func (h *Harness) prepareSelfUpdateFixture() {
 	h.t.Helper()
 
@@ -92,7 +103,20 @@ func (h *Harness) prepareSelfUpdateFixture() {
 
 	for _, tag := range []string{"v1", "v2"} {
 		ref := h.selfImageRepo + ":" + tag
-		if _, err = h.docker.ImageTag(h.ctx, client.ImageTagOptions{Source: image, Target: ref}); err != nil {
+		source := image
+
+		if tag == "v1" && h.selfPredecessorImage != "" {
+			source = h.selfPredecessorImage
+
+			if _, err = h.docker.ImageInspect(h.ctx, source); err != nil {
+				cmd := exec.CommandContext(h.ctx, "docker", "pull", source) // #nosec G204 -- arguments are passed directly.
+				if output, pullErr := cmd.CombinedOutput(); pullErr != nil {
+					h.t.Fatalf("pull predecessor image: %v\n%s", pullErr, output)
+				}
+			}
+		}
+
+		if _, err = h.docker.ImageTag(h.ctx, client.ImageTagOptions{Source: source, Target: ref}); err != nil {
 			h.t.Fatalf("tag %s: %v", ref, err)
 		}
 	}

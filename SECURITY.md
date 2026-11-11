@@ -27,10 +27,14 @@ with root-equivalent access to the Docker host:
 
 - Anyone who can push to a repository that doco-cd deploys (including its `.doco-cd.yml` and compose files).
 - Anyone who holds the `WEBHOOK_SECRET` (webhook requests can point doco-cd at any remote repository).
-- Anyone who holds the `API_SECRET` (REST API and MCP server).
+- Anyone who holds an API key with the `write` or `full` role (REST API and MCP server).
 
 These actors can deploy arbitrary workloads, for example privileged containers, bind mounts of the host filesystem,
 or a mount of the Docker socket. Doco-CD does not try to sandbox them.
+The `write` role can indirectly destroy data through deployments or run
+arbitrary configured jobs. The `full` role additionally permits direct
+project and stack removal. Keys with the `read` role cannot invoke these
+operations, but can expose deployment metadata.
 
 Because of this, file paths in deployment configuration are trusted and are read from the doco-cd container filesystem
 without being confined to the repository. This applies to:
@@ -45,7 +49,7 @@ container are out of scope, as they can already do the same with a deployed cont
 To reduce the impact of a compromised repository or secret:
 
 - Limit who can push to repositories that doco-cd deploys and protect the deployed branches.
-- Keep `WEBHOOK_SECRET` and `API_SECRET` private and rotate them if they leak.
+- Keep `WEBHOOK_SECRET` and API keys private and rotate them if they leak.
 - Keep `PASS_ENV` disabled, so the doco-cd environment is not passed to deployments.
 - Mount only the files that doco-cd needs into its container.
 

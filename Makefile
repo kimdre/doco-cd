@@ -33,27 +33,27 @@ BUILD_FLAGS:=-ldflags="-X main.Version=dev $(BUILD_FLAGS)"
 
 test:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m
 
 # The nobitwarden build tag excludes the Bitwarden SDK, which is the only
 # dependency that requires cgo, so this target builds without a C compiler.
 test-nobitwarden:
 	@echo "Running tests without bitwarden integration..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" CGO_ENABLED=0 go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' CGO_ENABLED=0 go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover ./... -timeout 10m
 
 test-verbose:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -v -cover ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' ${COMPILER} go test ${BUILD_FLAGS} -v -cover ./... -timeout 10m
 
 test-coverage:
 	@echo "Running tests with coverage..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -v -coverprofile cover.out ./...
+	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' ${COMPILER} go test ${BUILD_FLAGS} -v -coverprofile cover.out ./...
 	@go tool cover -html cover.out -o cover.html
 
 # Run specified tests from arguments
 test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
+	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
 # Run e2e scenarios against a real doco-cd built from the working tree.
 # Optionally filter scenarios: make test-e2e E2E_RUN=TestFailedDeployRetry

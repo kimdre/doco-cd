@@ -84,7 +84,7 @@ func TestGetScheduledJobsLastRunContract(t *testing.T) {
 				}
 			}
 
-			h := Handler{appConfig: &app.Config{ApiSecret: "test-api-secret"}, log: logger.New(logger.LevelCritical), controlPlaneRuns: runs}
+			h := Handler{appConfig: &app.Config{APIKeys: testAPIKeys("test-api-secret")}, log: logger.New(logger.LevelCritical), controlPlaneRuns: runs}
 			mux := http.NewServeMux()
 			mux.HandleFunc(APIPath+"/jobs", h.GetScheduledJobsHandler)
 			mux.HandleFunc(APIPath+"/run/{jobID}", h.GetDeploymentRunHandler)
@@ -93,7 +93,7 @@ func TestGetScheduledJobsLastRunContract(t *testing.T) {
 				t.Helper()
 
 				req := httptest.NewRequest(http.MethodGet, endpoint, nil)
-				req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+				req.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 
 				response := httptest.NewRecorder()
 				mux.ServeHTTP(response, req)
@@ -175,7 +175,7 @@ func TestHandler_TriggerScheduledJobHandlerValidation(t *testing.T) {
 
 	appConfig.ConfigureGitAuth()
 
-	appConfig.ApiSecret = "test-api-secret"
+	appConfig.APIKeys = testAPIKeys("test-api-secret")
 
 	h := Handler{
 		appConfig: appConfig,
@@ -215,7 +215,7 @@ func TestHandler_TriggerScheduledJobHandlerValidation(t *testing.T) {
 			}
 
 			if tc.setAPIKey {
-				req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+				req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 			}
 
 			rr := httptest.NewRecorder()
@@ -470,7 +470,7 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 
 	appConfig.ConfigureGitAuth()
 
-	appConfig.ApiSecret = "test-api-secret"
+	appConfig.APIKeys = testAPIKeys("test-api-secret")
 
 	tests := []struct {
 		name       string
@@ -510,7 +510,7 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 			endpoint := path.Join(APIPath, "/job/{jobName}/run")
 			requestPath := path.Join(APIPath, "/job/example-job/run") + tc.query
 			req := httptest.NewRequest(http.MethodPost, requestPath, nil)
-			req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+			req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 
 			rr := httptest.NewRecorder()
 			mux := http.NewServeMux()
@@ -527,7 +527,7 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 func TestTriggerScheduledJobHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) {
 	log := logger.New(logger.LevelCritical)
 	h := Handler{
-		appConfig: &app.Config{ApiSecret: "job-secret"}, // #nosec G101 -- test fixture.
+		appConfig: &app.Config{APIKeys: testAPIKeys("job-secret")}, // #nosec G101 -- test fixture.
 		log:       log,
 		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 			closed: true,
@@ -547,7 +547,7 @@ func TestTriggerScheduledJobHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) 
 	}
 	req := httptest.NewRequest(http.MethodPost, APIPath+"/job/example-job/run?wait=false", nil)
 	req.SetPathValue("jobName", "example-job")
-	req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	req.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 
 	rr := httptest.NewRecorder()
 
@@ -668,7 +668,7 @@ func TestTriggerScheduledJobHandlerMalformedWaitDoesNotTrigger(t *testing.T) {
 
 	appConfig.ConfigureGitAuth()
 
-	appConfig.ApiSecret = "test-api-secret"
+	appConfig.APIKeys = testAPIKeys("test-api-secret")
 
 	triggered := false
 	log := logger.New(logger.LevelCritical)
@@ -694,7 +694,7 @@ func TestTriggerScheduledJobHandlerMalformedWaitDoesNotTrigger(t *testing.T) {
 	endpoint := path.Join(APIPath, "/job/{jobName}/run")
 	requestPath := path.Join(APIPath, "/job/example-job/run") + "?wait=invalid"
 	req := httptest.NewRequest(http.MethodPost, requestPath, nil)
-	req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+	req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 
 	rr := httptest.NewRecorder()
 	mux := http.NewServeMux()
@@ -720,7 +720,7 @@ func TestHandler_GetScheduledJobsHandlerValidation(t *testing.T) {
 
 	appConfig.ConfigureGitAuth()
 
-	appConfig.ApiSecret = "test-api-secret"
+	appConfig.APIKeys = testAPIKeys("test-api-secret")
 
 	h := Handler{
 		appConfig: appConfig,
@@ -759,7 +759,7 @@ func TestHandler_GetScheduledJobsHandlerValidation(t *testing.T) {
 			}
 
 			if tc.setAPIKey {
-				req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+				req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 			}
 
 			rr := httptest.NewRecorder()

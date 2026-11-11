@@ -101,8 +101,8 @@ func RegisterRoutes(mux *http.ServeMux, h *Handler, mounts Mounts) ([]string, er
 		}
 	}
 
-	if h.appConfig.ApiSecret == "" {
-		h.log.Info("api endpoints disabled, no api secret configured")
+	if len(h.appConfig.APIKeys) == 0 {
+		h.log.Info("api endpoints disabled, no api keys configured")
 	}
 
 	if h.appConfig.WebhookSecret == "" {

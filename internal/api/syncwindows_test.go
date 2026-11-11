@@ -21,7 +21,7 @@ func TestHandler_GetSyncWindowsHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	appConfig.ApiSecret = "test-api-secret"
+	appConfig.APIKeys = testAPIKeys("test-api-secret")
 
 	// A deny window that is always active: it starts every minute and lasts
 	// two minutes.
@@ -83,7 +83,7 @@ func TestHandler_GetSyncWindowsHandler(t *testing.T) {
 
 			req := httptest.NewRequest(tc.method, endpoint+tc.query, nil)
 			if !tc.noAPIKey {
-				req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+				req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 			}
 
 			rr := httptest.NewRecorder()

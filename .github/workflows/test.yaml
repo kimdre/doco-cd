@@ -102,7 +102,7 @@ jobs:
         timeout-minutes: 20
         env:
           WEBHOOK_SECRET: test_Secret1
-          API_SECRET: api_Secret1
+          API_KEYS: '[{"key":"api_Secret1","role":"full"}]'
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           # The global token is only sent to hosts listed in GIT_AUTH_DOMAINS.
           GIT_AUTH_DOMAINS: "- domains: [github.com]"

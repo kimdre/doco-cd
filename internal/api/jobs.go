@@ -24,10 +24,7 @@ func (h *Handler) GetScheduledJobsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !restapi.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(restapi.ErrInvalidApiKey.Error())
-		restapi.JSONError(w, restapi.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
-
+	if !h.authorize(w, r, jobLog, jobID, opListScheduledJobs) {
 		return
 	}
 
@@ -62,10 +59,7 @@ func (h *Handler) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if !restapi.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(restapi.ErrInvalidApiKey.Error())
-		restapi.JSONError(w, restapi.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
-
+	if !h.authorize(w, r, jobLog, jobID, opTriggerScheduledJob) {
 		return
 	}
 

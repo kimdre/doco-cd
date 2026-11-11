@@ -34,7 +34,7 @@ func TestHandler_ProjectApiHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	appConfig.ApiSecret = "test-api-secret"
+	appConfig.APIKeys = testAPIKeys("test-api-secret")
 
 	log := logger.New(logger.LevelCritical)
 
@@ -126,7 +126,7 @@ func TestHandler_ProjectApiHandler(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+			req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 			mux.ServeHTTP(rr, req)
 
 			t.Logf("API response: %s", rr.Body.String())
@@ -189,13 +189,13 @@ func TestGetProjectsApiHandlerInvalidAllParamSingleResponse(t *testing.T) {
 
 	h := &Handler{
 		dockerCli: dockerCli,
-		appConfig: &app.Config{ApiSecret: "projects-test-secret"}, // #nosec G101 -- test fixture, not a real credential.
+		appConfig: &app.Config{APIKeys: testAPIKeys("projects-test-secret")}, // #nosec G101 -- test fixture, not a real credential.
 		log:       logger.New(logger.LevelCritical),
 	}
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/projects?all=banana", nil)
-	req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	req.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 
 	h.GetProjectsApiHandler(rr, req)
 

@@ -24,7 +24,7 @@ func TestHandler_DeploymentRunHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	appConfig.ApiSecret = "test-api-secret"
+	appConfig.APIKeys = testAPIKeys("test-api-secret")
 
 	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 		maxRunsPerTrigger: map[controlplane.RunTrigger]int{
@@ -64,7 +64,7 @@ func TestHandler_DeploymentRunHandlers(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+		req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 
 		rr := httptest.NewRecorder()
 		mux := http.NewServeMux()
@@ -88,7 +88,7 @@ func TestHandler_DeploymentRunHandlers(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+		req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 
 		rr := httptest.NewRecorder()
 		mux := http.NewServeMux()

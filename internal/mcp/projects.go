@@ -13,6 +13,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
 type listProjectsInput struct {
@@ -102,13 +103,10 @@ func (h *Handler) addProjectReadTools(server *sdkmcp.Server) {
 }
 
 // addProjectTools registers Compose project lifecycle operations.
-func (h *Handler) addProjectTools(server *sdkmcp.Server) {
+func (h *Handler) addProjectTools(server *sdkmcp.Server, role restapi.Role) {
 	controlSchema := mustToolInputSchema[controlProjectInput]("control_project")
 	controlSchema.Properties["action"].Enum = []any{"start", "stop", "restart"}
 	setProjectTimeoutSchema(controlSchema)
-
-	destroySchema := mustToolInputSchema[destroyProjectInput]("destroy_project")
-	setProjectTimeoutSchema(destroySchema)
 
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "control_project",
@@ -116,12 +114,18 @@ func (h *Handler) addProjectTools(server *sdkmcp.Server) {
 		Annotations: destructiveAnnotations(false),
 		InputSchema: controlSchema,
 	}, instrumentTool(h.log, "control_project", h.controlProject))
-	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "destroy_project",
-		Description: "Destroy a Docker Compose project and optionally remove its volumes and images. Reconciliation-managed projects may be restored automatically by drift recovery.",
-		Annotations: destructiveAnnotations(true),
-		InputSchema: destroySchema,
-	}, instrumentTool(h.log, "destroy_project", h.destroyProject))
+
+	if role.Allows(restapi.RoleFull) {
+		destroySchema := mustToolInputSchema[destroyProjectInput]("destroy_project")
+		setProjectTimeoutSchema(destroySchema)
+
+		sdkmcp.AddTool(server, &sdkmcp.Tool{
+			Name:        "destroy_project",
+			Description: "Destroy a Docker Compose project and optionally remove its volumes and images. Reconciliation-managed projects may be restored automatically by drift recovery.",
+			Annotations: destructiveAnnotations(true),
+			InputSchema: destroySchema,
+		}, instrumentTool(h.log, "destroy_project", h.destroyProject))
+	}
 }
 
 // setProjectTimeoutSchema applies shared timeout bounds to project tools.

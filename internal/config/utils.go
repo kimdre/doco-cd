@@ -13,9 +13,9 @@ import (
 
 // EnvVarFileMapping holds the mappings for file-based environment variables.
 type EnvVarFileMapping struct {
-	EnvName    string  // EnvName is the name/key of the environment variable (e.g. API_SECRET)
+	EnvName    string  // EnvName is the name/key of the environment variable (e.g. API_KEYS)
 	EnvValue   *string // EnvValue is the value of the environment variable
-	FileValue  *string // FileValue is the content of the file that is specified in the environment variable (e.g. API_SECRET_FILE)
+	FileValue  *string // FileValue is the content of the file that is specified in the environment variable (e.g. API_KEYS_FILE)
 	FilePath   string  // FilePath overrides the environment path used to detect the SOPS format.
 	AllowUnset bool    // AllowUnset indicates if both the fileField and value can be unset
 }
