@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -80,6 +81,23 @@ func (c unchangedSelfClient) ContainerList(context.Context, client.ContainerList
 
 func (c unchangedSelfClient) NetworkInspect(context.Context, string, client.NetworkInspectOptions) (client.NetworkInspectResult, error) {
 	return client.NetworkInspectResult{Network: *c.network}, nil
+}
+
+// countingInspectClient fails ContainerInspect on the third call.
+// The unchanged check and the restart-policy check both inspect first.
+type countingInspectClient struct {
+	unchangedSelfClient
+	calls int
+	err   error
+}
+
+func (c *countingInspectClient) ContainerInspect(ctx context.Context, id string, opts client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+	c.calls++
+	if c.calls >= 3 {
+		return client.ContainerInspectResult{}, c.err
+	}
+
+	return c.unchangedSelfClient.ContainerInspect(ctx, id, opts)
 }
 
 func TestSelfServiceUnchangedSkipsHandover(t *testing.T) {
@@ -743,8 +761,7 @@ func TestRecheckSelfSkip(t *testing.T) {
 	t.Run("service now needs a handover", func(t *testing.T) {
 		changed := *project
 		svc := project.Services["doco-cd"]
-		two := 2
-		svc.Scale = &two
+		svc.Image = "ghcr.io/kimdre/doco-cd:next"
 		changed.Services = types.Services{"doco-cd": svc, "other": project.Services["other"]}
 
 		got, err := recheckSelfSkip(t.Context(), docker, &changed, dc, target, api.RecreateDiverged, services, self, selfUpdatePlan{}, true)
@@ -761,6 +778,116 @@ func TestRecheckSelfSkip(t *testing.T) {
 			t.Fatalf("planSelfHandover() skipped=%v err=%v; want the inspect error", skipped, err)
 		}
 	})
+
+	t.Run("network drift starts the handover", func(t *testing.T) {
+		drifted := *project
+		svc := project.Services["doco-cd"]
+		svc.Networks = map[string]*types.ServiceNetworkConfig{"backend": {}}
+		drifted.Services = types.Services{"doco-cd": svc, "other": project.Services["other"]}
+		netCfg := types.NetworkConfig{Name: "tools_backend"}
+		drifted.Networks = types.Networks{"backend": netCfg}
+		inspectErr := errors.New("inspect failed")
+		apiClient := &countingInspectClient{
+			unchangedSelfClient: unchangedSelfClient{
+				labels: map[string]string{api.ConfigHashLabel: "present"},
+				network: &network.Inspect{
+					ID: "network-id", Name: netCfg.Name,
+					Labels: map[string]string{
+						api.ProjectLabel: "tools", api.NetworkLabel: "backend", api.ConfigHashLabel: "old",
+					},
+				},
+			},
+			err: inspectErr,
+		}
+
+		got, err := recheckSelfSkip(
+			t.Context(), selfApplyTestCli{apiClient: apiClient}, &drifted, dc, target,
+			api.RecreateDiverged, services, self, selfUpdatePlan{}, true,
+		)
+
+		if !errors.Is(err, inspectErr) || !got.DeferToApplier {
+			t.Fatalf("recheckSelfSkip() defer=%v err=%v; want the drift handover to start", got.DeferToApplier, err)
+		}
+	})
+}
+
+func TestGuardSelfUpdateRefusals(t *testing.T) {
+	previous := SelfUpdateConfig()
+
+	t.Cleanup(func() { ConfigureSelfUpdate(previous) })
+
+	project := selfUpdateTestProject("tools", "doco-cd")
+	target := &selfTarget{Service: "doco-cd", Project: project.Name}
+	docker := selfApplyTestCli{apiClient: unchangedSelfClient{}}
+	dc := &deploy.Config{Name: "tools"}
+
+	t.Run("disabled", func(t *testing.T) {
+		ConfigureSelfUpdate(SelfUpdateOptions{Enabled: false})
+
+		_, err := prepareSelfUpdate(t.Context(), docker, project, dc, target, nil, nil)
+
+		if !errors.Is(err, selfupdate.ErrDisabled) {
+			t.Fatalf("prepareSelfUpdate() error = %v; want self-update disabled", err)
+		}
+	})
+
+	t.Run("journal unreadable", func(t *testing.T) {
+		mount := t.TempDir()
+		if err := os.WriteFile(filepath.Join(mount, "self-update"), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		ConfigureSelfUpdate(SelfUpdateOptions{Enabled: true, Store: selfupdate.NewStore(mount)})
+
+		_, err := prepareSelfUpdate(t.Context(), docker, project, dc, target, nil, nil)
+
+		if err == nil {
+			t.Fatal("prepareSelfUpdate() error = nil; want the journal read error")
+		}
+	})
+
+	t.Run("handover in progress", func(t *testing.T) {
+		store := selfupdate.NewStore(t.TempDir())
+		if err := store.Create(&selfupdate.Record{
+			ID: "5056a901-3c03-4478-91d4-7a20aab30e8e", State: selfupdate.StateStarted,
+			Strategy: selfupdate.StrategyScaleOut, Stack: "tools", Service: "doco-cd",
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		ConfigureSelfUpdate(SelfUpdateOptions{Enabled: true, Store: store})
+
+		stopped := false
+		_, err := prepareSelfUpdate(t.Context(), docker, project, dc, target, nil, &SelfDeployInput{
+			StopPhaseReports: func() { stopped = true },
+		})
+
+		if !errors.Is(err, selfupdate.ErrHandover) || !stopped {
+			t.Fatalf("prepareSelfUpdate() stopped=%v err=%v; want the active handover", stopped, err)
+		}
+	})
+}
+
+func TestComposeServiceHashRejectsNaN(t *testing.T) {
+	svc := types.ServiceConfig{Name: "doco-cd", CPUPercent: float32(math.NaN())}
+
+	if _, err := composeServiceHash(svc); err == nil {
+		t.Fatal("composeServiceHash() error = nil; want the NaN rejected")
+	}
+
+	withSelfIdentity(t, "tools", "doco-cd")
+
+	project := selfUpdateTestProject("tools", "doco-cd")
+	project.Services["doco-cd"] = svc
+	unchanged, err := selfServiceUnchanged(
+		t.Context(),
+		unchangedSelfClient{labels: map[string]string{api.ConfigHashLabel: "present"}},
+		project, &selfTarget{Service: "doco-cd", Project: project.Name}, api.RecreateDiverged, nil,
+	)
+
+	if err == nil || unchanged {
+		t.Fatalf("selfServiceUnchanged() = %v, %v; want the hash error", unchanged, err)
+	}
 }
 
 func TestSelfUpdateLogger(t *testing.T) {
