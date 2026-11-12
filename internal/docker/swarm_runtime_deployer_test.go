@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/netip"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -170,6 +171,150 @@ func TestRemoveReplacedSwarmImages(t *testing.T) {
 
 	if _, err = apiClient.ImageInspect(ctx, newRef); err != nil {
 		t.Errorf("expected image %s of the running task to be kept: %v", newRef, err)
+	}
+}
+
+// TestRemoveReplacedSwarmImagesDefersStoppingTasks runs alone, not in parallel, because the
+// deferred records it creates are cluster-wide and another run would pick them up.
+func TestRemoveReplacedSwarmImagesDefersStoppingTasks(t *testing.T) {
+	dockerCli, err := CreateDockerCli(false)
+	if err != nil {
+		t.Fatalf("Failed to create Docker CLI: %v", err)
+	}
+
+	apiClient := dockerCli.Client()
+	ctx := t.Context()
+
+	if !resolveTestSwarmMode(ctx, t, apiClient) {
+		t.Skip("Swarm mode is not enabled, skipping test")
+	}
+
+	stackName := test.ConvertTestName(t.Name())
+	logger := slog.New(slog.DiscardHandler)
+
+	repo := startTestRegistry(ctx, t, apiClient) + "/" + stackName
+	oldRef := pushUniqueTestImage(ctx, t, apiClient, repo+":old")
+	newRef := pushUniqueTestImage(ctx, t, apiClient, repo+":new")
+
+	replicas := uint64(1)
+	// sleep runs as PID 1 and ignores SIGTERM, so the old task keeps running for the whole grace period.
+	gracePeriod := 5 * time.Minute
+
+	created, err := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{
+		Spec: swarmTypes.ServiceSpec{
+			Name:   stackName + "_app",
+			Labels: map[string]string{swarm.StackNamespaceLabel: stackName},
+			TaskTemplate: swarmTypes.TaskSpec{
+				ContainerSpec: &swarmTypes.ContainerSpec{Image: oldRef, Command: []string{"sleep", "600"}, StopGracePeriod: &gracePeriod},
+			},
+			Mode:         swarmTypes.ServiceMode{Replicated: &swarmTypes.ReplicatedService{Replicas: &replicas}},
+			UpdateConfig: &swarmTypes.UpdateConfig{Order: swarmTypes.UpdateOrderStartFirst},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	serviceContainers := make(client.Filters).Add("label", "com.docker.swarm.service.id="+created.ID)
+
+	removeContainers := func(image string) {
+		result, listErr := apiClient.ContainerList(context.Background(), client.ContainerListOptions{All: true, Filters: serviceContainers})
+		if listErr != nil {
+			t.Errorf("failed to list task containers: %v", listErr)
+			return
+		}
+
+		for _, c := range result.Items {
+			if image == "" || c.Image == image {
+				_, _ = apiClient.ContainerRemove(context.Background(), c.ID, client.ContainerRemoveOptions{Force: true})
+			}
+		}
+	}
+
+	t.Cleanup(func() {
+		_, _ = apiClient.ServiceRemove(context.Background(), created.ID, client.ServiceRemoveOptions{})
+
+		removeContainers("")
+
+		deferred, _ := deferredImageRemovals(context.Background(), apiClient)
+		for _, configID := range deferred {
+			_, _ = apiClient.ConfigRemove(context.Background(), configID, client.ConfigRemoveOptions{})
+		}
+	})
+
+	if err = swarm.WaitOnServices(ctx, dockerCli, []string{created.ID}); err != nil {
+		t.Fatalf("service did not converge: %v", err)
+	}
+
+	before, err := getDeployedServiceImageRefs(ctx, dockerCli, true, stackName, logger)
+	if err != nil {
+		t.Fatalf("failed to get images before update: %v", err)
+	}
+
+	inspect, err := apiClient.ServiceInspect(ctx, created.ID, client.ServiceInspectOptions{})
+	if err != nil {
+		t.Fatalf("failed to inspect service: %v", err)
+	}
+
+	spec := inspect.Service.Spec
+	spec.TaskTemplate.ContainerSpec.Image = newRef
+
+	if _, err = apiClient.ServiceUpdate(ctx, created.ID, client.ServiceUpdateOptions{Version: inspect.Service.Version, Spec: spec}); err != nil {
+		t.Fatalf("failed to update service: %v", err)
+	}
+
+	if err = swarm.WaitOnServices(ctx, dockerCli, []string{created.ID}); err != nil {
+		t.Fatalf("service did not converge after update: %v", err)
+	}
+
+	req := runtimeDeployRequest{
+		request:  DeployRequest{DockerCLI: dockerCli, DeployConfig: &deploy.Config{Name: stackName}},
+		phase:    newDeploymentPhaseState("", nil),
+		stackLog: logger,
+	}
+
+	if err = removeReplacedSwarmImagesWithin(ctx, req, before, 2*time.Second); err != nil {
+		t.Fatalf("removeReplacedSwarmImagesWithin failed: %v", err)
+	}
+
+	if _, err = apiClient.ImageInspect(ctx, oldRef); err != nil {
+		t.Fatalf("expected %s of the stopping task to be kept: %v", oldRef, err)
+	}
+
+	oldRepo, oldDigest, _ := parseImageRef(oldRef)
+	deferredRef := oldRepo + "@" + oldDigest
+
+	deferred, err := deferredImageRemovals(ctx, apiClient)
+	if err != nil {
+		t.Fatalf("failed to list deferred image removals: %v", err)
+	}
+
+	if _, ok := deferred[deferredRef]; !ok {
+		t.Fatalf("expected %s to be deferred, deferred images: %v", deferredRef, slices.Collect(maps.Keys(deferred)))
+	}
+
+	// Once the old task stops, a later run with no images of its own retries the deferred one.
+	removeContainers(oldRef)
+
+	if err = removeReplacedSwarmImagesWithin(ctx, req, nil, 30*time.Second); err != nil {
+		t.Fatalf("retry of the deferred image failed: %v", err)
+	}
+
+	if _, err = apiClient.ImageInspect(ctx, oldRef); !errdefs.IsNotFound(err) {
+		t.Errorf("expected deferred image %s to be removed on retry, inspect error: %v", oldRef, err)
+	}
+
+	if _, err = apiClient.ImageInspect(ctx, newRef); err != nil {
+		t.Errorf("expected image %s of the running task to be kept: %v", newRef, err)
+	}
+
+	deferred, err = deferredImageRemovals(ctx, apiClient)
+	if err != nil {
+		t.Fatalf("failed to list deferred image removals: %v", err)
+	}
+
+	if _, ok := deferred[deferredRef]; ok {
+		t.Errorf("expected the record of %s to be removed after the retry", deferredRef)
 	}
 }
 
@@ -385,5 +530,163 @@ func TestReplacedImageRefs(t *testing.T) {
 				t.Errorf("replacedImageRefs() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+type imageTasksTestClient struct {
+	client.APIClient
+	tasks []swarmTypes.Task
+	err   error
+}
+
+func (c *imageTasksTestClient) TaskList(context.Context, client.TaskListOptions) (client.TaskListResult, error) {
+	return client.TaskListResult{Items: c.tasks}, c.err
+}
+
+func TestWaitForImageTasksStopped(t *testing.T) {
+	t.Parallel()
+
+	digestA := "sha256:" + strings.Repeat("a", 64)
+	digestB := "sha256:" + strings.Repeat("b", 64)
+	refA := "example.com/app@" + digestA
+
+	task := func(image string, state swarmTypes.TaskState) swarmTypes.Task {
+		return swarmTypes.Task{
+			Spec:   swarmTypes.TaskSpec{ContainerSpec: &swarmTypes.ContainerSpec{Image: image}},
+			Status: swarmTypes.TaskStatus{State: state},
+		}
+	}
+
+	testCases := []struct {
+		name    string
+		tasks   []swarmTypes.Task
+		err     error
+		want    []string
+		wantErr bool
+	}{
+		{
+			name:  "stopped task of the image",
+			tasks: []swarmTypes.Task{task("example.com/app:1@"+digestA, swarmTypes.TaskStateShutdown)},
+		},
+		{
+			name:  "running task of another image",
+			tasks: []swarmTypes.Task{task("example.com/app:2@"+digestB, swarmTypes.TaskStateRunning)},
+		},
+		{
+			name: "running task of the image under another tag",
+			tasks: []swarmTypes.Task{
+				task("example.com/app:1@"+digestA, swarmTypes.TaskStateRunning),
+				task("example.com/app:old@"+digestA, swarmTypes.TaskStateRunning),
+				{Status: swarmTypes.TaskStatus{State: swarmTypes.TaskStateRunning}},
+			},
+			want: []string{refA},
+		},
+		{
+			name:    "task list fails",
+			err:     errors.New("boom"),
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			apiClient := &imageTasksTestClient{tasks: tc.tasks, err: tc.err}
+
+			got, err := waitForImageTasksStopped(t.Context(), apiClient, []string{refA}, 50*time.Millisecond)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("waitForImageTasksStopped() error = %v, wantErr %v", err, tc.wantErr)
+			}
+
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("waitForImageTasksStopped() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+type deferredConfigsTestClient struct {
+	client.APIClient
+	configs   map[string]swarmTypes.Config
+	removeErr error
+	nextID    int
+}
+
+func (c *deferredConfigsTestClient) ConfigList(context.Context, client.ConfigListOptions) (client.ConfigListResult, error) {
+	return client.ConfigListResult{Items: slices.Collect(maps.Values(c.configs))}, nil
+}
+
+func (c *deferredConfigsTestClient) ConfigCreate(_ context.Context, options client.ConfigCreateOptions) (client.ConfigCreateResult, error) {
+	for _, cfg := range c.configs {
+		if cfg.Spec.Name == options.Spec.Name {
+			return client.ConfigCreateResult{}, errdefs.ErrConflict
+		}
+	}
+
+	c.nextID++
+	id := "config-" + strconv.Itoa(c.nextID)
+	c.configs[id] = swarmTypes.Config{ID: id, Spec: options.Spec}
+
+	return client.ConfigCreateResult{ID: id}, nil
+}
+
+func (c *deferredConfigsTestClient) ConfigRemove(_ context.Context, id string, _ client.ConfigRemoveOptions) (client.ConfigRemoveResult, error) {
+	if c.removeErr != nil {
+		return client.ConfigRemoveResult{}, c.removeErr
+	}
+
+	delete(c.configs, id)
+
+	return client.ConfigRemoveResult{}, nil
+}
+
+func TestDeferredImageRemovals(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	logger := slog.New(slog.DiscardHandler)
+	refA := "example.com/app@sha256:" + strings.Repeat("a", 64)
+	refB := "example.com/app@sha256:" + strings.Repeat("b", 64)
+
+	apiClient := &deferredConfigsTestClient{configs: map[string]swarmTypes.Config{}}
+
+	if err := deferImageRemovals(ctx, apiClient, []string{refA, refB}, nil); err != nil {
+		t.Fatalf("deferImageRemovals() error = %v", err)
+	}
+
+	// A concurrent run that deferred the same image first is not an error.
+	if err := deferImageRemovals(ctx, apiClient, []string{refA}, nil); err != nil {
+		t.Fatalf("deferImageRemovals() of an already deferred image error = %v", err)
+	}
+
+	deferred, err := deferredImageRemovals(ctx, apiClient)
+	if err != nil {
+		t.Fatalf("deferredImageRemovals() error = %v", err)
+	}
+
+	if got := slices.Sorted(maps.Keys(deferred)); !slices.Equal(got, []string{refA, refB}) {
+		t.Fatalf("deferred images = %v, want %v", got, []string{refA, refB})
+	}
+
+	for _, cfg := range apiClient.configs {
+		if cfg.Spec.Labels[DocoCDLabels.Metadata.Manager] == "" || len(cfg.Spec.Name) > 64 {
+			t.Errorf("config %q lacks the manager label or exceeds the name limit", cfg.Spec.Name)
+		}
+	}
+
+	apiClient.removeErr = errdefs.ErrNotFound
+	forgetDeferredImageRemovals(ctx, apiClient, deferred, func(string) bool { return true }, logger)
+	apiClient.removeErr = nil
+
+	forgetDeferredImageRemovals(ctx, apiClient, deferred, func(ref string) bool { return ref == refA }, logger)
+
+	deferred, err = deferredImageRemovals(ctx, apiClient)
+	if err != nil {
+		t.Fatalf("deferredImageRemovals() error = %v", err)
+	}
+
+	if got := slices.Collect(maps.Keys(deferred)); !slices.Equal(got, []string{refB}) {
+		t.Errorf("deferred images after forgetting %s = %v, want [%s]", refA, got, refB)
 	}
 }

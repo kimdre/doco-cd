@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"strings"
 	"time"
 
@@ -207,67 +207,43 @@ func swarmJobServiceSpec(name, title string, mode swarmTypes.ServiceMode, comman
 }
 
 const (
-	imageRemoveJobTitle         = "image-remove"
-	imageRemoveJobPrefix        = app.Name + "_" + imageRemoveJobTitle + "-"
-	legacyImagePruneJobName     = app.Name + "_image-prune"
-	staleImageRemoveJobAge      = time.Hour
-	imageRemoveInUseAttempts    = 12
-	imageRemoveInUseRetryPeriod = 5 * time.Second
+	imageRemoveJobTitle     = "image-remove"
+	imageRemoveJobPrefix    = app.Name + "_" + imageRemoveJobTitle + "-"
+	legacyImagePruneJobName = app.Name + "_image-prune"
+	staleImageRemoveJobAge  = time.Hour
 )
 
 // removeImagesScript removes each image by ID because a forced removal by reference
 // only untags an image a running container uses, while by ID the daemon refuses it.
-// An image a running container still uses (e.g. an old task that is still stopping) is
-// retried, and any failure other than a missing or in-use image fails the job.
-//
-//nolint:dupword // "done done" closes the two nested loops.
-const removeImagesScript = `attempts=$1 period=$2
-shift 2
-docker version >/dev/null || exit 1
+// An image still in use is kept, and any failure other than a missing or in-use image fails the job.
+const removeImagesScript = `docker version >/dev/null || exit 1
 status=0
 for ref in "$@"; do
-  try=1
-  while :; do
-    if ! out=$(docker image inspect --format '{{.Id}}' "$ref" 2>&1); then
-      case $out in
-        *"No such image"*) ;;
-        *) echo "inspect $ref: $out" >&2; status=1 ;;
-      esac
-      break
-    fi
-    out=$(docker image rm --force "$out" 2>&1) && break
+  if ! out=$(docker image inspect --format '{{.Id}}' "$ref" 2>&1); then
     case $out in
-      *"being used by running container"*)
-        if [ "$try" -lt "$attempts" ]; then
-          try=$((try + 1))
-          sleep "$period"
-          continue
-        fi
-        echo "keeping $ref: $out" ;;
-      *"has dependent child images"*) echo "keeping $ref: $out" ;;
       *"No such image"*) ;;
-      *) echo "remove $ref: $out" >&2; status=1 ;;
+      *) echo "inspect $ref: $out" >&2; status=1 ;;
     esac
-    break
-  done
+    continue
+  fi
+  out=$(docker image rm --force "$out" 2>&1) && continue
+  case $out in
+    *"being used by running container"* | *"has dependent child images"*) echo "keeping $ref: $out" ;;
+    *"No such image"*) ;;
+    *) echo "remove $ref: $out" >&2; status=1 ;;
+  esac
 done
 exit $status`
-
-type imageRemoveRetry struct {
-	attempts int
-	period   time.Duration
-}
 
 // RunImageRemoveJob removes images on every node with a global job service created for this run alone,
 // so a concurrent run cannot rewrite its command and a node that joins later never runs it.
 func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []string, logs ...*slog.Logger) error {
 	name := fmt.Sprintf("%s%d", imageRemoveJobPrefix, time.Now().UnixNano())
-	retry := imageRemoveRetry{attempts: imageRemoveInUseAttempts, period: imageRemoveInUseRetryPeriod}
 
-	return runImageRemoveJob(ctx, dockerCLI, name, images, retry, logs...)
+	return runImageRemoveJob(ctx, dockerCLI, name, images, logs...)
 }
 
-func runImageRemoveJob(ctx context.Context, dockerCLI command.Cli, name string, images []string, retry imageRemoveRetry, logs ...*slog.Logger) (err error) {
+func runImageRemoveJob(ctx context.Context, dockerCLI command.Cli, name string, images []string, logs ...*slog.Logger) (err error) {
 	apiClient := dockerCLI.Client()
 
 	var jobLog *slog.Logger
@@ -277,10 +253,7 @@ func runImageRemoveJob(ctx context.Context, dockerCLI command.Cli, name string, 
 
 	removeStaleImageRemoveJobs(ctx, apiClient, time.Now(), jobLog)
 
-	command := append([]string{
-		"sh", "-c", removeImagesScript, "sh",
-		strconv.Itoa(retry.attempts), strconv.Itoa(int(retry.period.Seconds())),
-	}, images...)
+	command := append([]string{"sh", "-c", removeImagesScript, "sh"}, images...)
 	spec := swarmJobServiceSpec(name, imageRemoveJobTitle, swarmTypes.ServiceMode{GlobalJob: &swarmTypes.GlobalJob{}}, command)
 
 	created, err := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{Spec: spec, QueryRegistry: true})
@@ -313,8 +286,8 @@ func runImageRemoveJob(ctx context.Context, dockerCLI command.Cli, name string, 
 }
 
 // removeStaleImageRemoveJobs removes image removal jobs a crashed run left behind and the
-// shared image-prune job of earlier versions, so a node joining later cannot run them. The age
-// check keeps it away from a run still in progress.
+// shared image-prune job of earlier versions, so a node joining later cannot run them. A job
+// still has to be old and have no live task, since a long run can outlast the age alone.
 func removeStaleImageRemoveJobs(ctx context.Context, apiClient client.APIClient, now time.Time, log *slog.Logger) {
 	filter := make(client.Filters).Add("label", DocoCDLabels.Metadata.Manager+"="+app.Name)
 
@@ -338,6 +311,16 @@ func removeStaleImageRemoveJobs(ctx context.Context, apiClient client.APIClient,
 			continue
 		}
 
+		live, err := serviceHasLiveTasks(ctx, apiClient, svc.ID)
+		if err != nil {
+			logSwarmJobError(log, "failed to list tasks of stale swarm job service", name, svc.ID, err)
+			continue
+		}
+
+		if live {
+			continue
+		}
+
 		_, err = apiClient.ServiceRemove(ctx, svc.ID, client.ServiceRemoveOptions{})
 		if err != nil && !errdefs.IsNotFound(err) {
 			logSwarmJobError(log, "failed to remove stale swarm job service", name, svc.ID, err)
@@ -346,6 +329,19 @@ func removeStaleImageRemoveJobs(ctx context.Context, apiClient client.APIClient,
 
 		logSwarmJob(log, "removed stale swarm job service", name, svc.ID)
 	}
+}
+
+func serviceHasLiveTasks(ctx context.Context, apiClient client.APIClient, serviceID string) (bool, error) {
+	tasks, err := apiClient.TaskList(ctx, client.TaskListOptions{
+		Filters: make(client.Filters).Add("service", serviceID),
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return slices.ContainsFunc(tasks.Items, func(task swarmTypes.Task) bool {
+		return !swarmTaskStopped(task.Status.State)
+	}), nil
 }
 
 type SwarmOneOffFromServiceOptions struct {

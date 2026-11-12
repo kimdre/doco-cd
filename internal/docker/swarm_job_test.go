@@ -127,10 +127,9 @@ func TestRunImageRemoveJob(t *testing.T) {
 	createImageRemoveTestContainer(ctx, t, apiClient, runningRef, true)
 
 	missingRef := repo + "@sha256:" + strings.Repeat("0", 64)
-	retry := imageRemoveRetry{attempts: 2, period: time.Second}
 	name := imageRemoveJobPrefix + test.ConvertTestName(t.Name())
 
-	if err = runImageRemoveJob(ctx, dockerCli, name, []string{replacedRef, runningRef, missingRef}, retry); err != nil {
+	if err = runImageRemoveJob(ctx, dockerCli, name, []string{replacedRef, runningRef, missingRef}); err != nil {
 		t.Fatalf("runImageRemoveJob failed: %v", err)
 	}
 
@@ -146,7 +145,7 @@ func TestRunImageRemoveJob(t *testing.T) {
 
 	badName := name + "-invalid"
 
-	err = runImageRemoveJob(ctx, dockerCli, badName, []string{"Invalid::Ref"}, retry)
+	err = runImageRemoveJob(ctx, dockerCli, badName, []string{"Invalid::Ref"})
 	if err == nil {
 		t.Error("expected an invalid reference to fail the job")
 	}
@@ -232,7 +231,20 @@ func createImageRemoveTestContainer(ctx context.Context, t *testing.T, apiClient
 type staleJobsTestClient struct {
 	client.APIClient
 	services []swarmTypes.Service
+	tasks    map[string][]swarmTypes.TaskState
 	removed  []string
+}
+
+func (c *staleJobsTestClient) TaskList(_ context.Context, options client.TaskListOptions) (client.TaskListResult, error) {
+	var result client.TaskListResult
+
+	for serviceID := range options.Filters["service"] {
+		for _, state := range c.tasks[serviceID] {
+			result.Items = append(result.Items, swarmTypes.Task{ServiceID: serviceID, Status: swarmTypes.TaskStatus{State: state}})
+		}
+	}
+
+	return result, nil
 }
 
 func (c *staleJobsTestClient) ServiceList(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
@@ -267,6 +279,10 @@ func TestRemoveStaleImageRemoveJobs(t *testing.T) {
 		service("legacy-in-use", legacyImagePruneJobName, "image-prune", recent),
 		service("other-trigger", imageRemoveJobPrefix+"3", "webhook", old),
 		service("stack-service", "app_image-remove-worker", imageRemoveJobTitle, old),
+		service("long-run", imageRemoveJobPrefix+"4", imageRemoveJobTitle, old),
+	}, tasks: map[string][]swarmTypes.TaskState{
+		"leftover": {swarmTypes.TaskStateComplete, swarmTypes.TaskStateFailed},
+		"long-run": {swarmTypes.TaskStateComplete, swarmTypes.TaskStateRunning},
 	}}
 
 	removeStaleImageRemoveJobs(t.Context(), apiClient, now, nil)

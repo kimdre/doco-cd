@@ -963,6 +963,19 @@ func resolveSwarmStopWaitTimeout(timeoutOverride *time.Duration, containerSpec *
 	return DefaultStopServicesTimeout
 }
 
+// swarmTaskStopped reports whether a task reached a terminal state. Until then it still
+// occupies resources, may still be writing to volumes, and its container keeps its image in use.
+func swarmTaskStopped(state swarmTypes.TaskState) bool {
+	switch state {
+	case swarmTypes.TaskStateShutdown, swarmTypes.TaskStateComplete,
+		swarmTypes.TaskStateFailed, swarmTypes.TaskStateRejected,
+		swarmTypes.TaskStateOrphaned, swarmTypes.TaskStateRemove:
+		return true
+	default:
+		return false
+	}
+}
+
 // waitForSwarmServiceTasksStopped blocks until the given service has no tasks
 // left in a live state, or until timeout elapses.
 //
@@ -995,14 +1008,7 @@ func waitForSwarmServiceTasksStopped(ctx context.Context, dockerCLI command.Cli,
 		live := 0
 
 		for _, task := range tasks.Items {
-			// A task still occupies resources (and may still be writing to
-			// volumes) until it reaches a terminal state.
-			switch task.Status.State {
-			case swarmTypes.TaskStateShutdown, swarmTypes.TaskStateComplete,
-				swarmTypes.TaskStateFailed, swarmTypes.TaskStateRejected,
-				swarmTypes.TaskStateOrphaned, swarmTypes.TaskStateRemove:
-				continue
-			default:
+			if !swarmTaskStopped(task.Status.State) {
 				live++
 			}
 		}
