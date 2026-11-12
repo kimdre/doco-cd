@@ -221,6 +221,7 @@ func TestPrepareSelfUpdateClosesOwnStatusWhenHandoverIsActive(t *testing.T) {
 	_, err := prepareSelfUpdate(t.Context(), nil, selfUpdateTestProject("stack", "app"), nil, nil, nil, &SelfDeployInput{
 		ConcludeOwnStatus: func() { concluded = true },
 	})
+
 	if !errors.Is(err, selfupdate.ErrHandover) {
 		t.Fatalf("prepareSelfUpdate() error = %v, want %v", err, selfupdate.ErrHandover)
 	}

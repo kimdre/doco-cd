@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -19,6 +20,7 @@ import (
 
 func TestActiveHandoverSkipsPendingCommitStatus(t *testing.T) {
 	previous := docker.SelfUpdateConfig()
+
 	t.Cleanup(func() { docker.ConfigureSelfUpdate(previous) })
 
 	tests := []struct {
@@ -46,7 +48,9 @@ func TestActiveHandoverSkipsPendingCommitStatus(t *testing.T) {
 				}
 
 				mu.Lock()
+
 				posts = append(posts, string(body))
+
 				mu.Unlock()
 
 				w.WriteHeader(http.StatusCreated)
@@ -79,6 +83,10 @@ func TestActiveHandoverSkipsPendingCommitStatus(t *testing.T) {
 			}
 			sm.Repository.SourceUrl = "https://github.com/owner/repo"
 			sm.Repository.Revision = "deadbeef"
+			// A github.com host ignores the test server unless the post updates a check run.
+			sm.commitStatusTarget = &commitstatus.Target{
+				Backend: commitstatus.BackendChecks, CheckRunID: 123, ExternalID: "attempt",
+			}
 
 			err := sm.runStageOrder(t.Context(), nil, StageOrder{
 				Order: []StageName{StagePreDeploy, StageDeploy},
@@ -101,11 +109,13 @@ func TestActiveHandoverSkipsPendingCommitStatus(t *testing.T) {
 			}
 
 			mu.Lock()
+
 			got := append([]string(nil), posts...)
+
 			mu.Unlock()
 
 			body := strings.Join(got, "\n")
-			posted := strings.Contains(body, "In Progress")
+			posted := strings.Contains(body, `"in_progress"`)
 
 			if posted != tt.wantPost || (!tt.wantPost && len(got) != 0) {
 				t.Fatalf("in progress posted = %v, requests = %d, bodies = %q", posted, len(got), body)
