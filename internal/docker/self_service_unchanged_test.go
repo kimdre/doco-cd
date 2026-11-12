@@ -770,6 +770,19 @@ func TestRecheckSelfSkip(t *testing.T) {
 		}
 	})
 
+	t.Run("replica change is refused", func(t *testing.T) {
+		changed := *project
+		svc := project.Services["doco-cd"]
+		two := 2
+		svc.Scale = &two
+		changed.Services = types.Services{"doco-cd": svc, "other": project.Services["other"]}
+
+		got, err := recheckSelfSkip(t.Context(), docker, &changed, dc, target, api.RecreateDiverged, services, self, selfUpdatePlan{}, true)
+		if !errors.Is(err, selfupdate.ErrUnsupported) || got.Step != nil {
+			t.Fatalf("recheckSelfSkip() step=%v err=%v; want the replica refusal", got.Step != nil, err)
+		}
+	})
+
 	t.Run("plan returns the inspect error", func(t *testing.T) {
 		broken := selfApplyTestCli{apiClient: unchangedSelfClient{inspectErr: errors.New("inspect failed")}}
 
