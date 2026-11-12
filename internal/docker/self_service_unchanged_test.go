@@ -686,6 +686,83 @@ func TestPlanSelfHandoverContinuesWhenPinFails(t *testing.T) {
 	}
 }
 
+func TestRecheckSelfSkip(t *testing.T) {
+	withSelfIdentity(t, "tools", "doco-cd")
+
+	cfg := SelfUpdateConfig()
+	cfg.Store = selfupdate.NewStore(t.TempDir())
+	ConfigureSelfUpdate(cfg)
+
+	project := selfUpdateTestProject("tools", "doco-cd")
+
+	hash, err := composeServiceHash(project.Services["doco-cd"])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	digest := "sha256:running"
+	apiClient := unchangedSelfClient{
+		labels: map[string]string{
+			api.ConfigHashLabel:  hash,
+			api.ImageDigestLabel: digest,
+		},
+		image: image.InspectResponse{ID: digest},
+	}
+	target := &selfTarget{Service: "doco-cd", Project: project.Name}
+	docker := selfApplyTestCli{apiClient: apiClient}
+	dc := &deploy.Config{Name: "tools"}
+	services := []string{"doco-cd", "healthchecks"}
+	self := &SelfDeployInput{SourceType: "git"}
+
+	t.Run("handover already chosen", func(t *testing.T) {
+		plan := selfUpdatePlan{Services: []string{"healthchecks"}}
+		broken := selfApplyTestCli{apiClient: unchangedSelfClient{inspectErr: errors.New("inspect failed")}}
+
+		got, err := recheckSelfSkip(t.Context(), broken, project, dc, target, api.RecreateDiverged, services, self, plan, false)
+		if err != nil || !slices.Equal(got.Services, plan.Services) {
+			t.Fatalf("recheckSelfSkip() services=%v err=%v", got.Services, err)
+		}
+	})
+
+	t.Run("still unchanged", func(t *testing.T) {
+		got, err := recheckSelfSkip(t.Context(), docker, project, dc, target, api.RecreateDiverged, services, self, selfUpdatePlan{}, true)
+		if err != nil || got.Step != nil {
+			t.Fatalf("recheckSelfSkip() step=%v err=%v; want the service left in place", got.Step != nil, err)
+		}
+	})
+
+	t.Run("inspect error", func(t *testing.T) {
+		broken := selfApplyTestCli{apiClient: unchangedSelfClient{inspectErr: errors.New("inspect failed")}}
+
+		_, err := recheckSelfSkip(t.Context(), broken, project, dc, target, api.RecreateDiverged, services, self, selfUpdatePlan{}, true)
+		if err == nil {
+			t.Fatal("recheckSelfSkip() error = nil; want the inspect error")
+		}
+	})
+
+	t.Run("service now needs a handover", func(t *testing.T) {
+		changed := *project
+		svc := project.Services["doco-cd"]
+		two := 2
+		svc.Scale = &two
+		changed.Services = types.Services{"doco-cd": svc, "other": project.Services["other"]}
+
+		got, err := recheckSelfSkip(t.Context(), docker, &changed, dc, target, api.RecreateDiverged, services, self, selfUpdatePlan{}, true)
+		if err != nil || got.Step == nil || got.DeferToApplier || !slices.Equal(got.Services, []string{"healthchecks"}) {
+			t.Fatalf("recheckSelfSkip() services=%v defer=%v step=%v err=%v", got.Services, got.DeferToApplier, got.Step != nil, err)
+		}
+	})
+
+	t.Run("plan returns the inspect error", func(t *testing.T) {
+		broken := selfApplyTestCli{apiClient: unchangedSelfClient{inspectErr: errors.New("inspect failed")}}
+
+		_, skipped, err := planSelfHandover(t.Context(), broken, project, dc, target, api.RecreateDiverged, services, self, composeDeployOptions{})
+		if err == nil || skipped {
+			t.Fatalf("planSelfHandover() skipped=%v err=%v; want the inspect error", skipped, err)
+		}
+	})
+}
+
 func TestSelfUpdateLogger(t *testing.T) {
 	t.Parallel()
 

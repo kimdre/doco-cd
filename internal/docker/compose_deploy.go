@@ -178,28 +178,9 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		opts.logger().Warn("failed to keep unchanged services on their current artifact", slog.Any("error", err))
 	}
 
-	if pendingSkip {
-		pendingSkip, err = selfServiceUnchanged(ctx, dockerCli.Client(), project, kept, recreateMode, services)
-		if err != nil {
-			return err
-		}
-
-		if pendingSkip {
-			selfUpdateLogger(self).Info(
-				"self-update: self service configuration is unchanged",
-				slog.String("service", selfService),
-				slog.String("stack", kept.Project),
-			)
-		} else {
-			selfPlan, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, kept, services, self)
-			if err != nil {
-				return err
-			}
-
-			if selfPlan.DeferToApplier {
-				return selfPlan.Step()
-			}
-		}
+	selfPlan, err = recheckSelfSkip(ctx, dockerCli, project, deployConfig, kept, recreateMode, services, self, selfPlan, pendingSkip)
+	if err != nil {
+		return err
 	}
 
 	// Disabled services are known to Compose, so RemoveOrphans cannot reap the self container.

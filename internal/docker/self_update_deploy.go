@@ -130,6 +130,51 @@ func planSelfHandover(
 	return plan, false, err
 }
 
+// recheckSelfSkip repeats the unchanged check after images are pulled.
+// The digest compared before the pull can change once the image exists.
+func recheckSelfSkip(
+	ctx context.Context,
+	dockerCli command.Cli,
+	project *types.Project,
+	deployConfig *deploy.Config,
+	kept *selfTarget,
+	recreateMode string,
+	services []string,
+	self *SelfDeployInput,
+	plan selfUpdatePlan,
+	pendingSkip bool,
+) (selfUpdatePlan, error) {
+	if !pendingSkip {
+		return plan, nil
+	}
+
+	stillSkip, err := selfServiceUnchanged(ctx, dockerCli.Client(), project, kept, recreateMode, services)
+	if err != nil {
+		return selfUpdatePlan{}, err
+	}
+
+	if stillSkip {
+		selfUpdateLogger(self).Info(
+			"self-update: self service configuration is unchanged",
+			slog.String("service", kept.Service),
+			slog.String("stack", kept.Project),
+		)
+
+		return plan, nil
+	}
+
+	plan, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, kept, services, self)
+	if err != nil {
+		return selfUpdatePlan{}, err
+	}
+
+	if plan.DeferToApplier {
+		return plan, plan.Step()
+	}
+
+	return plan, nil
+}
+
 // applySelfPlan removes the self service from the project Compose creates when
 // a handover will recreate it. An unchanged service stays in that create.
 func applySelfPlan(project *types.Project, services []string, selfService string, plan selfUpdatePlan) (*types.Project, []string) {
