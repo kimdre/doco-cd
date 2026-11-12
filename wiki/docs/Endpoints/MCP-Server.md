@@ -38,16 +38,16 @@ x-api-key: your-api-key
 ```
 
 !!! warning
-    Inspect keys can read the raw Docker configuration of projects and
-    stacks, which can contain secrets. Write and full keys can deploy, stop,
-    restart, or scale workloads. A write key can also trigger a deployment
-    that indirectly destroys data or a job that runs arbitrary commands. Only
-    full keys can directly remove projects or stacks. Protect all API keys,
-    use HTTPS, and do not expose `/mcp` to untrusted clients.
+    Project and stack inspection permissions can expose secrets in raw Docker configuration. 
+    `poll:trigger` can deploy arbitrary workloads or indirectly destroy data; 
+    `jobs:trigger` can run configured jobs that execute arbitrary commands. 
+    `projects:delete` and `stacks:delete` allow direct removal.
+    Protect all API keys, use HTTPS, and do not expose `/mcp` to untrusted clients.
 
 The server authenticates every request. It advertises only the tools permitted
-by the supplied key's role, and direct calls to other tools are unavailable.
-Roles are cumulative; see [REST API roles](REST-API.md#roles).
+by the supplied key's effective permissions, and direct calls to other tools
+are unavailable. Roles are cumulative presets; keys may instead use
+[explicit permissions](REST-API.md#explicit-permissions).
 
 ### Client Configuration Examples
 
@@ -119,26 +119,26 @@ Roles are cumulative; see [REST API roles](REST-API.md#roles).
 
 ## Available Tools
 
-| Tool                    | Minimum role  | Key Parameters                                                                                 | Description                                                                                                          |
-|-------------------------|---------------|------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
-| `get_health`            | `read`        | None                                                                                           | Verify access to the Docker API.                                                                                     |
-| `list_deployment_runs`  | `read`        | `limit` (default 50, max 200), `status` (accepted/running/succeeded/failed/skipped), `trigger` | List recent deployment runs, optionally filtered by status and trigger.                                              |
-| `get_deployment_run`    | `read`        | `job_id`                                                                                       | Get a deployment run by job ID.                                                                                      |
-| `list_scheduled_jobs`   | `read`        | `stack` (filter), `context`                                                                    | List scheduler-managed jobs and their latest tracked run, optionally filtered by stack or Compose project.           |
-| `list_sync_windows`     | `read`        | `repository`, `deployment`, `context`, `manual`                                                | List [sync windows](../Advanced/Sync-Windows.md) and, if a target is given, whether it may be deployed right now.    |
-| `list_projects`         | `inspect`     | `all` (include stopped), `context`                                                             | List Docker Compose projects.                                                                                        |
-| `get_project`           | `inspect`     | `project_name`, `context`                                                                      | Get the containers of one Docker Compose project.                                                                    |
-| `control_project`       | `write`       | `project_name`, `action` (start/stop/restart), `context`, `timeout`                            | Start, stop, or restart a Docker Compose project.                                                                    |
-| `destroy_project`       | `full`        | `project_name`, `volumes`, `images`, `context`                                                 | Remove a Docker Compose project and optionally its volumes and images. Reconciliation may recreate managed projects. |
-| `list_stacks`           | `inspect`     | `context`                                                                                      | List Docker Swarm stacks and their services.                                                                         |
-| `get_stack`             | `inspect`     | `stack_name`, `context`                                                                        | Get the services of one Docker Swarm stack.                                                                          |
-| `control_stack`         | `write`       | `stack_name`, `action` (scale/restart/run), `service`, `replicas`                              | Scale, restart, or run matching services in a Docker Swarm stack.                                                    |
-| `remove_stack`          | `full`        | `stack_name`, `context`                                                                        | Remove a Docker Swarm stack.                                                                                         |
-| `trigger_scheduled_job` | `write`       | `job_name`, `stack`, `context`, `wait` (default `true`)                                        | Trigger one configured scheduled job immediately.                                                                    |
-| `trigger_poll`          | `write`       | `configs` (array, max 32), `wait` (default `true`)                                             | Trigger one or more poll configurations immediately.                                                                 |
-| `compact_mirrors`       | `write`       | `repository`, `mode` (repack/copy), `max_size`, `wait` (default `false`)                       | [Compact the Git mirrors](../Reference/Artifact-Storage.md#on-demand-compaction) into a single packfile per mirror.  |
+| Tool                    | Permission          | Minimum role | Key Parameters                                                                                               | Description                                                                                                          |
+|-------------------------|---------------------|--------------|--------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `get_health`            | `health:read`       | `read`       | None                                                                                                         | Verify access to the Docker API.                                                                                     |
+| `list_deployment_runs`  | `runs:read`         | `read`       | - `limit`: default 50, max 200 <br>- `status`: accepted, running, succeeded, failed, skipped <br>- `trigger` | List recent deployment runs, optionally filtered by status and trigger.                                              |
+| `get_deployment_run`    | `runs:read`         | `read`       | `job_id`                                                                                                     | Get a deployment run by job ID.                                                                                      |
+| `list_scheduled_jobs`   | `jobs:read`         | `read`       | - `stack` (filter) <br>- `context`                                                                           | List scheduler-managed jobs and their latest tracked run, optionally filtered by stack or Compose project.           |
+| `list_sync_windows`     | `sync_windows:read` | `read`       | `repository`, `deployment`, `context`, `manual`                                                              | List [sync windows](../Advanced/Sync-Windows.md) and, if a target is given, whether it may be deployed right now.    |
+| `list_projects`         | `projects:inspect`  | `inspect`    | `all` (include stopped), `context`                                                                           | List Docker Compose projects.                                                                                        |
+| `get_project`           | `projects:inspect`  | `inspect`    | `project_name`, `context`                                                                                    | Get the containers of one Docker Compose project.                                                                    |
+| `control_project`       | `projects:control`  | `write`      | `project_name`, `action` (start/stop/restart), `context`, `timeout`                                          | Start, stop, or restart a Docker Compose project.                                                                    |
+| `destroy_project`       | `projects:delete`   | `full`       | `project_name`, `volumes`, `images`, `context`                                                               | Remove a Docker Compose project and optionally its volumes and images. Reconciliation may recreate managed projects. |
+| `list_stacks`           | `stacks:inspect`    | `inspect`    | `context`                                                                                                    | List Docker Swarm stacks and their services.                                                                         |
+| `get_stack`             | `stacks:inspect`    | `inspect`    | `stack_name`, `context`                                                                                      | Get the services of one Docker Swarm stack.                                                                          |
+| `control_stack`         | `stacks:control`    | `write`      | `stack_name`, `action` (scale/restart/run), `service`, `replicas`                                            | Scale, restart, or run matching services in a Docker Swarm stack.                                                    |
+| `remove_stack`          | `stacks:delete`     | `full`       | `stack_name`, `context`                                                                                      | Remove a Docker Swarm stack.                                                                                         |
+| `trigger_scheduled_job` | `jobs:trigger`      | `write`      | `job_name`, `stack`, `context`, `wait` (default `true`)                                                      | Trigger one configured scheduled job immediately.                                                                    |
+| `trigger_poll`          | `poll:trigger`      | `write`      | `configs` (array, max 32), `wait` (default `true`)                                                           | Trigger one or more poll configurations immediately.                                                                 |
+| `compact_mirrors`       | `mirrors:compact`   | `write`      | `repository`, `mode` (repack/copy), `max_size`, `wait` (default `false`)                                     | [Compact the Git mirrors](../Reference/Artifact-Storage.md#on-demand-compaction) into a single packfile per mirror.  |
 
-Swarm tools are advertised when the key's role permits them. Calls fail if
+Swarm tools are advertised when the key's permissions permit them. Calls fail if
 Docker Swarm features are unavailable or disabled.
 
 !!! note
@@ -157,14 +157,14 @@ packfiles; a `copy` finishes the current mirror before stopping.
 To poll progress with `#!yaml wait: false`:
 
 1. Call the tool with `#!yaml wait: false` to receive a `job_id`.
-2. Call `get_deployment_run` with that `job_id` until `status` is terminal.
+2. Call `get_deployment_run` with that `job_id` until `status` is terminal. This requires `runs:read`.
 
-| Status      | Terminal | Meaning                                              |
-|-------------|----------|------------------------------------------------------|
-| `accepted`  | No       | Job queued, not yet started.                         |
-| `running`   | No       | Job is actively executing.                           |
-| `succeeded` | Yes      | Job completed without error.                         |
-| `failed`    | Yes      | Job encountered an error.                            |
+| Status      | Terminal | Meaning                                                                                                                                                                   |
+|-------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `accepted`  | No       | Job queued, not yet started.                                                                                                                                              |
+| `running`   | No       | Job is actively executing.                                                                                                                                                |
+| `succeeded` | Yes      | Job completed without error.                                                                                                                                              |
+| `failed`    | Yes      | Job encountered an error.                                                                                                                                                 |
 | `skipped`   | Yes      | Job was not executed (e.g. no changes detected, deployments [paused](../Deploy-Settings.md#pause-settings), or deferred by a [sync window](../Advanced/Sync-Windows.md)). |
 
 !!! note

@@ -38,18 +38,38 @@ func newPermissionTestServer(t *testing.T) (*httptest.Server, *permissionRuns) {
 	t.Helper()
 
 	runs := &permissionRuns{}
-	handler := newHandler(Dependencies{
-		Version: "test",
-		APIKeys: restapi.Keyring{
-			{Key: "reader", Role: restapi.RoleRead},
-			{Key: "inspector", Role: restapi.RoleInspect},
-			{Key: "writer", Role: restapi.RoleWrite},
-			{Key: "admin", Role: restapi.RoleFull},
-		},
+
+	keys := restapi.Keyring{
+		{Key: "reader", Role: restapi.RoleRead},
+		{Key: "inspector", Role: restapi.RoleInspect},
+		{Key: "writer", Role: restapi.RoleWrite},
+		{Key: "admin", Role: restapi.RoleFull},
+		{Key: "custom-read", Permissions: []restapi.Permission{
+			restapi.PermissionSyncWindowsRead, restapi.PermissionRunsRead,
+			restapi.PermissionJobsRead, restapi.PermissionHealthRead,
+		}},
+	}
+	for _, permission := range []restapi.Permission{
+		restapi.PermissionHealthRead, restapi.PermissionJobsRead, restapi.PermissionJobsTrigger,
+		restapi.PermissionMirrorsCompact, restapi.PermissionPollTrigger,
+		restapi.PermissionProjectsControl, restapi.PermissionProjectsDelete, restapi.PermissionProjectsInspect,
+		restapi.PermissionRunsRead, restapi.PermissionStacksControl, restapi.PermissionStacksDelete,
+		restapi.PermissionStacksInspect, restapi.PermissionSyncWindowsRead,
+	} {
+		keys = append(keys, restapi.APIKey{Key: "only-" + string(permission), Permissions: []restapi.Permission{permission}})
+	}
+
+	handler, err := newHandler(Dependencies{
+		Version:        "test",
+		APIKeys:        keys,
 		MaxPayloadSize: 1024 * 1024,
 		Logger:         logger.New(logger.LevelCritical),
 		Runs:           runs,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
@@ -60,7 +80,7 @@ func TestMCPRoleCatalogsAndCalls(t *testing.T) {
 	server, runs := newPermissionTestServer(t)
 
 	toolPermissions := map[string]restapi.Permission{
-		"get_health":            restapi.PermissionRunsRead,
+		"get_health":            restapi.PermissionHealthRead,
 		"list_deployment_runs":  restapi.PermissionRunsRead,
 		"get_deployment_run":    restapi.PermissionRunsRead,
 		"list_scheduled_jobs":   restapi.PermissionJobsRead,
@@ -162,6 +182,130 @@ func TestMCPRoleCatalogsAndCalls(t *testing.T) {
 	}
 }
 
+func TestMCPCustomPermissionCatalogsAndCalls(t *testing.T) {
+	server, runs := newPermissionTestServer(t)
+
+	toolPermissions := map[string]restapi.Permission{
+		"get_health":            restapi.PermissionHealthRead,
+		"list_deployment_runs":  restapi.PermissionRunsRead,
+		"get_deployment_run":    restapi.PermissionRunsRead,
+		"list_scheduled_jobs":   restapi.PermissionJobsRead,
+		"list_sync_windows":     restapi.PermissionSyncWindowsRead,
+		"list_projects":         restapi.PermissionProjectsInspect,
+		"get_project":           restapi.PermissionProjectsInspect,
+		"list_stacks":           restapi.PermissionStacksInspect,
+		"get_stack":             restapi.PermissionStacksInspect,
+		"control_project":       restapi.PermissionProjectsControl,
+		"control_stack":         restapi.PermissionStacksControl,
+		"trigger_scheduled_job": restapi.PermissionJobsTrigger,
+		"trigger_poll":          restapi.PermissionPollTrigger,
+		"compact_mirrors":       restapi.PermissionMirrorsCompact,
+		"destroy_project":       restapi.PermissionProjectsDelete,
+		"remove_stack":          restapi.PermissionStacksDelete,
+	}
+
+	for _, permission := range []restapi.Permission{
+		restapi.PermissionHealthRead, restapi.PermissionJobsRead, restapi.PermissionJobsTrigger,
+		restapi.PermissionMirrorsCompact, restapi.PermissionPollTrigger,
+		restapi.PermissionProjectsControl, restapi.PermissionProjectsDelete, restapi.PermissionProjectsInspect,
+		restapi.PermissionRunsRead, restapi.PermissionStacksControl, restapi.PermissionStacksDelete,
+		restapi.PermissionStacksInspect, restapi.PermissionSyncWindowsRead,
+	} {
+		t.Run(string(permission), func(t *testing.T) {
+			session := connectMCPTestClientWithKey(t, server, "only-"+string(permission))
+
+			result, err := session.ListTools(t.Context(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			seen := make(map[string]bool)
+
+			for _, tool := range result.Tools {
+				if required, ok := toolPermissions[tool.Name]; !ok || required != permission {
+					t.Errorf("unexpected tool %q for permission %q", tool.Name, permission)
+				}
+
+				seen[tool.Name] = true
+			}
+
+			for tool, required := range toolPermissions {
+				if required == permission {
+					if !seen[tool] {
+						t.Errorf("allowed tool %q is missing", tool)
+					}
+
+					continue
+				}
+
+				_, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: tool, Arguments: map[string]any{}})
+				if err == nil || !strings.Contains(strings.ToLower(err.Error()), "unknown tool") {
+					t.Errorf("hidden tool %q returned %v, want unknown-tool error", tool, err)
+				}
+			}
+
+			if permission == restapi.PermissionRunsRead || permission == restapi.PermissionMirrorsCompact {
+				tool := "list_deployment_runs"
+				if permission == restapi.PermissionMirrorsCompact {
+					tool = "compact_mirrors"
+				}
+
+				call, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: tool, Arguments: map[string]any{}})
+				if err != nil || call == nil || call.IsError {
+					t.Fatalf("allowed tool %q: result = %#v, error = %v", tool, call, err)
+				}
+			}
+		})
+	}
+
+	if got := runs.compactions.Load(); got != 1 {
+		t.Fatalf("compaction calls = %d, want 1", got)
+	}
+}
+
+func TestMCPPermissionKeysAreCopied(t *testing.T) {
+	keys := restapi.Keyring{{Key: "snapshot", Permissions: []restapi.Permission{restapi.PermissionRunsRead}}}
+
+	handler, err := newHandler(Dependencies{
+		Version:        "test",
+		APIKeys:        keys,
+		MaxPayloadSize: 1024 * 1024,
+		Logger:         logger.New(logger.LevelCritical),
+		Runs:           &permissionRuns{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keys[0].Permissions[0] = restapi.PermissionProjectsDelete
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	session := connectMCPTestClientWithKey(t, server, "snapshot")
+
+	result, err := session.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.Tools) != 2 {
+		t.Fatalf("got %d tools, want the two deployment-run tools", len(result.Tools))
+	}
+
+	for _, tool := range result.Tools {
+		if tool.Name != "list_deployment_runs" && tool.Name != "get_deployment_run" {
+			t.Errorf("unexpected tool %q after modifying the source keyring", tool.Name)
+		}
+	}
+
+	_, err = session.CallTool(t.Context(), &sdkmcp.CallToolParams{
+		Name: "destroy_project", Arguments: map[string]any{"project_name": "test"},
+	})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "unknown tool") {
+		t.Fatalf("destroy_project returned %v, want unknown-tool error", err)
+	}
+}
+
 type changingKeyTransport struct {
 	key  atomic.Value
 	base http.RoundTripper
@@ -202,8 +346,12 @@ func TestMCPRoleIsSelectedForEveryRequest(t *testing.T) {
 	}{
 		{"admin", 16},
 		{"reader", 5},
+		{"custom-read", 5},
 		{"inspector", 9},
 		{"writer", 14},
+		{"only-poll:trigger", 1},
+		{"only-runs:read", 2},
+		{"only-projects:delete", 1},
 		{"admin", 16},
 	} {
 		transport.key.Store(testCase.key)
@@ -249,6 +397,9 @@ func TestMCPRoleCatalogsAreConcurrent(t *testing.T) {
 		wantCount int
 	}{
 		{"reader", 5},
+		{"custom-read", 5},
+		{"only-poll:trigger", 1},
+		{"only-stacks:delete", 1},
 		{"inspector", 9},
 		{"writer", 14},
 		{"admin", 16},

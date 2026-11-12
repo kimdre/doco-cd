@@ -26,6 +26,39 @@ func TestRESTOperationPermissions(t *testing.T) {
 		{Key: "writer", Role: restapi.RoleWrite},
 		{Key: "admin", Role: restapi.RoleFull},
 	}
+
+	credentials := []struct {
+		name       string
+		key        string
+		role       restapi.Role
+		permission restapi.Permission
+		valid      bool
+	}{
+		{"missing", "", "", "", false},
+		{"invalid", "invalid", "", "", false},
+		{"read", "reader", restapi.RoleRead, "", true},
+		{"inspect", "inspector", restapi.RoleInspect, "", true},
+		{"write", "writer", restapi.RoleWrite, "", true},
+		{"full", "admin", restapi.RoleFull, "", true},
+	}
+	for _, permission := range []restapi.Permission{
+		restapi.PermissionHealthRead, restapi.PermissionJobsRead, restapi.PermissionJobsTrigger,
+		restapi.PermissionMirrorsCompact, restapi.PermissionPollTrigger,
+		restapi.PermissionProjectsControl, restapi.PermissionProjectsDelete, restapi.PermissionProjectsInspect,
+		restapi.PermissionRunsRead, restapi.PermissionStacksControl, restapi.PermissionStacksDelete,
+		restapi.PermissionStacksInspect, restapi.PermissionSyncWindowsRead,
+	} {
+		key := "only-" + string(permission)
+		keys = append(keys, restapi.APIKey{Key: key, Permissions: []restapi.Permission{permission}})
+		credentials = append(credentials, struct {
+			name       string
+			key        string
+			role       restapi.Role
+			permission restapi.Permission
+			valid      bool
+		}{key, key, "", permission, true})
+	}
+
 	h := &Handler{
 		appConfig: &app.Config{APIKeys: keys, MaxPayloadSize: 1024},
 		log:       logger.New(logger.LevelCritical),
@@ -56,18 +89,7 @@ func TestRESTOperationPermissions(t *testing.T) {
 	}
 
 	for _, operation := range operations {
-		for _, credential := range []struct {
-			name string
-			key  string
-			role restapi.Role
-		}{
-			{"missing", "", ""},
-			{"invalid", "invalid", ""},
-			{"read", "reader", restapi.RoleRead},
-			{"inspect", "inspector", restapi.RoleInspect},
-			{"write", "writer", restapi.RoleWrite},
-			{"full", "admin", restapi.RoleFull},
-		} {
+		for _, credential := range credentials {
 			t.Run(operation.name+"/"+credential.name, func(t *testing.T) {
 				t.Parallel()
 
@@ -78,9 +100,9 @@ func TestRESTOperationPermissions(t *testing.T) {
 				operation.handler(response, request)
 
 				want := http.StatusUnauthorized
-				if credential.role != "" {
+				if credential.valid {
 					want = http.StatusForbidden
-					if credential.role.Allows(operation.required) {
+					if credential.role.Allows(operation.required) || credential.permission == operation.required {
 						want = http.StatusBadRequest
 					}
 				}
@@ -303,12 +325,12 @@ func TestRESTOpenAPIPermissions(t *testing.T) {
 				continue
 			}
 
-			description := "Required API key role: `" + string(role) + "`."
+			description := "Required API key permission: `" + string(permission) + "` (minimum role: `" + string(role) + "`)."
 			if !strings.Contains(metadata.Operation.Description, description) {
-				t.Errorf("%s is missing role description %q", id, description)
+				t.Errorf("%s is missing permission description %q", id, description)
 			}
 
-			if role != restapi.RoleRead && metadata.Operation.Responses.Value("403") == nil {
+			if metadata.Operation.Responses.Value("403") == nil {
 				t.Errorf("%s is missing a 403 response", id)
 			}
 		}

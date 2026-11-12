@@ -152,12 +152,16 @@ func TestMCPServerLogging(t *testing.T) {
 				Level: level,
 			}
 
-			handler := newHandler(Dependencies{
+			handler, err := newHandler(Dependencies{
 				Version:        "test",
 				APIKeys:        testMCPKeys(testMCPAPIKey),
 				MaxPayloadSize: 1024,
 				Logger:         parent,
 			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			if handler.log.Level != level {
 				t.Fatalf("MCP application logger level = %v, want %v", handler.log.Level, level)
 			}
@@ -738,12 +742,17 @@ func TestInstrumentMCPToolLogsHandlerFailure(t *testing.T) {
 				Logger: slog.New(slog.NewTextHandler(&logOutput, nil)),
 				Level:  slog.LevelDebug,
 			}
-			mcpHandler := newHandler(Dependencies{
+
+			mcpHandler, err := newHandler(Dependencies{
 				Version:        "test",
 				APIKeys:        testMCPKeys(testMCPAPIKey),
 				MaxPayloadSize: 1024,
 				Logger:         log,
 			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			handler := instrumentTool(mcpHandler.log, "test_failure", func(context.Context, *sdkmcp.CallToolRequest, struct{}) (*sdkmcp.CallToolResult, struct{}, error) {
 				return testCase.result, struct{}{}, testCase.err
 			})

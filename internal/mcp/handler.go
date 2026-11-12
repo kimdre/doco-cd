@@ -13,6 +13,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
@@ -90,15 +91,15 @@ func NewHandler(dependencies Dependencies) (*Handler, error) {
 		return nil, fmt.Errorf("validate MCP API keys: %w", err)
 	}
 
-	return newHandler(dependencies), nil
+	return newHandler(dependencies)
 }
 
-type roleContextKey struct{}
+type grantContextKey struct{}
 
 // newHandler registers MCP tools and builds the authenticated stateless HTTP transport.
-func newHandler(dependencies Dependencies) *Handler {
+func newHandler(dependencies Dependencies) (*Handler, error) {
 	h := &Handler{
-		apiKeys:              append(restapi.Keyring(nil), dependencies.APIKeys...),
+		apiKeys:              *clone.New(&dependencies.APIKeys),
 		trustedProxyHeader:   strings.TrimSpace(dependencies.TrustedProxyHeader),
 		trustedProxyNetworks: append([]netip.Prefix(nil), dependencies.TrustedProxyNetworks...),
 		log: &logger.Logger{
@@ -112,21 +113,31 @@ func newHandler(dependencies Dependencies) *Handler {
 	}
 
 	mcpLogger := slog.New(&sdkLogHandler{next: h.log.Handler()})
-	servers := make(map[restapi.Role]*sdkmcp.Server, 4)
+	servers := make(map[string]*sdkmcp.Server, len(h.apiKeys))
 
-	for _, role := range []restapi.Role{restapi.RoleRead, restapi.RoleInspect, restapi.RoleWrite, restapi.RoleFull} {
+	for i, key := range h.apiKeys {
+		grant, err := key.Grant()
+		if err != nil {
+			return nil, fmt.Errorf("resolve MCP API key entry %d: %w", i+1, err)
+		}
+
+		signature := grant.Signature()
+		if _, exists := servers[signature]; exists {
+			continue
+		}
+
 		server := sdkmcp.NewServer(
 			&sdkmcp.Implementation{Name: "doco-cd", Version: dependencies.Version},
 			&sdkmcp.ServerOptions{Logger: mcpLogger},
 		)
-		h.registerTools(server, role)
-		servers[role] = server
+		h.registerTools(server, grant)
+		servers[signature] = server
 	}
 
 	h.transport = sdkmcp.NewStreamableHTTPHandler(func(r *http.Request) *sdkmcp.Server {
-		role, _ := r.Context().Value(roleContextKey{}).(restapi.Role)
+		signature, _ := r.Context().Value(grantContextKey{}).(string)
 
-		return servers[role]
+		return servers[signature]
 	}, &sdkmcp.StreamableHTTPOptions{
 		Stateless:                    true,
 		PropagateRequestCancellation: true,
@@ -136,61 +147,60 @@ func newHandler(dependencies Dependencies) *Handler {
 		Logger:                     mcpLogger,
 	})
 
-	return h
+	return h, nil
 }
 
-// registerTools installs the tools available to a role.
-func (h *Handler) registerTools(server *sdkmcp.Server, role restapi.Role) {
-	if !role.Valid() {
-		return
+// registerTools installs the tools available to a grant.
+func (h *Handler) registerTools(server *sdkmcp.Server, grant restapi.Grant) {
+	if grant.Allows(restapi.PermissionHealthRead) {
+		h.addHealthTool(server)
 	}
 
-	if role.Allows(restapi.PermissionRunsRead) {
-		h.addHealthTool(server)
+	if grant.Allows(restapi.PermissionRunsRead) {
 		h.addRunTools(server)
 	}
 
-	if role.Allows(restapi.PermissionJobsRead) {
+	if grant.Allows(restapi.PermissionJobsRead) {
 		h.addScheduledJobReadTool(server)
 	}
 
-	if role.Allows(restapi.PermissionSyncWindowsRead) {
+	if grant.Allows(restapi.PermissionSyncWindowsRead) {
 		h.addSyncWindowTool(server)
 	}
 
 	// Project and stack details can contain secrets, for example Swarm service env.
-	if role.Allows(restapi.PermissionProjectsInspect) {
+	if grant.Allows(restapi.PermissionProjectsInspect) {
 		h.addProjectReadTools(server)
 	}
 
-	if role.Allows(restapi.PermissionStacksInspect) {
+	if grant.Allows(restapi.PermissionStacksInspect) {
 		h.addStackReadTools(server)
 	}
 
-	if role.Allows(restapi.PermissionProjectsControl) || role.Allows(restapi.PermissionProjectsDelete) {
-		h.addProjectTools(server, role)
+	if grant.Allows(restapi.PermissionProjectsControl) || grant.Allows(restapi.PermissionProjectsDelete) {
+		h.addProjectTools(server, grant)
 	}
 
-	if role.Allows(restapi.PermissionStacksControl) || role.Allows(restapi.PermissionStacksDelete) {
-		h.addStackTools(server, role)
+	if grant.Allows(restapi.PermissionStacksControl) || grant.Allows(restapi.PermissionStacksDelete) {
+		h.addStackTools(server, grant)
 	}
 
-	if role.Allows(restapi.PermissionJobsTrigger) {
+	if grant.Allows(restapi.PermissionJobsTrigger) {
 		h.addScheduledJobTriggerTool(server)
 	}
 
-	if role.Allows(restapi.PermissionPollTrigger) {
+	if grant.Allows(restapi.PermissionPollTrigger) {
 		h.addPollTool(server)
 	}
 
-	if role.Allows(restapi.PermissionMirrorsCompact) {
+	if grant.Allows(restapi.PermissionMirrorsCompact) {
 		h.addStorageTools(server)
 	}
 }
 
 // ServeHTTP authenticates a request before forwarding it to the MCP transport.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	role, ok := h.apiKeys.Authenticate(r)
+	grant, ok := h.apiKeys.Authenticate(r)
 	if !ok {
 		h.log.Error(restapi.ErrInvalidApiKey.Error(), slog.String("ip", h.requestIP(r)))
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -198,7 +208,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.transport.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), roleContextKey{}, role)))
+	h.transport.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), grantContextKey{}, grant.Signature())))
 }
 
 // requestIP resolves the client address while honoring configured trusted proxies.

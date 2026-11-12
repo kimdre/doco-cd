@@ -46,7 +46,7 @@ type Config struct {
 	TrustedProxyHeader            string                 `env:"TRUSTED_PROXY_HEADER" envDefault:"X-Forwarded-For"`                                               // TrustedProxyHeader is an optional header name containing the original client IP.
 	APIKeysYAML                   string                 `env:"API_KEYS" yaml:"-" json:"-"`                                                                      // APIKeysYAML is the YAML list of API keys.
 	APIKeysFile                   string                 `env:"API_KEYS_FILE,file" yaml:"-" json:"-"`                                                            // APIKeysFile is the file containing the API key list.
-	APIKeys                       restapi.Keyring        `yaml:"-" json:"-"`                                                                                     // APIKeys holds the parsed API keys and roles.
+	APIKeys                       restapi.Keyring        `yaml:"-" json:"-"`                                                                                     // APIKeys holds the parsed API keys and grants.
 	WebhookSecret                 string                 `env:"WEBHOOK_SECRET"`                                                                                  // WebhookSecret is the secret token used to authenticate the webhook
 	WebhookSecretFile             string                 `env:"WEBHOOK_SECRET_FILE,file"`                                                                        // WebhookSecretFile is the file containing the WebhookSecret
 	SourceURLRewritesYAML         string                 `env:"SOURCE_URL_REWRITES"`                                                                             // SourceURLRewritesYAML maps URL/domain/URI match rules to rewrite targets for git source URLs.
@@ -320,14 +320,42 @@ func (cfg *Config) parseAPIKeys() error {
 	decoder := yaml.NewDecoder(strings.NewReader(cfg.APIKeysYAML))
 	decoder.KnownFields(true)
 
-	var keys restapi.Keyring
-	if err := decoder.Decode(&keys); err != nil || keys == nil {
-		return errors.New("API_KEYS must be a YAML list of key and role mappings")
+	var entries []struct {
+		Key         string    `yaml:"key"`
+		Role        yaml.Node `yaml:"role"`
+		Permissions yaml.Node `yaml:"permissions"`
+	}
+	if err := decoder.Decode(&entries); err != nil || entries == nil {
+		return errors.New("API_KEYS must be a YAML list of key and role or permissions mappings")
 	}
 
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return errors.New("API_KEYS must contain exactly one valid YAML document")
+	}
+
+	keys := make(restapi.Keyring, len(entries))
+	for i, entry := range entries {
+		if entry.Role.Kind != 0 && entry.Permissions.Kind != 0 {
+			return fmt.Errorf("API_KEYS entry %d: role and permissions are mutually exclusive", i+1)
+		}
+
+		keys[i].Key = entry.Key
+		if entry.Role.Kind != 0 {
+			if err := entry.Role.Decode(&keys[i].Role); err != nil {
+				return fmt.Errorf("API_KEYS entry %d: role must be read, inspect, write, or full", i+1)
+			}
+		}
+
+		if entry.Permissions.Kind != 0 {
+			if err := entry.Permissions.Decode(&keys[i].Permissions); err != nil {
+				return fmt.Errorf("API_KEYS entry %d: permissions must be a non-empty list", i+1)
+			}
+
+			if keys[i].Permissions == nil {
+				keys[i].Permissions = []restapi.Permission{}
+			}
+		}
 	}
 
 	if err := keys.Validate(); err != nil {

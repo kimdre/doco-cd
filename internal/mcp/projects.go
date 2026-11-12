@@ -103,8 +103,8 @@ func (h *Handler) addProjectReadTools(server *sdkmcp.Server) {
 }
 
 // addProjectTools registers Compose project lifecycle operations.
-func (h *Handler) addProjectTools(server *sdkmcp.Server, role restapi.Role) {
-	if role.Allows(restapi.PermissionProjectsControl) {
+func (h *Handler) addProjectTools(server *sdkmcp.Server, grant restapi.Grant) {
+	if grant.Allows(restapi.PermissionProjectsControl) {
 		controlSchema := mustToolInputSchema[controlProjectInput]("control_project")
 		controlSchema.Properties["action"].Enum = []any{"start", "stop", "restart"}
 		setProjectTimeoutSchema(controlSchema)
@@ -117,7 +117,7 @@ func (h *Handler) addProjectTools(server *sdkmcp.Server, role restapi.Role) {
 		}, instrumentTool(h.log, "control_project", h.controlProject))
 	}
 
-	if role.Allows(restapi.PermissionProjectsDelete) {
+	if grant.Allows(restapi.PermissionProjectsDelete) {
 		destroySchema := mustToolInputSchema[destroyProjectInput]("destroy_project")
 		setProjectTimeoutSchema(destroySchema)
 

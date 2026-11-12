@@ -1007,10 +1007,8 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 				return nil, fmt.Errorf("permission %q is not granted by any API key role", permission)
 			}
 
-			metadata.Operation.Description += "\n\nRequired API key role: `" + string(role) + "`."
-			if role != restapi.RoleRead {
-				metadata.Operation.Responses.Set(strconv.Itoa(http.StatusForbidden), forbiddenResponse)
-			}
+			metadata.Operation.Description += "\n\nRequired API key permission: `" + string(permission) + "` (minimum role: `" + string(role) + "`)."
+			metadata.Operation.Responses.Set(strconv.Itoa(http.StatusForbidden), forbiddenResponse)
 		}
 	}
 

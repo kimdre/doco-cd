@@ -13,6 +13,7 @@ Set both `HTTP_TLS_CERT_FILE` and `HTTP_TLS_KEY_FILE` if you want doco-cd itself
 ## OpenAPI documentation
 
 Set `OPENAPI_ENABLED=true` to expose the public [OpenAPI](https://www.openapis.org/) 3.2 documentation. The feature is disabled by default.
+Protected operations describe their required permission and the least-privileged role that grants it.
 
 | API surface     | OpenAPI document         | Swagger UI        |
 |-----------------|--------------------------|-------------------|
@@ -22,8 +23,9 @@ Set `OPENAPI_ENABLED=true` to expose the public [OpenAPI](https://www.openapis.o
 ## Authentication
 
 Configure one or more keys with `API_KEYS` to enable the API. Each entry must
-have a unique, nonempty `key` and a `role`. A key must be a valid HTTP header
-value without leading or trailing spaces or tabs:
+have a unique, nonempty `key` and either a `role` or an explicit `permissions`
+list. A key must be a valid HTTP header value without leading or trailing
+spaces or tabs:
 
 ```yaml title="docker-compose.yml"
 services:
@@ -38,6 +40,10 @@ services:
           role: write
         - key: replace-with-an-admin-key
           role: full
+        - key: replace-with-a-poller-key
+          permissions:
+            - poll:trigger
+            - runs:read
 ```
 
 Alternatively, set `API_KEYS_FILE` to the path of a file containing the same
@@ -46,25 +52,21 @@ Provide the relevant SOPS decryption key to the container when using an
 encrypted file. Set only one of `API_KEYS` and `API_KEYS_FILE`.
 An empty list disables the REST API.
 
-SOPS cannot encrypt a top-level YAML list as a structured YAML file. Encrypt
-the list as binary data instead, and use an extensionless path or a `.enc` or
-`.txt` extension for the encrypted file and its path inside the container:
+!!! note "SOPS cannot encrypt a top-level YAML list as a structured YAML file." 
+    Encrypt the list as binary data instead:
+    
+    ```sh
+    sops encrypt --age <age-public-key> --input-type binary --output-type binary \
+      api-keys.yaml > api-keys.enc
+    ```
 
-```sh
-sops encrypt --age <age-public-key> --input-type binary --output-type binary \
-  api-keys.yaml > api-keys.enc
-```
+    Mount `api-keys.enc` as a secret or file and set `API_KEYS_FILE` to its path
+    inside the container. Keep the unencrypted file out of Git.
 
-Mount `api-keys.enc` as a secret or file and set `API_KEYS_FILE` to its path
-inside the container. Keep the unencrypted file out of Git.
-
-Doco-CD loads the keys only at startup. To rotate a key, add its replacement
-and recreate the doco-cd container, update clients, then remove the old key and
-recreate the container again. A restart does not apply changes to `API_KEYS`
+Doco-CD loads the keys only at startup. A restart does not apply changes to `API_KEYS`
 or other environment variables. Recreate the container instead, for example
 with `docker compose up -d` or a [self-update](../Advanced/Self-Updating.md)
-if doco-cd manages its own container. Changes to the content of a mounted
-`API_KEYS_FILE` take effect at the next start.
+if doco-cd manages its own container. Changes to the content of a mounted `API_KEYS_FILE` take effect at the next start.
 
 !!! warning "Migration from API_SECRET"
     `API_SECRET` and `API_SECRET_FILE` are no longer supported. Remove both
@@ -84,7 +86,7 @@ curl -H "x-api-key: your_api_key" http://example.com/v1/api/projects
 ```
 
 Missing or invalid credentials return `401 Unauthorized`. A valid key without
-the required role returns `403 Forbidden`. The health, webhook, metrics,
+the required permission returns `403 Forbidden`. The health, webhook, metrics,
 profiling, and public OpenAPI endpoints have separate access rules.
 
 ### Roles
@@ -92,27 +94,54 @@ profiling, and public OpenAPI endpoints have separate access rules.
 Roles are cumulative: `inspect` includes `read`, `write` includes `inspect`,
 and `full` includes all other roles.
 
-| Minimum role  | REST operations |
-|---------------|-----------------|
-| `read`        | GET operations for deployment runs, scheduled jobs, and sync windows. |
-| `inspect`     | GET operations that list or get Compose projects and Swarm stacks. |
-| `write`       | POST operations to control projects or stacks, trigger scheduled jobs or polls, and compact Git mirrors. |
-| `full`        | DELETE operations that remove Compose projects or Swarm stacks. |
+| Minimum role | REST operations                                                                                          |
+|--------------|----------------------------------------------------------------------------------------------------------|
+| `read`       | GET operations for deployment runs, scheduled jobs, and sync windows.                                    |
+| `inspect`    | GET operations that list or get Compose projects and Swarm stacks.                                       |
+| `write`      | POST operations to control projects or stacks, trigger scheduled jobs or polls, and compact Git mirrors. |
+| `full`       | DELETE operations that remove Compose projects or Swarm stacks.                                          |
 
-!!! warning "Inspect keys can expose secrets"
-    Project and stack responses contain the raw Docker configuration. This
-    includes container commands, labels, and mounts, and the environment
-    variables of Swarm services. These values can contain secrets. Give the
-    `inspect` role only to trusted clients. Use the `read` role for clients
-    that only need deployment status.
+### Explicit permissions
 
-These roles also control [MCP tools](MCP-Server.md#available-tools).
-They restrict direct API operations, not the effects of deployments or jobs.
-For example, a write key can trigger a poll containing `destroy: true` or run
-a configured job that executes arbitrary commands, which can indirectly
-destroy data. The `full` role additionally allows direct project and stack
-removal. Treat inspect, write, and full keys as privileged credentials. Read
-keys can expose deployment metadata.
+Instead of a role, a key can specify a nonempty `permissions` list. Every
+permission must be known and appear only once. `role` and `permissions` are
+mutually exclusive, even if one is empty or null. Explicit permissions grant
+only the listed capabilities; they do not imply other permissions. For example,
+add `runs:read` to `poll:trigger` if the client must check deployment runs.
+
+| Permission          | Minimum preset role | Capability                                                             |
+|---------------------|---------------------|------------------------------------------------------------------------|
+| `health:read`       | `read`              | Use the MCP `get_health` tool; `/v1/health` has separate access rules. |
+| `jobs:read`         | `read`              | List scheduled jobs.                                                   |
+| `jobs:trigger`      | `write`             | Trigger a scheduled job.                                               |
+| `mirrors:compact`   | `write`             | Compact Git mirrors.                                                   |
+| `poll:trigger`      | `write`             | Trigger poll configurations.                                           |
+| `projects:control`  | `write`             | Start, stop, or restart Compose projects.                              |
+| `projects:delete`   | `full`              | Remove Compose projects.                                               |
+| `projects:inspect`  | `inspect`           | List and inspect Compose projects.                                     |
+| `runs:read`         | `read`              | List and inspect deployment runs.                                      |
+| `stacks:control`    | `write`             | Scale, restart, or run Swarm services.                                 |
+| `stacks:delete`     | `full`              | Remove Swarm stacks.                                                   |
+| `stacks:inspect`    | `inspect`           | List and inspect Swarm stacks.                                         |
+| `sync_windows:read` | `read`              | List sync windows and their status.                                    |
+
+Roles and explicit permissions also control [MCP tools](MCP-Server.md#available-tools).
+They restrict operation types across all resources and Docker contexts, not
+individual projects, stacks, jobs, or the effects of deployments and jobs.
+
+!!! warning "Privileged permissions"
+    Project and stack inspection exposes raw Docker configuration, including
+    container commands, labels, mounts, and Swarm service environment
+    variables, which can contain secrets. Grant `projects:inspect` or
+    `stacks:inspect` only to trusted clients; use `runs:read` for clients that
+    only need deployment status.
+
+    A key with `poll:trigger` can deploy arbitrary workloads or trigger a poll
+    containing `destroy: true`. A key with `jobs:trigger` can run configured
+    jobs that execute arbitrary commands. These operations can indirectly
+    destroy data or grant host access. `projects:delete` and `stacks:delete`
+    additionally allow direct removal. Read permissions can expose deployment
+    metadata.
 
 ## Query Parameters
 
@@ -370,8 +399,8 @@ curl --request GET \
 
 ### Storage
 
-| Endpoint                  | Method | Description                                                                                                                                  | Query Parameters                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-|---------------------------|--------|----------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Endpoint                  | Method | Description                                                                                                                               | Query Parameters                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+|---------------------------|--------|-------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `/v1/api/storage/compact` | POST   | [Compact the Git mirrors](../Reference/Artifact-Storage.md#on-demand-compaction) in the data directory into a single packfile per mirror. | - `repository` (string, optional): Only compact the mirrors of this repository, e.g. `github.com/acme/app` or a clone URL.<br/>- `mode` (string, default: `repack`): `repack` re-encodes all objects, `copy` only consolidates the packfiles.<br/>- `max_size` (integer, default: `268435456`): Size in bytes above which `repack` skips a mirror. `0` disables the limit.<br/>- `wait` (boolean, default: `false`): Wait for the compaction to finish before responding. |
 
 The compaction is tracked as a run with the trigger `mirror_compaction`. With `wait=true`, the response contains

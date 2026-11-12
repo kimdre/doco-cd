@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -53,6 +54,30 @@ func TestGetConfigAPIKeys(t *testing.T) {
 				{Key: "admin", Role: restapi.RoleFull},
 			},
 		},
+		{
+			name:  "explicit permissions",
+			input: "- key: sensitive-test-key\n  permissions: [poll:trigger, runs:read]\n- key: reader\n  role: read",
+			want: restapi.Keyring{
+				{Key: secret, Permissions: []restapi.Permission{restapi.PermissionPollTrigger, restapi.PermissionRunsRead}},
+				{Key: "reader", Role: restapi.RoleRead},
+			},
+		},
+		{
+			name:  "permissions alias",
+			input: "- key: first\n  permissions: &permission-list [runs:read, poll:trigger]\n- key: sensitive-test-key\n  permissions: *permission-list",
+			want: restapi.Keyring{
+				{Key: "first", Permissions: []restapi.Permission{restapi.PermissionRunsRead, restapi.PermissionPollTrigger}},
+				{Key: secret, Permissions: []restapi.Permission{restapi.PermissionRunsRead, restapi.PermissionPollTrigger}},
+			},
+		},
+		{
+			name:  "merged role",
+			input: "- &reader {key: first, role: read}\n- <<: *reader\n  key: sensitive-test-key",
+			want: restapi.Keyring{
+				{Key: "first", Role: restapi.RoleRead},
+				{Key: secret, Role: restapi.RoleRead},
+			},
+		},
 		{name: "malformed YAML", input: "- key: sensitive-test-key\n  role: [", wantErr: "YAML list"},
 		{name: "mapping instead of list", input: "key: sensitive-test-key\nrole: read", wantErr: "YAML list"},
 		{name: "null instead of list", input: "null", wantErr: "YAML list"},
@@ -64,6 +89,17 @@ func TestGetConfigAPIKeys(t *testing.T) {
 		{name: "invalid header character", input: "- key: \"sensitive-test-key\\nother\"\n  role: read", wantErr: "valid HTTP header"},
 		{name: "missing role", input: "- key: sensitive-test-key", wantErr: "role must be"},
 		{name: "invalid role", input: "- key: sensitive-test-key\n  role: admin", wantErr: "role must be"},
+		{name: "role and permissions", input: "- key: sensitive-test-key\n  role: read\n  permissions: [runs:read]", wantErr: "mutually exclusive"},
+		{name: "empty role and permissions", input: "- key: sensitive-test-key\n  role: ''\n  permissions: [runs:read]", wantErr: "mutually exclusive"},
+		{name: "role and null permissions", input: "- key: sensitive-test-key\n  role: read\n  permissions: null", wantErr: "mutually exclusive"},
+		{name: "null role and permissions", input: "- key: sensitive-test-key\n  role: null\n  permissions: [runs:read]", wantErr: "mutually exclusive"},
+		{name: "merged role and permissions", input: "- &reader {key: first, role: read}\n- <<: *reader\n  key: sensitive-test-key\n  permissions: [runs:read]", wantErr: "mutually exclusive"},
+		{name: "null role", input: "- key: sensitive-test-key\n  role: null", wantErr: "role must be"},
+		{name: "null permissions", input: "- key: sensitive-test-key\n  permissions: null", wantErr: "non-empty"},
+		{name: "empty permissions", input: "- key: sensitive-test-key\n  permissions: []", wantErr: "non-empty"},
+		{name: "scalar permissions", input: "- key: sensitive-test-key\n  permissions: runs:read", wantErr: "non-empty"},
+		{name: "unknown permission", input: "- key: sensitive-test-key\n  permissions: [sensitive-test-key]", wantErr: "unknown permission"},
+		{name: "duplicate permission", input: "- key: sensitive-test-key\n  permissions: [runs:read, runs:read]", wantErr: "duplicate permission"},
 		{
 			name:    "duplicate key",
 			input:   "- key: sensitive-test-key\n  role: read\n- key: sensitive-test-key\n  role: full",
@@ -98,7 +134,7 @@ func TestGetConfigAPIKeys(t *testing.T) {
 			}
 
 			for i, want := range testCase.want {
-				if cfg.APIKeys[i] != want {
+				if !reflect.DeepEqual(cfg.APIKeys[i], want) {
 					t.Fatalf("API key entry %d did not match", i+1)
 				}
 			}
@@ -129,14 +165,16 @@ func TestGetConfigLegacyAPIKeys(t *testing.T) {
 
 func TestGetConfigAPIKeysFile(t *testing.T) {
 	for _, testCase := range []struct {
-		name      string
-		content   string
-		envValue  string
-		missing   bool
-		wantErr   string
-		wantCount int
+		name            string
+		content         string
+		envValue        string
+		missing         bool
+		wantErr         string
+		wantCount       int
+		wantPermissions []restapi.Permission
 	}{
 		{name: "valid file", content: "- key: from-file\n  role: write", wantCount: 1},
+		{name: "explicit permissions file", content: "- key: from-file\n  permissions: [jobs:trigger]", wantCount: 1, wantPermissions: []restapi.Permission{restapi.PermissionJobsTrigger}},
 		{name: "empty list", content: "[]"},
 		{name: "empty file", wantErr: "must contain a YAML list"},
 		{name: "invalid file", content: "- key: sensitive-test-key\n  role: [", wantErr: "YAML list"},
@@ -176,6 +214,10 @@ func TestGetConfigAPIKeysFile(t *testing.T) {
 
 			if len(cfg.APIKeys) != testCase.wantCount {
 				t.Fatalf("got %d API keys, want %d", len(cfg.APIKeys), testCase.wantCount)
+			}
+
+			if testCase.wantPermissions != nil && !reflect.DeepEqual(cfg.APIKeys[0].Permissions, testCase.wantPermissions) {
+				t.Fatal("API key permissions did not match")
 			}
 		})
 	}
@@ -235,8 +277,23 @@ func TestGetConfigEncryptedAPIKeysFile(t *testing.T) {
 	}
 
 	for i := range want {
-		if cfg.APIKeys[i] != want[i] {
+		if !reflect.DeepEqual(cfg.APIKeys[i], want[i]) {
 			t.Fatalf("API key entry %d did not match", i+1)
 		}
+	}
+}
+
+func TestGetConfigMCPWithExplicitPermissions(t *testing.T) {
+	isolateAPIKeyEnv(t)
+	t.Setenv("MCP_ENABLED", "true")
+	t.Setenv("API_KEYS", "- key: poller\n  permissions: [poll:trigger]")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !cfg.McpEnabled || len(cfg.APIKeys) != 1 || !reflect.DeepEqual(cfg.APIKeys[0].Permissions, []restapi.Permission{restapi.PermissionPollTrigger}) {
+		t.Fatal("MCP custom-permission key was not configured")
 	}
 }

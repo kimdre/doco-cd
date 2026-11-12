@@ -67,15 +67,20 @@ func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, log *slog.Lo
 		return false
 	}
 
-	role, ok := h.authenticate(w, r, log, jobID)
+	grant, ok := h.authenticate(w, r, log, jobID)
 	if !ok {
 		return false
 	}
 
-	if !role.Allows(required) {
+	if !grant.Allows(required) {
 		const message = "insufficient API key permissions"
 
-		log.Warn(message, slog.String("role", string(role)), slog.String("required_permission", string(required)))
+		role := string(grant.Role)
+		if role == "" {
+			role = "custom"
+		}
+
+		log.Warn(message, slog.String("role", role), slog.String("required_permission", string(required)))
 		restapi.JSONError(w, message, "", jobID, http.StatusForbidden)
 
 		return false
@@ -84,14 +89,14 @@ func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, log *slog.Lo
 	return true
 }
 
-func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, log *slog.Logger, jobID string) (restapi.Role, bool) {
-	role, ok := h.appConfig.APIKeys.Authenticate(r)
+func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, log *slog.Logger, jobID string) (restapi.Grant, bool) {
+	grant, ok := h.appConfig.APIKeys.Authenticate(r)
 	if !ok {
 		log.Error(restapi.ErrInvalidApiKey.Error())
 		restapi.JSONError(w, restapi.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
 
-		return "", false
+		return restapi.Grant{}, false
 	}
 
-	return role, true
+	return grant, true
 }

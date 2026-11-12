@@ -58,7 +58,7 @@ state shared by parallel tests:
 | Scheduled pre_start   | Unrelated webhook skips, repeated hooks without source recreation, hook failure/retry, and unsupported one-off rejection          |
 | Autostart drift       | Explicit and discovered stopped-service polling, cached skips, external start/stop, missing-container recovery, and config changes |
 | Self-update scale-out | Bootstrap adoption and labels, followed by healthy overlap and handover                                                           |
-| API key roles         | REST and MCP permissions for Compose and an isolated Swarm, including denied operations and authorized control and removal          |
+| API key roles         | REST and MCP role presets and explicit permissions for Compose and isolated Swarm, including control and removal                   |
 | API key migration     | Failed-upgrade rollback and self-update from a pinned legacy release to the working tree and back, checking configuration and access |
 
 Config decoding, successive artifact decryption, and detailed changelog filtering

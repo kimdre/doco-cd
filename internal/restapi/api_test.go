@@ -11,6 +11,7 @@ func TestRolePermissions(t *testing.T) {
 	t.Parallel()
 
 	permissions := []Permission{
+		PermissionHealthRead,
 		PermissionRunsRead,
 		PermissionJobsRead,
 		PermissionSyncWindowsRead,
@@ -31,19 +32,19 @@ func TestRolePermissions(t *testing.T) {
 	}{
 		{
 			RoleRead,
-			[]Permission{PermissionRunsRead, PermissionJobsRead, PermissionSyncWindowsRead},
+			[]Permission{PermissionHealthRead, PermissionRunsRead, PermissionJobsRead, PermissionSyncWindowsRead},
 		},
 		{
 			RoleInspect,
 			[]Permission{
-				PermissionRunsRead, PermissionJobsRead, PermissionSyncWindowsRead,
+				PermissionHealthRead, PermissionRunsRead, PermissionJobsRead, PermissionSyncWindowsRead,
 				PermissionProjectsInspect, PermissionStacksInspect,
 			},
 		},
 		{
 			RoleWrite,
 			[]Permission{
-				PermissionRunsRead, PermissionJobsRead, PermissionSyncWindowsRead,
+				PermissionHealthRead, PermissionRunsRead, PermissionJobsRead, PermissionSyncWindowsRead,
 				PermissionProjectsInspect, PermissionStacksInspect, PermissionJobsTrigger,
 				PermissionProjectsControl, PermissionStacksControl, PermissionPollTrigger,
 				PermissionMirrorsCompact,
@@ -84,6 +85,7 @@ func TestRolePermissions(t *testing.T) {
 		permission Permission
 		wantRole   Role
 	}{
+		{PermissionHealthRead, RoleRead},
 		{PermissionRunsRead, RoleRead},
 		{PermissionJobsRead, RoleRead},
 		{PermissionSyncWindowsRead, RoleRead},
@@ -115,24 +117,35 @@ func TestKeyringAuthenticate(t *testing.T) {
 		{Key: "inspector", Role: RoleInspect},
 		{Key: "writer", Role: RoleWrite},
 		{Key: "admin", Role: RoleFull},
+		{Key: "poller", Permissions: []Permission{PermissionPollTrigger, PermissionRunsRead}},
 		{Key: "invalid-role", Role: "unknown"},
+		{Key: "unknown-permission", Permissions: []Permission{"unknown"}},
+		{Key: "empty-permissions", Permissions: []Permission{}},
+		{Key: "ambiguous", Role: RoleFull, Permissions: []Permission{PermissionRunsRead}},
 		{Key: "", Role: RoleFull},
 	}
 
 	for _, testCase := range []struct {
-		name string
-		key  string
-		role Role
-		ok   bool
+		name        string
+		key         string
+		role        Role
+		ok          bool
+		allowRuns   bool
+		allowPoll   bool
+		allowDelete bool
 	}{
-		{"read", "reader", RoleRead, true},
-		{"inspect", "inspector", RoleInspect, true},
-		{"write", "writer", RoleWrite, true},
-		{"full", "admin", RoleFull, true},
-		{"missing", "", "", false},
-		{"incorrect", "other", "", false},
-		{"invalid role", "invalid-role", "unknown", false},
-		{"partial match", "read", "", false},
+		{"read", "reader", RoleRead, true, true, false, false},
+		{"inspect", "inspector", RoleInspect, true, true, false, false},
+		{"write", "writer", RoleWrite, true, true, true, false},
+		{"full", "admin", RoleFull, true, true, true, true},
+		{"custom", "poller", "", true, true, true, false},
+		{"missing", "", "", false, false, false, false},
+		{"incorrect", "other", "", false, false, false, false},
+		{"invalid role", "invalid-role", "", false, false, false, false},
+		{"unknown permission", "unknown-permission", "", false, false, false, false},
+		{"empty permissions", "empty-permissions", "", false, false, false, false},
+		{"ambiguous", "ambiguous", "", false, false, false, false},
+		{"partial match", "read", "", false, false, false, false},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
@@ -140,9 +153,15 @@ func TestKeyringAuthenticate(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
 			request.Header.Set(KeyHeader, testCase.key)
 
-			role, ok := keys.Authenticate(request)
-			if role != testCase.role || ok != testCase.ok {
-				t.Fatalf("Authenticate() = (%q, %t), want (%q, %t)", role, ok, testCase.role, testCase.ok)
+			grant, ok := keys.Authenticate(request)
+			if grant.Role != testCase.role || ok != testCase.ok {
+				t.Fatalf("Authenticate() = (role %q, %t), want (%q, %t)", grant.Role, ok, testCase.role, testCase.ok)
+			}
+
+			if grant.Allows(PermissionRunsRead) != testCase.allowRuns ||
+				grant.Allows(PermissionPollTrigger) != testCase.allowPoll ||
+				grant.Allows(PermissionProjectsDelete) != testCase.allowDelete {
+				t.Fatal("authenticated grant has unexpected permissions")
 			}
 		})
 	}
@@ -160,6 +179,7 @@ func TestKeyringValidate(t *testing.T) {
 	}{
 		{name: "empty", keys: nil},
 		{name: "valid", keys: Keyring{{Key: secret, Role: RoleRead}, {Key: "inspector", Role: RoleInspect}, {Key: "other", Role: RoleWrite}}},
+		{name: "custom permissions", keys: Keyring{{Key: secret, Permissions: []Permission{PermissionPollTrigger, PermissionRunsRead}}}},
 		{name: "valid spaces and tabs", keys: Keyring{{Key: "key with\ttab", Role: RoleRead}}},
 		{name: "valid non-ASCII", keys: Keyring{{Key: "key-\u00e4", Role: RoleRead}}},
 		{name: "empty key", keys: Keyring{{Role: RoleRead}}, wantErr: "key must not be empty"},
@@ -174,6 +194,11 @@ func TestKeyringValidate(t *testing.T) {
 		{name: "delete", keys: Keyring{{Key: secret + "\x7fother", Role: RoleRead}}, wantErr: "valid HTTP header"},
 		{name: "missing role", keys: Keyring{{Key: secret}}, wantErr: "role must be"},
 		{name: "invalid role", keys: Keyring{{Key: secret, Role: "invalid"}}, wantErr: "role must be"},
+		{name: "role and permissions", keys: Keyring{{Key: secret, Role: RoleRead, Permissions: []Permission{PermissionJobsRead}}}, wantErr: "mutually exclusive"},
+		{name: "role and empty permissions", keys: Keyring{{Key: secret, Role: RoleRead, Permissions: []Permission{}}}, wantErr: "mutually exclusive"},
+		{name: "empty permissions", keys: Keyring{{Key: secret, Permissions: []Permission{}}}, wantErr: "non-empty"},
+		{name: "unknown permission", keys: Keyring{{Key: secret, Permissions: []Permission{Permission(secret)}}}, wantErr: "unknown permission"},
+		{name: "duplicate permission", keys: Keyring{{Key: secret, Permissions: []Permission{PermissionJobsRead, PermissionJobsRead}}}, wantErr: "duplicate permission"},
 		{name: "duplicate key", keys: Keyring{{Key: secret, Role: RoleRead}, {Key: secret, Role: RoleFull}}, wantErr: "duplicate key"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -196,5 +221,34 @@ func TestKeyringValidate(t *testing.T) {
 				t.Fatal("Validate() exposed a key in its error")
 			}
 		})
+	}
+}
+
+func TestGrantSignature(t *testing.T) {
+	t.Parallel()
+
+	read, err := (APIKey{Role: RoleRead}).Grant()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	custom, err := (APIKey{Permissions: []Permission{
+		PermissionSyncWindowsRead, PermissionJobsRead, PermissionRunsRead, PermissionHealthRead,
+	}}).Grant()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if read.Signature() != custom.Signature() {
+		t.Fatal("equivalent role and custom grants have different signatures")
+	}
+
+	narrow, err := (APIKey{Permissions: []Permission{PermissionRunsRead}}).Grant()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if read.Signature() == narrow.Signature() {
+		t.Fatal("different grants have the same signature")
 	}
 }

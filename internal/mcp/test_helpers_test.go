@@ -211,7 +211,7 @@ func newMCPTestServerWithHandler(
 	var enabledEndpoints []string
 
 	if enabled && apiSecret != "" {
-		mcpHandler := newHandler(Dependencies{
+		mcpHandler, err := newHandler(Dependencies{
 			Version:        app.Version,
 			APIKeys:        testMCPKeys(apiSecret),
 			MaxPayloadSize: maxPayloadSize,
@@ -221,6 +221,10 @@ func newMCPTestServerWithHandler(
 			Runs:           handler.controlPlaneRuns,
 			SyncWindows:    handler.syncWindows,
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		mux.Handle("POST "+testMCPPath, mcpHandler)
 		enabledEndpoints = append(enabledEndpoints, testMCPPath)
 	}
