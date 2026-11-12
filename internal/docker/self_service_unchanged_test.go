@@ -840,7 +840,6 @@ func TestGuardSelfUpdateRefusals(t *testing.T) {
 		ConfigureSelfUpdate(SelfUpdateOptions{Enabled: true, Store: selfupdate.NewStore(mount)})
 
 		_, err := prepareSelfUpdate(t.Context(), docker, project, dc, target, nil, nil)
-
 		if err == nil {
 			t.Fatal("prepareSelfUpdate() error = nil; want the journal read error")
 		}
