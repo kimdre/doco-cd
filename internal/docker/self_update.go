@@ -70,12 +70,21 @@ type SelfDeployInput struct {
 	// StopPhaseReports stops publishing deployment phases before the
 	// successor takes over the commit status. Optional.
 	StopPhaseReports func()
+	// ConcludeOwnStatus closes the commit status this run already opened
+	// when another handover is still in progress. Optional.
+	ConcludeOwnStatus func()
 }
 
 // stopPhaseReports stops phase reporting for the deployment, if any.
 func (in *SelfDeployInput) stopPhaseReports() {
 	if in != nil && in.StopPhaseReports != nil {
 		in.StopPhaseReports()
+	}
+}
+
+func (in *SelfDeployInput) concludeOwnStatus() {
+	if in != nil && in.ConcludeOwnStatus != nil {
+		in.ConcludeOwnStatus()
 	}
 }
 

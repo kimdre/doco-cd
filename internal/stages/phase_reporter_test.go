@@ -352,3 +352,26 @@ func TestStartPhaseReporterSkipsUnsupportedDeployments(t *testing.T) {
 		})
 	}
 }
+
+func TestConcludeCollidingCommitStatusClosesOwnCheck(t *testing.T) {
+	t.Parallel()
+
+	checks := &checkPhaseServer{}
+	server := httptest.NewServer(checks)
+	t.Cleanup(server.Close)
+
+	sm := newPhaseTestManager(t, server)
+	sm.concludeCollidingCommitStatus(t.Context())
+
+	const want = "Skipped: self-update handover in progress"
+	if got := checks.snapshot(); len(got) != 1 || got[0] != want {
+		t.Fatalf("check titles = %q, want [%q]", got, want)
+	}
+
+	sm.inProgressPosted = false
+	sm.concludeCollidingCommitStatus(t.Context())
+
+	if got := checks.snapshot(); len(got) != 1 {
+		t.Fatalf("check titles = %q, want no second post", got)
+	}
+}

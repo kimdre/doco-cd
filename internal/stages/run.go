@@ -26,6 +26,31 @@ func shouldPostPendingCommitStatus(stageName StageName, destroyEnabled, pendingP
 	return !destroyEnabled && !pendingPosted && stageName == StagePreDeploy
 }
 
+// handoverAlreadyActive reports whether a self-update handover for this stack
+// is already in progress. That run owns the commit status.
+func (s *StageManager) handoverAlreadyActive() bool {
+	if s.DeployConfig == nil {
+		return false
+	}
+
+	stack := s.DeployConfig.Name
+	if stack == "" {
+		return false
+	}
+
+	store := docker.SelfUpdateConfig().Store
+	if store == nil {
+		return false
+	}
+
+	active, err := store.Active()
+	if err != nil || active == nil {
+		return false
+	}
+
+	return active.Stack == stack
+}
+
 func shouldSendDeploymentStartedNotification(stageName StageName, destroyEnabled, startedNotified bool) bool {
 	return !destroyEnabled && !startedNotified && stageName == StagePreDeploy
 }
@@ -187,6 +212,18 @@ func (s *StageManager) runStageOrder(ctx context.Context, admitMutation Mutation
 			}
 
 			return s.handleStageFailure(ctx, stageName, stageLog, err)
+		}
+
+		// The handover's own run posts the commit status. A second run must
+		// not open another check for the same stack.
+		if stageName == StagePreDeploy && s.handoverAlreadyActive() {
+			stageLog.Debug("self-update handover in progress")
+
+			if s.retryAttempt != nil {
+				s.retryAttempt.Cancel()
+			}
+
+			return selfupdate.ErrHandover
 		}
 
 		stageLog.Debug(string("completed stage: "+stageName),

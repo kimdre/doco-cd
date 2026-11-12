@@ -189,6 +189,9 @@ type DeployRequest struct {
 	// self-update records it so the process that resolves the handover can
 	// post the final state.
 	CommitStatus *selfupdate.CommitStatusInfo
+	// ConcludeOwnStatus closes the commit status this deployment already
+	// opened when it skips because another handover is still in progress.
+	ConcludeOwnStatus func() `validate:"-"`
 	// PhaseReporter optionally receives the deployment's phase changes. It is
 	// stopped before a self-update hands over, so it never reports past the
 	// point where a successor takes over the commit status.

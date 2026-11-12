@@ -106,15 +106,16 @@ func deployComposeRuntime(ctx context.Context, req runtimeDeployRequest) error {
 // deployment that was handed over mid-flight.
 func (req runtimeDeployRequest) selfDeployInput() *SelfDeployInput {
 	in := &SelfDeployInput{
-		SourceURL:      req.request.SourceURL,
-		SourceType:     string(req.request.DeployConfig.Source),
-		Reference:      req.request.DeployConfig.Reference,
-		ConfigTarget:   req.request.DeployConfig.Internal.ConfigTarget,
-		CommitSHA:      req.request.LatestCommit,
-		ProjectHash:    req.projectHash,
-		TimeoutSeconds: req.request.DeployConfig.Timeout.Seconds(),
-		CommitStatus:   req.request.CommitStatus,
-		Log:            req.stackLog,
+		SourceURL:         req.request.SourceURL,
+		SourceType:        string(req.request.DeployConfig.Source),
+		Reference:         req.request.DeployConfig.Reference,
+		ConfigTarget:      req.request.DeployConfig.Internal.ConfigTarget,
+		CommitSHA:         req.request.LatestCommit,
+		ProjectHash:       req.projectHash,
+		TimeoutSeconds:    req.request.DeployConfig.Timeout.Seconds(),
+		CommitStatus:      req.request.CommitStatus,
+		Log:               req.stackLog,
+		ConcludeOwnStatus: req.request.ConcludeOwnStatus,
 	}
 
 	if req.phase != nil {
