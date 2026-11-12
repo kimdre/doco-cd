@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"golang.org/x/net/http/httpguts"
+
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
 const KeyHeader = "x-api-key" // Header for API key
@@ -31,20 +33,75 @@ const (
 	RoleFull    Role = "full"
 )
 
-// Allows reports whether the role permits the required operation.
-func (role Role) Allows(required Role) bool {
-	switch required {
-	case RoleRead:
-		return role == RoleRead || role == RoleInspect || role == RoleWrite || role == RoleFull
-	case RoleInspect:
-		return role == RoleInspect || role == RoleWrite || role == RoleFull
-	case RoleWrite:
-		return role == RoleWrite || role == RoleFull
-	case RoleFull:
-		return role == RoleFull
-	default:
-		return false
+// Permission identifies an API capability granted to a key.
+type Permission string
+
+const (
+	PermissionJobsRead        Permission = "jobs:read"
+	PermissionJobsTrigger     Permission = "jobs:trigger"
+	PermissionMirrorsCompact  Permission = "mirrors:compact"
+	PermissionPollTrigger     Permission = "poll:trigger"
+	PermissionProjectsControl Permission = "projects:control"
+	PermissionProjectsDelete  Permission = "projects:delete"
+	PermissionProjectsInspect Permission = "projects:inspect"
+	PermissionRunsRead        Permission = "runs:read"
+	PermissionStacksControl   Permission = "stacks:control"
+	PermissionStacksDelete    Permission = "stacks:delete"
+	PermissionStacksInspect   Permission = "stacks:inspect"
+	PermissionSyncWindowsRead Permission = "sync_windows:read"
+)
+
+var rolePermissions = func() map[Role]set.Set[Permission] {
+	read := set.New(
+		PermissionJobsRead,
+		PermissionRunsRead,
+		PermissionSyncWindowsRead,
+	)
+	inspect := set.Union(read, set.New(
+		PermissionProjectsInspect,
+		PermissionStacksInspect,
+	))
+	write := set.Union(inspect, set.New(
+		PermissionJobsTrigger,
+		PermissionMirrorsCompact,
+		PermissionPollTrigger,
+		PermissionProjectsControl,
+		PermissionStacksControl,
+	))
+	full := set.Union(write, set.New(
+		PermissionProjectsDelete,
+		PermissionStacksDelete,
+	))
+
+	return map[Role]set.Set[Permission]{
+		RoleRead:    read,
+		RoleInspect: inspect,
+		RoleWrite:   write,
+		RoleFull:    full,
 	}
+}()
+
+// Allows reports whether the role grants the required permission.
+func (role Role) Allows(required Permission) bool {
+	return rolePermissions[role].Contains(required)
+}
+
+// Valid reports whether the role is a configured role preset.
+func (role Role) Valid() bool {
+	_, ok := rolePermissions[role]
+
+	return ok
+}
+
+// MinimumRole returns the least-privileged preset that grants a permission.
+func MinimumRole(permission Permission) (Role, bool) {
+	for _, role := range []Role{RoleRead, RoleInspect, RoleWrite, RoleFull} {
+		if role.Allows(permission) {
+			return role, true
+		}
+	}
+
+	return "", false
 }
 
 // APIKey binds a credential to an access role.
@@ -69,7 +126,7 @@ func (keys Keyring) Validate() error {
 			return fmt.Errorf("API_KEYS entry %d: key must be a valid HTTP header value without leading or trailing spaces or tabs", i+1)
 		}
 
-		if !key.Role.Allows(RoleRead) {
+		if !key.Role.Valid() {
 			return fmt.Errorf("API_KEYS entry %d: role must be read, inspect, write, or full", i+1)
 		}
 
@@ -101,5 +158,5 @@ func (keys Keyring) Authenticate(r *http.Request) (Role, bool) {
 		}
 	}
 
-	return role, role.Allows(RoleRead)
+	return role, role.Valid()
 }

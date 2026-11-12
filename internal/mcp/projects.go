@@ -104,18 +104,20 @@ func (h *Handler) addProjectReadTools(server *sdkmcp.Server) {
 
 // addProjectTools registers Compose project lifecycle operations.
 func (h *Handler) addProjectTools(server *sdkmcp.Server, role restapi.Role) {
-	controlSchema := mustToolInputSchema[controlProjectInput]("control_project")
-	controlSchema.Properties["action"].Enum = []any{"start", "stop", "restart"}
-	setProjectTimeoutSchema(controlSchema)
+	if role.Allows(restapi.PermissionProjectsControl) {
+		controlSchema := mustToolInputSchema[controlProjectInput]("control_project")
+		controlSchema.Properties["action"].Enum = []any{"start", "stop", "restart"}
+		setProjectTimeoutSchema(controlSchema)
 
-	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "control_project",
-		Description: "Start, stop, or restart a Docker Compose project.",
-		Annotations: destructiveAnnotations(false),
-		InputSchema: controlSchema,
-	}, instrumentTool(h.log, "control_project", h.controlProject))
+		sdkmcp.AddTool(server, &sdkmcp.Tool{
+			Name:        "control_project",
+			Description: "Start, stop, or restart a Docker Compose project.",
+			Annotations: destructiveAnnotations(false),
+			InputSchema: controlSchema,
+		}, instrumentTool(h.log, "control_project", h.controlProject))
+	}
 
-	if role.Allows(restapi.RoleFull) {
+	if role.Allows(restapi.PermissionProjectsDelete) {
 		destroySchema := mustToolInputSchema[destroyProjectInput]("destroy_project")
 		setProjectTimeoutSchema(destroySchema)
 

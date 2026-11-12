@@ -141,26 +141,49 @@ func newHandler(dependencies Dependencies) *Handler {
 
 // registerTools installs the tools available to a role.
 func (h *Handler) registerTools(server *sdkmcp.Server, role restapi.Role) {
-	if !role.Allows(restapi.RoleRead) {
+	if !role.Valid() {
 		return
 	}
 
-	h.addHealthTool(server)
-	h.addRunTools(server)
-	h.addScheduledJobReadTool(server)
-	h.addSyncWindowTool(server)
+	if role.Allows(restapi.PermissionRunsRead) {
+		h.addHealthTool(server)
+		h.addRunTools(server)
+	}
+
+	if role.Allows(restapi.PermissionJobsRead) {
+		h.addScheduledJobReadTool(server)
+	}
+
+	if role.Allows(restapi.PermissionSyncWindowsRead) {
+		h.addSyncWindowTool(server)
+	}
 
 	// Project and stack details can contain secrets, for example Swarm service env.
-	if role.Allows(restapi.RoleInspect) {
+	if role.Allows(restapi.PermissionProjectsInspect) {
 		h.addProjectReadTools(server)
+	}
+
+	if role.Allows(restapi.PermissionStacksInspect) {
 		h.addStackReadTools(server)
 	}
 
-	if role.Allows(restapi.RoleWrite) {
+	if role.Allows(restapi.PermissionProjectsControl) || role.Allows(restapi.PermissionProjectsDelete) {
 		h.addProjectTools(server, role)
+	}
+
+	if role.Allows(restapi.PermissionStacksControl) || role.Allows(restapi.PermissionStacksDelete) {
 		h.addStackTools(server, role)
+	}
+
+	if role.Allows(restapi.PermissionJobsTrigger) {
 		h.addScheduledJobTriggerTool(server)
+	}
+
+	if role.Allows(restapi.PermissionPollTrigger) {
 		h.addPollTool(server)
+	}
+
+	if role.Allows(restapi.PermissionMirrorsCompact) {
 		h.addStorageTools(server)
 	}
 }

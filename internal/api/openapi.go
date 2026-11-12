@@ -997,9 +997,14 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 		}
 
 		for _, metadata := range route.Operations {
-			role := roleForOperation(apiOperation(metadata.Operation.OperationID))
-			if role == "" {
+			permission := permissionForOperation(apiOperation(metadata.Operation.OperationID))
+			if permission == "" {
 				return nil, fmt.Errorf("unclassified API operation %q", metadata.Operation.OperationID)
+			}
+
+			role, ok := restapi.MinimumRole(permission)
+			if !ok {
+				return nil, fmt.Errorf("permission %q is not granted by any API key role", permission)
 			}
 
 			metadata.Operation.Description += "\n\nRequired API key role: `" + string(role) + "`."

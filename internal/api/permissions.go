@@ -27,26 +27,39 @@ const (
 	opListSyncWindows      apiOperation = "listSyncWindows"
 )
 
-func roleForOperation(operation apiOperation) restapi.Role {
+func permissionForOperation(operation apiOperation) restapi.Permission {
 	switch operation {
-	case opListDeploymentRuns, opGetDeploymentRun, opListScheduledJobs,
-		opListSyncWindows:
-		return restapi.RoleRead
-	case opListComposeProjects, opGetComposeProject, opListSwarmStacks,
-		opGetSwarmStack:
-		return restapi.RoleInspect
-	case opTriggerScheduledJob, opRunComposeProject, opRunSwarmStack,
-		opTriggerPoll, opCompactMirrors:
-		return restapi.RoleWrite
-	case opDeleteComposeProject, opDeleteSwarmStack:
-		return restapi.RoleFull
+	case opListDeploymentRuns, opGetDeploymentRun:
+		return restapi.PermissionRunsRead
+	case opListScheduledJobs:
+		return restapi.PermissionJobsRead
+	case opListSyncWindows:
+		return restapi.PermissionSyncWindowsRead
+	case opListComposeProjects, opGetComposeProject:
+		return restapi.PermissionProjectsInspect
+	case opListSwarmStacks, opGetSwarmStack:
+		return restapi.PermissionStacksInspect
+	case opTriggerScheduledJob:
+		return restapi.PermissionJobsTrigger
+	case opRunComposeProject:
+		return restapi.PermissionProjectsControl
+	case opRunSwarmStack:
+		return restapi.PermissionStacksControl
+	case opTriggerPoll:
+		return restapi.PermissionPollTrigger
+	case opCompactMirrors:
+		return restapi.PermissionMirrorsCompact
+	case opDeleteComposeProject:
+		return restapi.PermissionProjectsDelete
+	case opDeleteSwarmStack:
+		return restapi.PermissionStacksDelete
 	default:
 		return ""
 	}
 }
 
 func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, log *slog.Logger, jobID string, operation apiOperation) bool {
-	required := roleForOperation(operation)
+	required := permissionForOperation(operation)
 	if required == "" {
 		log.Error("unclassified API operation", slog.String("operation", string(operation)))
 		restapi.JSONError(w, "unclassified API operation", "", jobID, http.StatusInternalServerError)
@@ -62,7 +75,7 @@ func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, log *slog.Lo
 	if !role.Allows(required) {
 		const message = "insufficient API key permissions"
 
-		log.Warn(message, slog.String("role", string(role)), slog.String("required_role", string(required)))
+		log.Warn(message, slog.String("role", string(role)), slog.String("required_permission", string(required)))
 		restapi.JSONError(w, message, "", jobID, http.StatusForbidden)
 
 		return false

@@ -86,18 +86,20 @@ func (h *Handler) addStackReadTools(server *sdkmcp.Server) {
 
 // addStackTools registers Swarm stack mutation operations.
 func (h *Handler) addStackTools(server *sdkmcp.Server, role restapi.Role) {
-	controlSchema := mustToolInputSchema[controlStackInput]("control_stack")
-	controlSchema.Properties["action"].Enum = []any{"scale", "restart", "run"}
-	controlSchema.Properties["replicas"].Minimum = new(0.0)
+	if role.Allows(restapi.PermissionStacksControl) {
+		controlSchema := mustToolInputSchema[controlStackInput]("control_stack")
+		controlSchema.Properties["action"].Enum = []any{"scale", "restart", "run"}
+		controlSchema.Properties["replicas"].Minimum = new(0.0)
 
-	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "control_stack",
-		Description: "Scale, restart, or run services in a Docker Swarm stack. Returns one result per matching service, including skipped services.",
-		Annotations: destructiveAnnotations(false),
-		InputSchema: controlSchema,
-	}, instrumentTool(h.log, "control_stack", h.controlStack))
+		sdkmcp.AddTool(server, &sdkmcp.Tool{
+			Name:        "control_stack",
+			Description: "Scale, restart, or run services in a Docker Swarm stack. Returns one result per matching service, including skipped services.",
+			Annotations: destructiveAnnotations(false),
+			InputSchema: controlSchema,
+		}, instrumentTool(h.log, "control_stack", h.controlStack))
+	}
 
-	if role.Allows(restapi.RoleFull) {
+	if role.Allows(restapi.PermissionStacksDelete) {
 		sdkmcp.AddTool(server, &sdkmcp.Tool{
 			Name:        "remove_stack",
 			Description: "Remove a Docker Swarm stack. Removal may be partial if Docker returns an error after deleting some resources.",

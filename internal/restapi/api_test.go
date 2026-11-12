@@ -7,41 +7,103 @@ import (
 	"testing"
 )
 
-func TestRoleAllows(t *testing.T) {
+func TestRolePermissions(t *testing.T) {
 	t.Parallel()
 
-	for _, testCase := range []struct {
-		role        Role
-		required    Role
-		wantAllowed bool
-	}{
-		{RoleRead, RoleRead, true},
-		{RoleRead, RoleInspect, false},
-		{RoleRead, RoleWrite, false},
-		{RoleRead, RoleFull, false},
-		{RoleInspect, RoleRead, true},
-		{RoleInspect, RoleInspect, true},
-		{RoleInspect, RoleWrite, false},
-		{RoleInspect, RoleFull, false},
-		{RoleWrite, RoleRead, true},
-		{RoleWrite, RoleInspect, true},
-		{RoleWrite, RoleWrite, true},
-		{RoleWrite, RoleFull, false},
-		{RoleFull, RoleRead, true},
-		{RoleFull, RoleInspect, true},
-		{RoleFull, RoleWrite, true},
-		{RoleFull, RoleFull, true},
-		{"unknown", RoleRead, false},
-		{RoleFull, "unknown", false},
-		{"", "", false},
-	} {
-		t.Run(string(testCase.role)+"/"+string(testCase.required), func(t *testing.T) {
-			t.Parallel()
+	permissions := []Permission{
+		PermissionRunsRead,
+		PermissionJobsRead,
+		PermissionSyncWindowsRead,
+		PermissionProjectsInspect,
+		PermissionStacksInspect,
+		PermissionJobsTrigger,
+		PermissionProjectsControl,
+		PermissionStacksControl,
+		PermissionPollTrigger,
+		PermissionMirrorsCompact,
+		PermissionProjectsDelete,
+		PermissionStacksDelete,
+	}
 
-			if got := testCase.role.Allows(testCase.required); got != testCase.wantAllowed {
-				t.Fatalf("Allows(%q) = %t, want %t", testCase.required, got, testCase.wantAllowed)
+	for _, testCase := range []struct {
+		role    Role
+		allowed []Permission
+	}{
+		{
+			RoleRead,
+			[]Permission{PermissionRunsRead, PermissionJobsRead, PermissionSyncWindowsRead},
+		},
+		{
+			RoleInspect,
+			[]Permission{
+				PermissionRunsRead, PermissionJobsRead, PermissionSyncWindowsRead,
+				PermissionProjectsInspect, PermissionStacksInspect,
+			},
+		},
+		{
+			RoleWrite,
+			[]Permission{
+				PermissionRunsRead, PermissionJobsRead, PermissionSyncWindowsRead,
+				PermissionProjectsInspect, PermissionStacksInspect, PermissionJobsTrigger,
+				PermissionProjectsControl, PermissionStacksControl, PermissionPollTrigger,
+				PermissionMirrorsCompact,
+			},
+		},
+		{
+			RoleFull,
+			permissions,
+		},
+	} {
+		t.Run(string(testCase.role), func(t *testing.T) {
+			allowed := make(map[Permission]bool, len(testCase.allowed))
+			for _, permission := range testCase.allowed {
+				allowed[permission] = true
+			}
+
+			for _, permission := range permissions {
+				if got := testCase.role.Allows(permission); got != allowed[permission] {
+					t.Errorf("Allows(%q) = %t, want %t", permission, got, allowed[permission])
+				}
 			}
 		})
+	}
+
+	if Role("unknown").Valid() || Role("").Valid() {
+		t.Fatal("unknown role is valid")
+	}
+
+	if Role("unknown").Allows(PermissionRunsRead) || Role("").Allows("") {
+		t.Fatal("unknown role grants a permission")
+	}
+
+	if RoleFull.Allows(Permission("unknown")) {
+		t.Fatal("unknown permission is allowed")
+	}
+
+	for _, testCase := range []struct {
+		permission Permission
+		wantRole   Role
+	}{
+		{PermissionRunsRead, RoleRead},
+		{PermissionJobsRead, RoleRead},
+		{PermissionSyncWindowsRead, RoleRead},
+		{PermissionProjectsInspect, RoleInspect},
+		{PermissionStacksInspect, RoleInspect},
+		{PermissionJobsTrigger, RoleWrite},
+		{PermissionProjectsControl, RoleWrite},
+		{PermissionStacksControl, RoleWrite},
+		{PermissionPollTrigger, RoleWrite},
+		{PermissionMirrorsCompact, RoleWrite},
+		{PermissionProjectsDelete, RoleFull},
+		{PermissionStacksDelete, RoleFull},
+	} {
+		if got, ok := MinimumRole(testCase.permission); !ok || got != testCase.wantRole {
+			t.Errorf("MinimumRole(%q) = (%q, %t), want (%q, true)", testCase.permission, got, ok, testCase.wantRole)
+		}
+	}
+
+	if _, ok := MinimumRole(Permission("unknown")); ok {
+		t.Fatal("unknown permission has a minimum role")
 	}
 }
 

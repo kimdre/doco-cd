@@ -35,24 +35,24 @@ func TestRESTOperationPermissions(t *testing.T) {
 		name     string
 		method   string
 		target   string
-		required restapi.Role
+		required restapi.Permission
 		handler  http.HandlerFunc
 	}{
-		{"list runs", http.MethodGet, "/runs?limit=0", restapi.RoleRead, h.GetDeploymentRunsHandler},
-		{"get run", http.MethodGet, "/run/", restapi.RoleRead, h.GetDeploymentRunHandler},
-		{"list jobs", http.MethodGet, "/jobs?context=unknown", restapi.RoleRead, h.GetScheduledJobsHandler},
-		{"list projects", http.MethodGet, "/projects?context=unknown", restapi.RoleInspect, h.GetProjectsApiHandler},
-		{"get project", http.MethodGet, "/project/", restapi.RoleInspect, h.ProjectApiHandler},
-		{"list stacks", http.MethodGet, "/stacks?context=unknown", restapi.RoleInspect, h.GetStacksApiHandler},
-		{"get stack", http.MethodGet, "/stack/", restapi.RoleInspect, h.StackApiHandler},
-		{"list sync windows", http.MethodGet, "/sync-windows?origin=invalid", restapi.RoleRead, h.GetSyncWindowsHandler},
-		{"trigger job", http.MethodPost, "/job/run", restapi.RoleWrite, h.TriggerScheduledJobHandler},
-		{"control project", http.MethodPost, "/project/start", restapi.RoleWrite, h.ProjectActionApiHandler},
-		{"control stack", http.MethodPost, "/stack/restart", restapi.RoleWrite, h.StackActionApiHandler},
-		{"trigger poll", http.MethodPost, "/poll/run", restapi.RoleWrite, h.TriggerPollHandler},
-		{"compact mirrors", http.MethodPost, "/storage/compact?max_size=invalid", restapi.RoleWrite, h.CompactMirrorsHandler},
-		{"delete project", http.MethodDelete, "/project/", restapi.RoleFull, h.ProjectApiHandler},
-		{"delete stack", http.MethodDelete, "/stack/", restapi.RoleFull, h.StackApiHandler},
+		{"list runs", http.MethodGet, "/runs?limit=0", restapi.PermissionRunsRead, h.GetDeploymentRunsHandler},
+		{"get run", http.MethodGet, "/run/", restapi.PermissionRunsRead, h.GetDeploymentRunHandler},
+		{"list jobs", http.MethodGet, "/jobs?context=unknown", restapi.PermissionJobsRead, h.GetScheduledJobsHandler},
+		{"list projects", http.MethodGet, "/projects?context=unknown", restapi.PermissionProjectsInspect, h.GetProjectsApiHandler},
+		{"get project", http.MethodGet, "/project/", restapi.PermissionProjectsInspect, h.ProjectApiHandler},
+		{"list stacks", http.MethodGet, "/stacks?context=unknown", restapi.PermissionStacksInspect, h.GetStacksApiHandler},
+		{"get stack", http.MethodGet, "/stack/", restapi.PermissionStacksInspect, h.StackApiHandler},
+		{"list sync windows", http.MethodGet, "/sync-windows?origin=invalid", restapi.PermissionSyncWindowsRead, h.GetSyncWindowsHandler},
+		{"trigger job", http.MethodPost, "/job/run", restapi.PermissionJobsTrigger, h.TriggerScheduledJobHandler},
+		{"control project", http.MethodPost, "/project/start", restapi.PermissionProjectsControl, h.ProjectActionApiHandler},
+		{"control stack", http.MethodPost, "/stack/restart", restapi.PermissionStacksControl, h.StackActionApiHandler},
+		{"trigger poll", http.MethodPost, "/poll/run", restapi.PermissionPollTrigger, h.TriggerPollHandler},
+		{"compact mirrors", http.MethodPost, "/storage/compact?max_size=invalid", restapi.PermissionMirrorsCompact, h.CompactMirrorsHandler},
+		{"delete project", http.MethodDelete, "/project/", restapi.PermissionProjectsDelete, h.ProjectApiHandler},
+		{"delete stack", http.MethodDelete, "/stack/", restapi.PermissionStacksDelete, h.StackApiHandler},
 	}
 
 	for _, operation := range operations {
@@ -250,22 +250,22 @@ func TestRESTUnknownOperationFailsClosed(t *testing.T) {
 func TestRESTOpenAPIPermissions(t *testing.T) {
 	t.Parallel()
 
-	want := map[apiOperation]restapi.Role{
-		opListDeploymentRuns:   restapi.RoleRead,
-		opGetDeploymentRun:     restapi.RoleRead,
-		opListScheduledJobs:    restapi.RoleRead,
-		opTriggerScheduledJob:  restapi.RoleWrite,
-		opListComposeProjects:  restapi.RoleInspect,
-		opGetComposeProject:    restapi.RoleInspect,
-		opDeleteComposeProject: restapi.RoleFull,
-		opRunComposeProject:    restapi.RoleWrite,
-		opListSwarmStacks:      restapi.RoleInspect,
-		opGetSwarmStack:        restapi.RoleInspect,
-		opDeleteSwarmStack:     restapi.RoleFull,
-		opRunSwarmStack:        restapi.RoleWrite,
-		opTriggerPoll:          restapi.RoleWrite,
-		opCompactMirrors:       restapi.RoleWrite,
-		opListSyncWindows:      restapi.RoleRead,
+	want := map[apiOperation]restapi.Permission{
+		opListDeploymentRuns:   restapi.PermissionRunsRead,
+		opGetDeploymentRun:     restapi.PermissionRunsRead,
+		opListScheduledJobs:    restapi.PermissionJobsRead,
+		opTriggerScheduledJob:  restapi.PermissionJobsTrigger,
+		opListComposeProjects:  restapi.PermissionProjectsInspect,
+		opGetComposeProject:    restapi.PermissionProjectsInspect,
+		opDeleteComposeProject: restapi.PermissionProjectsDelete,
+		opRunComposeProject:    restapi.PermissionProjectsControl,
+		opListSwarmStacks:      restapi.PermissionStacksInspect,
+		opGetSwarmStack:        restapi.PermissionStacksInspect,
+		opDeleteSwarmStack:     restapi.PermissionStacksDelete,
+		opRunSwarmStack:        restapi.PermissionStacksControl,
+		opTriggerPoll:          restapi.PermissionPollTrigger,
+		opCompactMirrors:       restapi.PermissionMirrorsCompact,
+		opListSyncWindows:      restapi.PermissionSyncWindowsRead,
 	}
 
 	h := &Handler{appConfig: &app.Config{}, log: logger.New(logger.LevelCritical)}
@@ -285,7 +285,7 @@ func TestRESTOpenAPIPermissions(t *testing.T) {
 		for _, metadata := range route.Operations {
 			id := apiOperation(metadata.Operation.OperationID)
 
-			role, ok := want[id]
+			permission, ok := want[id]
 			if !ok {
 				t.Errorf("unexpected REST operation %q", id)
 				continue
@@ -293,8 +293,14 @@ func TestRESTOpenAPIPermissions(t *testing.T) {
 
 			seen[id] = true
 
-			if roleForOperation(id) != role {
-				t.Errorf("%s role = %q, want %q", id, roleForOperation(id), role)
+			if got := permissionForOperation(id); got != permission {
+				t.Errorf("%s permission = %q, want %q", id, got, permission)
+			}
+
+			role, ok := restapi.MinimumRole(permission)
+			if !ok {
+				t.Errorf("%s permission %q is not covered by a role", id, permission)
+				continue
 			}
 
 			description := "Required API key role: `" + string(role) + "`."

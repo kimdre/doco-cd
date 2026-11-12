@@ -59,23 +59,23 @@ func newPermissionTestServer(t *testing.T) (*httptest.Server, *permissionRuns) {
 func TestMCPRoleCatalogsAndCalls(t *testing.T) {
 	server, runs := newPermissionTestServer(t)
 
-	toolRoles := map[string]restapi.Role{
-		"get_health":            restapi.RoleRead,
-		"list_deployment_runs":  restapi.RoleRead,
-		"get_deployment_run":    restapi.RoleRead,
-		"list_scheduled_jobs":   restapi.RoleRead,
-		"list_sync_windows":     restapi.RoleRead,
-		"list_projects":         restapi.RoleInspect,
-		"get_project":           restapi.RoleInspect,
-		"list_stacks":           restapi.RoleInspect,
-		"get_stack":             restapi.RoleInspect,
-		"control_project":       restapi.RoleWrite,
-		"control_stack":         restapi.RoleWrite,
-		"trigger_scheduled_job": restapi.RoleWrite,
-		"trigger_poll":          restapi.RoleWrite,
-		"compact_mirrors":       restapi.RoleWrite,
-		"destroy_project":       restapi.RoleFull,
-		"remove_stack":          restapi.RoleFull,
+	toolPermissions := map[string]restapi.Permission{
+		"get_health":            restapi.PermissionRunsRead,
+		"list_deployment_runs":  restapi.PermissionRunsRead,
+		"get_deployment_run":    restapi.PermissionRunsRead,
+		"list_scheduled_jobs":   restapi.PermissionJobsRead,
+		"list_sync_windows":     restapi.PermissionSyncWindowsRead,
+		"list_projects":         restapi.PermissionProjectsInspect,
+		"get_project":           restapi.PermissionProjectsInspect,
+		"list_stacks":           restapi.PermissionStacksInspect,
+		"get_stack":             restapi.PermissionStacksInspect,
+		"control_project":       restapi.PermissionProjectsControl,
+		"control_stack":         restapi.PermissionStacksControl,
+		"trigger_scheduled_job": restapi.PermissionJobsTrigger,
+		"trigger_poll":          restapi.PermissionPollTrigger,
+		"compact_mirrors":       restapi.PermissionMirrorsCompact,
+		"destroy_project":       restapi.PermissionProjectsDelete,
+		"remove_stack":          restapi.PermissionStacksDelete,
 	}
 	arguments := map[string]any{
 		"control_project":       map[string]any{"project_name": "test", "action": "stop"},
@@ -112,7 +112,7 @@ func TestMCPRoleCatalogsAndCalls(t *testing.T) {
 			seen := make(map[string]bool)
 
 			for _, tool := range result.Tools {
-				required, ok := toolRoles[tool.Name]
+				required, ok := toolPermissions[tool.Name]
 				if !ok || !testCase.role.Allows(required) {
 					t.Fatalf("unexpected tool %q for role %q", tool.Name, testCase.role)
 				}
@@ -128,7 +128,7 @@ func TestMCPRoleCatalogsAndCalls(t *testing.T) {
 				}
 			}
 
-			for tool, required := range toolRoles {
+			for tool, required := range toolPermissions {
 				if testCase.role.Allows(required) {
 					if !seen[tool] {
 						t.Errorf("allowed tool %q is missing", tool)
@@ -148,7 +148,7 @@ func TestMCPRoleCatalogsAndCalls(t *testing.T) {
 				t.Fatalf("allowed read call: result = %#v, error = %v", readResult, err)
 			}
 
-			if testCase.role.Allows(restapi.RoleWrite) {
+			if testCase.role.Allows(restapi.PermissionMirrorsCompact) {
 				writeResult, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: "compact_mirrors", Arguments: map[string]any{}})
 				if err != nil || writeResult == nil || writeResult.IsError {
 					t.Fatalf("allowed write call: result = %#v, error = %v", writeResult, err)
