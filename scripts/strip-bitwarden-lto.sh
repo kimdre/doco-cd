@@ -65,11 +65,13 @@ if [ ! -f "$lib" ]; then
 fi
 
 # These patterns match the sections and segments that the go command rejects.
+# Older readelf versions do not know the SHT_LLVM_LTO section type name.
+# They print the type as an OS-specific offset (+0xfff4c0c) instead.
 has_lto() {
   case "$goos" in
     linux)
       readelf -S -W "$1" 2>/dev/null |
-        grep -q -E '\] (\.llvmbc|\.llvmcmd|\.llvm\.lto|\.gnu\.lto_|\.gnu\.debuglto_)|LLVM_LTO|LOOS\+0xfff4c0c'
+        grep -q -E '\] (\.llvmbc|\.llvmcmd|\.llvm\.lto|\.gnu\.lto_|\.gnu\.debuglto_)|LLVM_LTO|\+0xfff4c0c'
       ;;
     darwin)
       otool -l "$1" 2>/dev/null | grep -q -E 'segname __(LLVM|GNU_LTO)'
