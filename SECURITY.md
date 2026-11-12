@@ -27,10 +27,13 @@ with root-equivalent access to the Docker host:
 
 - Anyone who can push to a repository that doco-cd deploys (including its `.doco-cd.yml` and compose files).
 - Anyone who holds the `WEBHOOK_SECRET` (webhook requests can point doco-cd at any remote repository).
-- Anyone who holds the `API_SECRET` (REST API and MCP server).
+- Anyone who holds an API key with `poll:trigger`, including the `write` and `full` roles (REST API and MCP server).
 
-These actors can deploy arbitrary workloads, for example privileged containers, bind mounts of the host filesystem,
-or a mount of the Docker socket. Doco-CD does not try to sandbox them.
+These actors can deploy arbitrary workloads, for example privileged containers, bind mounts of the host filesystem, or a mount of the Docker socket. Doco-CD does not try to sandbox them.
+`poll:trigger` can indirectly destroy data through deployments. Other permissions, such as `jobs:trigger` and `stacks:control`, can run configured
+workloads and may also provide host-equivalent access depending on their configuration. The `full` role and the `projects:delete` or `stacks:delete`
+permissions permit direct project or stack removal. Project and stack inspection can expose sensitive Docker configuration, and read permissions
+can expose deployment metadata. Permissions restrict operation types, not individual resources or Docker contexts.
 
 Because of this, file paths in deployment configuration are trusted and are read from the doco-cd container filesystem
 without being confined to the repository. This applies to:
@@ -45,7 +48,7 @@ container are out of scope, as they can already do the same with a deployed cont
 To reduce the impact of a compromised repository or secret:
 
 - Limit who can push to repositories that doco-cd deploys and protect the deployed branches.
-- Keep `WEBHOOK_SECRET` and `API_SECRET` private and rotate them if they leak.
+- Keep `WEBHOOK_SECRET` and API keys private and rotate them if they leak.
 - Keep `PASS_ENV` disabled, so the doco-cd environment is not passed to deployments.
 - Mount only the files that doco-cd needs into its container.
 

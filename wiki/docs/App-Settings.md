@@ -62,15 +62,15 @@ The settings can be set via environment variables, a `.env` file, or Docker secr
 
 ## API and Webhook Settings
 
-| Key                   | Type    | Description                                                                                                                                                                                   | Default                                         |
-|-----------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------|
-| `API_SECRET`          | string  | Secret that is used to authenticate requests to the REST API (see [REST API](Endpoints/REST-API.md))                                                                                          | Rest API is disabled when not specified         |
-| `API_SECRET_FILE`     | string  | Path to the file containing the API secret (Mutually exclusive with `API_SECRET`).                                                                                                            |                                                 |
-| `METRICS_PORT`        | number  | Port on which the application will expose [Prometheus metrics](Endpoints/Metrics.md)                                                                                                          | `9120`                                          |
-| `MCP_ENABLED`         | boolean | Enables the [MCP server](Endpoints/MCP-Server.md) at `/mcp`. Requires an API secret from `API_SECRET` or `API_SECRET_FILE`; requests use the same `x-api-key` authentication as the REST API. | `false`                                         |
-| `OPENAPI_ENABLED`     | boolean | Exposes public REST and webhook [OpenAPI specifications and Swagger UIs](Endpoints/REST-API.md#openapi-documentation) under `/openapi/` and `/docs/`.                                         | `false`                                         |
-| `WEBHOOK_SECRET`      | string  | Secret that is used by webhooks for authentication to the application                                                                                                                         | Webhook endpoint is disabled when not specified |
-| `WEBHOOK_SECRET_FILE` | string  | Path to the file containing the webhook secret (mutually exclusive with `WEBHOOK_SECRET`).                                                                                                    |
+| Key                   | Type    | Description                                                                                                                                                           | Default                                         |
+|-----------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------|
+| `API_KEYS`            | list    | YAML list of API keys with a `read`, `inspect`, `write`, or `full` role or explicit permissions. See [REST API authentication](Endpoints/REST-API.md#authentication). | REST API is disabled when empty                 |
+| `API_KEYS_FILE`       | string  | Path to a plaintext or SOPS-encrypted file containing the API key list. Mutually exclusive with `API_KEYS`.                                                           |                                                 |
+| `METRICS_PORT`        | number  | Port on which the application will expose [Prometheus metrics](Endpoints/Metrics.md)                                                                                  | `9120`                                          |
+| `MCP_ENABLED`         | boolean | Enables the [MCP server](Endpoints/MCP-Server.md) at `/mcp`. Requires at least one API key; requests use the same `x-api-key` authentication as the REST API.         | `false`                                         |
+| `OPENAPI_ENABLED`     | boolean | Exposes public REST and webhook [OpenAPI specifications and Swagger UIs](Endpoints/REST-API.md#openapi-documentation) under `/openapi/` and `/docs/`.                 | `false`                                         |
+| `WEBHOOK_SECRET`      | string  | Secret that is used by webhooks for authentication to the application                                                                                                 | Webhook endpoint is disabled when not specified |
+| `WEBHOOK_SECRET_FILE` | string  | Path to the file containing the webhook secret (mutually exclusive with `WEBHOOK_SECRET`).                                                                            |
 
 ## HTTP and Network Settings
 

@@ -425,23 +425,23 @@ func TestGetConfig_McpEnabled(t *testing.T) {
 	tests := []struct {
 		name        string
 		mcpEnabled  string
-		apiSecret   string
+		apiKeys     string
 		wantEnabled bool
 		wantErr     string
 	}{
 		{
 			name: "disabled by default",
 		},
-		{
-			name:        "enabled with API secret",
+		{ // #nosec G101 -- this is a fixed test credential.
+			name:        "enabled with read-only API key",
 			mcpEnabled:  "true",
-			apiSecret:   "x",
+			apiKeys:     "- key: x\n  role: read",
 			wantEnabled: true,
 		},
 		{
-			name:       "enabled without API secret",
+			name:       "enabled without API key",
 			mcpEnabled: "true",
-			wantErr:    "MCP_ENABLED requires API_SECRET",
+			wantErr:    "MCP_ENABLED requires at least one API key",
 		},
 	}
 
@@ -451,8 +451,8 @@ func TestGetConfig_McpEnabled(t *testing.T) {
 			t.Setenv("HTTP_PORT", "8080")
 			t.Setenv("WEBHOOK_SECRET", "secret")
 			t.Setenv("MCP_ENABLED", testCase.mcpEnabled)
-			t.Setenv("API_SECRET", testCase.apiSecret)
-			t.Setenv("API_SECRET_FILE", "")
+			t.Setenv("API_KEYS", testCase.apiKeys)
+			t.Setenv("API_KEYS_FILE", "")
 
 			cfg, err := GetConfig()
 			if testCase.wantErr != "" {
@@ -473,20 +473,20 @@ func TestGetConfig_McpEnabled(t *testing.T) {
 		})
 	}
 
-	t.Run("enabled with API secret file", func(t *testing.T) {
-		const apiSecret = "file-secret"
+	t.Run("enabled with API key file", func(t *testing.T) {
+		const apiKey = "file-secret"
 
-		apiSecretFile := path.Join(t.TempDir(), "api-secret")
-		if err := os.WriteFile(apiSecretFile, []byte(apiSecret), filesystem.PermOwner); err != nil {
-			t.Fatalf("failed to write API secret file: %v", err)
+		apiKeysFile := path.Join(t.TempDir(), "api-keys")
+		if err := os.WriteFile(apiKeysFile, []byte("- key: "+apiKey+"\n  role: read\n"), filesystem.PermOwner); err != nil {
+			t.Fatalf("failed to write API keys file: %v", err)
 		}
 
 		t.Setenv("LOG_LEVEL", "info")
 		t.Setenv("HTTP_PORT", "8080")
 		t.Setenv("WEBHOOK_SECRET", "secret")
 		t.Setenv("MCP_ENABLED", "true")
-		t.Setenv("API_SECRET", "")
-		t.Setenv("API_SECRET_FILE", apiSecretFile)
+		t.Setenv("API_KEYS", "")
+		t.Setenv("API_KEYS_FILE", apiKeysFile)
 
 		cfg, err := GetConfig()
 		if err != nil {
@@ -497,8 +497,8 @@ func TestGetConfig_McpEnabled(t *testing.T) {
 			t.Fatal("expected McpEnabled to be true")
 		}
 
-		if cfg.ApiSecret != apiSecret {
-			t.Fatalf("expected ApiSecret=%q, got %q", apiSecret, cfg.ApiSecret)
+		if len(cfg.APIKeys) != 1 || cfg.APIKeys[0].Key != apiKey {
+			t.Fatal("expected API key from file")
 		}
 	})
 }
@@ -525,8 +525,8 @@ func TestGetConfig_OpenAPIEnabled(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Setenv("OPENAPI_ENABLED", testCase.value)
 			t.Setenv("WEBHOOK_SECRET", "secret")
-			t.Setenv("API_SECRET", "")
-			t.Setenv("API_SECRET_FILE", "")
+			t.Setenv("API_KEYS", "")
+			t.Setenv("API_KEYS_FILE", "")
 			t.Setenv("MCP_ENABLED", "")
 
 			cfg, err := GetConfig()
@@ -664,8 +664,8 @@ func TestGetConfigRejectsNonPositiveMaxPayloadSize(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv("MAX_PAYLOAD_SIZE", value)
 			t.Setenv("WEBHOOK_SECRET", "secret")
-			t.Setenv("API_SECRET", "")
-			t.Setenv("API_SECRET_FILE", "")
+			t.Setenv("API_KEYS", "")
+			t.Setenv("API_KEYS_FILE", "")
 
 			if _, err := GetConfig(); err == nil {
 				t.Fatalf("expected MAX_PAYLOAD_SIZE=%s to be rejected", value)

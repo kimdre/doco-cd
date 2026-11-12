@@ -23,10 +23,20 @@ func (h *Handler) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobLog.Debug("received api request")
 
-	if !restapi.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(restapi.ErrInvalidApiKey.Error())
-		restapi.JSONError(w, restapi.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+	var operation apiOperation
 
+	switch r.Method {
+	case http.MethodGet:
+		operation = opGetComposeProject
+	case http.MethodDelete:
+		operation = opDeleteComposeProject
+	default:
+		if _, ok := h.authenticate(w, r, jobLog, jobID); !ok {
+			return
+		}
+	}
+
+	if operation != "" && !h.authorize(w, r, jobLog, jobID, operation) {
 		return
 	}
 
@@ -124,10 +134,7 @@ func (h *Handler) GetProjectsApiHandler(w http.ResponseWriter, r *http.Request) 
 
 	jobLog.Debug("received api request")
 
-	if !restapi.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(restapi.ErrInvalidApiKey.Error())
-		restapi.JSONError(w, restapi.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
-
+	if !h.authorize(w, r, jobLog, jobID, opListComposeProjects) {
 		return
 	}
 
@@ -170,10 +177,7 @@ func (h *Handler) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request
 
 	jobLog.Debug("received api request")
 
-	if !restapi.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(restapi.ErrInvalidApiKey.Error())
-		restapi.JSONError(w, restapi.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
-
+	if !h.authorize(w, r, jobLog, jobID, opRunComposeProject) {
 		return
 	}
 

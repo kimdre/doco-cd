@@ -297,7 +297,7 @@ func TestLoadFileBasedEnvVars(t *testing.T) {
 		{
 			name: "loads plain file content",
 			mapping: EnvVarFileMapping{
-				EnvName:   "API_SECRET",
+				EnvName:   "API_KEYS",
 				EnvValue:  func() *string { v := ""; return &v }(),
 				FileValue: func() *string { v := "  plain-secret  "; return &v }(),
 			},
@@ -306,7 +306,7 @@ func TestLoadFileBasedEnvVars(t *testing.T) {
 		{
 			name: "rejects both set",
 			mapping: EnvVarFileMapping{
-				EnvName:   "API_SECRET",
+				EnvName:   "API_KEYS",
 				EnvValue:  func() *string { v := "value"; return &v }(),
 				FileValue: func() *string { v := "file"; return &v }(),
 			},
@@ -315,14 +315,14 @@ func TestLoadFileBasedEnvVars(t *testing.T) {
 		{
 			name: "rejects missing value when unset is not allowed",
 			mapping: EnvVarFileMapping{
-				EnvName: "API_SECRET",
+				EnvName: "API_KEYS",
 			},
 			wantErr: ErrBothSecretsNotSet,
 		},
 		{
 			name: "decrypts encrypted file content",
 			mapping: EnvVarFileMapping{
-				EnvName:  "API_SECRET",
+				EnvName:  "API_KEYS",
 				EnvValue: func() *string { v := ""; return &v }(),
 			},
 			want: "this.is.encrypted: \"yes\"",
@@ -336,7 +336,7 @@ func TestLoadFileBasedEnvVars(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("API_SECRET_FILE", "")
+			t.Setenv("API_KEYS_FILE", "")
 
 			if tt.setup != nil {
 				tt.setup(t)
@@ -353,7 +353,7 @@ func TestLoadFileBasedEnvVars(t *testing.T) {
 
 				mappings[0].FileValue = func() *string { v := string(content); return &v }()
 
-				t.Setenv("API_SECRET_FILE", tt.setEnvFile)
+				t.Setenv("API_KEYS_FILE", tt.setEnvFile)
 			}
 
 			err := LoadFileBasedEnvVars(&mappings)

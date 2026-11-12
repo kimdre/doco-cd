@@ -453,17 +453,24 @@ func (h *Harness) WaitFor(timeout time.Duration, desc string, check func() bool)
 func (h *Harness) APIRequest(method, path string, wantStatus int) []byte {
 	h.t.Helper()
 
-	return h.apiRequest(method, path, wantStatus, nil)
+	return h.apiRequest(method, path, wantStatus, nil, h.apiKey)
 }
 
 // APIRequestWithBody sends a JSON request to the daemon's REST API.
 func (h *Harness) APIRequestWithBody(method, path string, wantStatus int, body string) []byte {
 	h.t.Helper()
 
-	return h.apiRequest(method, path, wantStatus, strings.NewReader(body))
+	return h.apiRequest(method, path, wantStatus, strings.NewReader(body), h.apiKey)
 }
 
-func (h *Harness) apiRequest(method, path string, wantStatus int, requestBody io.Reader) []byte {
+// APIRequestWithKey sends a REST request using the specified key.
+func (h *Harness) APIRequestWithKey(method, path, apiKey string, wantStatus int) []byte {
+	h.t.Helper()
+
+	return h.apiRequest(method, path, wantStatus, nil, apiKey)
+}
+
+func (h *Harness) apiRequest(method, path string, wantStatus int, requestBody io.Reader, apiKey string) []byte {
 	h.t.Helper()
 
 	if h.apiKey == "" || h.daemon == nil {
@@ -483,7 +490,7 @@ func (h *Harness) apiRequest(method, path string, wantStatus int, requestBody io
 		h.t.Fatalf("create API request %s %s: %v", method, path, err)
 	}
 
-	req.Header.Set(restapi.KeyHeader, h.apiKey)
+	req.Header.Set(restapi.KeyHeader, apiKey)
 
 	if requestBody != nil {
 		req.Header.Set("Content-Type", "application/json")

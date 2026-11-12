@@ -90,7 +90,7 @@ func TestHandler_TriggerPollHandler(t *testing.T) {
 
 	appConfig.ConfigureGitAuth()
 
-	appConfig.ApiSecret = "test-api-secret"
+	appConfig.APIKeys = testAPIKeys("test-api-secret")
 
 	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
 	if err != nil {
@@ -164,7 +164,7 @@ func TestHandler_TriggerPollHandler(t *testing.T) {
 			})
 
 			// Set headers
-			req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+			req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 			mux.ServeHTTP(rr, req)
 
 			if status := rr.Code; status != tc.expectedStatus {
@@ -191,7 +191,7 @@ func TestHandler_TriggerPollHandlerWithoutWait_DetachesRequestContext(t *testing
 
 	appConfig.ConfigureGitAuth()
 
-	appConfig.ApiSecret = "test-api-secret"
+	appConfig.APIKeys = testAPIKeys("test-api-secret")
 
 	ctxCancelled := make(chan bool, 1)
 
@@ -232,7 +232,7 @@ func TestHandler_TriggerPollHandlerWithoutWait_DetachesRequestContext(t *testing
 		t.Fatal(err)
 	}
 
-	req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+	req.Header.Set(restAPI.KeyHeader, appConfig.APIKeys[0].Key)
 	mux.ServeHTTP(rr, req)
 
 	if status := rr.Code; status != http.StatusAccepted {
@@ -277,7 +277,7 @@ func TestHandler_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *testi
 			runs := 0
 			log := logger.New(logger.LevelCritical)
 			h := &Handler{
-				appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: testCase.maxPayload}, // #nosec G101 -- test fixture.
+				appConfig: &app.Config{APIKeys: testAPIKeys("poll-secret"), MaxPayloadSize: testCase.maxPayload}, // #nosec G101 -- test fixture.
 				log:       log,
 			}
 			h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
@@ -294,7 +294,7 @@ func TestHandler_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *testi
 			body := &trackingReadCloser{Reader: strings.NewReader(testCase.body)}
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, APIPath+"/poll/run"+testCase.query, body)
-			request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+			request.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 
 			h.TriggerPollHandler(recorder, request)
 
@@ -339,7 +339,7 @@ func TestHandler_TriggerPollHandlerAcceptsTrailingWhitespace(t *testing.T) {
 	runs := 0
 	log := logger.New(logger.LevelCritical)
 	h := &Handler{
-		appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+		appConfig: &app.Config{APIKeys: testAPIKeys("poll-secret"), MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
 		log:       log,
 	}
 	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
@@ -355,7 +355,7 @@ func TestHandler_TriggerPollHandlerAcceptsTrailingWhitespace(t *testing.T) {
 	})
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, APIPath+"/poll/run", strings.NewReader(`[{"url":"`+validPollSourceURL+`"}] `+"\n\t"))
-	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	request.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 
 	h.TriggerPollHandler(response, request)
 
@@ -367,7 +367,7 @@ func TestHandler_TriggerPollHandlerAcceptsTrailingWhitespace(t *testing.T) {
 func TestHandler_TriggerPollHandlerReportsPollFailures(t *testing.T) {
 	log := logger.New(logger.LevelCritical)
 	h := &Handler{
-		appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+		appConfig: &app.Config{APIKeys: testAPIKeys("poll-secret"), MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
 		log:       log,
 	}
 	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
@@ -388,7 +388,7 @@ func TestHandler_TriggerPollHandlerReportsPollFailures(t *testing.T) {
 		{"url":"https://example.com/succeeded.git"},
 		{"url":"https://example.com/failed.git"}
 	]`))
-	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	request.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 
 	h.TriggerPollHandler(response, request)
 
@@ -414,7 +414,7 @@ func TestHandler_TriggerPollHandlerReportsPollFailures(t *testing.T) {
 func TestHandler_TriggerPollHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) {
 	log := logger.New(logger.LevelCritical)
 	h := &Handler{
-		appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+		appConfig: &app.Config{APIKeys: testAPIKeys("poll-secret"), MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
 		log:       log,
 	}
 	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
@@ -424,7 +424,7 @@ func TestHandler_TriggerPollHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) 
 	})
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, APIPath+"/poll/run?wait=false", strings.NewReader(`[{"url":"`+validPollSourceURL+`"}]`))
-	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	request.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 
 	h.TriggerPollHandler(response, request)
 
@@ -459,7 +459,7 @@ func TestHandler_TriggerPollHandlerReportsSkippedRuns(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			log := logger.New(logger.LevelCritical)
 			h := &Handler{
-				appConfig: &app.Config{ApiSecret: "poll-test-key", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+				appConfig: &app.Config{APIKeys: testAPIKeys("poll-test-key"), MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
 				log:       log,
 			}
 			h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
@@ -482,7 +482,7 @@ func TestHandler_TriggerPollHandlerReportsSkippedRuns(t *testing.T) {
 			response := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, APIPath+"/poll/run?wait="+strconv.FormatBool(tc.wait),
 				strings.NewReader(`[{"url":"https://example.com/repo.git","deployments":[{"name":"web","pause":true}]}]`))
-			request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+			request.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 			h.TriggerPollHandler(response, request)
 
 			if response.Code != http.StatusAccepted {
@@ -517,7 +517,7 @@ func TestHandler_TriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
 			origin := make(chan syncwindow.Origin, 1)
 			log := logger.New(logger.LevelCritical)
 			h := &Handler{
-				appConfig: &app.Config{ApiSecret: "poll-test-key", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+				appConfig: &app.Config{APIKeys: testAPIKeys("poll-test-key"), MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
 				log:       log,
 			}
 			h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
@@ -539,7 +539,7 @@ func TestHandler_TriggerPollPreservesManualOriginWithRetryPolicy(t *testing.T) {
 			response := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, APIPath+"/poll/run?wait="+strconv.FormatBool(wait),
 				strings.NewReader(`[{"url":"https://example.com/repo.git","deployments":[{"name":"web","retry":{"limit":0,"delay":"1h"}}]}]`))
-			request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+			request.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 			h.TriggerPollHandler(response, request)
 
 			wantStatus := http.StatusOK

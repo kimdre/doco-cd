@@ -14,14 +14,13 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3gen"
 
-	"github.com/kimdre/doco-cd/internal/restapi"
-
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -281,7 +280,7 @@ func openAPIDescription(routes []Route) string {
 		return `
 ## REST API
 
-Authenticated routes require ` + "`API_SECRET` or `API_SECRET_FILE`" + ` being set in the doco-cd environment.
+Authenticated routes require a key configured through ` + "`API_KEYS` or `API_KEYS_FILE`" + `.
 
 All supported routes are documented even when currently disabled.`
 	case hasWebhooks && !hasREST:
@@ -295,7 +294,7 @@ All supported routes are documented even when currently disabled.`
 		return `
 ## API
 
-Authenticated REST routes require ` + "`API_SECRET` or `API_SECRET_FILE`" + ` being set in the doco-cd environment.
+Authenticated REST routes require a key configured through ` + "`API_KEYS` or `API_KEYS_FILE`" + `.
 
 Webhook routes require ` + "`WEBHOOK_SECRET` or `WEBHOOK_SECRET_FILE`" + ` being set in the doco-cd environment.
 
@@ -383,7 +382,7 @@ func addReferencedSecuritySchemes(components *openapi3.Components, routes []Rout
 				WithType("apiKey").
 				WithIn("header").
 				WithName(restapi.KeyHeader).
-				WithDescription("REST API secret configured with `API_SECRET` or `API_SECRET_FILE`."),
+				WithDescription("API key configured with `API_KEYS` or `API_KEYS_FILE`."),
 		}
 	}
 
@@ -678,9 +677,9 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			WithJSONSchemaRef(openapi3.NewSchemaRef("#/components/schemas/WebhookPayload", webhookPayload.Value)),
 	}
 
-	restEnabled := func(config *app.Config) bool { return config.ApiSecret != "" }
+	restEnabled := func(config *app.Config) bool { return len(config.APIKeys) > 0 }
 	webhookEnabled := func(config *app.Config) bool { return config.WebhookSecret != "" }
-	mcpEnabled := func(config *app.Config) bool { return config.McpEnabled && config.ApiSecret != "" }
+	mcpEnabled := func(config *app.Config) bool { return config.McpEnabled && len(config.APIKeys) > 0 }
 	alwaysEnabled := func(*app.Config) bool { return true }
 
 	healthResponses, err := standardResponses(builder, map[int]*openapi3.ResponseRef{http.StatusOK: stringResponse}, http.StatusServiceUnavailable)
@@ -769,7 +768,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 	webhookAuth := webhookSecurity()
 	timeout := queryIntParameter("timeout", "Operation timeout in seconds.", controlplane.DefaultProjectActionTimeout, 1, float64(controlplane.MaxProjectActionTimeout))
 
-	return []Route{
+	routes := []Route{
 		{
 			Pattern: HealthPath,
 			Handler: http.HandlerFunc(h.HealthCheckHandler),
@@ -985,7 +984,35 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 					webhookParameters(true), webhookRequest, responses(webhookResponses), webhookAuth),
 			},
 		},
-	}, nil
+	}
+
+	forbiddenResponse, err := jsonResponseFor[errorEnvelope](builder, "ErrorResponse", "Insufficient API key permissions.")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, route := range routes {
+		if route.Root != APIPath {
+			continue
+		}
+
+		for _, metadata := range route.Operations {
+			permission := permissionForOperation(apiOperation(metadata.Operation.OperationID))
+			if permission == "" {
+				return nil, fmt.Errorf("unclassified API operation %q", metadata.Operation.OperationID)
+			}
+
+			role, ok := restapi.MinimumRole(permission)
+			if !ok {
+				return nil, fmt.Errorf("permission %q is not granted by any API key role", permission)
+			}
+
+			metadata.Operation.Description += "\n\nRequired API key permission: `" + string(permission) + "` (minimum role: `" + string(role) + "`)."
+			metadata.Operation.Responses.Set(strconv.Itoa(http.StatusForbidden), forbiddenResponse)
+		}
+	}
+
+	return routes, nil
 }
 
 func customizePollSchema(schema *openapi3.SchemaRef) error {

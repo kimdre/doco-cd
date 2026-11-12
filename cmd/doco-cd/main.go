@@ -619,10 +619,10 @@ func run() error {
 		Webhook: http.HandlerFunc(h.WebhookHandler),
 	}
 
-	if c.McpEnabled && c.ApiSecret != "" {
+	if c.McpEnabled && len(c.APIKeys) > 0 {
 		mcpHandler, err := mcp.NewHandler(mcp.Dependencies{
 			Version:              app.Version,
-			APISecret:            c.ApiSecret,
+			APIKeys:              c.APIKeys,
 			MaxPayloadSize:       c.MaxPayloadSize,
 			TrustedProxyHeader:   c.TrustedProxyHeader,
 			TrustedProxyNetworks: c.TrustedProxyNetworks,

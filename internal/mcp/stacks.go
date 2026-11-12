@@ -12,6 +12,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
 type listStacksInput struct {
@@ -84,22 +85,27 @@ func (h *Handler) addStackReadTools(server *sdkmcp.Server) {
 }
 
 // addStackTools registers Swarm stack mutation operations.
-func (h *Handler) addStackTools(server *sdkmcp.Server) {
-	controlSchema := mustToolInputSchema[controlStackInput]("control_stack")
-	controlSchema.Properties["action"].Enum = []any{"scale", "restart", "run"}
-	controlSchema.Properties["replicas"].Minimum = new(0.0)
+func (h *Handler) addStackTools(server *sdkmcp.Server, grant restapi.Grant) {
+	if grant.Allows(restapi.PermissionStacksControl) {
+		controlSchema := mustToolInputSchema[controlStackInput]("control_stack")
+		controlSchema.Properties["action"].Enum = []any{"scale", "restart", "run"}
+		controlSchema.Properties["replicas"].Minimum = new(0.0)
 
-	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "control_stack",
-		Description: "Scale, restart, or run services in a Docker Swarm stack. Returns one result per matching service, including skipped services.",
-		Annotations: destructiveAnnotations(false),
-		InputSchema: controlSchema,
-	}, instrumentTool(h.log, "control_stack", h.controlStack))
-	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "remove_stack",
-		Description: "Remove a Docker Swarm stack. Removal may be partial if Docker returns an error after deleting some resources.",
-		Annotations: destructiveAnnotations(true),
-	}, instrumentTool(h.log, "remove_stack", h.removeStack))
+		sdkmcp.AddTool(server, &sdkmcp.Tool{
+			Name:        "control_stack",
+			Description: "Scale, restart, or run services in a Docker Swarm stack. Returns one result per matching service, including skipped services.",
+			Annotations: destructiveAnnotations(false),
+			InputSchema: controlSchema,
+		}, instrumentTool(h.log, "control_stack", h.controlStack))
+	}
+
+	if grant.Allows(restapi.PermissionStacksDelete) {
+		sdkmcp.AddTool(server, &sdkmcp.Tool{
+			Name:        "remove_stack",
+			Description: "Remove a Docker Swarm stack. Removal may be partial if Docker returns an error after deleting some resources.",
+			Annotations: destructiveAnnotations(true),
+		}, instrumentTool(h.log, "remove_stack", h.removeStack))
+	}
 }
 
 // listStacks returns Swarm services grouped by stack namespace.

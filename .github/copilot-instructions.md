@@ -10,7 +10,7 @@ doco-cd is a GitOps continuous deployment tool for Docker Compose and Docker Swa
 - `make test` runs the full suite with the Bitwarden SDK (cgo). `make test-nobitwarden` runs it without cgo or a C compiler.
 - Run a single unit test:
   ```sh
-  WEBHOOK_SECRET=test_Secret1 API_SECRET=test_apiSecret1 CGO_ENABLED=0 \
+  WEBHOOK_SECRET=test_Secret1 API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' CGO_ENABLED=0 \
     go test -tags nobitwarden ./internal/<pkg> -run 'TestName/subtest'
   ```
   `make test-run TestName` also works, but it runs `-run` across `./...` with cgo.

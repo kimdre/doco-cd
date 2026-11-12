@@ -30,6 +30,10 @@ import (
 
 const testMCPPath = "/mcp"
 
+func testMCPKeys(key string) restapi.Keyring {
+	return restapi.Keyring{{Key: key, Role: restapi.RoleFull}}
+}
+
 func resolveTestSwarmMode(t *testing.T, apiClient client.APIClient) bool {
 	t.Helper()
 
@@ -207,9 +211,9 @@ func newMCPTestServerWithHandler(
 	var enabledEndpoints []string
 
 	if enabled && apiSecret != "" {
-		mcpHandler := newHandler(Dependencies{
+		mcpHandler, err := newHandler(Dependencies{
 			Version:        app.Version,
-			APISecret:      apiSecret,
+			APIKeys:        testMCPKeys(apiSecret),
 			MaxPayloadSize: maxPayloadSize,
 			Logger:         handler.log,
 			DockerCLI:      handler.dockerCli,
@@ -217,6 +221,10 @@ func newMCPTestServerWithHandler(
 			Runs:           handler.controlPlaneRuns,
 			SyncWindows:    handler.syncWindows,
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		mux.Handle("POST "+testMCPPath, mcpHandler)
 		enabledEndpoints = append(enabledEndpoints, testMCPPath)
 	}
@@ -304,8 +312,15 @@ func skipWithoutLiveDocker(t *testing.T) {
 func connectMCPTestClient(t *testing.T, server *httptest.Server) *sdkmcp.ClientSession {
 	t.Helper()
 
-	httpClient := server.Client()
-	httpClient.Transport = apiKeyRoundTripper{apiKey: testMCPAPIKey, base: httpClient.Transport}
+	return connectMCPTestClientWithKey(t, server, testMCPAPIKey)
+}
+
+func connectMCPTestClientWithKey(t *testing.T, server *httptest.Server, apiKey string) *sdkmcp.ClientSession {
+	t.Helper()
+
+	httpClient := &http.Client{
+		Transport: apiKeyRoundTripper{apiKey: apiKey, base: server.Client().Transport},
+	}
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "doco-cd-test", Version: "test"}, nil)
 
 	session, err := client.Connect(t.Context(), &sdkmcp.StreamableClientTransport{

@@ -1,0 +1,342 @@
+package api
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/controlplane"
+	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/restapi"
+)
+
+func testAPIKeys(key string) restapi.Keyring {
+	return restapi.Keyring{{Key: key, Role: restapi.RoleFull}}
+}
+
+func TestRESTOperationPermissions(t *testing.T) {
+	t.Parallel()
+
+	keys := restapi.Keyring{
+		{Key: "reader", Role: restapi.RoleRead},
+		{Key: "inspector", Role: restapi.RoleInspect},
+		{Key: "writer", Role: restapi.RoleWrite},
+		{Key: "admin", Role: restapi.RoleFull},
+	}
+
+	credentials := []struct {
+		name       string
+		key        string
+		role       restapi.Role
+		permission restapi.Permission
+		valid      bool
+	}{
+		{"missing", "", "", "", false},
+		{"invalid", "invalid", "", "", false},
+		{"read", "reader", restapi.RoleRead, "", true},
+		{"inspect", "inspector", restapi.RoleInspect, "", true},
+		{"write", "writer", restapi.RoleWrite, "", true},
+		{"full", "admin", restapi.RoleFull, "", true},
+	}
+	for _, permission := range []restapi.Permission{
+		restapi.PermissionHealthRead, restapi.PermissionJobsRead, restapi.PermissionJobsTrigger,
+		restapi.PermissionMirrorsCompact, restapi.PermissionPollTrigger,
+		restapi.PermissionProjectsControl, restapi.PermissionProjectsDelete, restapi.PermissionProjectsInspect,
+		restapi.PermissionRunsRead, restapi.PermissionStacksControl, restapi.PermissionStacksDelete,
+		restapi.PermissionStacksInspect, restapi.PermissionSyncWindowsRead,
+	} {
+		key := "only-" + string(permission)
+		keys = append(keys, restapi.APIKey{Key: key, Permissions: []restapi.Permission{permission}})
+		credentials = append(credentials, struct {
+			name       string
+			key        string
+			role       restapi.Role
+			permission restapi.Permission
+			valid      bool
+		}{key, key, "", permission, true})
+	}
+
+	h := &Handler{
+		appConfig: &app.Config{APIKeys: keys, MaxPayloadSize: 1024},
+		log:       logger.New(logger.LevelCritical),
+	}
+
+	operations := []struct {
+		name     string
+		method   string
+		target   string
+		required restapi.Permission
+		handler  http.HandlerFunc
+	}{
+		{"list runs", http.MethodGet, "/runs?limit=0", restapi.PermissionRunsRead, h.GetDeploymentRunsHandler},
+		{"get run", http.MethodGet, "/run/", restapi.PermissionRunsRead, h.GetDeploymentRunHandler},
+		{"list jobs", http.MethodGet, "/jobs?context=unknown", restapi.PermissionJobsRead, h.GetScheduledJobsHandler},
+		{"list projects", http.MethodGet, "/projects?context=unknown", restapi.PermissionProjectsInspect, h.GetProjectsApiHandler},
+		{"get project", http.MethodGet, "/project/", restapi.PermissionProjectsInspect, h.ProjectApiHandler},
+		{"list stacks", http.MethodGet, "/stacks?context=unknown", restapi.PermissionStacksInspect, h.GetStacksApiHandler},
+		{"get stack", http.MethodGet, "/stack/", restapi.PermissionStacksInspect, h.StackApiHandler},
+		{"list sync windows", http.MethodGet, "/sync-windows?origin=invalid", restapi.PermissionSyncWindowsRead, h.GetSyncWindowsHandler},
+		{"trigger job", http.MethodPost, "/job/run", restapi.PermissionJobsTrigger, h.TriggerScheduledJobHandler},
+		{"control project", http.MethodPost, "/project/start", restapi.PermissionProjectsControl, h.ProjectActionApiHandler},
+		{"control stack", http.MethodPost, "/stack/restart", restapi.PermissionStacksControl, h.StackActionApiHandler},
+		{"trigger poll", http.MethodPost, "/poll/run", restapi.PermissionPollTrigger, h.TriggerPollHandler},
+		{"compact mirrors", http.MethodPost, "/storage/compact?max_size=invalid", restapi.PermissionMirrorsCompact, h.CompactMirrorsHandler},
+		{"delete project", http.MethodDelete, "/project/", restapi.PermissionProjectsDelete, h.ProjectApiHandler},
+		{"delete stack", http.MethodDelete, "/stack/", restapi.PermissionStacksDelete, h.StackApiHandler},
+	}
+
+	for _, operation := range operations {
+		for _, credential := range credentials {
+			t.Run(operation.name+"/"+credential.name, func(t *testing.T) {
+				t.Parallel()
+
+				request := httptest.NewRequest(operation.method, operation.target, strings.NewReader("{"))
+				request.Header.Set(restapi.KeyHeader, credential.key)
+
+				response := httptest.NewRecorder()
+				operation.handler(response, request)
+
+				want := http.StatusUnauthorized
+				if credential.valid {
+					want = http.StatusForbidden
+					if credential.role.Allows(operation.required) || credential.permission == operation.required {
+						want = http.StatusBadRequest
+					}
+				}
+
+				if response.Code != want {
+					t.Fatalf("status = %d, want %d; body = %s", response.Code, want, response.Body.String())
+				}
+			})
+		}
+	}
+}
+
+func TestRESTWriteAccessRunsMaintenance(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	runs := &fakeCompactionRuns{
+		trigger: func(context.Context, string, controlplane.MirrorCompactionRequest, bool) (string, error) {
+			calls++
+
+			return "test-job", nil
+		},
+	}
+	h := &Handler{
+		appConfig: &app.Config{APIKeys: restapi.Keyring{
+			{Key: "reader", Role: restapi.RoleRead},
+			{Key: "inspector", Role: restapi.RoleInspect},
+			{Key: "writer", Role: restapi.RoleWrite},
+			{Key: "admin", Role: restapi.RoleFull},
+		}},
+		log:              logger.New(logger.LevelCritical),
+		controlPlaneRuns: runs,
+	}
+
+	for _, testCase := range []struct {
+		key       string
+		wantCode  int
+		wantCalls int
+	}{
+		{"reader", http.StatusForbidden, 0},
+		{"inspector", http.StatusForbidden, 0},
+		{"writer", http.StatusAccepted, 1},
+		{"admin", http.StatusAccepted, 2},
+	} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/api/storage/compact", nil)
+		request.Header.Set(restapi.KeyHeader, testCase.key)
+
+		response := httptest.NewRecorder()
+		h.CompactMirrorsHandler(response, request)
+
+		if response.Code != testCase.wantCode || calls != testCase.wantCalls {
+			t.Fatalf("key %q: status = %d, calls = %d; want %d, %d", testCase.key, response.Code, calls, testCase.wantCode, testCase.wantCalls)
+		}
+	}
+}
+
+func TestRESTRemovalRejectsRestrictedKeysBeforeDocker(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{
+		appConfig: &app.Config{APIKeys: restapi.Keyring{
+			{Key: "reader", Role: restapi.RoleRead},
+			{Key: "inspector", Role: restapi.RoleInspect},
+			{Key: "writer", Role: restapi.RoleWrite},
+		}},
+		log: logger.New(logger.LevelCritical),
+	}
+
+	for _, endpoint := range []struct {
+		name      string
+		pathValue string
+		handler   http.HandlerFunc
+	}{
+		{"project", "projectName", h.ProjectApiHandler},
+		{"stack", "stackName", h.StackApiHandler},
+	} {
+		for _, key := range []string{"reader", "inspector", "writer"} {
+			t.Run(endpoint.name+"/"+key, func(t *testing.T) {
+				t.Parallel()
+
+				request := httptest.NewRequest(http.MethodDelete, "/", nil)
+				request.SetPathValue(endpoint.pathValue, "test-workload")
+				request.Header.Set(restapi.KeyHeader, key)
+
+				response := httptest.NewRecorder()
+				endpoint.handler(response, request)
+
+				if response.Code != http.StatusForbidden {
+					t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+				}
+			})
+		}
+	}
+}
+
+func TestRESTUnsupportedMethodsPreserveAuthentication(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{
+		appConfig: &app.Config{APIKeys: restapi.Keyring{{Key: "reader", Role: restapi.RoleRead}}},
+		log:       logger.New(logger.LevelCritical),
+	}
+
+	for _, endpoint := range []struct {
+		name      string
+		pathValue string
+		handler   http.HandlerFunc
+	}{
+		{"project", "projectName", h.ProjectApiHandler},
+		{"stack", "stackName", h.StackApiHandler},
+	} {
+		for _, testCase := range []struct {
+			name       string
+			key        string
+			target     string
+			hasName    bool
+			wantStatus int
+		}{
+			{"missing key", "", "/", true, http.StatusUnauthorized},
+			{"invalid key", "invalid", "/", true, http.StatusUnauthorized},
+			{"missing name", "reader", "/", false, http.StatusBadRequest},
+			{"unknown context", "reader", "/?context=unknown", true, http.StatusBadRequest},
+			{"valid request", "reader", "/", true, http.StatusMethodNotAllowed},
+		} {
+			t.Run(endpoint.name+"/"+testCase.name, func(t *testing.T) {
+				t.Parallel()
+
+				request := httptest.NewRequest(http.MethodPatch, testCase.target, nil)
+				if testCase.hasName {
+					request.SetPathValue(endpoint.pathValue, "test-workload")
+				}
+
+				request.Header.Set(restapi.KeyHeader, testCase.key)
+
+				response := httptest.NewRecorder()
+				endpoint.handler(response, request)
+
+				if response.Code != testCase.wantStatus {
+					t.Fatalf("status = %d, want %d", response.Code, testCase.wantStatus)
+				}
+			})
+		}
+	}
+}
+
+func TestRESTUnknownOperationFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{
+		appConfig: &app.Config{APIKeys: testAPIKeys("admin")},
+		log:       logger.New(logger.LevelCritical),
+	}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set(restapi.KeyHeader, "admin")
+
+	response := httptest.NewRecorder()
+
+	if h.authorize(response, request, h.log.Logger, "", "unclassified") {
+		t.Fatal("unclassified operation was authorized")
+	}
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestRESTOpenAPIPermissions(t *testing.T) {
+	t.Parallel()
+
+	want := map[apiOperation]restapi.Permission{
+		opListDeploymentRuns:   restapi.PermissionRunsRead,
+		opGetDeploymentRun:     restapi.PermissionRunsRead,
+		opListScheduledJobs:    restapi.PermissionJobsRead,
+		opTriggerScheduledJob:  restapi.PermissionJobsTrigger,
+		opListComposeProjects:  restapi.PermissionProjectsInspect,
+		opGetComposeProject:    restapi.PermissionProjectsInspect,
+		opDeleteComposeProject: restapi.PermissionProjectsDelete,
+		opRunComposeProject:    restapi.PermissionProjectsControl,
+		opListSwarmStacks:      restapi.PermissionStacksInspect,
+		opGetSwarmStack:        restapi.PermissionStacksInspect,
+		opDeleteSwarmStack:     restapi.PermissionStacksDelete,
+		opRunSwarmStack:        restapi.PermissionStacksControl,
+		opTriggerPoll:          restapi.PermissionPollTrigger,
+		opCompactMirrors:       restapi.PermissionMirrorsCompact,
+		opListSyncWindows:      restapi.PermissionSyncWindowsRead,
+	}
+
+	h := &Handler{appConfig: &app.Config{}, log: logger.New(logger.LevelCritical)}
+
+	routes, err := createRouteCatalog(h, Mounts{}, newSchemaBuilder())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seen := make(map[apiOperation]bool)
+
+	for _, route := range routes {
+		if route.Root != APIPath {
+			continue
+		}
+
+		for _, metadata := range route.Operations {
+			id := apiOperation(metadata.Operation.OperationID)
+
+			permission, ok := want[id]
+			if !ok {
+				t.Errorf("unexpected REST operation %q", id)
+				continue
+			}
+
+			seen[id] = true
+
+			if got := permissionForOperation(id); got != permission {
+				t.Errorf("%s permission = %q, want %q", id, got, permission)
+			}
+
+			role, ok := restapi.MinimumRole(permission)
+			if !ok {
+				t.Errorf("%s permission %q is not covered by a role", id, permission)
+				continue
+			}
+
+			description := "Required API key permission: `" + string(permission) + "` (minimum role: `" + string(role) + "`)."
+			if !strings.Contains(metadata.Operation.Description, description) {
+				t.Errorf("%s is missing permission description %q", id, description)
+			}
+
+			if metadata.Operation.Responses.Value("403") == nil {
+				t.Errorf("%s is missing a 403 response", id)
+			}
+		}
+	}
+
+	if len(seen) != len(want) {
+		t.Fatalf("documented %d REST operations, want %d", len(seen), len(want))
+	}
+}

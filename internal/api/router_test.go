@@ -29,13 +29,13 @@ func TestRegisterRoutesPreservesEnabledEndpointOrderAndGating(t *testing.T) {
 		},
 		{
 			name:          "REST API",
-			config:        app.Config{ApiSecret: "api-secret"}, // #nosec G101 -- test fixture.
+			config:        app.Config{APIKeys: testAPIKeys("api-secret")}, // #nosec G101 -- test fixture.
 			wantEndpoints: []string{HealthPath, APIPath},
 		},
 		{
 			name: "all mounts",
 			config: app.Config{
-				ApiSecret:      "api-secret", // #nosec G101 -- test fixture.
+				APIKeys:        testAPIKeys("api-secret"), // #nosec G101 -- test fixture.
 				McpEnabled:     true,
 				OpenAPIEnabled: true,
 				WebhookSecret:  "webhook-secret", // #nosec G101 -- test fixture.
@@ -80,7 +80,7 @@ func TestRegisterRoutesUsesExpectedPatternsAndOpaqueMounts(t *testing.T) {
 
 	h := &Handler{
 		appConfig: &app.Config{
-			ApiSecret:     "api-secret", // #nosec G101 -- test fixture.
+			APIKeys:       testAPIKeys("api-secret"), // #nosec G101 -- test fixture.
 			McpEnabled:    true,
 			WebhookSecret: "webhook-secret", // #nosec G101 -- test fixture.
 		},

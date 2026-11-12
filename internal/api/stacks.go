@@ -27,10 +27,7 @@ func (h *Handler) StackActionApiHandler(w http.ResponseWriter, r *http.Request) 
 
 	jobLog.Debug("received api request")
 
-	if !restapi.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(restapi.ErrInvalidApiKey.Error())
-		restapi.JSONError(w, restapi.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
-
+	if !h.authorize(w, r, jobLog, jobID, opRunSwarmStack) {
 		return
 	}
 
@@ -179,10 +176,20 @@ func (h *Handler) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobLog.Debug("received api request")
 
-	if !restapi.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(restapi.ErrInvalidApiKey.Error())
-		restapi.JSONError(w, restapi.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+	var operation apiOperation
 
+	switch r.Method {
+	case http.MethodGet:
+		operation = opGetSwarmStack
+	case http.MethodDelete:
+		operation = opDeleteSwarmStack
+	default:
+		if _, ok := h.authenticate(w, r, jobLog, jobID); !ok {
+			return
+		}
+	}
+
+	if operation != "" && !h.authorize(w, r, jobLog, jobID, operation) {
 		return
 	}
 
@@ -259,10 +266,7 @@ func (h *Handler) GetStacksApiHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobLog.Debug("received api request")
 
-	if !restapi.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(restapi.ErrInvalidApiKey.Error())
-		restapi.JSONError(w, restapi.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
-
+	if !h.authorize(w, r, jobLog, jobID, opListSwarmStacks) {
 		return
 	}
 

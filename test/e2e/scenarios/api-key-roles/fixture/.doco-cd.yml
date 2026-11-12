@@ -1,0 +1,5 @@
+name: e2e-api-key-roles
+working_dir: deploy
+swarm:
+  enabled: false
+reconciliation: false

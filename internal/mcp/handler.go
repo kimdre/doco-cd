@@ -13,6 +13,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
@@ -34,10 +35,10 @@ type RunOperations interface {
 
 // Dependencies contains the runtime services and HTTP settings required by Handler.
 type Dependencies struct {
-	Version              string `validate:"required"`
-	APISecret            string `validate:"required"`
-	MaxPayloadSize       int64  `validate:"min=1"`
-	TrustedProxyHeader   string `default:"X-Forwarded-For"`
+	Version              string          `validate:"required"`
+	APIKeys              restapi.Keyring `validate:"required"`
+	MaxPayloadSize       int64           `validate:"min=1"`
+	TrustedProxyHeader   string          `default:"X-Forwarded-For"`
 	TrustedProxyNetworks []netip.Prefix
 	Logger               *logger.Logger          `validate:"required,nostructlevel"`
 	DockerCLI            command.Cli             `validate:"required,nostructlevel"`
@@ -49,7 +50,7 @@ type Dependencies struct {
 
 // Handler serves the stateless MCP HTTP transport and owns all MCP tools.
 type Handler struct {
-	apiSecret            string
+	apiKeys              restapi.Keyring
 	trustedProxyHeader   string
 	trustedProxyNetworks []netip.Prefix
 	log                  *logger.Logger
@@ -82,13 +83,23 @@ func NewHandler(dependencies Dependencies) (*Handler, error) {
 		return nil, errors.New("mcp logger is required")
 	}
 
-	return newHandler(dependencies), nil
+	if len(dependencies.APIKeys) == 0 {
+		return nil, errors.New("mcp API keys are required")
+	}
+
+	if err := dependencies.APIKeys.Validate(); err != nil {
+		return nil, fmt.Errorf("validate MCP API keys: %w", err)
+	}
+
+	return newHandler(dependencies)
 }
 
+type grantContextKey struct{}
+
 // newHandler registers MCP tools and builds the authenticated stateless HTTP transport.
-func newHandler(dependencies Dependencies) *Handler {
+func newHandler(dependencies Dependencies) (*Handler, error) {
 	h := &Handler{
-		apiSecret:            dependencies.APISecret,
+		apiKeys:              *clone.New(&dependencies.APIKeys),
 		trustedProxyHeader:   strings.TrimSpace(dependencies.TrustedProxyHeader),
 		trustedProxyNetworks: append([]netip.Prefix(nil), dependencies.TrustedProxyNetworks...),
 		log: &logger.Logger{
@@ -102,14 +113,31 @@ func newHandler(dependencies Dependencies) *Handler {
 	}
 
 	mcpLogger := slog.New(&sdkLogHandler{next: h.log.Handler()})
-	server := sdkmcp.NewServer(
-		&sdkmcp.Implementation{Name: "doco-cd", Version: dependencies.Version},
-		&sdkmcp.ServerOptions{Logger: mcpLogger},
-	)
+	servers := make(map[string]*sdkmcp.Server, len(h.apiKeys))
 
-	h.registerTools(server)
-	h.transport = sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server {
-		return server
+	for i, key := range h.apiKeys {
+		grant, err := key.Grant()
+		if err != nil {
+			return nil, fmt.Errorf("resolve MCP API key entry %d: %w", i+1, err)
+		}
+
+		signature := grant.Signature()
+		if _, exists := servers[signature]; exists {
+			continue
+		}
+
+		server := sdkmcp.NewServer(
+			&sdkmcp.Implementation{Name: "doco-cd", Version: dependencies.Version},
+			&sdkmcp.ServerOptions{Logger: mcpLogger},
+		)
+		h.registerTools(server, grant)
+		servers[signature] = server
+	}
+
+	h.transport = sdkmcp.NewStreamableHTTPHandler(func(r *http.Request) *sdkmcp.Server {
+		signature, _ := r.Context().Value(grantContextKey{}).(string)
+
+		return servers[signature]
 	}, &sdkmcp.StreamableHTTPOptions{
 		Stateless:                    true,
 		PropagateRequestCancellation: true,
@@ -119,34 +147,68 @@ func newHandler(dependencies Dependencies) *Handler {
 		Logger:                     mcpLogger,
 	})
 
-	return h
+	return h, nil
 }
 
-// registerTools installs the complete MCP tool catalog on server.
-func (h *Handler) registerTools(server *sdkmcp.Server) {
-	h.addHealthTool(server)
-	h.addRunTools(server)
-	h.addScheduledJobReadTool(server)
-	h.addSyncWindowTool(server)
-	h.addProjectReadTools(server)
-	h.addStackReadTools(server)
-	h.addProjectTools(server)
-	h.addStackTools(server)
-	h.addScheduledJobTriggerTool(server)
-	h.addPollTool(server)
-	h.addStorageTools(server)
+// registerTools installs the tools available to a grant.
+func (h *Handler) registerTools(server *sdkmcp.Server, grant restapi.Grant) {
+	if grant.Allows(restapi.PermissionHealthRead) {
+		h.addHealthTool(server)
+	}
+
+	if grant.Allows(restapi.PermissionRunsRead) {
+		h.addRunTools(server)
+	}
+
+	if grant.Allows(restapi.PermissionJobsRead) {
+		h.addScheduledJobReadTool(server)
+	}
+
+	if grant.Allows(restapi.PermissionSyncWindowsRead) {
+		h.addSyncWindowTool(server)
+	}
+
+	// Project and stack details can contain secrets, for example Swarm service env.
+	if grant.Allows(restapi.PermissionProjectsInspect) {
+		h.addProjectReadTools(server)
+	}
+
+	if grant.Allows(restapi.PermissionStacksInspect) {
+		h.addStackReadTools(server)
+	}
+
+	if grant.Allows(restapi.PermissionProjectsControl) || grant.Allows(restapi.PermissionProjectsDelete) {
+		h.addProjectTools(server, grant)
+	}
+
+	if grant.Allows(restapi.PermissionStacksControl) || grant.Allows(restapi.PermissionStacksDelete) {
+		h.addStackTools(server, grant)
+	}
+
+	if grant.Allows(restapi.PermissionJobsTrigger) {
+		h.addScheduledJobTriggerTool(server)
+	}
+
+	if grant.Allows(restapi.PermissionPollTrigger) {
+		h.addPollTool(server)
+	}
+
+	if grant.Allows(restapi.PermissionMirrorsCompact) {
+		h.addStorageTools(server)
+	}
 }
 
 // ServeHTTP authenticates a request before forwarding it to the MCP transport.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !restapi.ValidateApiKey(r, h.apiSecret) {
+	grant, ok := h.apiKeys.Authenticate(r)
+	if !ok {
 		h.log.Error(restapi.ErrInvalidApiKey.Error(), slog.String("ip", h.requestIP(r)))
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 
 		return
 	}
 
-	h.transport.ServeHTTP(w, r)
+	h.transport.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), grantContextKey{}, grant.Signature())))
 }
 
 // requestIP resolves the client address while honoring configured trusted proxies.

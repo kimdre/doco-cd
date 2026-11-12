@@ -132,7 +132,7 @@ No access token or SSH key is needed. Doco-CD does not send configured Git crede
 ### Deploy on push with a `post-receive` hook
 
 To deploy immediately after a push instead of waiting for the next poll interval, let a `post-receive` hook in the bare repository trigger a poll run via the [REST API](../Endpoints/REST-API.md#polling).
-This requires `API_SECRET` to be set (see [App Settings](../App-Settings.md#api-and-webhook-settings)), otherwise the REST API is disabled.
+This requires a `write` or `full` API key (see [App Settings](../App-Settings.md#api-and-webhook-settings)).
 
 ```sh title="hooks/post-receive"
 #!/bin/sh

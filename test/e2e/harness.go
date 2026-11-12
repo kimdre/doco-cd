@@ -28,8 +28,10 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
 // repoDir is the doco-cd repo root, relative to this package (test/e2e).
@@ -73,16 +75,17 @@ type Harness struct {
 	gitSrv   testcontainers.Container
 	daemon   testcontainers.Container
 
-	selfUpdate    bool
-	selfStack     string
-	selfService   string
-	selfImageRepo string
-	bootstrap     testcontainers.Container
-	selfLogCache  map[string]string
-	selfLogMarks  []map[string]int
-	selfLogMu     sync.Mutex
-	selfLogStop   chan struct{}
-	selfLogDone   chan struct{}
+	selfUpdate           bool
+	selfStack            string
+	selfService          string
+	selfImageRepo        string
+	selfPredecessorImage string
+	bootstrap            testcontainers.Container
+	selfLogCache         map[string]string
+	selfLogMarks         []map[string]int
+	selfLogMu            sync.Mutex
+	selfLogStop          chan struct{}
+	selfLogDone          chan struct{}
 
 	remoteContext    bool
 	remoteSwarm      bool
@@ -167,12 +170,41 @@ func (h *Harness) EnableRemoteSwarmContext() {
 func (h *Harness) EnableAPI(apiKey string) {
 	h.t.Helper()
 
+	h.EnableAPIKeys(apiKey, restapi.Keyring{{Key: apiKey, Role: restapi.RoleFull}})
+}
+
+// EnableAPIKeys enables the REST API with multiple keys and selects a default key.
+func (h *Harness) EnableAPIKeys(apiKey string, keys restapi.Keyring) {
+	h.t.Helper()
+
 	if apiKey == "" {
 		h.t.Fatal("REST API key must not be empty")
 	}
 
+	if err := keys.Validate(); err != nil {
+		h.t.Fatalf("invalid REST API keys: %v", err)
+	}
+
+	found := false
+
+	for _, key := range keys {
+		if key.Key == apiKey {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		h.t.Fatal("default REST API key is not configured")
+	}
+
+	data, err := yaml.Marshal(keys)
+	if err != nil {
+		h.t.Fatalf("marshal REST API keys: %v", err)
+	}
+
 	h.apiKey = apiKey
-	h.SetEnv("API_SECRET", apiKey)
+	h.SetEnv("API_KEYS", string(data))
 }
 
 // TrackVolume registers a scenario-owned named volume for teardown.

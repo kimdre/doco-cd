@@ -88,6 +88,30 @@ so a takeover only requires the repository to describe the same compose project.
 With the [two-instance setup](#alternative-two-instances), remove the updater stack in the
 same commit and enable self-update on the main instance only.
 
+## API key migration
+
+When upgrading from a version that uses `API_SECRET` or `API_SECRET_FILE`,
+change the image and the API configuration in the same self-update commit:
+
+1. Keep the legacy setting on the running predecessor. It needs that setting
+   until the handover finishes.
+2. In the successor's Compose configuration, remove both legacy variables
+   completely and configure `API_KEYS` or `API_KEYS_FILE`. The new version
+   refuses to start if a legacy variable is present, even when it is empty.
+3. If clients must keep using the old key during the handover, include that
+   value in the new list with the `full` role. Add separate lower-role
+   keys as needed. Protect the list as a secret.
+4. After the successor is healthy, migrate clients to their intended keys.
+   When the old key is no longer needed, remove it in another self-update
+   commit. A restart does not apply changes to the environment.
+
+The predecessor and successor can overlap while each uses its own
+configuration. If the upgrade fails, self-update restores the predecessor and
+its legacy environment. To roll back after a completed upgrade, restore the
+old image and its `API_SECRET` or `API_SECRET_FILE` configuration together.
+See [REST API authentication](../Endpoints/REST-API.md#authentication) for
+the list format and rotation steps.
+
 ## Strategies
 
 [`SELF_UPDATE_STRATEGY`](../App-Settings.md#runtime-settings) selects how the container is replaced. 
