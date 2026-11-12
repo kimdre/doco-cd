@@ -61,6 +61,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 	if target := selfUpdateFor(project, deployConfig.Context); target != nil {
 		kept = target
+
 		if self != nil {
 			self.RecreateMode = recreateMode
 			self.Services = services
@@ -184,7 +185,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 
 		if pendingSkip {
-			selfUpdateLogger(self).Info("self-update: self service configuration is unchanged",
+			selfUpdateLogger(self).Info(
+				"self-update: self service configuration is unchanged",
 				slog.String("service", selfService),
 				slog.String("stack", kept.Project),
 			)

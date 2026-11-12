@@ -2,6 +2,10 @@ package docker
 
 import (
 	"context"
+	"errors"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -16,32 +20,62 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
+	"github.com/kimdre/doco-cd/internal/source/store"
 )
 
 type unchangedSelfClient struct {
 	client.APIClient
-	labels  map[string]string
-	image   image.InspectResponse
-	network *network.Inspect
+	labels        map[string]string
+	image         image.InspectResponse
+	network       *network.Inspect
+	inspectErr    error
+	imageErr      error
+	failManifest  bool
+	listErr       error
+	containersErr error
 }
 
 func (c unchangedSelfClient) ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+	if c.inspectErr != nil {
+		return client.ContainerInspectResult{}, c.inspectErr
+	}
+
 	return client.ContainerInspectResult{Container: container.InspectResponse{
 		Config:     &container.Config{Labels: c.labels},
 		HostConfig: &container.HostConfig{RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped}},
 	}}, nil
 }
 
-func (c unchangedSelfClient) ImageInspect(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+func (c unchangedSelfClient) ImageInspect(_ context.Context, _ string, opts ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+	if c.failManifest && len(opts) > 0 {
+		return client.ImageInspectResult{}, errors.New("manifests unsupported")
+	}
+
+	if c.imageErr != nil {
+		return client.ImageInspectResult{}, c.imageErr
+	}
+
 	return client.ImageInspectResult{InspectResponse: c.image}, nil
 }
 
 func (c unchangedSelfClient) NetworkList(context.Context, client.NetworkListOptions) (client.NetworkListResult, error) {
+	if c.listErr != nil {
+		return client.NetworkListResult{}, c.listErr
+	}
+
 	if c.network == nil {
 		return client.NetworkListResult{}, nil
 	}
 
 	return client.NetworkListResult{Items: []network.Summary{{Network: c.network.Network}}}, nil
+}
+
+func (c unchangedSelfClient) ContainerList(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+	if c.containersErr != nil {
+		return client.ContainerListResult{}, c.containersErr
+	}
+
+	return client.ContainerListResult{}, nil
 }
 
 func (c unchangedSelfClient) NetworkInspect(context.Context, string, client.NetworkInspectOptions) (client.NetworkInspectResult, error) {
@@ -299,6 +333,7 @@ func TestSelfServiceNetworkDriftAndForceStillHandOver(t *testing.T) {
 	}
 
 	digest := "sha256:running"
+
 	apiClient := unchangedSelfClient{
 		labels: map[string]string{
 			api.ConfigHashLabel:  hash,
@@ -358,6 +393,7 @@ func TestComposeImageContentDigestUsesRunnableManifest(t *testing.T) {
 	t.Parallel()
 
 	host := platforms.DefaultSpec()
+
 	other := specs.Platform{OS: "linux", Architecture: "s390x"}
 	if host.Architecture == other.Architecture {
 		other.Architecture = "amd64"
@@ -375,5 +411,290 @@ func TestComposeImageContentDigestUsesRunnableManifest(t *testing.T) {
 	got, err := composeImageContentDigest(inspect, "")
 	if err != nil || got != "sha256:host" {
 		t.Fatalf("composeImageContentDigest() = %s, %v; want the host manifest", got, err)
+	}
+}
+
+func TestSelfServiceUnchangedClosedFailures(t *testing.T) {
+	withSelfIdentity(t, "tools", "doco-cd")
+
+	project := selfUpdateTestProject("tools", "doco-cd")
+	target := &selfTarget{Service: "doco-cd", Project: project.Name}
+
+	hash, err := composeServiceHash(project.Services["doco-cd"])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	digest := "sha256:running"
+	labels := map[string]string{
+		api.ConfigHashLabel:  hash,
+		api.ImageDigestLabel: digest,
+	}
+	matched := unchangedSelfClient{labels: labels, image: image.InspectResponse{ID: digest}}
+
+	t.Run("image volume", func(t *testing.T) {
+		changed := *project
+		svc := project.Services["doco-cd"]
+		svc.Volumes = []types.ServiceVolumeConfig{{Type: types.VolumeTypeImage, Source: "alpine", Target: "/data"}}
+		changed.Services = types.Services{"doco-cd": svc}
+
+		unchanged, err := selfServiceUnchanged(t.Context(), unchangedSelfClient{}, &changed, target, api.RecreateDiverged, nil)
+		if err != nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
+		}
+	})
+
+	t.Run("image volume digest", func(t *testing.T) {
+		apiClient := unchangedSelfClient{labels: map[string]string{
+			api.ConfigHashLabel:        hash,
+			api.ImageVolumeDigestLabel: "sha256:volume",
+		}}
+
+		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, project, target, api.RecreateDiverged, nil)
+		if err != nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
+		}
+	})
+
+	t.Run("inspect error", func(t *testing.T) {
+		apiClient := unchangedSelfClient{inspectErr: errors.New("inspect failed")}
+
+		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, project, target, api.RecreateDiverged, nil)
+		if err == nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want inspect error", unchanged, err)
+		}
+	})
+
+	t.Run("network list error", func(t *testing.T) {
+		changed := *project
+		svc := project.Services["doco-cd"]
+		svc.Networks = map[string]*types.ServiceNetworkConfig{"backend": {}}
+		changed.Services = types.Services{"doco-cd": svc}
+		changed.Networks = types.Networks{"backend": {Name: "tools_backend"}}
+
+		apiClient := unchangedSelfClient{labels: labels, listErr: errors.New("list failed")}
+
+		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, &changed, target, api.RecreateDiverged, nil)
+		if err == nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want network error", unchanged, err)
+		}
+	})
+
+	t.Run("image inspect error", func(t *testing.T) {
+		apiClient := matched
+		apiClient.imageErr = errors.New("image missing")
+
+		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, project, target, api.RecreateDiverged, nil)
+		if err != nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
+		}
+	})
+
+	t.Run("canceled image inspect", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		apiClient := matched
+		apiClient.imageErr = errors.New("image missing")
+
+		unchanged, err := selfServiceUnchanged(ctx, apiClient, project, target, api.RecreateDiverged, nil)
+		if err == nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want context error", unchanged, err)
+		}
+	})
+
+	t.Run("manifest inspect falls back", func(t *testing.T) {
+		apiClient := matched
+		apiClient.failManifest = true
+
+		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, project, target, api.RecreateDiverged, nil)
+		if err != nil || !unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want skip", unchanged, err)
+		}
+	})
+
+	t.Run("force of another service", func(t *testing.T) {
+		unchanged, err := selfServiceUnchanged(t.Context(), matched, project, target, api.RecreateForce, []string{"healthchecks"})
+		if err != nil || !unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want skip", unchanged, err)
+		}
+	})
+
+	t.Run("bad platform", func(t *testing.T) {
+		svc := project.Services["doco-cd"]
+		svc.Platform = "not a platform"
+
+		unchanged, err := selfImageDigestMatches(t.Context(), matched, project.Name, svc, digest)
+		if err != nil || unchanged {
+			t.Fatalf("selfImageDigestMatches() = %v, %v; want handover", unchanged, err)
+		}
+	})
+
+	t.Run("canceled bad platform", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		svc := project.Services["doco-cd"]
+		svc.Platform = "not a platform"
+
+		unchanged, err := selfImageDigestMatches(ctx, matched, project.Name, svc, digest)
+		if err == nil || unchanged {
+			t.Fatalf("selfImageDigestMatches() = %v, %v; want context error", unchanged, err)
+		}
+	})
+}
+
+func TestComposeImageContentDigestBranches(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid platform", func(t *testing.T) {
+		t.Parallel()
+
+		if _, err := composeImageContentDigest(image.InspectResponse{ID: "sha256:plain"}, "not a platform"); err == nil {
+			t.Fatal("composeImageContentDigest() error = nil; want a platform parse error")
+		}
+	})
+
+	t.Run("no manifests", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := composeImageContentDigest(image.InspectResponse{ID: "sha256:plain"}, "")
+		if err != nil || got != "sha256:plain" {
+			t.Fatalf("composeImageContentDigest() = %s, %v; want the image id", got, err)
+		}
+	})
+
+	t.Run("single manifest", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := composeImageContentDigest(image.InspectResponse{
+			ID: "sha256:index", Architecture: "amd64", Os: "linux",
+			Manifests: []image.ManifestSummary{{
+				ID: "sha256:only", Kind: image.ManifestKindImage, Available: true,
+			}},
+		}, "")
+		if err != nil || got != "sha256:only" {
+			t.Fatalf("composeImageContentDigest() = %s, %v; want the only manifest", got, err)
+		}
+	})
+
+	t.Run("unmatched manifest", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := composeImageContentDigest(image.InspectResponse{
+			ID: "sha256:index",
+			Manifests: []image.ManifestSummary{{
+				ID: "sha256:other", Kind: image.ManifestKindImage, Available: true,
+				ImageData: &image.ImageProperties{Platform: specs.Platform{OS: "linux", Architecture: "s390x"}},
+			}},
+		}, "linux/amd64")
+		if err != nil || got != "sha256:other" {
+			t.Fatalf("composeImageContentDigest() = %s, %v; want the only manifest", got, err)
+		}
+	})
+
+	t.Run("no platform match", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := composeImageContentDigest(image.InspectResponse{
+			ID: "sha256:index",
+			Manifests: []image.ManifestSummary{
+				{ID: "sha256:one", Kind: image.ManifestKindImage, Available: true, ImageData: &image.ImageProperties{Platform: specs.Platform{OS: "linux", Architecture: "s390x"}}},
+				{ID: "sha256:two", Kind: image.ManifestKindImage, Available: true, ImageData: &image.ImageProperties{Platform: specs.Platform{OS: "linux", Architecture: "ppc64le"}}},
+			},
+		}, "linux/amd64")
+		if err != nil || got != "sha256:index" {
+			t.Fatalf("composeImageContentDigest() = %s, %v; want the index id", got, err)
+		}
+	})
+}
+
+func TestComposeServiceHashIgnoresDeployReplicas(t *testing.T) {
+	t.Parallel()
+
+	one := 1
+	two := 2
+	base := types.ServiceConfig{Name: "doco-cd", Image: "app", Deploy: &types.DeployConfig{Replicas: &one}}
+	changed := base
+	changed.Deploy = &types.DeployConfig{Replicas: &two}
+
+	left, err := composeServiceHash(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	right, err := composeServiceHash(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if left != right {
+		t.Fatalf("replica change moved the config hash: %s -> %s", left, right)
+	}
+}
+
+func TestPinRootKeyOrder(t *testing.T) {
+	t.Parallel()
+
+	got, err := pinRootKeyOrder([]byte(`{"zzz":1,"image":"app"}`), []string{"image"})
+	if err != nil || string(got) != `{"image":"app","zzz":1}` {
+		t.Fatalf("pinRootKeyOrder() = %s, %v", got, err)
+	}
+
+	if _, err = pinRootKeyOrder([]byte(`[1]`), nil); err == nil {
+		t.Fatal("pinRootKeyOrder() error = nil; want invalid JSON")
+	}
+}
+
+func TestPlanSelfHandoverContinuesWhenPinFails(t *testing.T) {
+	withSelfIdentity(t, "tools", "doco-cd")
+
+	cfg := SelfUpdateConfig()
+	cfg.Store = selfupdate.NewStore(t.TempDir())
+	ConfigureSelfUpdate(cfg)
+
+	project := selfUpdateTestProject("tools", "doco-cd")
+
+	hash, err := composeServiceHash(project.Services["doco-cd"])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	digest := "sha256:running"
+	root := filepath.Join(t.TempDir(), store.ArtifactsSubdir, "rev")
+
+	if err = os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	apiClient := unchangedSelfClient{
+		labels: map[string]string{
+			api.ConfigHashLabel:  hash,
+			api.ImageDigestLabel: digest,
+		},
+		image:         image.InspectResponse{ID: digest},
+		containersErr: errors.New("list failed"),
+	}
+
+	plan, skipped, err := planSelfHandover(
+		t.Context(), selfApplyTestCli{apiClient: apiClient}, project, &deploy.Config{Name: "tools"},
+		&selfTarget{Service: "doco-cd", Project: project.Name}, api.RecreateDiverged, nil,
+		&SelfDeployInput{SourceType: "git"}, composeDeployOptions{ArtifactRoot: root},
+	)
+	if err != nil || !skipped || plan.Step != nil {
+		t.Fatalf("planSelfHandover() skipped=%v step=%v err=%v; want skip after pin failure", skipped, plan.Step != nil, err)
+	}
+}
+
+func TestSelfUpdateLogger(t *testing.T) {
+	t.Parallel()
+
+	if selfUpdateLogger(nil) == nil {
+		t.Fatal("selfUpdateLogger(nil) = nil")
+	}
+
+	log := slog.New(slog.DiscardHandler)
+	if selfUpdateLogger(&SelfDeployInput{Log: log}) != log {
+		t.Fatal("selfUpdateLogger() did not keep the deploy logger")
 	}
 }
