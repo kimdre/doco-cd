@@ -8,6 +8,7 @@ doco-cd is a GitOps continuous deployment tool for Docker Compose and Docker Swa
 - `make fmt` (alias `make lint`) runs `.bin/golangci-lint run --fix ./...` and `go fix ./...`. Run it after every code change. CI fails on any lint finding and also runs codespell.
 - `make build` builds all binaries into `bin/` with `CGO_ENABLED=0 -tags nobitwarden`. `make build-bitwarden` includes the Bitwarden SDK and needs cgo (`musl-gcc` on Linux, `clang` on macOS).
 - `make test` runs the full suite with the Bitwarden SDK (cgo). `make test-nobitwarden` runs it without cgo or a C compiler.
+- Go rejects the LLVM bitcode sections in the prebuilt Bitwarden SDK library. `scripts/strip-bitwarden-lto.sh` (`make strip-bitwarden-lto`) removes them from the library in the module cache. The cgo Make targets, the Dockerfile, and CI run it before they compile the SDK. On macOS it needs LLVM `objcopy` (`brew install llvm` or `OBJCOPY=...`). Run it before any direct cgo `go build`, `go test`, or golangci-lint call.
 - Run a single unit test:
   ```sh
   WEBHOOK_SECRET=test_Secret1 API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' CGO_ENABLED=0 \

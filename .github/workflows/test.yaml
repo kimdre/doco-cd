@@ -42,6 +42,10 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
+      # Go rejects the LLVM bitcode in the Bitwarden SDK library, and the
+      # linters compile the SDK with cgo. See the script for details.
+      - name: Strip LTO sections from Bitwarden SDK
+        run: sh ./scripts/strip-bitwarden-lto.sh
       - name: Run linters
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
@@ -81,6 +85,10 @@ jobs:
         run: musl-gcc --version
 
       - run: go mod download
+      # Go rejects the LLVM bitcode in the Bitwarden SDK library.
+      # See the script for details.
+      - name: Strip LTO sections from Bitwarden SDK
+        run: sh ./scripts/strip-bitwarden-lto.sh
 
       # Dedicated build cache for this job's CGO + musl-gcc static-link build
       # config. setup-go's own cache covers GOMODCACHE *and* GOCACHE under a key
@@ -164,6 +172,11 @@ jobs:
       - name: Enable Swarm mode
         if: matrix.mode == 'swarm'
         run: docker swarm init
+
+      # The e2e test package compiles the Bitwarden SDK with cgo, and Go
+      # rejects the LLVM bitcode in its library. See the script for details.
+      - name: Strip LTO sections from Bitwarden SDK
+        run: sh ./scripts/strip-bitwarden-lto.sh
 
       - name: Run e2e scenarios
         run: go test -tags e2e ./test/e2e/... -v -timeout 25m
