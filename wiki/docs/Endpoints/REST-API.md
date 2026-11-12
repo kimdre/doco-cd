@@ -116,7 +116,7 @@ add `runs:read` to `poll:trigger` if the client must check deployment runs.
 | `jobs:trigger`      | `write`             | Trigger a scheduled job.                                               |
 | `mirrors:compact`   | `write`             | Compact Git mirrors.                                                   |
 | `poll:trigger`      | `write`             | Trigger poll configurations.                                           |
-| `projects:control`  | `write`             | Start, stop, or restart Compose projects.                              |
+| `projects:control`  | `write`             | Start, stop, restart, or force-recreate Compose projects.              |
 | `projects:delete`   | `full`              | Remove Compose projects.                                               |
 | `projects:inspect`  | `inspect`           | List and inspect Compose projects.                                     |
 | `runs:read`         | `read`              | List and inspect deployment runs.                                      |
