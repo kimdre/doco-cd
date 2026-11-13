@@ -86,8 +86,9 @@ func prepareSelfUpdate(
 	}
 
 	if active != nil {
-		// The successor of that handover owns the commit status now.
+		// The successor finishes the handover's check. Close only the check this run opened.
 		self.stopPhaseReports()
+		self.concludeOwnStatus()
 
 		// Not a failure: the handover this instance is part of is still being
 		// converged. Reporting it as one would record a failed deploy and make

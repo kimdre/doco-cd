@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -160,16 +161,26 @@ func TestSelfDeployInputCarriesCommitStatus(t *testing.T) {
 		Context:   "doco-cd/nas/doco-cd",
 	}
 
+	concluded := false
 	req := runtimeDeployRequest{request: DeployRequest{
-		DeployConfig: &deploy.Config{Name: "doco-cd", Timeout: duration.Duration(90 * time.Second)},
-		LatestCommit: "abc123",
-		CommitStatus: status,
+		DeployConfig:      &deploy.Config{Name: "doco-cd", Timeout: duration.Duration(90 * time.Second)},
+		LatestCommit:      "abc123",
+		CommitStatus:      status,
+		ConcludeOwnStatus: func() { concluded = true },
 	}}
 
 	in := req.selfDeployInput()
 	if in.CommitStatus != status {
 		t.Fatalf("selfDeployInput().CommitStatus = %v, want %v", in.CommitStatus, status)
 	}
+
+	in.concludeOwnStatus()
+
+	if !concluded {
+		t.Fatal("selfDeployInput() dropped ConcludeOwnStatus")
+	}
+
+	(*SelfDeployInput)(nil).concludeOwnStatus()
 
 	if in.TimeoutSeconds != 90 {
 		t.Fatalf("selfDeployInput().TimeoutSeconds = %d, want 90", in.TimeoutSeconds)
@@ -182,5 +193,40 @@ func TestSelfDeployInputCarriesCommitStatus(t *testing.T) {
 	fromLabels := SelfDeployInputFromLabels(map[string]string{DocoCDLabels.Deployment.CommitSHA: "abc123"})
 	if got := selfSourceInfo(fromLabels).CommitStatus; got != nil {
 		t.Errorf("label-based redeploy handed over commit status %+v, want nil", *got)
+	}
+}
+
+// TestPrepareSelfUpdateClosesOwnStatusWhenHandoverIsActive checks that a
+// deploy which finds a handover already running closes the check it opened
+// and does not report a failure.
+func TestPrepareSelfUpdateClosesOwnStatusWhenHandoverIsActive(t *testing.T) {
+	withSelfIdentity(t, "stack", "app")
+
+	store := selfupdate.NewStore(t.TempDir())
+	if err := store.Create(&selfupdate.Record{
+		ID:       "5056a901-3c03-4478-91d4-7a20aab30e8e",
+		State:    selfupdate.StateStarted,
+		Strategy: selfupdate.StrategyScaleOut,
+		Stack:    "tools",
+		Service:  "doco-cd",
+	}); err != nil {
+		t.Fatalf("create handover: %v", err)
+	}
+
+	opts := SelfUpdateConfig()
+	opts.Store = store
+	ConfigureSelfUpdate(opts)
+
+	concluded := false
+	_, err := prepareSelfUpdate(t.Context(), nil, selfUpdateTestProject("stack", "app"), nil, nil, nil, &SelfDeployInput{
+		ConcludeOwnStatus: func() { concluded = true },
+	})
+
+	if !errors.Is(err, selfupdate.ErrHandover) {
+		t.Fatalf("prepareSelfUpdate() error = %v, want %v", err, selfupdate.ErrHandover)
+	}
+
+	if !concluded {
+		t.Fatal("colliding attempt left its commit status open")
 	}
 }
