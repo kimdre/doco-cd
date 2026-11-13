@@ -106,7 +106,7 @@ func (s *scheduler) runScheduledWorkloadWithTimeout(ctx context.Context, job sch
 		runLog = runLog.With(slog.String("job_id", record.RunID))
 	}
 
-	runLog.Warn("scheduled job exceeded its timeout, stopping it", logger.ErrAttr(err))
+	runLog.Warn("scheduled job exceeded its timeout, stopping it")
 
 	if stopErr := s.stopTimedOutWorkload(ctx, job, cfg, record); stopErr != nil {
 		runLog.Error("failed to stop scheduled job after timeout", logger.ErrAttr(stopErr))

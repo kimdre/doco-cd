@@ -1,9 +1,11 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -68,6 +70,10 @@ func TestRunScheduledWorkloadWithTimeoutStopsRestartContainer(t *testing.T) {
 	t.Parallel()
 
 	worker, _, stops := newRestartTimeoutWorker(t, 0)
+
+	var logs bytes.Buffer
+
+	worker.log = slog.New(slog.NewJSONHandler(&logs, nil))
 	cfg := docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeRestart, Timeout: 100 * time.Millisecond}
 	now := time.Now()
 
@@ -84,6 +90,19 @@ func TestRunScheduledWorkloadWithTimeoutStopsRestartContainer(t *testing.T) {
 
 	if got := stops.Load(); got != 1 {
 		t.Fatalf("container stop requests = %d, want 1", got)
+	}
+
+	var logEntry map[string]json.RawMessage
+	if err := json.Unmarshal(logs.Bytes(), &logEntry); err != nil {
+		t.Fatalf("decode timeout warning: %v", err)
+	}
+
+	if _, exists := logEntry["error"]; exists {
+		t.Fatal("timeout warning includes the raw workload error")
+	}
+
+	if string(logEntry["msg"]) != `"scheduled job exceeded its timeout, stopping it"` {
+		t.Fatalf("unexpected timeout warning: %s", logs.Bytes())
 	}
 }
 
