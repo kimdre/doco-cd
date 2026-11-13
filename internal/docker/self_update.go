@@ -11,6 +11,7 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
@@ -209,7 +210,6 @@ func selfRecreateForced(mode string, services []string, name string) bool {
 
 // selfServiceUnchanged reports whether this deploy can leave the running
 // doco-cd container in the compose create. project must already be path-pinned.
-// shortcut: ignores a disconnected project network and a missing named volume, check those before trusting a hash match.
 // shortcut: image digest is read before Create pulls, recheck if ensureImagesExists can change the image.
 func selfServiceUnchanged(
 	ctx context.Context,
@@ -256,6 +256,10 @@ func selfServiceUnchanged(
 		return false, nil
 	}
 
+	if !selfContainerOnNetworks(project, svc, inspected.Container.NetworkSettings) {
+		return false, nil
+	}
+
 	want, err := composeServiceHash(svc)
 	if err != nil {
 		return false, err
@@ -266,6 +270,53 @@ func selfServiceUnchanged(
 	}
 
 	return selfImageDigestMatches(ctx, apiClient, project.Name, svc, labels[api.ImageDigestLabel])
+}
+
+// selfContainerOnNetworks reports whether the running container is attached to
+// every network the service declares. External networks count.
+func selfContainerOnNetworks(project *types.Project, svc types.ServiceConfig, settings *container.NetworkSettings) bool {
+	if len(svc.Networks) == 0 {
+		return true
+	}
+
+	for key := range svc.Networks {
+		if !containerEndpointMatches(settings, selfServiceNetworkName(project, key)) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func selfServiceNetworkName(project *types.Project, key string) string {
+	cfg, ok := project.Networks[key]
+	if !ok {
+		return ""
+	}
+
+	if cfg.Name != "" {
+		return cfg.Name
+	}
+
+	if bool(cfg.External) {
+		return ""
+	}
+
+	return project.Name + "_" + key
+}
+
+func containerEndpointMatches(settings *container.NetworkSettings, name string) bool {
+	if settings == nil || name == "" {
+		return false
+	}
+
+	for key, endpoint := range settings.Networks {
+		if key == name || (endpoint != nil && endpoint.NetworkID == name) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // selfImageDigestMatches reports whether Compose's image-digest label would

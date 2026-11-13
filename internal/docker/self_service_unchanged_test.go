@@ -11,11 +11,13 @@ import (
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/containerd/errdefs"
 	"github.com/containerd/platforms"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/volume"
 	"github.com/moby/moby/client"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -34,6 +36,8 @@ type unchangedSelfClient struct {
 	failManifest  bool
 	listErr       error
 	containersErr error
+	endpoints     map[string]*network.EndpointSettings
+	volumes       []volume.Volume
 }
 
 func (c unchangedSelfClient) ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
@@ -42,8 +46,9 @@ func (c unchangedSelfClient) ContainerInspect(context.Context, string, client.Co
 	}
 
 	return client.ContainerInspectResult{Container: container.InspectResponse{
-		Config:     &container.Config{Labels: c.labels},
-		HostConfig: &container.HostConfig{RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped}},
+		Config:          &container.Config{Labels: c.labels},
+		HostConfig:      &container.HostConfig{RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped}},
+		NetworkSettings: &container.NetworkSettings{Networks: c.endpoints},
 	}}, nil
 }
 
@@ -81,6 +86,14 @@ func (c unchangedSelfClient) ContainerList(context.Context, client.ContainerList
 
 func (c unchangedSelfClient) NetworkInspect(context.Context, string, client.NetworkInspectOptions) (client.NetworkInspectResult, error) {
 	return client.NetworkInspectResult{Network: *c.network}, nil
+}
+
+func (c unchangedSelfClient) VolumeList(context.Context, client.VolumeListOptions) (client.VolumeListResult, error) {
+	return client.VolumeListResult{Items: c.volumes}, nil
+}
+
+func (c unchangedSelfClient) VolumeInspect(context.Context, string, client.VolumeInspectOptions) (client.VolumeInspectResult, error) {
+	return client.VolumeInspectResult{}, errdefs.ErrNotFound
 }
 
 // countingInspectClient fails ContainerInspect on the third call.
@@ -560,6 +573,32 @@ func TestSelfServiceUnchangedClosedFailures(t *testing.T) {
 			t.Fatalf("selfImageDigestMatches() = %v, %v; want context error", unchanged, err)
 		}
 	})
+
+	t.Run("disconnected network", func(t *testing.T) {
+		changed := *project
+		svc := project.Services["doco-cd"]
+		svc.Networks = map[string]*types.ServiceNetworkConfig{"backend": {}}
+		changed.Services = types.Services{"doco-cd": svc}
+		changed.Networks = types.Networks{"backend": {Name: "tools_backend"}}
+
+		netHash, err := composeServiceHash(svc)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		apiClient := unchangedSelfClient{
+			labels: map[string]string{
+				api.ConfigHashLabel:  netHash,
+				api.ImageDigestLabel: digest,
+			},
+			image: image.InspectResponse{ID: digest},
+		}
+
+		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, &changed, target, api.RecreateDiverged, nil)
+		if err != nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
+		}
+	})
 }
 
 func TestComposeImageContentDigestBranches(t *testing.T) {
@@ -820,6 +859,44 @@ func TestRecheckSelfSkip(t *testing.T) {
 
 		if !errors.Is(err, inspectErr) || !got.DeferToApplier {
 			t.Fatalf("recheckSelfSkip() defer=%v err=%v; want the drift handover to start", got.DeferToApplier, err)
+		}
+	})
+
+	t.Run("renamed volume", func(t *testing.T) {
+		changed := *project
+		svc := project.Services["doco-cd"]
+		svc.Volumes = []types.ServiceVolumeConfig{{
+			Type: types.VolumeTypeVolume, Source: "data", Target: "/data",
+		}}
+		changed.Services = types.Services{"doco-cd": svc, "other": project.Services["other"]}
+		changed.Volumes = types.Volumes{"data": {Name: "tools_data_new"}}
+
+		mounted, err := composeServiceHash(svc)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		apiClient := unchangedSelfClient{
+			labels: map[string]string{
+				api.ConfigHashLabel:  mounted,
+				api.ImageDigestLabel: digest,
+			},
+			image: image.InspectResponse{ID: digest},
+			volumes: []volume.Volume{{
+				Name: "tools_data",
+				Labels: map[string]string{
+					api.ProjectLabel: "tools",
+					api.VolumeLabel:  "data",
+				},
+			}},
+		}
+
+		got, err := recheckSelfSkip(
+			t.Context(), selfApplyTestCli{apiClient: apiClient}, &changed, dc, target,
+			api.RecreateDiverged, services, self, selfUpdatePlan{}, true,
+		)
+		if !errors.Is(err, selfupdate.ErrUnsupported) || got.Step != nil {
+			t.Fatalf("recheckSelfSkip() step=%v err=%v; want the renamed volume refused", got.Step != nil, err)
 		}
 	})
 }

@@ -234,7 +234,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	// Docker Compose then recreates them with the desired configuration during service.Create.
 	setDeploymentPhase(setPhase, "preparing deployment resources")
 
-	if selfPlan.Step != nil {
+	if selfPlan.Step != nil || pendingSkip {
 		if err = validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
 			return err
 		}

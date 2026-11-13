@@ -154,6 +154,10 @@ func recheckSelfSkip(
 	}
 
 	if stillSkip {
+		if err = validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
+			return selfUpdatePlan{}, err
+		}
+
 		selfUpdateLogger(self).Info(
 			"self-update: self service configuration is unchanged",
 			slog.String("service", kept.Service),
