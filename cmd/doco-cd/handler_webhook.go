@@ -25,6 +25,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 	"github.com/kimdre/doco-cd/internal/source"
 	"github.com/kimdre/doco-cd/internal/stages"
 
@@ -561,6 +562,17 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			msg = deployErr.Error()
 		}
 
+		elapsedTime := time.Since(startTime)
+		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
+		restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
+
+		return controlplane.SkippedRun(msg), nil
+	}
+
+	// The successor reports the result once it has proven itself healthy,
+	// so this run is neither a success nor a failure.
+	if errors.Is(deployErr, selfupdate.ErrHandover) {
+		msg := "self-update handover in progress"
 		elapsedTime := time.Since(startTime)
 		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 		restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
