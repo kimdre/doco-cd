@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,8 +30,7 @@ import (
 const (
 	swarmOneOffCleanupTimeout = 30 * time.Second
 	maxSwarmServiceNameLength = 63
-	// swarmJobLockDir holds one lock file per named Swarm job service
-	// (e.g. the shared "image-prune" job every stack deployment can trigger).
+	// swarmJobLockDir holds one lock file per named Swarm job service.
 	// A plain in-process mutex only serializes callers within a single doco-cd
 	// process; "go test ./..." runs each package as its own process, and
 	// multiple doco-cd replicas can share one Swarm cluster, so without a
@@ -84,32 +84,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	unlock := sourcecache.AcquireExclusivePathLock(swarmJobLockPath(name))
 	defer unlock()
 
-	newServiceSpec := swarmTypes.ServiceSpec{
-		Name: name,
-		Labels: map[string]string{
-			DocoCDLabels.Metadata.Manager:   app.Name,
-			DocoCDLabels.Metadata.Version:   app.Version,
-			DocoCDLabels.Deployment.Trigger: title,
-		},
-		TaskTemplate: swarmTypes.TaskSpec{
-			ContainerSpec: &swarmTypes.ContainerSpec{
-				Image:   "docker:cli",
-				Command: command,
-				Mounts: []mount.Mount{
-					{
-						Type:   mount.TypeBind,
-						Source: SocketPath,
-						Target: SocketPath,
-					},
-				},
-			},
-			RestartPolicy: &swarmTypes.RestartPolicy{
-				Condition: swarmTypes.RestartPolicyConditionNone,
-			},
-			ForceUpdate: uint64(time.Now().Unix()), // #nosec G115
-		},
-		Mode: serviceMode,
-	}
+	newServiceSpec := swarmJobServiceSpec(name, title, serviceMode, command)
 
 	response, err := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{
 		Spec:          newServiceSpec,
@@ -202,15 +177,171 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	return nil
 }
 
-// RunImagePruneJob runs a Docker Swarm global job to prune unused images on all nodes.
-func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli, logs ...*slog.Logger) error {
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, []string{"docker", "image", "prune", "--force"}, "image-prune", logs...)
+func swarmJobServiceSpec(name, title string, mode swarmTypes.ServiceMode, command []string) swarmTypes.ServiceSpec {
+	return swarmTypes.ServiceSpec{
+		Name: name,
+		Labels: map[string]string{
+			DocoCDLabels.Metadata.Manager:   app.Name,
+			DocoCDLabels.Metadata.Version:   app.Version,
+			DocoCDLabels.Deployment.Trigger: title,
+		},
+		TaskTemplate: swarmTypes.TaskSpec{
+			ContainerSpec: &swarmTypes.ContainerSpec{
+				Image:   "docker:cli",
+				Command: command,
+				Mounts: []mount.Mount{
+					{
+						Type:   mount.TypeBind,
+						Source: SocketPath,
+						Target: SocketPath,
+					},
+				},
+			},
+			RestartPolicy: &swarmTypes.RestartPolicy{
+				Condition: swarmTypes.RestartPolicyConditionNone,
+			},
+			ForceUpdate: uint64(time.Now().Unix()), // #nosec G115
+		},
+		Mode: mode,
+	}
 }
 
-// RunImageRemoveJob runs a Docker Swarm global job to remove specified images.
+const (
+	imageRemoveJobTitle     = "image-remove"
+	imageRemoveJobPrefix    = app.Name + "_" + imageRemoveJobTitle + "-"
+	legacyImagePruneJobName = app.Name + "_image-prune"
+	staleImageRemoveJobAge  = time.Hour
+)
+
+// removeImagesScript removes each image by ID because a forced removal by reference
+// only untags an image a running container uses, while by ID the daemon refuses it.
+// An image still in use is kept, and any failure other than a missing or in-use image fails the job.
+const removeImagesScript = `docker version >/dev/null || exit 1
+status=0
+for ref in "$@"; do
+  if ! out=$(docker image inspect --format '{{.Id}}' "$ref" 2>&1); then
+    case $out in
+      *"No such image"*) ;;
+      *) echo "inspect $ref: $out" >&2; status=1 ;;
+    esac
+    continue
+  fi
+  out=$(docker image rm --force "$out" 2>&1) && continue
+  case $out in
+    *"being used by running container"* | *"has dependent child images"*) echo "keeping $ref: $out" ;;
+    *"No such image"*) ;;
+    *) echo "remove $ref: $out" >&2; status=1 ;;
+  esac
+done
+exit $status`
+
+// RunImageRemoveJob removes images on every node with a global job service created for this run alone,
+// so a concurrent run cannot rewrite its command and a node that joins later never runs it.
 func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []string, logs ...*slog.Logger) error {
-	args := append([]string{"docker", "image", "rm", "--force"}, images...)
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, args, "image-remove", logs...)
+	name := fmt.Sprintf("%s%d", imageRemoveJobPrefix, time.Now().UnixNano())
+
+	return runImageRemoveJob(ctx, dockerCLI, name, images, logs...)
+}
+
+func runImageRemoveJob(ctx context.Context, dockerCLI command.Cli, name string, images []string, logs ...*slog.Logger) (err error) {
+	apiClient := dockerCLI.Client()
+
+	var jobLog *slog.Logger
+	if len(logs) > 0 {
+		jobLog = logs[0]
+	}
+
+	removeStaleImageRemoveJobs(ctx, apiClient, time.Now(), jobLog)
+
+	command := append([]string{"sh", "-c", removeImagesScript, "sh"}, images...)
+	spec := swarmJobServiceSpec(name, imageRemoveJobTitle, swarmTypes.ServiceMode{GlobalJob: &swarmTypes.GlobalJob{}}, command)
+
+	created, err := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{Spec: spec, QueryRegistry: true})
+	if err != nil {
+		logSwarmJobError(jobLog, "failed to create swarm job service", name, "", err)
+		return fmt.Errorf("error creating job service %s: %w", swarm.ServiceIdentity(name, ""), err)
+	}
+
+	logSwarmJob(jobLog, "created swarm job service", name, created.ID)
+
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), swarmOneOffCleanupTimeout)
+		defer cancel()
+
+		_, cleanupErr := apiClient.ServiceRemove(cleanupCtx, created.ID, client.ServiceRemoveOptions{})
+		if cleanupErr == nil || errdefs.IsNotFound(cleanupErr) {
+			return
+		}
+
+		logSwarmJobError(jobLog, "failed to remove swarm job service", name, created.ID, cleanupErr)
+		err = errors.Join(err, fmt.Errorf("remove job service %s: %w", swarm.ServiceIdentity(name, created.ID), cleanupErr))
+	}()
+
+	if err = swarm.WaitOnJobService(ctx, dockerCLI, created.ID, nil); err != nil {
+		logSwarmJobError(jobLog, "swarm job service failed", name, created.ID, err)
+		return fmt.Errorf("error waiting for job service %s: %w", swarm.ServiceIdentity(name, created.ID), err)
+	}
+
+	return nil
+}
+
+// removeStaleImageRemoveJobs removes image removal jobs a crashed run left behind and the
+// shared image-prune job of earlier versions, so a node joining later cannot run them. A job
+// still has to be old and have no live task, since a long run can outlast the age alone.
+func removeStaleImageRemoveJobs(ctx context.Context, apiClient client.APIClient, now time.Time, log *slog.Logger) {
+	filter := make(client.Filters).Add("label", DocoCDLabels.Metadata.Manager+"="+app.Name)
+
+	result, err := apiClient.ServiceList(ctx, client.ServiceListOptions{Filters: filter})
+	if err != nil {
+		if log != nil {
+			log.Warn("failed to list stale image removal jobs", slog.Any("error", err))
+		}
+
+		return
+	}
+
+	for _, svc := range result.Items {
+		name := svc.Spec.Name
+		trigger := svc.Spec.Labels[DocoCDLabels.Deployment.Trigger]
+
+		isImageRemoveJob := trigger == imageRemoveJobTitle && strings.HasPrefix(name, imageRemoveJobPrefix)
+		isLegacyPruneJob := trigger == "image-prune" && name == legacyImagePruneJobName
+
+		if (!isImageRemoveJob && !isLegacyPruneJob) || now.Sub(svc.UpdatedAt) < staleImageRemoveJobAge {
+			continue
+		}
+
+		live, err := serviceHasLiveTasks(ctx, apiClient, svc.ID)
+		if err != nil {
+			logSwarmJobError(log, "failed to list tasks of stale swarm job service", name, svc.ID, err)
+			continue
+		}
+
+		if live {
+			continue
+		}
+
+		_, err = apiClient.ServiceRemove(ctx, svc.ID, client.ServiceRemoveOptions{})
+		if err != nil && !errdefs.IsNotFound(err) {
+			logSwarmJobError(log, "failed to remove stale swarm job service", name, svc.ID, err)
+			continue
+		}
+
+		logSwarmJob(log, "removed stale swarm job service", name, svc.ID)
+	}
+}
+
+func serviceHasLiveTasks(ctx context.Context, apiClient client.APIClient, serviceID string) (bool, error) {
+	tasks, err := apiClient.TaskList(ctx, client.TaskListOptions{
+		Filters: make(client.Filters).Add("service", serviceID),
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return slices.ContainsFunc(tasks.Items, func(task swarmTypes.Task) bool {
+		return !swarmTaskStopped(task.Status.State)
+	}), nil
 }
 
 type SwarmOneOffFromServiceOptions struct {

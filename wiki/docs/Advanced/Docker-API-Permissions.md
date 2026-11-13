@@ -87,7 +87,7 @@ These endpoints are only needed when the corresponding setting is enabled.
 | Setting                                                 | Default | Additional endpoints                                                                                                                                             | Access      |
 |---------------------------------------------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------|
 | [`prune_images`](../Deploy-Settings.md) (Compose)       | `true`  | `DELETE /images/{name}`                                                                                                                                          | destructive |
-| [`prune_images`](../Deploy-Settings.md) (Swarm)         | `true`  | `POST /services/create`, `GET /services`, `POST /services/{id}/update`                                                                                           | destructive |
+| [`prune_images`](../Deploy-Settings.md) (Swarm)         | `true`  | `POST /services/create`, `GET /services`, `GET /services/{id}`, `DELETE /services/{id}`, `GET /tasks`, `GET /configs`, `POST /configs/create`, `DELETE /configs/{id}` | destructive |
 | [`remove_orphans`](../Deploy-Settings.md)               | `true`  | `DELETE /containers/{id}`, `DELETE /networks/{id}`, `DELETE /services/{id}` (Swarm)                                                                              | destructive |
 | [`destroy.enabled`](../Deploy-Settings.md)              | `false` | `POST /containers/{id}/stop`, `DELETE /containers/{id}`, `DELETE /networks/{id}`, Swarm: `DELETE /services/{id}`, `DELETE /configs/{id}`, `DELETE /secrets/{id}` | destructive |
 | [`destroy.remove_volumes`](../Deploy-Settings.md)       | `true`  | `GET /volumes/{name}`, `DELETE /volumes/{name}`                                                                                                                  | destructive |
@@ -109,10 +109,10 @@ These endpoints are only needed when the corresponding setting is enabled.
 - Swarm stack/service management: `GET /services`, `POST /services/{id}/update`, `DELETE /services/{id}`, `DELETE /configs/{id}`, `DELETE /secrets/{id}`
 
 !!! danger "Image pruning in Swarm mode bypasses the proxy"
-    In Swarm mode, `prune_images` runs `docker image prune` inside a global job service that
-    **bind-mounts `/var/run/docker.sock` on every node**. That container talks to the local
-    daemon directly, so your socket proxy does not apply to it, and every node needs the raw
-    socket available. Set `prune_images: false` if this is unacceptable in your environment.
+    In Swarm mode, `prune_images` removes the images a deployment replaced by running
+    `docker image rm` inside a global job service, created for each deployment and removed
+    afterwards, that **bind-mounts `/var/run/docker.sock` on every node**. That container talks to the local daemon directly, so your socket proxy
+    does not apply to it, and every node needs the raw socket available. Set `prune_images: false` if this is unacceptable in your environment.
 
 ### Building images
 
