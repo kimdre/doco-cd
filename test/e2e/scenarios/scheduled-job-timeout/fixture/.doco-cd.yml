@@ -1,0 +1,7 @@
+name: e2e-scheduled-job-timeout
+working_dir: deploy
+compose_files: [compose.yaml]
+context: remote
+swarm:
+  enabled: false
+reconciliation: false

@@ -125,6 +125,7 @@ type JobInfo struct {
 	Stack          string                  `json:"stack,omitempty"`
 	Mode           string                  `json:"mode"`
 	Schedule       string                  `json:"schedule,omitempty"`
+	Timeout        string                  `json:"timeout,omitempty"`
 	ExecutionMode  docker.JobExecutionMode `json:"execution_mode,omitempty"`
 	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
 	Status         string                  `json:"status,omitempty"`

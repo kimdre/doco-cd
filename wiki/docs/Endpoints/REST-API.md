@@ -295,6 +295,10 @@ container keeps its own state. Exit results are kept in memory. If no result is 
 source container's state. This occurs after a doco-cd restart without a recovered execution, or after a run that failed
 without an exit code, for example because the image pull failed. Compose `restart` jobs use the source container's state.
 
+If a job sets a [job timeout](../Advanced/Job-Scheduling.md#job-timeout), the `timeout` field contains the configured
+value, for example `2h0m0s`. A run that exceeds the timeout fails with the message `exceeded timeout of <timeout>`.
+The `timeout` field is omitted when no timeout is configured.
+
 ??? question "What is the `jobName` for a scheduled job?"
     `jobName` is the runtime name of the scheduled target:
 

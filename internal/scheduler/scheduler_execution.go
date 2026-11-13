@@ -73,6 +73,98 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 		}
 	}
 
+	return s.runScheduledWorkloadWithTimeout(ctx, job, cfg, record, scheduledAt, startedAt)
+}
+
+// runScheduledWorkloadWithTimeout runs the job workload and applies cfg.Timeout when it is set.
+// The timer starts after the stop_services stop phase. The restore of stop_services is not part of it.
+//
+// When the timeout elapses, the function stops the job before it returns. The caller restores
+// stop_services only after the return, so the restored services never run together with the job.
+func (s *scheduler) runScheduledWorkloadWithTimeout(ctx context.Context, job scheduledJob, cfg docker.JobScheduleConfig, record *executionRecord, scheduledAt, startedAt time.Time) error {
+	if cfg.Timeout <= 0 {
+		return s.runScheduledWorkload(ctx, job, cfg, record, scheduledAt, startedAt)
+	}
+
+	timeoutErr := &docker.JobTimeoutError{Timeout: cfg.Timeout}
+
+	runCtx, cancel := context.WithTimeoutCause(ctx, cfg.Timeout, timeoutErr)
+	defer cancel()
+
+	err := s.runScheduledWorkload(runCtx, job, cfg, record, scheduledAt, startedAt)
+	if !jobTimedOut(ctx, runCtx) {
+		return err
+	}
+
+	runLog := s.log.With(
+		slog.String("job", job.name),
+		slog.String("mode", string(job.mode)),
+		slog.String("execution_mode", string(cfg.ExecutionMode)),
+		slog.Duration("timeout", cfg.Timeout),
+	)
+	if record != nil {
+		runLog = runLog.With(slog.String("job_id", record.RunID))
+	}
+
+	runLog.Warn("scheduled job exceeded its timeout, stopping it")
+
+	if stopErr := s.stopTimedOutWorkload(ctx, job, cfg, record); stopErr != nil {
+		runLog.Error("failed to stop scheduled job after timeout", logger.ErrAttr(stopErr))
+
+		return errors.Join(timeoutErr, fmt.Errorf("stop job after timeout: %w", stopErr))
+	}
+
+	return timeoutErr
+}
+
+// jobTimedOut reports whether the job deadline elapsed, even if the workload returned success.
+// A canceled parent context is not a job timeout, so recovery can adopt the run after shutdown.
+func jobTimedOut(ctx, runCtx context.Context) bool {
+	return ctx.Err() == nil &&
+		runCtx.Err() != nil &&
+		errors.Is(context.Cause(runCtx), docker.ErrScheduledJobTimeout)
+}
+
+// stopTimedOutWorkload stops the job workload gracefully after a timeout.
+// The stop continues when ctx is canceled.
+func (s *scheduler) stopTimedOutWorkload(ctx context.Context, job scheduledJob, cfg docker.JobScheduleConfig, record *executionRecord) error {
+	if cfg.ExecutionMode != docker.JobExecutionModeOneOff {
+		if job.mode != scheduledJobModeContainer {
+			return fmt.Errorf("cannot stop %s job in %q mode after a timeout", job.mode, cfg.ExecutionMode)
+		}
+
+		return docker.StopScheduledContainer(ctx, s.dockerCli.Client(), job.id)
+	}
+
+	// Without a run ID, doco-cd cannot find the one-off artifact.
+	if record == nil {
+		return errors.New("one-off run has no run ID")
+	}
+
+	return s.stopOneOffRun(ctx, job.mode, record.RunID)
+}
+
+// stopOneOffRun gracefully stops the retained one-off artifact of runID.
+// The stop continues when ctx is canceled. A missing artifact is not an error.
+func (s *scheduler) stopOneOffRun(ctx context.Context, mode scheduledJobMode, runID string) error {
+	switch mode {
+	case scheduledJobModeContainer:
+		return docker.StopOneOffContainer(ctx, s.dockerCli.Client(), runID)
+	case scheduledJobModeSwarm:
+		return docker.StopSwarmOneOffRun(ctx, s.dockerCli, runID, s.log)
+	default:
+		return fmt.Errorf("unsupported scheduled job mode %q", mode)
+	}
+}
+
+// requiresJobCompletion reports whether doco-cd must wait until a restart-mode job exits.
+// stop_services must stay stopped while the job runs, and a timeout must know when the job ends.
+func requiresJobCompletion(cfg docker.JobScheduleConfig) bool {
+	return len(cfg.StopServices) > 0 || cfg.Timeout > 0
+}
+
+// runScheduledWorkload starts the job workload for the job mode and execution mode.
+func (s *scheduler) runScheduledWorkload(ctx context.Context, job scheduledJob, cfg docker.JobScheduleConfig, record *executionRecord, scheduledAt, startedAt time.Time) error {
 	switch job.mode {
 	case scheduledJobModeContainer:
 		switch cfg.ExecutionMode {
@@ -108,7 +200,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 
 			return docker.RunContainerOneOffFromExistingWithOptions(ctx, s.dockerCli.Client(), job.id, containerOpts)
 		default:
-			err := docker.RunComposeScheduledContainer(ctx, s.dockerCli, job.id, job.labels, len(cfg.StopServices) > 0, s.secretProvider, s.composeOptions)
+			err := docker.RunComposeScheduledContainer(ctx, s.dockerCli, job.id, job.labels, requiresJobCompletion(cfg), s.secretProvider, s.composeOptions)
 			if err == nil {
 				return nil
 			}
@@ -117,8 +209,8 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 				return err
 			}
 
-			if len(cfg.StopServices) > 0 {
-				// stop_services requires knowing when the job has finished.
+			if requiresJobCompletion(cfg) {
+				// stop_services and the job timeout require knowing when the job has finished.
 				// Use the blocking variant so services are not restarted while
 				// the job container is still running.
 				return docker.RestartContainerAndWait(ctx, s.dockerCli.Client(), job.id)

@@ -148,7 +148,7 @@ Exit results are kept in memory. When no result is available, the API falls back
     and retains it until its result has been reported, and it has been cleaned up. 
     It writes only the small finalization record needed to restore `stop_services` and avoid duplicate reporting to [`DATA_MOUNT_PATH`](../App-Settings.md#storage-settings).
     If doco-cd is forcibly terminated and recreated with the same data mount, the replacement adopts the labeled execution, 
-    waits for it, restores dependencies, reports the result, and removes the artifact.
+    waits for it, enforces the remaining [job timeout](#job-timeout), restores dependencies, reports the result, and removes the artifact.
 
 
     !!! note "Duplicate notifications"
@@ -206,6 +206,7 @@ Use the following service labels to configure scheduled jobs:
 | `cd.doco.job.swarm.replicas`        | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                                         | `1`         |
 | `cd.doco.job.stop_services`         | string  | Comma-separated services to [temporarily stop during a job run](#temporarily-stop-services-during-a-job-run) (supports `service` and `project/service`; Swarm requires `execution_mode: one_off`) |             |
 | `cd.doco.job.stop_services.timeout` | integer | Timeout in seconds when stopping `stop_services` targets; see [stop timeout behavior](#stop-timeout-behavior)                                                                                     | (see below) |
+| `cd.doco.job.timeout`               | string  | Maximum runtime of a job run, as a Go duration (for example `30m` or `1h30m`); see [job timeout](#job-timeout) (Swarm requires `execution_mode: one_off`)                                         | (no limit)  |
 
 !!! note "Using scheduled jobs with multiple doco-cd instances"
     `cd.doco.job.skip_running` prevents overlapping runs within the same doco-cd process. For Swarm
@@ -299,6 +300,64 @@ services:
       cd.doco.job.stop_services: "db"
       cd.doco.job.stop_services.timeout: "180"
 ```
+
+### Job timeout
+
+Set `cd.doco.job.timeout` to limit the runtime of each job run. The value is a [Go duration](https://pkg.go.dev/time#ParseDuration)
+greater than zero, for example `90s`, `30m`, or `1h30m`. If the label is not set or is empty, a job run has no time limit.
+
+```yaml title="docker-compose.yml"
+services:
+  backup:
+    image: ghcr.io/my-org/backup:1.2.3
+    restart: no
+    labels:
+      cd.doco.job.enabled: "true"
+      cd.doco.job.schedule: "0 2 * * *"
+      cd.doco.job.execution_mode: "one_off"
+      cd.doco.job.timeout: "2h"
+```
+
+The timer starts when doco-cd starts the job workload. If the job uses [`stop_services`](#temporarily-stop-services-during-a-job-run),
+the timer starts after these services have stopped. The restart of these services after the job is not part of the timeout.
+The timeout includes workload preparation, such as image pulls, container or service creation, and lifecycle hooks.
+Waiting for deployment locks before the run is not part of the timeout.
+
+When a run exceeds the timeout, doco-cd stops the job gracefully:
+
+- **Standalone compose**: doco-cd stops the job container. Docker sends the container's
+  [`stop_signal`](https://docs.docker.com/reference/compose-file/services/#stop_signal) and kills the container
+  after its [`stop_grace_period`](https://docs.docker.com/reference/compose-file/services/#stop_grace_period)
+  (default: 10 seconds). The timeout stop does not run Compose `pre_stop` hooks.
+- **Swarm**: doco-cd removes the temporary one-off job service. Swarm applies the service's `stop_grace_period`
+  before it kills the task containers.
+
+After the job has stopped, doco-cd restarts the `stop_services` targets. The run then fails with the error
+`exceeded timeout of <timeout>`, which is also the run message in the [runs API](../Endpoints/REST-API.md#deployment-runs).
+Like other failed runs, a timeout increments the `doco_cd_scheduled_run_errors_total` [metric](../Endpoints/Metrics.md)
+and sends a failure [notification](Notifications.md) according to `cd.doco.job.notify_on`.
+The timeout also applies to [manual job executions](#manual-job-execution).
+
+| Mode                | `restart`                                    | `one_off` |
+|---------------------|----------------------------------------------|-----------|
+| Docker (Standalone) | Supported, doco-cd waits for the job to exit | Supported |
+| Docker Swarm        | Not supported, the deployment fails          | Supported |
+
+!!! note "Restart mode waits for the job to exit"
+    Without a timeout or `stop_services`, a standalone `restart`-mode run ends when the container has started.
+    With a timeout, doco-cd waits until the container exits, so the run result is the exit status of the job.
+    Deployments of the same stack wait until the run finishes.
+    doco-cd cannot detect when a restart-mode Swarm service completes, so it cannot limit its runtime.
+    A Swarm job with a timeout must use `#!yaml cd.doco.job.execution_mode: "one_off"`. Otherwise, the
+    deployment fails, and an already deployed job is listed as invalid with a `schedule_error`.
+
+!!! info "Timeout after a doco-cd restart"
+    The temporary container or service of a `one_off` run carries the timeout label. If doco-cd
+    [recovers](#one_off) such a run after a restart, the timer counts from the start of the workload, not from the
+    recovery, so doco-cd applies only the remaining time. A run with an expired deadline is stopped immediately.
+    A run that finished while doco-cd was down reports its own result, even if it ran longer than the timeout.
+
+    `restart`-mode runs are not recovered, so doco-cd does not enforce their timeout across a restart.
 
 ## Examples
 

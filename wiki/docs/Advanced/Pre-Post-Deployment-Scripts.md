@@ -185,16 +185,17 @@ Deployments run the hooks through Docker Compose. doco-cd also stops, starts, an
 deployed project outside of a deployment. For these operations, doco-cd runs the hooks of the deployed
 service definition with the same semantics as the matching Docker Compose command:
 
-| Operation (Docker Standalone)                                                                                  | Like                     | `pre_start` | `post_start` | `pre_stop` |
-|----------------------------------------------------------------------------------------------------------------|--------------------------|:-----------:|:------------:|:----------:|
-| [Scheduled job](Job-Scheduling.md#restart) start (`restart` mode)                                              | `docker compose start`   |      ✅      |      ✅       |     -      |
-| [Scheduled job](Job-Scheduling.md#restart) restart of a running container (`restart` mode)                     | `docker compose restart` |      ❌      |      ✅       |     ✅      |
-| [`stop_services`](Job-Scheduling.md#temporarily-stop-services-during-a-job-run) stop before a job              | `docker compose stop`    |      -      |      -       |     ✅      |
-| [`stop_services`](Job-Scheduling.md#temporarily-stop-services-during-a-job-run) start after a job              | `docker compose start`   |      ✅      |      ✅       |     -      |
-| [Reconciliation](../Deploy-Settings.md#reconciliation-settings) restart                                        | `docker compose restart` |      ❌      |      ✅       |     ✅      |
+| Operation (Docker Standalone)                                                                     | Like                     | `pre_start` | `post_start` | `pre_stop` |
+|---------------------------------------------------------------------------------------------------|--------------------------|:-----------:|:------------:|:----------:|
+| [Scheduled job](Job-Scheduling.md#restart) start (`restart` mode)                                 | `docker compose start`   |     ✅      |      ✅      |     -      |
+| [Scheduled job](Job-Scheduling.md#restart) restart of a running container (`restart` mode)        | `docker compose restart` |     ❌      |      ✅      |     ✅     |
+| [`stop_services`](Job-Scheduling.md#temporarily-stop-services-during-a-job-run) stop before a job | `docker compose stop`    |      -      |      -       |     ✅     |
+| [`stop_services`](Job-Scheduling.md#temporarily-stop-services-during-a-job-run) start after a job | `docker compose start`   |     ✅      |      ✅      |     -      |
+| [Reconciliation](../Deploy-Settings.md#reconciliation-settings) restart                           | `docker compose restart` |     ❌      |      ✅      |     ✅     |
 
 - Like Docker Compose, `pre_start` hooks run only when no replica of the service is running.
 - A `pre_stop` hook is skipped if the container already stopped, for example after a `kill` event.
+- A [job timeout](Job-Scheduling.md#job-timeout) stops the container directly and does not run `pre_stop` hooks.
 - A failed `pre_stop` hook cancels the stop or restart of a scheduled job and of `stop_services`.
   Reconciliation restarts the container anyway, because the restart is the recovery, and logs a warning.
 - After a failed `post_start` hook, the container keeps running. A scheduled job execution fails.

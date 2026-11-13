@@ -272,6 +272,58 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:      "allows timeout with restart execution mode (container/standalone)",
+			swarmMode: false,
+			project: &types.Project{
+				Services: types.Services{
+					"backup": {
+						Name: "backup",
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:  "true",
+							docoCDJobLabelNames.JobSchedule: "0 2 * * *",
+							docoCDJobLabelNames.JobTimeout:  "30m",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:      "swarm allows timeout with one_off execution mode",
+			swarmMode: true,
+			project: &types.Project{
+				Services: types.Services{
+					"backup": {
+						Name: "backup",
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:       "true",
+							docoCDJobLabelNames.JobSchedule:      "0 2 * * *",
+							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
+							docoCDJobLabelNames.JobTimeout:       "30m",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:      "swarm rejects timeout with restart execution mode",
+			swarmMode: true,
+			project: &types.Project{
+				Services: types.Services{
+					"backup": {
+						Name: "backup",
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:  "true",
+							docoCDJobLabelNames.JobSchedule: "0 2 * * *",
+							docoCDJobLabelNames.JobTimeout:  "30m",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

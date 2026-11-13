@@ -28,6 +28,10 @@ func validateScheduledJobPolicies(project *types.Project, swarmMode bool) error 
 		}
 
 		if swarmMode {
+			if err := ValidateSwarmJobTimeout(cfg); err != nil {
+				return fmt.Errorf("service %s: %w", serviceName, err)
+			}
+
 			if svc.Deploy == nil || svc.Deploy.RestartPolicy == nil {
 				continue
 			}

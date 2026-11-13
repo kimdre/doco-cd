@@ -85,6 +85,10 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 		info.Replicas = cfg.SwarmReplicas
 		info.StopServices = formatStopServiceRefs(cfg.StopServices)
 
+		if cfg.Timeout > 0 {
+			info.Timeout = cfg.Timeout.String()
+		}
+
 		schedule, scheduleErr := docker.ParseJobScheduleExpression(cfg.Schedule)
 		if scheduleErr != nil {
 			info.Valid = false
