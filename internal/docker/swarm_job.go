@@ -28,6 +28,7 @@ import (
 
 const (
 	swarmOneOffCleanupTimeout = 30 * time.Second
+	swarmTaskPollInterval     = 500 * time.Millisecond
 	maxSwarmServiceNameLength = 63
 	// swarmJobLockDir holds one lock file per named Swarm job service
 	// (e.g. the shared "image-prune" job every stack deployment can trigger).
@@ -384,6 +385,145 @@ func RemoveSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, servic
 	return nil
 }
 
+// StopSwarmOneOffService removes a temporary job service and waits until its tasks stop.
+// Swarm applies the stop grace period of the service before it kills the task containers.
+//
+// The stop continues when ctx is canceled, so a timeout stop is not lost on shutdown.
+// The wait is limited to the grace period plus a buffer, or to
+// DefaultStopServicesTimeout when the service has no grace period.
+// A missing service is not an error.
+func StopSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string, logs ...*slog.Logger) error {
+	stopCtx := context.WithoutCancel(ctx)
+	apiClient := dockerCLI.Client()
+
+	var jobLog *slog.Logger
+	if len(logs) > 0 {
+		jobLog = logs[0]
+	}
+
+	lookupCtx, cancelLookup := context.WithTimeout(stopCtx, jobStopLookupTimeout)
+	defer cancelLookup()
+
+	inspectResult, err := apiClient.ServiceInspect(lookupCtx, serviceID, client.ServiceInspectOptions{})
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return nil
+		}
+
+		return fmt.Errorf("inspect one-off service %s: %w", swarm.ServiceIdentity("", serviceID), err)
+	}
+
+	name := swarm.OrUnavailable(inspectResult.Service.Spec.Name)
+
+	// Get the tasks before the removal, because the service filter finds no tasks after it.
+	tasks, err := apiClient.TaskList(lookupCtx, client.TaskListOptions{
+		Filters: make(client.Filters).Add("service", serviceID),
+	})
+	if err != nil {
+		return fmt.Errorf("list tasks of one-off service %s: %w", swarm.ServiceIdentity(name, serviceID), err)
+	}
+
+	taskIDs := make([]string, 0, len(tasks.Items))
+	for _, task := range tasks.Items {
+		if !swarmTaskIsTerminal(task.Status.State) {
+			taskIDs = append(taskIDs, task.ID)
+		}
+	}
+
+	logSwarmJob(jobLog, "stopping one-off swarm service", name, serviceID)
+
+	removeCtx, cancelRemove := context.WithTimeout(stopCtx, swarmOneOffCleanupTimeout)
+	defer cancelRemove()
+
+	if _, err = apiClient.ServiceRemove(removeCtx, serviceID, client.ServiceRemoveOptions{}); err != nil && !errdefs.IsNotFound(err) {
+		logSwarmJobError(jobLog, "failed to remove one-off swarm service", name, serviceID, err)
+		return fmt.Errorf("remove one-off service %s: %w", swarm.ServiceIdentity(name, serviceID), err)
+	}
+
+	wait := resolveSwarmStopWaitTimeout(nil, inspectResult.Service.Spec.TaskTemplate.ContainerSpec)
+
+	return waitForSwarmTasksTerminal(stopCtx, apiClient, taskIDs, name, serviceID, wait)
+}
+
+// waitForSwarmTasksTerminal waits until each task is in a terminal state or removed, or until timeout elapses.
+func waitForSwarmTasksTerminal(ctx context.Context, apiClient client.APIClient, taskIDs []string, serviceName, serviceID string, timeout time.Duration) error {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(swarmTaskPollInterval)
+	defer ticker.Stop()
+
+	for {
+		live := make([]string, 0, len(taskIDs))
+
+		for _, taskID := range taskIDs {
+			result, err := apiClient.TaskInspect(waitCtx, taskID, client.TaskInspectOptions{})
+			if err != nil {
+				if errdefs.IsNotFound(err) {
+					continue
+				}
+
+				if waitCtx.Err() != nil && ctx.Err() == nil {
+					return fmt.Errorf("timed out after %s waiting for task(s) of one-off service %s to stop", timeout, swarm.ServiceIdentity(serviceName, serviceID))
+				}
+
+				return fmt.Errorf("inspect task %s of one-off service %s: %w", taskID, swarm.ServiceIdentity(serviceName, serviceID), err)
+			}
+
+			if !swarmTaskIsTerminal(result.Task.Status.State) {
+				live = append(live, taskID)
+			}
+		}
+
+		if len(live) == 0 {
+			return nil
+		}
+
+		taskIDs = live
+
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("timed out after %s waiting for %d task(s) of one-off service %s to stop", timeout, len(live), swarm.ServiceIdentity(serviceName, serviceID))
+		case <-ticker.C:
+		}
+	}
+}
+
+// swarmTaskIsTerminal reports whether a task no longer runs and holds no resources.
+func swarmTaskIsTerminal(state swarmTypes.TaskState) bool {
+	switch state {
+	case swarmTypes.TaskStateShutdown, swarmTypes.TaskStateComplete,
+		swarmTypes.TaskStateFailed, swarmTypes.TaskStateRejected,
+		swarmTypes.TaskStateOrphaned, swarmTypes.TaskStateRemove:
+		return true
+	default:
+		return false
+	}
+}
+
+// SwarmOneOffServiceActive reports whether a temporary job service still has a task that is not terminal.
+// A service without tasks is active, because Swarm has not created its task yet.
+func SwarmOneOffServiceActive(ctx context.Context, dockerCLI command.Cli, serviceID string) (bool, error) {
+	tasks, err := dockerCLI.Client().TaskList(ctx, client.TaskListOptions{
+		Filters: make(client.Filters).Add("service", serviceID),
+	})
+	if err != nil {
+		return false, fmt.Errorf("list tasks of one-off service %s: %w", swarm.ServiceIdentity("", serviceID), err)
+	}
+
+	if len(tasks.Items) == 0 {
+		return true, nil
+	}
+
+	for _, task := range tasks.Items {
+		if !swarmTaskIsTerminal(task.Status.State) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // FindSwarmOneOffService finds the single retained temporary service for runID.
 func FindSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, runID string) (string, error) {
 	filter := make(client.Filters)
@@ -403,6 +543,25 @@ func FindSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, runID st
 	}
 
 	return result.Items[0].ID, nil
+}
+
+// StopSwarmOneOffRun finds the temporary job service of runID and stops it with StopSwarmOneOffService.
+// The lookup continues when ctx is canceled. A missing service is not an error.
+func StopSwarmOneOffRun(ctx context.Context, dockerCLI command.Cli, runID string, logs ...*slog.Logger) error {
+	lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jobStopLookupTimeout)
+	serviceID, err := FindSwarmOneOffService(lookupCtx, dockerCLI, runID)
+
+	cancel()
+
+	if err != nil {
+		return err
+	}
+
+	if serviceID == "" {
+		return nil
+	}
+
+	return StopSwarmOneOffService(ctx, dockerCLI, serviceID, logs...)
 }
 
 // WaitOnSwarmOneOffService adopts a retained temporary job service.

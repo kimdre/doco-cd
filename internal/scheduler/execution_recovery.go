@@ -147,18 +147,21 @@ func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecor
 	var (
 		runErr   error
 		runStart *time.Time
+		artifact recoveredArtifact
 	)
 
 	if !record.Reported {
-		startedAt, err := s.recoveredExecutionStartedAt(ctx, record)
+		var err error
+
+		artifact, err = s.inspectRecoveredArtifact(ctx, record)
 		if err != nil {
 			// Recovery must still restore stopped services and finalize the record.
-			// Only the run history entry is lost.
-			s.log.Warn("failed to read recovered execution start time", slog.String("run_id", record.RunID), logger.ErrAttr(err))
+			// Only the run history entry or the timeout enforcement is lost.
+			s.log.Warn("failed to inspect recovered execution artifact", slog.String("run_id", record.RunID), logger.ErrAttr(err))
 		}
 
-		if startedAt != nil {
-			runStart = startedAt
+		if artifact.startedAt != nil {
+			runStart = artifact.startedAt
 			s.startTrackedRun(job, record.RunID, *runStart)
 
 			defer func() {
@@ -177,7 +180,7 @@ func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecor
 	if !record.Reported {
 		prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Inc()
 
-		runErr = s.waitForRecoveredArtifact(ctx, record)
+		runErr = s.waitForRecoveredArtifactWithTimeout(ctx, record, job, artifact)
 
 		prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Dec()
 
@@ -226,53 +229,116 @@ func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecor
 	s.completeExecutionRecord(ctx, record)
 }
 
-// recoveredExecutionStartedAt reads the start time from Docker artifact labels.
-// Returns nil if the artifact or label is missing.
-func (s *scheduler) recoveredExecutionStartedAt(ctx context.Context, record *executionRecord) (*time.Time, error) {
-	var labels map[string]string
+// recoveredArtifact holds the state of a recovered one-off artifact.
+type recoveredArtifact struct {
+	// startedAt is the run start time from the job labels. The run history uses it.
+	startedAt *time.Time
+	// workloadStartedAt is the start time of the workload. The job timeout counts from this time.
+	workloadStartedAt *time.Time
+	// timeout is the job timeout from the artifact labels. Zero means no timeout.
+	timeout time.Duration
+	// active is true while the workload still runs.
+	active bool
+}
+
+// inspectRecoveredArtifact reads the recovery state from the retained Docker artifact.
+// It returns an empty artifact if the artifact is missing. On an error, the returned
+// artifact keeps all values that recovery could read before the error.
+func (s *scheduler) inspectRecoveredArtifact(ctx context.Context, record *executionRecord) (recoveredArtifact, error) {
+	var (
+		artifact       recoveredArtifact
+		labels         map[string]string
+		swarmServiceID string
+	)
 
 	switch record.Mode {
 	case scheduledJobModeContainer:
 		containerID, err := docker.FindOneOffContainer(ctx, s.dockerCli.Client(), record.RunID)
 		if err != nil {
-			return nil, err
+			return artifact, err
 		}
 
 		if containerID == "" {
-			return nil, nil
+			return artifact, nil
 		}
 
 		result, err := s.dockerCli.Client().ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 		if err != nil {
-			return nil, err
+			return artifact, err
 		}
 
 		if result.Container.Config == nil {
-			return nil, errors.New("recovered container configuration is missing")
+			return artifact, errors.New("recovered container configuration is missing")
 		}
 
 		labels = result.Container.Config.Labels
+
+		if state := result.Container.State; state != nil {
+			artifact.active = state.Running
+			artifact.workloadStartedAt = parseContainerStartedAt(state.StartedAt)
+		}
 	case scheduledJobModeSwarm:
 		serviceID, err := docker.FindSwarmOneOffService(ctx, s.dockerCli, record.RunID)
 		if err != nil {
-			return nil, err
+			return artifact, err
 		}
 
 		if serviceID == "" {
-			return nil, nil
+			return artifact, nil
 		}
 
 		result, err := s.dockerCli.Client().ServiceInspect(ctx, serviceID, client.ServiceInspectOptions{})
 		if err != nil {
-			return nil, err
+			return artifact, err
 		}
 
 		labels = docker.SwarmJobLabels(result.Service)
+
+		swarmServiceID = serviceID
+
+		if !result.Service.CreatedAt.IsZero() {
+			artifact.workloadStartedAt = new(result.Service.CreatedAt.UTC())
+		}
 	default:
-		return nil, fmt.Errorf("unsupported scheduled execution mode %q", record.Mode)
+		return artifact, fmt.Errorf("unsupported scheduled execution mode %q", record.Mode)
 	}
 
-	return parseRFC3339Time(labels[docker.DocoCDJobLabels.JobStartedAt]), nil
+	artifact.startedAt = parseRFC3339Time(labels[docker.DocoCDJobLabels.JobStartedAt])
+	if artifact.workloadStartedAt == nil {
+		artifact.workloadStartedAt = artifact.startedAt
+	}
+
+	timeout, err := docker.ParseJobTimeout(labels[docker.DocoCDJobLabels.JobTimeout])
+	if err != nil {
+		return artifact, fmt.Errorf("parse job timeout of recovered execution: %w", err)
+	}
+
+	artifact.timeout = timeout
+
+	// Recovery lists the Swarm tasks only when it must enforce a timeout.
+	if swarmServiceID != "" && timeout > 0 {
+		active, err := docker.SwarmOneOffServiceActive(ctx, s.dockerCli, swarmServiceID)
+		if err != nil {
+			artifact.timeout = 0
+
+			return artifact, fmt.Errorf("read tasks of recovered execution, job timeout is not enforced: %w", err)
+		}
+
+		artifact.active = active
+	}
+
+	return artifact, nil
+}
+
+// parseContainerStartedAt parses the start time from a container state.
+// Docker reports the zero time for a container that never started, so the function returns nil for it.
+func parseContainerStartedAt(raw string) *time.Time {
+	startedAt := parseRFC3339Time(raw)
+	if startedAt == nil || startedAt.IsZero() {
+		return nil
+	}
+
+	return startedAt
 }
 
 // claimRecovery acquires exclusive local ownership of a run to prevent
@@ -312,6 +378,46 @@ func (s *scheduler) waitForRecoveredArtifact(ctx context.Context, record *execut
 	default:
 		return fmt.Errorf("unsupported scheduled execution mode %q", record.Mode)
 	}
+}
+
+// waitForRecoveredArtifactWithTimeout waits for the recovered artifact and enforces the job timeout.
+// The timeout counts from the workload start, so recovery applies only the remaining time.
+// If the deadline already passed, recovery stops the job at once.
+//
+// A job that already finished reports its own result, also when it ran past the deadline
+// while doco-cd was down. The timeout applies only to a job that still runs.
+func (s *scheduler) waitForRecoveredArtifactWithTimeout(ctx context.Context, record *executionRecord, job scheduledJob, artifact recoveredArtifact) error {
+	if artifact.timeout <= 0 || artifact.workloadStartedAt == nil || !artifact.active {
+		return s.waitForRecoveredArtifact(ctx, record)
+	}
+
+	timeoutErr := &docker.JobTimeoutError{Timeout: artifact.timeout}
+	deadline := artifact.workloadStartedAt.Add(artifact.timeout)
+
+	waitCtx, cancel := context.WithDeadlineCause(ctx, deadline, timeoutErr)
+	defer cancel()
+
+	err := s.waitForRecoveredArtifact(waitCtx, record)
+	if !jobTimedOut(ctx, waitCtx) {
+		return err
+	}
+
+	runLog := s.log.With(
+		slog.String("job", job.name),
+		slog.String("mode", string(job.mode)),
+		slog.String("job_id", record.RunID),
+		slog.Duration("timeout", artifact.timeout),
+	)
+
+	runLog.Warn("recovered scheduled job exceeded its timeout, stopping it", logger.ErrAttr(err))
+
+	if stopErr := s.stopOneOffRun(ctx, record.Mode, record.RunID); stopErr != nil {
+		runLog.Error("failed to stop recovered scheduled job after timeout", logger.ErrAttr(stopErr))
+
+		return errors.Join(timeoutErr, fmt.Errorf("stop job after timeout: %w", stopErr))
+	}
+
+	return timeoutErr
 }
 
 // seedRecoveredStopHolds re-acquires stop holds for services from persisted stop

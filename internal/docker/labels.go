@@ -117,6 +117,7 @@ var docoCDJobLabelNames = struct {
 	JobNextRun             string // Timestamp of the next scheduled run in RFC3339 format
 	JobStopServices        string // Comma-separated list of services to stop before the job runs and restart after
 	JobStopServicesTimeout string // Explicit timeout in seconds used when stopping stop_services targets
+	JobTimeout             string // Maximum runtime of one scheduled run as a Go duration
 }{
 	JobEnabled:             "cd.doco.job.enabled",
 	JobSchedule:            "cd.doco.job.schedule",
@@ -135,6 +136,7 @@ var docoCDJobLabelNames = struct {
 	JobNextRun:             "cd.doco.job.next_run",
 	JobStopServices:        "cd.doco.job.stop_services",
 	JobStopServicesTimeout: "cd.doco.job.stop_services.timeout",
+	JobTimeout:             "cd.doco.job.timeout",
 }
 
 // DocoCDJobLabels exposes the scheduler/job labels for consumers outside this package.

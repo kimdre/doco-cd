@@ -191,6 +191,7 @@ func getScheduleFingerprint(cfg docker.JobScheduleConfig) string {
 		string(cfg.NotifyOn),
 		strconv.FormatUint(cfg.SwarmReplicas, 10),
 		strings.Join(formatStopServiceRefs(cfg.StopServices), ","),
+		cfg.Timeout.String(),
 	}, "|")
 }
 
@@ -253,15 +254,25 @@ func jobOwnIdentity(job scheduledJob) (project, service string) {
 	return project, strings.TrimSpace(job.labels[api.ServiceLabel])
 }
 
-// parseJobConfig parses a job's schedule labels and, if stop_services is set,
-// validates that the job does not reference itself. Centralising this here
-// (rather than in docker.ParseJobScheduleLabels) lets the self-reference
-// check use the correct own-identity resolution for both compose and Swarm
-// jobs; see jobOwnIdentity.
+// parseJobConfig parses a job's schedule labels and validates the settings
+// that depend on the job mode. If stop_services is set, it also validates that
+// the job does not reference itself. Centralising this here (rather than in
+// docker.ParseJobScheduleLabels) lets the self-reference check use the correct
+// own-identity resolution for both compose and Swarm jobs; see jobOwnIdentity.
 func parseJobConfig(job scheduledJob) (docker.JobScheduleConfig, bool, error) {
 	cfg, enabled, err := docker.ParseJobScheduleLabels(job.labels)
-	if err != nil || !enabled || len(cfg.StopServices) == 0 {
+	if err != nil || !enabled {
 		return cfg, enabled, err
+	}
+
+	if job.mode == scheduledJobModeSwarm {
+		if err := docker.ValidateSwarmJobTimeout(cfg); err != nil {
+			return cfg, false, err
+		}
+	}
+
+	if len(cfg.StopServices) == 0 {
+		return cfg, enabled, nil
 	}
 
 	// In Swarm mode, stop_services requires one_off because there is no

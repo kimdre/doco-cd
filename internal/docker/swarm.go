@@ -977,7 +977,7 @@ func waitForSwarmServiceTasksStopped(ctx context.Context, dockerCLI command.Cli,
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(swarmTaskPollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -997,12 +997,7 @@ func waitForSwarmServiceTasksStopped(ctx context.Context, dockerCLI command.Cli,
 		for _, task := range tasks.Items {
 			// A task still occupies resources (and may still be writing to
 			// volumes) until it reaches a terminal state.
-			switch task.Status.State {
-			case swarmTypes.TaskStateShutdown, swarmTypes.TaskStateComplete,
-				swarmTypes.TaskStateFailed, swarmTypes.TaskStateRejected,
-				swarmTypes.TaskStateOrphaned, swarmTypes.TaskStateRemove:
-				continue
-			default:
+			if !swarmTaskIsTerminal(task.Status.State) {
 				live++
 			}
 		}

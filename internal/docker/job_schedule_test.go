@@ -2,7 +2,9 @@ package docker
 
 import (
 	"maps"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/docker/compose/v5/pkg/api"
 )
@@ -408,6 +410,59 @@ func TestParseJobScheduleLabels_StopServicesTimeout(t *testing.T) {
 			t.Fatal("expected error for overflowing stop_services timeout, got nil")
 		}
 	})
+}
+
+func TestParseJobScheduleLabels_Timeout(t *testing.T) {
+	t.Parallel()
+
+	baseLabels := func(extra map[string]string) map[string]string {
+		m := map[string]string{
+			docoCDJobLabelNames.JobEnabled:  "true",
+			docoCDJobLabelNames.JobSchedule: "0 2 * * *",
+		}
+		maps.Copy(m, extra)
+
+		return m
+	}
+
+	tests := []struct {
+		name    string
+		labels  map[string]string
+		want    time.Duration
+		wantErr string
+	}{
+		{name: "unset by default", labels: baseLabels(nil)},
+		{name: "empty value disables limit", labels: baseLabels(map[string]string{docoCDJobLabelNames.JobTimeout: "  "})},
+		{name: "minutes", labels: baseLabels(map[string]string{docoCDJobLabelNames.JobTimeout: "30m"}), want: 30 * time.Minute},
+		{name: "combined units with spaces", labels: baseLabels(map[string]string{docoCDJobLabelNames.JobTimeout: " 1h30m "}), want: 90 * time.Minute},
+		{name: "rejects zero", labels: baseLabels(map[string]string{docoCDJobLabelNames.JobTimeout: "0s"}), wantErr: "must be > 0"},
+		{name: "rejects negative", labels: baseLabels(map[string]string{docoCDJobLabelNames.JobTimeout: "-5m"}), wantErr: "must be > 0"},
+		{name: "rejects missing unit", labels: baseLabels(map[string]string{docoCDJobLabelNames.JobTimeout: "300"}), wantErr: "invalid cd.doco.job.timeout"},
+		{name: "rejects garbage", labels: baseLabels(map[string]string{docoCDJobLabelNames.JobTimeout: "soon"}), wantErr: "invalid cd.doco.job.timeout"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, _, err := ParseJobScheduleLabels(tt.labels)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if cfg.Timeout != tt.want {
+				t.Fatalf("expected Timeout=%s, got %s", tt.want, cfg.Timeout)
+			}
+		})
+	}
 }
 
 func TestValidateStopServicesSelfReference(t *testing.T) {
