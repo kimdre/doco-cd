@@ -148,12 +148,13 @@ The next poll catches up with missed changes.
 
 ## Failure handling
 
-Every handover is journaled on the data volume, so a crash at any point is resolved on the next boot: 
+Every Compose handover is journaled on the data volume, so a crash at any point is resolved on the next boot:
 whichever instance comes up finishes the handover or reverses it.
 
 The journal preserves the exact [reporting backend](../Git-Settings.md#commit-status-reporting) and, for native GitHub Checks, the original check-run target, without storing credentials.
 For successful native checks, it also preserves the predecessor's deployment summary, so the finishing instance reports the original stack, target, revision, and detected changed services rather than rebuilding those details from its own configuration.
 The finishing instance resolves its credentials and completes that original report even if its configuration sets `#!ini GIT_COMMIT_STATUS=false`.
+Failed status posts retain the journal and retry in the background without blocking startup.
 It must retain credentials and permissions for that backend. Older journals without a check-run target always finish legacy commit statuses, even when the finishing instance now uses GitHub App authentication; keep the App's **Commit statuses: Read and write** permission until those handovers finish.
 
 A self-update that fails is recorded against that commit and **not retried** until a new commit arrives, 
@@ -170,6 +171,27 @@ Webhook senders should retry requests that receive 503.
 !!! note "Swarm"
     Docker Swarm already replaces a service through a rolling update performed by the swarm manager, 
     so a Swarm stack containing doco-cd updates itself without any of this.
+
+    The rolling update stops the running instance while it still waits for its own stack to converge.
+    doco-cd submits updates for the other services before updating its own service, so its replacement does not interrupt those updates.
+    After Swarm accepts the update of doco-cd's own service, doco-cd reports a canceled deployment as a handover, not as a failure:
+    it logs no error, does not count it in `doco_cd_deployment_errors_total`, and does not retry it.
+    Cancellation before that service update is accepted, timeouts, and service failures still retain failure and retry reporting.
+
+    Before updating its own service, doco-cd stores the pending report in an unmounted Docker config.
+    This record survives task replacement, rollback, and relocation to another manager node without requiring a shared data volume.
+    The new instance waits for the predecessor task to stop, the stack's services to converge, and its own health check to pass.
+    It verifies the intended service and task specifications before completing the original commit status or GitHub Check.
+    A rollback, paused update, or confirmation timeout is reported as a failure, not as a successful deployment.
+
+    The final report resolves credentials from the finishing instance, even when `GIT_COMMIT_STATUS=false`.
+    Failed status posts retain the Docker config and are retried. Later deployments of the self stack wait before posting another pending status.
+    If a reporting task stops, another task can resume its saved result.
+    The config is removed after final reporting. Metadata-only deployments do not force task replacement.
+
+    Confirmation requires a running doco-cd instance with access to a Swarm manager.
+    Older versions without Swarm confirmation support cannot finish the record.
+    If no instance survives or starts, reporting remains pending until Swarm rolls back or an operator restores one.
 
 ## Alternative: two instances
 

@@ -27,6 +27,18 @@ func selfUpdateTestProject(name, service string) *types.Project {
 func withSelfIdentity(t *testing.T, project, service string) {
 	t.Helper()
 
+	configureTestSelfIdentity(t, project, service, false)
+}
+
+func withSwarmSelfIdentity(t *testing.T, project, service string) {
+	t.Helper()
+
+	configureTestSelfIdentity(t, project, service, true)
+}
+
+func configureTestSelfIdentity(t *testing.T, project, service string, swarm bool) {
+	t.Helper()
+
 	previous := SelfUpdateConfig()
 
 	t.Cleanup(func() { ConfigureSelfUpdate(previous) })
@@ -40,6 +52,7 @@ func withSelfIdentity(t *testing.T, project, service string) {
 			Project:       project,
 			Service:       service,
 			Number:        1,
+			Swarm:         swarm,
 		},
 	})
 }
@@ -70,6 +83,45 @@ func TestSelfUpdateFor(t *testing.T) {
 
 			if (got != nil) != tt.want {
 				t.Errorf("selfUpdateFor = %v, want match %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSelfUpdateForSwarm(t *testing.T) {
+	withSwarmSelfIdentity(t, "doco-cd", "app")
+
+	if got := selfUpdateFor(selfUpdateTestProject("doco-cd", "app"), ""); got != nil {
+		t.Errorf("selfUpdateFor = %v, want nil for a swarm identity", got)
+	}
+}
+
+func TestSwarmSelfService(t *testing.T) {
+	tests := []struct {
+		name  string
+		swarm bool
+		dc    *deploy.Config
+		want  string
+	}{
+		{name: "own swarm stack", swarm: true, dc: &deploy.Config{Name: "doco-cd"}, want: "doco-cd_app"},
+		{name: "explicit default context", swarm: true, dc: &deploy.Config{Name: "doco-cd", Context: "default"}, want: "doco-cd_app"},
+		{name: "case sensitive swarm stack", swarm: true, dc: &deploy.Config{Name: "Doco-CD"}},
+		{name: "another swarm stack", swarm: true, dc: &deploy.Config{Name: "my-app"}},
+		{name: "remote swarm stack", swarm: true, dc: &deploy.Config{Name: "doco-cd", Context: "remote"}},
+		{name: "own compose stack", dc: &deploy.Config{Name: "doco-cd"}},
+		{name: "no config", swarm: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configureTestSelfIdentity(t, "doco-cd", "app", tt.swarm)
+
+			if got := swarmSelfService(tt.dc); got != tt.want {
+				t.Errorf("swarmSelfService = %q, want %q", got, tt.want)
+			}
+
+			if tt.swarm && IsSelfStack(tt.dc) != (tt.want != "") {
+				t.Errorf("IsSelfStack does not match the selected self-service")
 			}
 		})
 	}
