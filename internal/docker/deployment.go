@@ -189,6 +189,8 @@ type DeployRequest struct {
 	// self-update records it so the process that resolves the handover can
 	// post the final state.
 	CommitStatus *selfupdate.CommitStatusInfo
+	// SelfUpdateRecovery preserves the failure target and desired fingerprints across a Swarm handover.
+	SelfUpdateRecovery *SwarmRecoveryInfo
 	// PhaseReporter optionally receives the deployment's phase changes. It is
 	// stopped before a self-update hands over, so it never reports past the
 	// point where a successor takes over the commit status.
@@ -206,6 +208,7 @@ type runtimeDeployRequest struct {
 	repositoryLabel    string
 	deploymentLabel    string
 	contextLabel       string
+	startedAt          time.Time
 }
 
 func (r runtimeDeployRequest) recordError() {
@@ -332,6 +335,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 		repositoryLabel:    repositoryLabel,
 		deploymentLabel:    deploymentLabel,
 		contextLabel:       contextLabel,
+		startedAt:          startTime,
 	}
 
 	if req.SwarmMode {

@@ -56,6 +56,41 @@ func TestResolveSelfUpdateRole(t *testing.T) {
 	}
 }
 
+func TestSelfUpdateFinalizationRetriesReporting(t *testing.T) {
+	t.Parallel()
+
+	store := selfupdate.NewStore(t.TempDir())
+
+	record := selfupdate.Record{ID: "report-retry", State: selfupdate.StateFinalising}
+	if err := store.Create(&record); err != nil {
+		t.Fatal(err)
+	}
+
+	attempts := 0
+
+	retrySelfUpdateFinalization(t.Context(), logger.New(slog.LevelError), store, record.ID, func(current selfupdate.Record) error {
+		attempts++
+
+		if current.State != selfupdate.StateFinalising {
+			t.Fatalf("retry lost the persisted finalization state: %s", current.State)
+		}
+
+		if attempts == 1 {
+			return errors.Join(errSelfUpdateReportPending, errors.New("reporting backend unavailable"))
+		}
+
+		return store.Remove(current.ID)
+	})
+
+	if attempts != 2 {
+		t.Fatalf("reporting attempts = %d, want 2", attempts)
+	}
+
+	if active, err := store.Active(); err != nil || active != nil {
+		t.Fatalf("acknowledged report still blocks the next handover: %+v, %v", active, err)
+	}
+}
+
 // TestWaitForDrainReadsCurrentJournal checks the persisted handover state
 // rather than trusting the caller's initial record, and that a timeout cannot
 // authorize takeover before the predecessor records its drain.

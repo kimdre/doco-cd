@@ -34,6 +34,29 @@ func IsCanceled(err error) bool {
 	return errors.Is(err, context.Canceled)
 }
 
+// IsCanceledOnly excludes joined failures so cancellation cannot hide a real error.
+func IsCanceledOnly(err error) bool {
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		causes := wrapped.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+
+		for _, cause := range causes {
+			if !IsCanceledOnly(cause) {
+				return false
+			}
+		}
+
+		return true
+	case interface{ Unwrap() error }:
+		return IsCanceledOnly(wrapped.Unwrap())
+	default:
+		return IsCanceled(err)
+	}
+}
+
 // IsTimeout reports whether err represents an expired deadline or time limit.
 func IsTimeout(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrTimedOut)

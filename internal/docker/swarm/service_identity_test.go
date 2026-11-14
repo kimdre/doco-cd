@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,21 +19,27 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
 
 type serviceIdentityClient struct {
 	client.APIClient
-	services  []swarmTypes.Service
-	updateErr error
-	createErr error
-	removeErr error
+	services   []swarmTypes.Service
+	updateErr  error
+	createErr  error
+	removeErr  error
+	updateFunc func(context.Context, string, client.ServiceUpdateOptions) (client.ServiceUpdateResult, error)
 }
 
 func (c *serviceIdentityClient) ServiceList(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
 	return client.ServiceListResult{Items: c.services}, nil
 }
 
-func (c *serviceIdentityClient) ServiceUpdate(context.Context, string, client.ServiceUpdateOptions) (client.ServiceUpdateResult, error) {
+func (c *serviceIdentityClient) ServiceUpdate(ctx context.Context, id string, opts client.ServiceUpdateOptions) (client.ServiceUpdateResult, error) {
+	if c.updateFunc != nil {
+		return c.updateFunc(ctx, id, opts)
+	}
+
 	return client.ServiceUpdateResult{}, c.updateErr
 }
 
@@ -196,6 +204,124 @@ func TestRemoveServicesIdentity(t *testing.T) {
 	assertServiceLogIdentity(t, logs.Bytes(), "stack_api", "full-service-id")
 }
 
+func TestDeployServicesRetainsAcceptedUpdatesOnCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	spec := swarmTypes.ServiceSpec{TaskTemplate: swarmTypes.TaskSpec{
+		ContainerSpec: &swarmTypes.ContainerSpec{Image: "example:latest"},
+	}}
+	first, second := spec, spec
+	first.Name = "stack_app"
+	second.Name = "stack_worker"
+	calls := 0
+	apiClient := &serviceIdentityClient{
+		services: []swarmTypes.Service{{ID: "app-id", Spec: first}, {ID: "worker-id", Spec: second}},
+		updateFunc: func(context.Context, string, client.ServiceUpdateOptions) (client.ServiceUpdateResult, error) {
+			calls++
+			if calls == 2 {
+				cancel()
+
+				return client.ServiceUpdateResult{}, context.Canceled
+			}
+
+			return client.ServiceUpdateResult{}, nil
+		},
+	}
+
+	var logs bytes.Buffer
+
+	log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	cli := testServiceIdentityCLI(apiClient, io.Discard, io.Discard)
+
+	deployed, err := deployServices(ctx, cli, map[string]swarmTypes.ServiceSpec{"app": spec, "worker": spec},
+		convert.NewNamespace("stack"), &options.Deploy{ResolveImage: ResolveImageNever, Logger: log})
+	if !errors.Is(err, context.Canceled) || len(deployed) != 1 {
+		t.Fatalf("deployServices() = %+v, %v, want one accepted update and cancellation", deployed, err)
+	}
+
+	if !errors.Is(selfUpdateHandoverError(ctx, err, deployed[0].name, deployed), selfupdate.ErrHandover) {
+		t.Fatal("accepted self update did not qualify for a handover")
+	}
+
+	if strings.Contains(logs.String(), `"level":"ERROR"`) || !strings.Contains(logs.String(), "service operation canceled") {
+		t.Fatalf("canceled update logged as a failure: %s", logs.String())
+	}
+}
+
+func TestServiceFailureLogLevels(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name  string
+		err   error
+		level string
+	}{
+		{name: "canceled", err: fmt.Errorf("wait: %w", context.Canceled), level: "DEBUG"},
+		{name: "deadline", err: context.DeadlineExceeded, level: "ERROR"},
+		{name: "failure", err: errors.New("rejected"), level: "ERROR"},
+		{name: "joined failure", err: errors.Join(context.Canceled, errors.New("rejected")), level: "ERROR"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var logs bytes.Buffer
+
+			log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			logServiceError(log, "failed to update service", deployedService{name: "stack_app", id: "app-id"}, tt.err)
+
+			var record struct {
+				Level string `json:"level"`
+			}
+
+			if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+				t.Fatal(err)
+			}
+
+			if record.Level != tt.level {
+				t.Fatalf("log level = %q, want %q", record.Level, tt.level)
+			}
+
+			assertServiceLogIdentity(t, logs.Bytes(), "stack_app", "app-id")
+		})
+	}
+}
+
+func TestDeployServicesUpdatesSelfLast(t *testing.T) {
+	t.Parallel()
+
+	spec := swarmTypes.ServiceSpec{TaskTemplate: swarmTypes.TaskSpec{
+		ContainerSpec: &swarmTypes.ContainerSpec{Image: "example:latest"},
+	}}
+	self, worker := spec, spec
+	self.Name = "stack_app"
+	worker.Name = "stack_worker"
+
+	var updates []string
+
+	apiClient := &serviceIdentityClient{
+		services: []swarmTypes.Service{{ID: "self-id", Spec: self}, {ID: "worker-id", Spec: worker}},
+		updateFunc: func(_ context.Context, id string, _ client.ServiceUpdateOptions) (client.ServiceUpdateResult, error) {
+			updates = append(updates, id)
+
+			return client.ServiceUpdateResult{}, nil
+		},
+	}
+	cli := testServiceIdentityCLI(apiClient, io.Discard, io.Discard)
+
+	deployed, err := deployServices(t.Context(), cli, map[string]swarmTypes.ServiceSpec{"app": spec, "worker": spec},
+		convert.NewNamespace("stack"), &options.Deploy{ResolveImage: ResolveImageNever, SelfService: self.Name})
+	if err != nil || len(deployed) != 2 {
+		t.Fatalf("deployServices() = %+v, %v, want both services updated", deployed, err)
+	}
+
+	if !slices.Equal(updates, []string{"worker-id", "self-id"}) {
+		t.Fatalf("service update order = %v, want worker before self", updates)
+	}
+}
+
 func TestScaleServiceIdentityOnUpdateFailure(t *testing.T) {
 	t.Parallel()
 
@@ -207,10 +333,73 @@ func TestScaleServiceIdentityOnUpdateFailure(t *testing.T) {
 		}}},
 		updateErr: updateErr,
 	}
+
 	cli := testServiceIdentityCLI(apiClient, io.Discard, io.Discard)
 
 	err := ScaleService(t.Context(), cli, "stack_api", 2, false, false)
 	if !errors.Is(err, updateErr) || !strings.Contains(err.Error(), "stack_api (id=full-service-id)") {
 		t.Fatalf("ScaleService() error = %v, want name, ID and wrapped daemon error", err)
+	}
+}
+
+func TestDeployServicesPersistsSelfUpdateBeforeSubmittingIt(t *testing.T) {
+	t.Parallel()
+
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("persistence failure=%v", fail), func(t *testing.T) {
+			t.Parallel()
+
+			spec := swarmTypes.ServiceSpec{TaskTemplate: swarmTypes.TaskSpec{
+				ContainerSpec: &swarmTypes.ContainerSpec{Image: "example:latest"},
+			}}
+			self, worker := spec, spec
+			self.Name = "stack_app"
+			worker.Name = "stack_worker"
+			prepared := false
+			cause := errors.New("journal unavailable")
+			apiClient := &serviceIdentityClient{
+				services: []swarmTypes.Service{{ID: "self-id", Spec: self}, {ID: "worker-id", Spec: worker}},
+				updateFunc: func(_ context.Context, id string, opts client.ServiceUpdateOptions) (client.ServiceUpdateResult, error) {
+					if id == "self-id" {
+						if !prepared || opts.Spec.Labels[selfupdate.SwarmHandoverLabel] != "handover-id" {
+							t.Fatal("self-service update was submitted before persistence")
+						}
+
+						if opts.Spec.TaskTemplate.ContainerSpec.Labels[selfupdate.SwarmHandoverLabel] != "" {
+							t.Fatal("handover marker changed the task template")
+						}
+					}
+
+					return client.ServiceUpdateResult{}, nil
+				},
+			}
+			cli := testServiceIdentityCLI(apiClient, io.Discard, io.Discard)
+			deployed, err := deployServices(t.Context(), cli, map[string]swarmTypes.ServiceSpec{"app": spec, "worker": spec},
+				convert.NewNamespace("stack"), &options.Deploy{
+					ResolveImage: ResolveImageNever, SelfService: self.Name,
+					PrepareSelfUpdate: func(_ context.Context, current swarmTypes.Service, desired *swarmTypes.ServiceSpec, waitIDs []string) error {
+						if current.ID != "self-id" || !slices.Equal(waitIDs, []string{"worker-id", "self-id"}) {
+							t.Fatalf("handover context = %s, %v", current.ID, waitIDs)
+						}
+
+						if fail {
+							return cause
+						}
+
+						prepared = true
+						desired.Labels = map[string]string{selfupdate.SwarmHandoverLabel: "handover-id"}
+
+						return nil
+					},
+				})
+
+			if fail {
+				if !errors.Is(err, cause) || len(deployed) != 1 {
+					t.Fatalf("persistence failure = %+v, %v", deployed, err)
+				}
+			} else if err != nil || len(deployed) != 2 {
+				t.Fatalf("deployment = %+v, %v", deployed, err)
+			}
+		})
 	}
 }

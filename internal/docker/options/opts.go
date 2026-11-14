@@ -1,10 +1,12 @@
 package options
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
 	"github.com/docker/cli/opts"
+	"github.com/moby/moby/api/types/swarm"
 )
 
 // Deploy holds docker stack deploy options.
@@ -21,6 +23,11 @@ type Deploy struct {
 	Logger           *slog.Logger
 	// ForceUpdateServices names the services whose unchanged tasks must be recreated.
 	ForceUpdateServices []string
+	// SelfService is this instance's full Swarm service name. An accepted update
+	// can replace this process, so later cancellation is a handover.
+	SelfService string
+	// PrepareSelfUpdate persists reporting metadata before the manager can replace this task.
+	PrepareSelfUpdate func(context.Context, swarm.Service, *swarm.ServiceSpec, []string) error
 }
 
 // Config holds docker stack config options.

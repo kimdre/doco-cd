@@ -27,7 +27,7 @@ const (
 	finalizePollInterval = time.Second
 )
 
-// resolveSelfIdentity derives this process's compose identity. A failure is not
+// resolveSelfIdentity derives this process's compose or Swarm identity. A failure is not
 // fatal: doco-cd then runs with self-update unavailable.
 func resolveSelfIdentity(ctx context.Context, log *logger.Logger, apiClient client.APIClient) selfupdate.Identity {
 	containerID, err := getAppContainerID()
@@ -39,7 +39,7 @@ func resolveSelfIdentity(ctx context.Context, log *logger.Logger, apiClient clie
 
 	identity, err := selfupdate.Detect(ctx, apiClient, containerID)
 	if err != nil {
-		log.Warn("could not detect own compose identity, self-update is unavailable", logger.ErrAttr(err))
+		log.Warn("could not detect own container identity, self-update is unavailable", logger.ErrAttr(err))
 
 		return selfupdate.Identity{}
 	}
@@ -50,6 +50,7 @@ func resolveSelfIdentity(ctx context.Context, log *logger.Logger, apiClient clie
 			slog.String("project", identity.Project),
 			slog.String("service", identity.Service),
 			slog.Int("number", identity.Number),
+			slog.Bool("swarm", identity.Swarm),
 		)
 	}
 
@@ -94,9 +95,9 @@ func finalizeSelfUpdate(
 		pending := *record
 
 		return func() {
-			if err := finalizeAsSuccessor(ctx, log, apiClient, reporter, store, pending, identity.ContainerID); err != nil {
-				log.Error("self-update: failed to finalize the handover", logger.ErrAttr(err))
-			}
+			retrySelfUpdateFinalization(ctx, log, store, pending.ID, func(current selfupdate.Record) error {
+				return finalizeAsSuccessor(ctx, log, apiClient, reporter, store, current, identity.ContainerID)
+			})
 		}, nil
 	case rolePredecessor:
 		if record.State == selfupdate.StateApplyDrained {
@@ -131,13 +132,54 @@ func finalizeSelfUpdate(
 			return nil, nil
 		}
 
-		return nil, finalizeAsPredecessor(ctx, log, apiClient, reporter, store, *record)
+		err := finalizeAsPredecessor(ctx, log, apiClient, reporter, store, *record)
+		if errors.Is(err, errSelfUpdateReportPending) {
+			// Reporting must not prevent the restored application from serving.
+			return func() {
+				retrySelfUpdateFinalization(ctx, log, store, record.ID, func(current selfupdate.Record) error {
+					return finalizeAsPredecessor(ctx, log, apiClient, reporter, store, current)
+				})
+			}, nil
+		}
+
+		return nil, err
 	default:
 		// Neither container of the record is us: the record belongs to a stack
 		// state that no longer exists, so it must not block this boot.
 		log.Warn("self-update: record does not match this container, quarantining it", slog.String("id", record.ID))
 
 		return nil, store.Quarantine(record.ID)
+	}
+}
+
+var errSelfUpdateReportPending = errors.New("self-update: result reporting is pending")
+
+func retrySelfUpdateFinalization(ctx context.Context, log *logger.Logger, store *selfupdate.Store, id string, finalize func(selfupdate.Record) error) {
+	for {
+		record, err := store.Load(id)
+		if errors.Is(err, selfupdate.ErrNoRecord) {
+			return
+		}
+
+		if err == nil {
+			err = finalize(record)
+		}
+
+		if err == nil || ctx.Err() != nil {
+			return
+		}
+
+		if !errors.Is(err, errSelfUpdateReportPending) {
+			log.Error("self-update: failed to finalize the handover", logger.ErrAttr(err))
+
+			return
+		}
+
+		log.Warn("self-update: result reporting will be retried", logger.ErrAttr(err))
+
+		if !retrySelfUpdateRecovery(ctx) {
+			return
+		}
 	}
 }
 
@@ -245,7 +287,9 @@ func finalizeAsSuccessor(
 
 	selfupdate.MaybeCrash(docker.SelfUpdateConfig().DataMountPath, string(selfupdate.StateFinalising), log.Logger)
 
-	reporter.reportSuccess(ctx, log, record)
+	if err := reporter.reportSuccess(ctx, log, record); err != nil {
+		return fmt.Errorf("%w: %w", errSelfUpdateReportPending, err)
+	}
 
 	docker.RecordDeployStatus(record.Source.RepoName, record.Stack, record.Source.CommitSHA, record.Source.ProjectHash)
 
@@ -283,7 +327,9 @@ func finalizeAsPredecessor(
 			slog.String("reason", record.Error),
 		)
 
-		reporter.reportFailure(ctx, log, record)
+		if err := reporter.reportFailure(ctx, log, record); err != nil {
+			return fmt.Errorf("%w: %w", errSelfUpdateReportPending, err)
+		}
 
 		if err := poisonSelfUpdate(store, record); err != nil {
 			return fmt.Errorf("record failed self-update before clearing its journal: %w", err)

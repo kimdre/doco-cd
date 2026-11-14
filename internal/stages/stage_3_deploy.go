@@ -95,7 +95,11 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		Project:          s.Docker.Project,
 		ProjectHash:      s.Docker.ProjectHash,
 		CommitStatus:     s.selfUpdateCommitStatus(),
-		PhaseReporter:    phaseReporter,
+		SelfUpdateRecovery: &docker.SwarmRecoveryInfo{
+			Target:  s.deploymentFailureTarget(),
+			Desired: s.retryDesired,
+		},
+		PhaseReporter: phaseReporter,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)

@@ -147,9 +147,12 @@ func TestSelfUpdateReporterPostsFinalCommitStatus(t *testing.T) {
 
 			recorder := newCommitStatusRecorder(t)
 			cfg := recorder.appConfig()
+
 			cfg.GitCommitStatus = tt.statusEnabled
-			newSelfUpdateReporter(cfg, nil).
-				reportSuccess(t.Context(), log, handedOverRecord(recorder.URL, selfupdate.StateFinalising))
+			if err := newSelfUpdateReporter(cfg, nil).
+				reportSuccess(t.Context(), log, handedOverRecord(recorder.URL, selfupdate.StateFinalising)); err != nil {
+				t.Fatal(err)
+			}
 
 			got := recorder.requireSingle(t, commitstatus.StateSuccess)
 			if !strings.HasPrefix(got.Description, "Successful in 1m") {
@@ -188,12 +191,15 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 		conclusion    string
 		externalOnly  bool
 		summary       string
+		swarm         bool
 	}{
 		{name: "old journal with App credentials", legacy: true, statusEnabled: true},
 		{name: "old journal after reporting disabled", legacy: true, failure: true},
 		{name: "recorded check success", statusEnabled: true, conclusion: "success"},
 		{name: "recorded check summary", statusEnabled: true, conclusion: "success", summary: "Successfully deployed stack `predecessor`.\n\n| Detail | Value |\n| --- | --- |\n| Target | `original` |"},
 		{name: "recorded check after reporting disabled", conclusion: "success"},
+		{name: "Swarm check after reporting disabled", swarm: true, conclusion: "success", summary: "Original Swarm deployment summary."},
+		{name: "Swarm confirmation timeout", swarm: true, failure: true, timedOut: true, conclusion: "timed_out"},
 		{name: "recorded summary after reporting disabled", conclusion: "success", summary: "Successfully deployed stack `predecessor`."},
 		{name: "recorded external identity after reporting disabled", externalOnly: true, conclusion: "success"},
 		{name: "ordinary unhealthy", failure: true, reason: "new reported unhealthy", statusEnabled: true, conclusion: "failure"},
@@ -269,6 +275,10 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 			record.Source.CommitStatus.Summary = tc.summary
 
 			record.Error, record.TimedOut = tc.reason, tc.timedOut
+			if tc.swarm {
+				record.Strategy = selfupdate.StrategySwarm
+			}
+
 			if !tc.legacy {
 				record.Source.CommitStatus.Target = &commitstatus.Target{
 					Backend: commitstatus.BackendChecks, CheckRunID: 71,
@@ -289,9 +299,13 @@ func TestSelfUpdateReporterPinsJournaledTarget(t *testing.T) {
 
 			log := logger.New(slog.LevelError)
 			if tc.failure {
-				reporter.reportFailure(t.Context(), log, record)
+				if err := reporter.reportFailure(t.Context(), log, record); err != nil {
+					t.Fatal(err)
+				}
 			} else {
-				reporter.reportSuccess(t.Context(), log, record)
+				if err := reporter.reportSuccess(t.Context(), log, record); err != nil {
+					t.Fatal(err)
+				}
 			}
 
 			mu.Lock()
@@ -373,8 +387,11 @@ func TestSelfUpdateReporterPostsFailedCommitStatus(t *testing.T) {
 			record.Error = "successor did not become healthy:\n timeout"
 
 			cfg := recorder.appConfig()
+
 			cfg.GitCommitStatus = tt.statusEnabled
-			newSelfUpdateReporter(cfg, nil).reportFailure(t.Context(), log, record)
+			if err := newSelfUpdateReporter(cfg, nil).reportFailure(t.Context(), log, record); err != nil {
+				t.Fatal(err)
+			}
 
 			got := recorder.requireSingle(t, commitstatus.StateFailure)
 			if got.Description != "successor did not become healthy: timeout" {
@@ -387,8 +404,10 @@ func TestSelfUpdateReporterPostsFailedCommitStatus(t *testing.T) {
 		t.Parallel()
 
 		recorder := newCommitStatusRecorder(t)
-		newSelfUpdateReporter(recorder.appConfig(), nil).
-			reportFailure(t.Context(), log, handedOverRecord(recorder.URL, selfupdate.StateAborted))
+		if err := newSelfUpdateReporter(recorder.appConfig(), nil).
+			reportFailure(t.Context(), log, handedOverRecord(recorder.URL, selfupdate.StateAborted)); err != nil {
+			t.Fatal(err)
+		}
 
 		got := recorder.requireSingle(t, commitstatus.StateFailure)
 		if got.Description != "the new version did not become healthy" {
@@ -430,8 +449,13 @@ func TestSelfUpdateReporterPostsFailedCommitStatus(t *testing.T) {
 				record = tt.record(record)
 			}
 
-			reporter.reportSuccess(t.Context(), log, record)
-			reporter.reportFailure(t.Context(), log, record)
+			if err := reporter.reportSuccess(t.Context(), log, record); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := reporter.reportFailure(t.Context(), log, record); err != nil {
+				t.Fatal(err)
+			}
 
 			if posted := recorder.statuses(); len(posted) != 0 {
 				t.Errorf("posted %+v, want no commit status", posted)
