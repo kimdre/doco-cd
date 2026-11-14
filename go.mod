@@ -20,7 +20,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.48.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.18
 	github.com/aws/aws-sdk-go-v2/credentials v1.21.0
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.12
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.51.0
 	github.com/bitwarden/sdk-go/v2 v2.1.0
 	github.com/caarlos0/env/v11 v11.4.2
 	github.com/compose-spec/compose-go/v2 v2.16.2
