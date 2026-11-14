@@ -50,26 +50,34 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	}
 
 	// Validate the self-update strategy before signaling services or changing
-	// images/resources. Only after Pull and Build do we disable the self service
-	// in the project used for the pre-handover Create.
+	// images/resources. An unchanged self service stays in the project instead.
+	// Only after Pull and Build do we disable a service that still needs a handover.
 	var (
 		selfPlan    selfUpdatePlan
 		selfService string
+		kept        *selfTarget
+		pendingSkip bool
 	)
 
 	if target := selfUpdateFor(project, deployConfig.Context); target != nil {
+		kept = target
+
 		if self != nil {
 			self.RecreateMode = recreateMode
 			self.Services = services
 			self.RemoveOrphans = deployConfig.RemoveOrphans
 		}
 
-		selfPlan, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, target, services, self)
+		selfService = target.Service
+
+		var skipped bool
+
+		selfPlan, skipped, err = planSelfHandover(ctx, dockerCli, project, deployConfig, target, recreateMode, services, self, opts)
 		if err != nil {
 			return err
 		}
 
-		selfService = target.Service
+		pendingSkip = skipped
 	}
 
 	live, err := prepareComposeLiveResources(project, opts.ArtifactRoot, deployConfig.Context)
@@ -156,14 +164,6 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
-	// Pull and Build need the full project. Reduce it afterwards so it also
-	// contains any image changes made during Build. Disabled services are known
-	// to Compose, so RemoveOrphans cannot reap the self container.
-	if selfPlan.Step != nil {
-		project = project.WithServicesDisabled(selfService)
-		services = selfPlan.Services
-	}
-
 	// Recreating a network shared with this process is unsafe even with the
 	// self service disabled: Compose still plans that network's removal. The
 	// applier performs the *whole* create/start after it has detached from the
@@ -173,9 +173,19 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	}
 
 	// Pinning is an optimization: if it fails, services are simply recreated from the new artifact.
+	// Pull and Build need the full project, so the self service is disabled only after this.
 	if err = pinUnchangedComposeServices(ctx, dockerCli.Client(), project, opts.ArtifactRoot, recreateMode, services, opts.logger()); err != nil {
 		opts.logger().Warn("failed to keep unchanged services on their current artifact", slog.Any("error", err))
 	}
+
+	selfPlan, err = recheckSelfSkip(ctx, dockerCli, project, deployConfig, kept, recreateMode, services, self, selfPlan, pendingSkip)
+	if err != nil {
+		return err
+	}
+
+	// Disabled services are known to Compose, so RemoveOrphans cannot reap the self container.
+	// An unchanged service stays in the project so RecreateDiverged leaves its container in place.
+	project, services = applySelfPlan(project, services, selfService, selfPlan)
 
 	createOpts := api.CreateOptions{
 		Services:             services,
@@ -224,7 +234,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	// Docker Compose then recreates them with the desired configuration during service.Create.
 	setDeploymentPhase(setPhase, "preparing deployment resources")
 
-	if selfPlan.Step != nil {
+	if selfPlan.Step != nil || pendingSkip {
 		if err = validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
 			return err
 		}

@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
@@ -194,6 +196,167 @@ func selfDriftedNetworks(ctx context.Context, apiClient client.APIClient, projec
 	}
 
 	return drifted, nil
+}
+
+// selfRecreateForced reports whether this deploy force-recreates the self service.
+// An empty service list with RecreateForce applies to the whole project.
+func selfRecreateForced(mode string, services []string, name string) bool {
+	if mode != api.RecreateForce {
+		return false
+	}
+
+	return len(services) == 0 || slices.Contains(services, name)
+}
+
+// selfServiceUnchanged reports whether this deploy can leave the running
+// doco-cd container in the compose create. project must already be path-pinned.
+// shortcut: image digest is read before Create pulls, recheck if ensureImagesExists can change the image.
+func selfServiceUnchanged(
+	ctx context.Context,
+	apiClient client.APIClient,
+	project *types.Project,
+	target *selfTarget,
+	recreateMode string,
+	services []string,
+) (bool, error) {
+	svc := project.Services[target.Service]
+
+	// Scale is excluded from the config hash, but a replica change still recreates.
+	if svc.GetScale() != 1 || selfRecreateForced(recreateMode, services, target.Service) {
+		return false, nil
+	}
+
+	for _, volume := range svc.Volumes {
+		if volume.Type == types.VolumeTypeImage {
+			return false, nil
+		}
+	}
+
+	inspected, err := apiClient.ContainerInspect(ctx, SelfUpdateConfig().Identity.ContainerID, client.ContainerInspectOptions{})
+	if err != nil {
+		return false, fmt.Errorf("inspect own container: %w", err)
+	}
+
+	var labels map[string]string
+	if inspected.Container.Config != nil {
+		labels = inspected.Container.Config.Labels
+	}
+
+	runningHash := labels[api.ConfigHashLabel]
+	if runningHash == "" || labels[api.ImageVolumeDigestLabel] != "" {
+		return false, nil
+	}
+
+	drift, err := networkDrift(ctx, apiClient, project, svc)
+	if err != nil {
+		return false, err
+	}
+
+	if drift {
+		return false, nil
+	}
+
+	if !selfContainerOnNetworks(project, svc, inspected.Container.NetworkSettings) {
+		return false, nil
+	}
+
+	want, err := composeServiceHash(svc)
+	if err != nil {
+		return false, err
+	}
+
+	if want != runningHash {
+		return false, nil
+	}
+
+	return selfImageDigestMatches(ctx, apiClient, project.Name, svc, labels[api.ImageDigestLabel])
+}
+
+// selfContainerOnNetworks reports whether the running container is attached to
+// every network the service declares. External networks count.
+func selfContainerOnNetworks(project *types.Project, svc types.ServiceConfig, settings *container.NetworkSettings) bool {
+	if len(svc.Networks) == 0 {
+		return true
+	}
+
+	for key := range svc.Networks {
+		if !containerEndpointMatches(settings, selfServiceNetworkName(project, key)) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func selfServiceNetworkName(project *types.Project, key string) string {
+	cfg, ok := project.Networks[key]
+	if !ok {
+		return ""
+	}
+
+	if cfg.Name != "" {
+		return cfg.Name
+	}
+
+	if bool(cfg.External) {
+		return ""
+	}
+
+	return project.Name + "_" + key
+}
+
+func containerEndpointMatches(settings *container.NetworkSettings, name string) bool {
+	if settings == nil || name == "" {
+		return false
+	}
+
+	for key, endpoint := range settings.Networks {
+		if key == name || (endpoint != nil && endpoint.NetworkID == name) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// selfImageDigestMatches reports whether Compose's image-digest label would
+// also leave the container in place. That label is not part of the config hash.
+func selfImageDigestMatches(
+	ctx context.Context,
+	apiClient client.APIClient,
+	projectName string,
+	svc types.ServiceConfig,
+	running string,
+) (bool, error) {
+	if running == "" {
+		return false, nil
+	}
+
+	ref := api.GetImageNameOrDefault(svc, projectName)
+
+	inspected, err := apiClient.ImageInspect(ctx, ref, client.ImageInspectWithManifests(true))
+	if err != nil {
+		inspected, err = apiClient.ImageInspect(ctx, ref)
+	}
+
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, err
+		}
+
+		return false, nil
+	}
+
+	got, err := composeImageContentDigest(inspected.InspectResponse, svc.Platform)
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, err
+		}
+
+		return false, nil
+	}
+
+	return got == running, nil
 }
 
 // selectSelfStrategy resolves the strategy for the self service, including the
