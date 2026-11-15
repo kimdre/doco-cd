@@ -37,20 +37,31 @@ func finishSwarmSelfUpdate(ctx context.Context, apiClient client.APIClient, hand
 	defer cancel()
 
 	if ctx.Err() != nil {
-		if resultErr != nil && !lifecycle.IsCanceledOnly(resultErr) {
-			current, err := selfupdate.LoadSwarmHandover(cleanupCtx, apiClient, handover.ServiceID)
-			if err == nil && current != nil {
-				err = selfupdate.ClaimSwarmHandover(cleanupCtx, apiClient, *current, SelfUpdateConfig().Identity.SwarmTaskID, resultErr)
+		if resultErr == nil {
+			resultErr = ctx.Err()
+		}
+
+		if ctx.Err() == context.Canceled && lifecycle.IsCanceledOnly(resultErr) {
+			current, err := apiClient.ServiceInspect(cleanupCtx, handover.ServiceID, client.ServiceInspectOptions{})
+			if err != nil {
+				return errors.Join(resultErr, fmt.Errorf("inspect interrupted Swarm self-update: %w", err))
 			}
 
-			return errors.Join(resultErr, err)
+			// The API response can be lost during shutdown, or shutdown can interrupt pruning.
+			if current.Service.Version.Index > handover.ServiceVersion &&
+				current.Service.Spec.Labels[selfupdate.SwarmHandoverLabel] == handover.Record.ID {
+				return errors.Join(selfupdate.ErrHandover, resultErr)
+			}
+
+			return resultErr
 		}
 
-		if resultErr == nil {
-			return selfupdate.ErrHandover
+		current, err := loadOwnSwarmHandover(cleanupCtx, apiClient, handover)
+		if err == nil && current != nil {
+			err = selfupdate.ClaimSwarmHandover(cleanupCtx, apiClient, *current, SelfUpdateConfig().Identity.SwarmTaskID, resultErr)
 		}
 
-		return resultErr
+		return errors.Join(resultErr, err)
 	}
 
 	removeErr := selfupdate.RemoveSwarmHandover(cleanupCtx, apiClient, *handover)
@@ -58,7 +69,7 @@ func finishSwarmSelfUpdate(ctx context.Context, apiClient client.APIClient, hand
 		return resultErr
 	}
 
-	current, err := selfupdate.LoadSwarmHandover(cleanupCtx, apiClient, handover.ServiceID)
+	current, err := loadOwnSwarmHandover(cleanupCtx, apiClient, handover)
 	if err != nil {
 		return errors.Join(resultErr, removeErr, err)
 	}
@@ -73,6 +84,20 @@ func finishSwarmSelfUpdate(ctx context.Context, apiClient client.APIClient, hand
 	}
 
 	return errors.Join(selfupdate.ErrHandover, resultErr, removeErr)
+}
+
+func loadOwnSwarmHandover(ctx context.Context, apiClient client.APIClient, handover *selfupdate.SwarmHandover) (*selfupdate.SwarmHandover, error) {
+	current, err := selfupdate.LoadSwarmHandover(ctx, apiClient, handover.ServiceID)
+	if err != nil || current == nil {
+		return current, err
+	}
+
+	// A lost remove response must not let cleanup claim a later record with the same name.
+	if current.Config.ID != handover.Config.ID || current.Record.ID != handover.Record.ID {
+		return nil, nil
+	}
+
+	return current, nil
 }
 
 // prepareSwarmSelfUpdate saves the pending status outside the service so rollback cannot erase it.

@@ -224,6 +224,10 @@ func finalizeAsSuccessor(
 ) error {
 	switch record.State {
 	case selfupdate.StateRolledBack, selfupdate.StateFailed, selfupdate.StateAborted:
+		if ownID != "" && record.Restored.ID == ownID {
+			return finalizeAsPredecessor(ctx, log, apiClient, reporter, store, record)
+		}
+
 		// The predecessor is the one that reports these, not us.
 		return nil
 	case selfupdate.StateApplying, selfupdate.StateApplyReady, selfupdate.StateApplyDrained:

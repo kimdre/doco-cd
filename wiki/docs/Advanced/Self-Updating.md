@@ -155,6 +155,7 @@ The journal preserves the exact [reporting backend](../Git-Settings.md#commit-st
 For successful native checks, it also preserves the predecessor's deployment summary, so the finishing instance reports the original stack, target, revision, and detected changed services rather than rebuilding those details from its own configuration.
 The finishing instance resolves its credentials and completes that original report even if its configuration sets `#!ini GIT_COMMIT_STATUS=false`.
 Failed status posts retain the journal and retry in the background without blocking startup.
+This also applies when rollback starts the restored container before the applier records its identity.
 It must retain credentials and permissions for that backend. Older journals without a check-run target always finish legacy commit statuses, even when the finishing instance now uses GitHub App authentication; keep the App's **Commit statuses: Read and write** permission until those handovers finish.
 
 A self-update that fails is recorded against that commit and **not retried** until a new commit arrives, 
@@ -177,6 +178,7 @@ Webhook senders should retry requests that receive 503.
     After Swarm accepts the update of doco-cd's own service, doco-cd reports a canceled deployment as a handover, not as a failure:
     it logs no error, does not count it in `doco_cd_deployment_errors_total`, and does not retry it.
     Cancellation before that service update is accepted, timeouts, and service failures still retain failure and retry reporting.
+    If shutdown interrupts pruning or the update response, doco-cd checks the service's handover marker to confirm acceptance before treating cancellation as a handover.
 
     Before updating its own service, doco-cd stores the pending report in an unmounted Docker config.
     This record survives task replacement, rollback, and relocation to another manager node without requiring a shared data volume.

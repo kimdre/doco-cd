@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -24,8 +25,11 @@ import (
 
 type swarmSelfUpdateClient struct {
 	client.APIClient
-	config    *swarm.Config
-	removeErr error
+	config     *swarm.Config
+	removeErr  error
+	service    swarm.Service
+	serviceErr error
+	claims     int
 }
 
 func (c *swarmSelfUpdateClient) ConfigCreate(_ context.Context, opts client.ConfigCreateOptions) (client.ConfigCreateResult, error) {
@@ -55,8 +59,13 @@ func (c *swarmSelfUpdateClient) ConfigRemove(context.Context, string, client.Con
 
 func (c *swarmSelfUpdateClient) ConfigUpdate(_ context.Context, _ string, opts client.ConfigUpdateOptions) (client.ConfigUpdateResult, error) {
 	c.config.Spec = *clone.New(&opts.Spec)
+	c.claims++
 
 	return client.ConfigUpdateResult{}, nil
+}
+
+func (c *swarmSelfUpdateClient) ServiceInspect(context.Context, string, client.ServiceInspectOptions) (client.ServiceInspectResult, error) {
+	return client.ServiceInspectResult{Service: c.service}, c.serviceErr
 }
 
 type swarmSelfUpdateCLI struct {
@@ -97,7 +106,12 @@ func prepareTestSwarmSelfUpdate(t *testing.T) (*swarmSelfUpdateClient, *selfupda
 }
 
 func TestSwarmSelfUpdateCleanup(t *testing.T) {
-	for _, name := range []string{"success", "failure", "handover", "cleanup failure", "uncertain shutdown", "success during shutdown", "real failure during shutdown"} {
+	for _, name := range []string{
+		"success", "failure", "handover", "cleanup failure", "uncertain shutdown",
+		"unaccepted version", "later update",
+		"accepted shutdown", "accepted pruning shutdown", "success during shutdown",
+		"deadline during shutdown", "real failure during shutdown",
+	} {
 		t.Run(name, func(t *testing.T) {
 			apiClient, handover := prepareTestSwarmSelfUpdate(t)
 
@@ -122,7 +136,38 @@ func TestSwarmSelfUpdateCleanup(t *testing.T) {
 				keep = true
 
 				cancel()
+			case "unaccepted version", "later update":
+				resultErr = context.Canceled
+				apiClient.service.Version.Index = handover.ServiceVersion
+
+				apiClient.service.Spec.Labels = map[string]string{selfupdate.SwarmHandoverLabel: handover.Record.ID}
+				if name == "later update" {
+					apiClient.service.Version.Index++
+					apiClient.service.Spec.Labels[selfupdate.SwarmHandoverLabel] = "later-handover"
+				}
+
+				keep = true
+
+				cancel()
+			case "accepted shutdown", "accepted pruning shutdown":
+				resultErr = context.Canceled
+				if name == "accepted pruning shutdown" {
+					resultErr = fmt.Errorf("failed to prune stack configs: %w", resultErr)
+				}
+
+				apiClient.service.Version.Index = handover.ServiceVersion + 1
+				apiClient.service.Spec.Labels = map[string]string{selfupdate.SwarmHandoverLabel: handover.Record.ID}
+				keep = true
+
+				cancel()
 			case "success during shutdown":
+				apiClient.service.Version.Index = handover.ServiceVersion + 1
+				apiClient.service.Spec.Labels = map[string]string{selfupdate.SwarmHandoverLabel: handover.Record.ID}
+				keep = true
+
+				cancel()
+			case "deadline during shutdown":
+				resultErr = context.DeadlineExceeded
 				keep = true
 
 				cancel()
@@ -134,11 +179,13 @@ func TestSwarmSelfUpdateCleanup(t *testing.T) {
 			}
 
 			expected := resultErr
-			if name == "success during shutdown" || name == "cleanup failure" {
+			if name == "success during shutdown" || name == "cleanup failure" ||
+				name == "accepted shutdown" || name == "accepted pruning shutdown" {
 				expected = selfupdate.ErrHandover
 			}
 
-			if err := finishSwarmSelfUpdate(ctx, apiClient, handover, resultErr); !errors.Is(err, expected) {
+			err := finishSwarmSelfUpdate(ctx, apiClient, handover, resultErr)
+			if !errors.Is(err, expected) || errors.Is(err, selfupdate.ErrHandover) != errors.Is(expected, selfupdate.ErrHandover) {
 				t.Fatalf("cleanup changed the outcome: %v", err)
 			}
 
@@ -155,7 +202,56 @@ func TestSwarmSelfUpdateCleanup(t *testing.T) {
 			if name == "cleanup failure" && (pending.Record.State != selfupdate.StateFinalising || pending.OwnerTaskID != "old-task") {
 				t.Fatal("cleanup failure did not preserve the result for this task")
 			}
+
+			if name == "deadline during shutdown" && (pending.Record.State != selfupdate.StateFinalising || !pending.Record.TimedOut) {
+				t.Fatal("shutdown hid a deployment deadline")
+			}
 		})
+	}
+}
+
+func TestSwarmSelfUpdateCleanupLeavesLaterHandover(t *testing.T) {
+	for _, shutdown := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shutdown=%v", shutdown), func(t *testing.T) {
+			apiClient, handover := prepareTestSwarmSelfUpdate(t)
+			later := clone.New(apiClient.config)
+			later.ID = "later-config-id"
+			apiClient.config = later
+
+			apiClient.removeErr = errors.New("remove response lost")
+			resultErr := errors.New("original deployment failed")
+
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			if shutdown {
+				cancel()
+			}
+
+			if err := finishSwarmSelfUpdate(ctx, apiClient, handover, resultErr); !errors.Is(err, resultErr) {
+				t.Fatalf("cleanup lost the original failure: %v", err)
+			}
+
+			if apiClient.claims != 0 || apiClient.config.Spec.Labels["cd.doco.self.swarm.state"] != string(selfupdate.StateHandover) {
+				t.Fatal("old deployment cleanup changed a later handover")
+			}
+		})
+	}
+}
+
+func TestSwarmSelfUpdateCleanupCannotConfirmAcceptance(t *testing.T) {
+	apiClient, handover := prepareTestSwarmSelfUpdate(t)
+	apiClient.serviceErr = errors.New("manager unavailable")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := finishSwarmSelfUpdate(ctx, apiClient, handover, context.Canceled)
+	if !errors.Is(err, apiClient.serviceErr) || !errors.Is(err, context.Canceled) || errors.Is(err, selfupdate.ErrHandover) {
+		t.Fatalf("unknown acceptance was classified as handover: %v", err)
+	}
+
+	if apiClient.config == nil || apiClient.claims != 0 {
+		t.Fatal("unknown acceptance discarded or resolved the pending record")
 	}
 }
 

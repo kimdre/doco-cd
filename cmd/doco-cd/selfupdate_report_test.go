@@ -537,6 +537,50 @@ func TestRolledBackPredecessorPostsFailureCommitStatus(t *testing.T) {
 	}
 }
 
+func TestSuccessorFinalisationRetriesRestoredFailure(t *testing.T) {
+	previous := docker.SelfUpdateConfig()
+
+	docker.ConfigureSelfUpdate(docker.SelfUpdateOptions{Identity: selfupdate.Identity{ContainerID: "restored"}})
+	t.Cleanup(func() { docker.ConfigureSelfUpdate(previous) })
+
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(failing.Close)
+
+	store := selfupdate.NewStore(t.TempDir())
+	record := handedOverRecord(failing.URL, selfupdate.StateRolledBack)
+	record.Strategy = selfupdate.StrategyApplier
+	record.Restored.ID = "restored"
+
+	record.Error = "new version unhealthy"
+	if err := store.Create(&record); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := (&commitStatusRecorder{Server: failing}).appConfig()
+	log := logger.New(slog.LevelError)
+	apiClient := &finalizerDockerClient{}
+
+	err := finalizeAsSuccessor(t.Context(), log, apiClient, newSelfUpdateReporter(cfg, nil), store, record, "restored")
+	if !errors.Is(err, errSelfUpdateReportPending) {
+		t.Fatalf("restored container did not retain its failed report: %v", err)
+	}
+
+	recorder := newCommitStatusRecorder(t)
+	cfg.GitScmApiUrl = recorder.appConfig().GitScmApiUrl
+
+	retrySelfUpdateFinalization(t.Context(), log, store, record.ID, func(current selfupdate.Record) error {
+		return finalizeAsSuccessor(t.Context(), log, apiClient, newSelfUpdateReporter(cfg, nil), store, current, "restored")
+	})
+
+	recorder.requireSingle(t, commitstatus.StateFailure)
+
+	if _, err := store.Load(record.ID); !errors.Is(err, selfupdate.ErrNoRecord) {
+		t.Fatalf("restored container left its report unresolved: %v", err)
+	}
+}
+
 type reportingHealthClient struct {
 	finalizerDockerClient
 	status container.HealthStatus
