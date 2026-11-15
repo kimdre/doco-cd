@@ -170,30 +170,12 @@ The predecessor waits for all in-flight deployments without a fixed timeout, so 
 Webhook senders should retry requests that receive 503.
 
 !!! note "Swarm"
-    Docker Swarm already replaces a service through a rolling update performed by the swarm manager, 
-    so a Swarm stack containing doco-cd updates itself without any of this.
+    Swarm handles self-updates through rolling updates rather than the Compose strategies above.
+    doco-cd updates its own service last and treats the expected shutdown as a handover.
 
-    The rolling update stops the running instance while it still waits for its own stack to converge.
-    doco-cd submits updates for the other services before updating its own service, so its replacement does not interrupt those updates.
-    After Swarm accepts the update of doco-cd's own service, doco-cd reports a canceled deployment as a handover, not as a failure:
-    it logs no error, does not count it in `doco_cd_deployment_errors_total`, and does not retry it.
-    Cancellation before that service update is accepted, timeouts, and service failures still retain failure and retry reporting.
-    If shutdown interrupts pruning or the update response, doco-cd checks the service's handover marker to confirm acceptance before treating cancellation as a handover.
-
-    Before updating its own service, doco-cd stores the pending report in an unmounted Docker config.
-    This record survives task replacement, rollback, and relocation to another manager node without requiring a shared data volume.
-    The new instance waits for the predecessor task to stop, the stack's services to converge, and its own health check to pass.
-    It verifies the intended service and task specifications before completing the original commit status or GitHub Check.
-    A rollback, paused update, or confirmation timeout is reported as a failure, not as a successful deployment.
-
-    The final report resolves credentials from the finishing instance, even when `GIT_COMMIT_STATUS=false`.
-    Failed status posts retain the Docker config and are retried. Later deployments of the self stack wait before posting another pending status.
-    If a reporting task stops, another task can resume its saved result.
-    The config is removed after final reporting. Metadata-only deployments do not force task replacement.
-
-    Confirmation requires a running doco-cd instance with access to a Swarm manager.
-    Older versions without Swarm confirmation support cannot finish the record.
-    If no instance survives or starts, reporting remains pending until Swarm rolls back or an operator restores one.
+    The replacement completes the original commit status or GitHub Check after the stack converges and it becomes healthy.
+    Rollbacks, paused updates, and confirmation timeouts are reported as failures.
+    Confirmation requires a compatible running doco-cd instance with Swarm manager access.
 
 ## Alternative: two instances
 
