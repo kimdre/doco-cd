@@ -263,6 +263,12 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		s.Stages.PreDeploy.FinishedAt = time.Now()
 	}()
 
+	if s.Docker.SwarmMode {
+		if err := docker.WaitForSwarmSelfUpdate(ctx, s.Docker.Cmd.Client(), s.DeployConfig.Name, s.DeployConfig.Context, stageLog); err != nil {
+			return err
+		}
+	}
+
 	// Check for external secret changes and current deployed commit
 	var (
 		imagesChanged        bool     // Flag to indicate if images have changed

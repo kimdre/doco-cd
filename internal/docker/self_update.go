@@ -102,15 +102,21 @@ func IsSelfStack(dc *deploy.Config) bool {
 		return false
 	}
 
+	if opts.Identity.Swarm {
+		return dc.Name == opts.Identity.Project
+	}
+
 	return strings.EqualFold(dc.Name, opts.Identity.Project)
 }
 
 // selfUpdateFor returns the self target when project contains this instance's
 // own container, or nil when the deploy does not touch us.
+// Swarm identities return nil. The Swarm rolling update replaces the task, so the
+// compose successor handover does not apply.
 func selfUpdateFor(project *types.Project, contextName string) *selfTarget {
 	opts := SelfUpdateConfig()
 
-	if !opts.Identity.OK || project == nil {
+	if !opts.Identity.OK || opts.Identity.Swarm || project == nil {
 		return nil
 	}
 

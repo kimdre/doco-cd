@@ -365,7 +365,7 @@ func run() error {
 	})
 
 	if c.SelfUpdateEnabled && !selfIdentity.OK {
-		log.Warn("self-update is enabled but this process does not run in a compose-managed container, disabling it")
+		log.Warn("self-update is enabled but this process runs neither in a compose-managed container nor in a swarm stack task, disabling it")
 	}
 
 	var wg sync.WaitGroup
@@ -506,7 +506,14 @@ func run() error {
 	workCtx, stopLifecycleWork := context.WithCancel(ctx)
 	defer stopLifecycleWork()
 
-	if selfIdentity.OK {
+	if selfIdentity.OK && selfIdentity.Swarm {
+		graceful.SafeGo(&wg, log.Logger, func() {
+			runSwarmSelfUpdateFinalizer(ctx, log, dockerCli, newSelfUpdateReporter(c, notifier), selfIdentity)
+		})
+	}
+
+	// Compose uses its own journal and coordinator for container replacement.
+	if selfIdentity.OK && !selfIdentity.Swarm {
 		finalizeHandover, err := finalizeSelfUpdate(ctx, log, dockerClient, newSelfUpdateReporter(c, notifier), selfUpdateStore, selfIdentity, controlPlaneRuns)
 		if err != nil {
 			log.Critical("failed to finalize a pending self-update", logger.ErrAttr(err))

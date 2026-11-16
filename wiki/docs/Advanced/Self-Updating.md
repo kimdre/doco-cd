@@ -148,12 +148,14 @@ The next poll catches up with missed changes.
 
 ## Failure handling
 
-Every handover is journaled on the data volume, so a crash at any point is resolved on the next boot: 
+Every Compose handover is journaled on the data volume, so a crash at any point is resolved on the next boot:
 whichever instance comes up finishes the handover or reverses it.
 
 The journal preserves the exact [reporting backend](../Git-Settings.md#commit-status-reporting) and, for native GitHub Checks, the original check-run target, without storing credentials.
 For successful native checks, it also preserves the predecessor's deployment summary, so the finishing instance reports the original stack, target, revision, and detected changed services rather than rebuilding those details from its own configuration.
 The finishing instance resolves its credentials and completes that original report even if its configuration sets `#!ini GIT_COMMIT_STATUS=false`.
+Failed status posts retain the journal and retry in the background without blocking startup.
+This also applies when rollback starts the restored container before the applier records its identity.
 It must retain credentials and permissions for that backend. Older journals without a check-run target always finish legacy commit statuses, even when the finishing instance now uses GitHub App authentication; keep the App's **Commit statuses: Read and write** permission until those handovers finish.
 
 A self-update that fails is recorded against that commit and **not retried** until a new commit arrives, 
@@ -168,8 +170,12 @@ The predecessor waits for all in-flight deployments without a fixed timeout, so 
 Webhook senders should retry requests that receive 503.
 
 !!! note "Swarm"
-    Docker Swarm already replaces a service through a rolling update performed by the swarm manager, 
-    so a Swarm stack containing doco-cd updates itself without any of this.
+    Swarm handles self-updates through rolling updates rather than the Compose strategies above.
+    doco-cd updates its own service last and treats the expected shutdown as a handover.
+
+    The replacement completes the original commit status or GitHub Check after the stack converges and it becomes healthy.
+    Rollbacks, paused updates, and confirmation timeouts are reported as failures.
+    Confirmation requires a compatible running doco-cd instance with Swarm manager access.
 
 ## Alternative: two instances
 

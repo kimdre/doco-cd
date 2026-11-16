@@ -17,6 +17,8 @@ const (
 	StrategyScaleOut Strategy = "scale_out"
 	// StrategyApplier delegates the replacement to a throwaway clone.
 	StrategyApplier Strategy = "applier"
+	// StrategySwarm leaves task replacement and rollback to the Swarm manager.
+	StrategySwarm Strategy = "swarm"
 )
 
 // Constraints are runtime facts the selector cannot read off the service.
