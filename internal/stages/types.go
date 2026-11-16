@@ -783,6 +783,24 @@ func (s *StageManager) PostCommitStatusWithOutcome(ctx context.Context, state co
 	s.postCommitStatus(ctx, state, description, outcome)
 }
 
+// concludeCollidingCommitStatus closes the check this run opened when it
+// skips because another handover is already in progress.
+func (s *StageManager) concludeCollidingCommitStatus(ctx context.Context) {
+	// GitHub returns a check run ID for the Queued post, before In Progress succeeds.
+	if !s.inProgressPosted && (s.commitStatusTarget == nil || s.commitStatusTarget.CheckRunID == 0) {
+		return
+	}
+
+	const description = "Skipped: self-update handover in progress"
+
+	s.postStatus(ctx, commitstatus.Status{
+		State:       commitstatus.StateSuccess,
+		Outcome:     commitstatus.OutcomeSkipped,
+		Description: description,
+		Summary:     description,
+	})
+}
+
 // postCommitStatus posts a commit status like PostCommitStatusWithOutcome and
 // reports whether it was posted.
 func (s *StageManager) postCommitStatus(ctx context.Context, state commitstatus.State, description string, outcome commitstatus.Outcome) bool {

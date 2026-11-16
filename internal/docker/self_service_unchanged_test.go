@@ -1107,12 +1107,14 @@ func TestGuardSelfUpdateRefusals(t *testing.T) {
 		ConfigureSelfUpdate(SelfUpdateOptions{Enabled: true, Store: store})
 
 		stopped := false
+		concluded := false
 		_, err := prepareSelfUpdate(t.Context(), docker, project, dc, target, nil, &SelfDeployInput{
-			StopPhaseReports: func() { stopped = true },
+			StopPhaseReports:  func() { stopped = true },
+			ConcludeOwnStatus: func() { concluded = true },
 		})
 
-		if !errors.Is(err, selfupdate.ErrHandover) || !stopped {
-			t.Fatalf("prepareSelfUpdate() stopped=%v err=%v; want the active handover", stopped, err)
+		if !errors.Is(err, selfupdate.ErrHandover) || !stopped || !concluded {
+			t.Fatalf("prepareSelfUpdate() stopped=%v concluded=%v err=%v; want the active handover", stopped, concluded, err)
 		}
 	})
 }

@@ -75,7 +75,16 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		defer reporter.Stop()
 	}
 
-	err = docker.DeployStack(ctx, docker.DeployRequest{
+	err = docker.DeployStack(ctx, s.deployRequest(ctx, stageLog, latestCommit, phaseReporter))
+	if err != nil {
+		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
+	}
+
+	return nil
+}
+
+func (s *StageManager) deployRequest(ctx context.Context, stageLog *slog.Logger, latestCommit string, phaseReporter docker.PhaseReporter) docker.DeployRequest {
+	return docker.DeployRequest{
 		JobLog:           stageLog,
 		ExternalRepoPath: s.Repository.PathExternal,
 		InternalRepoPath: s.Repository.PathInternal,
@@ -99,13 +108,9 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 			Target:  s.deploymentFailureTarget(),
 			Desired: s.retryDesired,
 		},
-		PhaseReporter: phaseReporter,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
+		ConcludeOwnStatus: func() { s.concludeCollidingCommitStatus(ctx) },
+		PhaseReporter:     phaseReporter,
 	}
-
-	return nil
 }
 
 func sourceURLForLabels(repository *RepositoryData) string {
