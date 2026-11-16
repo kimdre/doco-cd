@@ -12,6 +12,10 @@ A push that changes the doco-cd compose file is a deployment like any other.
 Set [`SELF_UPDATE_ENABLED`](../App-Settings.md#runtime-settings) to `true` (disabled by default).
 With this setting disabled, a deployment that would replace this container is refused with an error rather than attempted.
 
+When the doco-cd service itself is unchanged, doco-cd leaves its container in place instead of handing over.
+A changed image digest, scale, network, volume mount name, or parent `service:` reference still hands over.
+A managed volume whose data cannot be restored is refused.
+
 !!! warning "Pin the image"
     Use `#!yaml image: ghcr.io/kimdre/doco-cd:<version>@sha256:<digest>` and let a bot such as Renovate open the bump. 
     With a moving tag like `latest`, doco-cd upgrades itself whenever the tag moves and a breaking change lands unreviewed.

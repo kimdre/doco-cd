@@ -121,8 +121,16 @@ func planSelfHandover(
 	}
 
 	skip, err := selfServiceUnchanged(ctx, dockerCli.Client(), project, target, recreateMode, services)
-	if err != nil || skip {
-		return selfUpdatePlan{}, skip, err
+	if err != nil {
+		return selfUpdatePlan{}, false, err
+	}
+
+	if skip {
+		if err = refuseSkippedSelfUpdate(ctx, dockerCli, project, target, self); err != nil {
+			return selfUpdatePlan{}, false, err
+		}
+
+		return selfUpdatePlan{}, true, nil
 	}
 
 	plan, err := prepareSelfUpdate(ctx, dockerCli, project, deployConfig, target, services, self)
@@ -154,9 +162,10 @@ func recheckSelfSkip(
 	}
 
 	if stillSkip {
-		if err = validateSelfUpdateVolumes(ctx, dockerCli.Client(), project); err != nil {
-			return selfUpdatePlan{}, err
-		}
+		svc := project.Services[kept.Service]
+		// A confirmed skip sets pull_policy to missing so Create does not pull a newer digest.
+		svc.PullPolicy = types.PullPolicyMissing
+		project.Services[kept.Service] = svc
 
 		selfUpdateLogger(self).Info(
 			"self-update: self service configuration is unchanged",
@@ -177,6 +186,32 @@ func recheckSelfSkip(
 	}
 
 	return plan, nil
+}
+
+// refuseSkippedSelfUpdate runs the handover refusals that do not need a successor.
+// A skip that later becomes a handover must already have failed these, before pull.
+func refuseSkippedSelfUpdate(
+	ctx context.Context,
+	dockerCli command.Cli,
+	project *types.Project,
+	target *selfTarget,
+	self *SelfDeployInput,
+) error {
+	if err := validatePredecessorRestartPolicy(ctx, dockerCli.Client(), SelfUpdateConfig().Identity.ContainerID); err != nil {
+		return err
+	}
+
+	sourceType := ""
+	if self != nil {
+		sourceType = self.SourceType
+	}
+
+	_, _, err := selfupdate.Select(project.Services[target.Service], sourceType, target.Context, SelfUpdateConfig().Strategy, selfupdate.Constraints{})
+	if err != nil {
+		return err
+	}
+
+	return validateSelfUpdateVolumes(ctx, dockerCli.Client(), project)
 }
 
 // applySelfPlan removes the self service from the project Compose creates when

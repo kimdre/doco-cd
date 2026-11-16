@@ -16,6 +16,7 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/api/types/volume"
 	"github.com/moby/moby/client"
@@ -38,6 +39,7 @@ type unchangedSelfClient struct {
 	containersErr error
 	endpoints     map[string]*network.EndpointSettings
 	volumes       []volume.Volume
+	mounts        []container.MountPoint
 }
 
 func (c unchangedSelfClient) ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
@@ -49,6 +51,7 @@ func (c unchangedSelfClient) ContainerInspect(context.Context, string, client.Co
 		Config:          &container.Config{Labels: c.labels},
 		HostConfig:      &container.HostConfig{RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped}},
 		NetworkSettings: &container.NetworkSettings{Networks: c.endpoints},
+		Mounts:          c.mounts,
 	}}, nil
 }
 
@@ -592,6 +595,12 @@ func TestSelfServiceUnchangedClosedFailures(t *testing.T) {
 				api.ImageDigestLabel: digest,
 			},
 			image: image.InspectResponse{ID: digest},
+			network: &network.Inspect{
+				ID: "net-new", Name: "tools_backend",
+			},
+			endpoints: map[string]*network.EndpointSettings{
+				"tools_backend": {NetworkID: "net-old"},
+			},
 		}
 
 		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, &changed, target, api.RecreateDiverged, nil)
@@ -599,6 +608,100 @@ func TestSelfServiceUnchangedClosedFailures(t *testing.T) {
 			t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
 		}
 	})
+
+	t.Run("attached network", func(t *testing.T) {
+		changed := *project
+		svc := project.Services["doco-cd"]
+		svc.Networks = map[string]*types.ServiceNetworkConfig{"backend": {}}
+		changed.Services = types.Services{"doco-cd": svc}
+		changed.Networks = types.Networks{"backend": {Name: "tools_backend"}}
+
+		netHash, err := composeServiceHash(svc)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		apiClient := unchangedSelfClient{
+			labels: map[string]string{
+				api.ConfigHashLabel:  netHash,
+				api.ImageDigestLabel: digest,
+			},
+			image: image.InspectResponse{ID: digest},
+			network: &network.Inspect{
+				ID: "net-id", Name: "tools_backend",
+			},
+			endpoints: map[string]*network.EndpointSettings{
+				"tools_backend": {NetworkID: "net-id"},
+			},
+		}
+
+		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, &changed, target, api.RecreateDiverged, nil)
+		if err != nil || !unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want skip", unchanged, err)
+		}
+	})
+
+	t.Run("external volume rename", func(t *testing.T) {
+		changed := *project
+		svc := project.Services["doco-cd"]
+		svc.Volumes = []types.ServiceVolumeConfig{{
+			Type: types.VolumeTypeVolume, Source: "data", Target: "/data",
+		}}
+		changed.Services = types.Services{"doco-cd": svc}
+		changed.Volumes = types.Volumes{"data": {Name: "new", External: true}}
+
+		mounted, err := composeServiceHash(svc)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		apiClient := unchangedSelfClient{
+			labels: map[string]string{
+				api.ConfigHashLabel:  mounted,
+				api.ImageDigestLabel: digest,
+			},
+			image: image.InspectResponse{ID: digest},
+			mounts: []container.MountPoint{{
+				Type: mount.TypeVolume, Name: "old",
+			}},
+		}
+
+		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, &changed, target, api.RecreateDiverged, nil)
+		if err != nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
+		}
+	})
+}
+
+func TestSelfServiceParentReferenceHandsOver(t *testing.T) {
+	t.Parallel()
+
+	project := selfUpdateTestProject("tools", "doco-cd")
+	target := &selfTarget{Service: "doco-cd", Project: project.Name}
+
+	for _, tc := range []struct {
+		name string
+		edit func(*types.ServiceConfig)
+	}{
+		{name: "network mode", edit: func(svc *types.ServiceConfig) { svc.NetworkMode = "service:db" }},
+		{name: "ipc", edit: func(svc *types.ServiceConfig) { svc.Ipc = "service:db" }},
+		{name: "pid", edit: func(svc *types.ServiceConfig) { svc.Pid = "service:db" }},
+		{name: "volumes from", edit: func(svc *types.ServiceConfig) { svc.VolumesFrom = []string{"db"} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			changed := *project
+			svc := project.Services["doco-cd"]
+			tc.edit(&svc)
+			changed.Services = types.Services{"doco-cd": svc}
+
+			unchanged, err := selfServiceUnchanged(t.Context(), unchangedSelfClient{}, &changed, target, api.RecreateDiverged, nil)
+			if err != nil || unchanged {
+				t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
+			}
+		})
+	}
 }
 
 func TestComposeImageContentDigestBranches(t *testing.T) {
@@ -783,8 +886,8 @@ func TestRecheckSelfSkip(t *testing.T) {
 
 	t.Run("still unchanged", func(t *testing.T) {
 		got, err := recheckSelfSkip(t.Context(), docker, project, dc, target, api.RecreateDiverged, services, self, selfUpdatePlan{}, true)
-		if err != nil || got.Step != nil {
-			t.Fatalf("recheckSelfSkip() step=%v err=%v; want the service left in place", got.Step != nil, err)
+		if err != nil || got.Step != nil || project.Services["doco-cd"].PullPolicy != types.PullPolicyMissing {
+			t.Fatalf("recheckSelfSkip() step=%v policy=%s err=%v; want the service left in place", got.Step != nil, project.Services["doco-cd"].PullPolicy, err)
 		}
 	})
 
@@ -882,6 +985,9 @@ func TestRecheckSelfSkip(t *testing.T) {
 				api.ImageDigestLabel: digest,
 			},
 			image: image.InspectResponse{ID: digest},
+			mounts: []container.MountPoint{{
+				Type: mount.TypeVolume, Name: "tools_data_new",
+			}},
 			volumes: []volume.Volume{{
 				Name: "tools_data",
 				Labels: map[string]string{
@@ -891,12 +997,12 @@ func TestRecheckSelfSkip(t *testing.T) {
 			}},
 		}
 
-		got, err := recheckSelfSkip(
+		_, skipped, err := planSelfHandover(
 			t.Context(), selfApplyTestCli{apiClient: apiClient}, &changed, dc, target,
-			api.RecreateDiverged, services, self, selfUpdatePlan{}, true,
+			api.RecreateDiverged, services, self, composeDeployOptions{},
 		)
-		if !errors.Is(err, selfupdate.ErrUnsupported) || got.Step != nil {
-			t.Fatalf("recheckSelfSkip() step=%v err=%v; want the renamed volume refused", got.Step != nil, err)
+		if !errors.Is(err, selfupdate.ErrUnsupported) || skipped {
+			t.Fatalf("planSelfHandover() skipped=%v err=%v; want the renamed volume refused", skipped, err)
 		}
 	})
 }

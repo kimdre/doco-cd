@@ -12,6 +12,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
@@ -216,7 +217,6 @@ func selfRecreateForced(mode string, services []string, name string) bool {
 
 // selfServiceUnchanged reports whether this deploy can leave the running
 // doco-cd container in the compose create. project must already be path-pinned.
-// shortcut: image digest is read before Create pulls, recheck if ensureImagesExists can change the image.
 func selfServiceUnchanged(
 	ctx context.Context,
 	apiClient client.APIClient,
@@ -226,6 +226,11 @@ func selfServiceUnchanged(
 	services []string,
 ) (bool, error) {
 	svc := project.Services[target.Service]
+
+	// Compose hashes service: references after resolving them to container:<id>.
+	if selfParentReference(svc) {
+		return false, nil
+	}
 
 	// Scale is excluded from the config hash, but a replica change still recreates.
 	if svc.GetScale() != 1 || selfRecreateForced(recreateMode, services, target.Service) {
@@ -262,7 +267,12 @@ func selfServiceUnchanged(
 		return false, nil
 	}
 
-	if !selfContainerOnNetworks(project, svc, inspected.Container.NetworkSettings) {
+	attached, err := selfContainerOnNetworks(ctx, apiClient, project, svc, inspected.Container.NetworkSettings)
+	if err != nil {
+		return false, err
+	}
+
+	if !attached || !selfVolumesMounted(project, svc, inspected.Container.Mounts) {
 		return false, nil
 	}
 
@@ -278,20 +288,47 @@ func selfServiceUnchanged(
 	return selfImageDigestMatches(ctx, apiClient, project.Name, svc, labels[api.ImageDigestLabel])
 }
 
-// selfContainerOnNetworks reports whether the running container is attached to
-// every network the service declares. External networks count.
-func selfContainerOnNetworks(project *types.Project, svc types.ServiceConfig, settings *container.NetworkSettings) bool {
-	if len(svc.Networks) == 0 {
-		return true
-	}
-
-	for key := range svc.Networks {
-		if !containerEndpointMatches(settings, selfServiceNetworkName(project, key)) {
-			return false
+// selfParentReference reports whether the service uses another service's namespace or volumes.
+func selfParentReference(svc types.ServiceConfig) bool {
+	for _, mode := range []string{svc.NetworkMode, svc.Ipc, svc.Pid} {
+		if strings.HasPrefix(mode, "service:") {
+			return true
 		}
 	}
 
-	return true
+	return len(svc.VolumesFrom) > 0
+}
+
+// selfContainerOnNetworks reports whether the running container is attached to
+// every network the service declares, by network ID. External networks count.
+func selfContainerOnNetworks(
+	ctx context.Context,
+	apiClient client.APIClient,
+	project *types.Project,
+	svc types.ServiceConfig,
+	settings *container.NetworkSettings,
+) (bool, error) {
+	if len(svc.Networks) == 0 {
+		return true, nil
+	}
+
+	for key := range svc.Networks {
+		name := selfServiceNetworkName(project, key)
+		if name == "" {
+			return false, nil
+		}
+
+		inspected, err := apiClient.NetworkInspect(ctx, name, client.NetworkInspectOptions{})
+		if err != nil {
+			return false, fmt.Errorf("inspect self stack network %s: %w", name, err)
+		}
+
+		if !endpointHasNetworkID(settings, inspected.Network.ID) {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func selfServiceNetworkName(project *types.Project, key string) string {
@@ -311,13 +348,56 @@ func selfServiceNetworkName(project *types.Project, key string) string {
 	return project.Name + "_" + key
 }
 
-func containerEndpointMatches(settings *container.NetworkSettings, name string) bool {
-	if settings == nil || name == "" {
+func endpointHasNetworkID(settings *container.NetworkSettings, id string) bool {
+	if settings == nil || id == "" {
 		return false
 	}
 
-	for key, endpoint := range settings.Networks {
-		if key == name || (endpoint != nil && endpoint.NetworkID == name) {
+	for _, endpoint := range settings.Networks {
+		if endpoint != nil && endpoint.NetworkID == id {
+			return true
+		}
+	}
+
+	return false
+}
+
+// selfVolumesMounted reports whether the running container mounts every resolved named volume.
+func selfVolumesMounted(project *types.Project, svc types.ServiceConfig, mounts []container.MountPoint) bool {
+	for _, vol := range svc.Volumes {
+		if vol.Type != types.VolumeTypeVolume || vol.Source == "" {
+			continue
+		}
+
+		name := selfVolumeDockerName(project, vol.Source)
+		if name == "" || !volumeMountNamed(mounts, name) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func selfVolumeDockerName(project *types.Project, source string) string {
+	cfg, ok := project.Volumes[source]
+	if !ok {
+		return ""
+	}
+
+	if cfg.Name != "" {
+		return cfg.Name
+	}
+
+	if bool(cfg.External) {
+		return ""
+	}
+
+	return project.Name + "_" + source
+}
+
+func volumeMountNamed(mounts []container.MountPoint, name string) bool {
+	for _, mountPoint := range mounts {
+		if mountPoint.Type == mount.TypeVolume && mountPoint.Name == name {
 			return true
 		}
 	}
