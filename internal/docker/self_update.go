@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
@@ -200,6 +204,266 @@ func selfDriftedNetworks(ctx context.Context, apiClient client.APIClient, projec
 	}
 
 	return drifted, nil
+}
+
+// selfRecreateForced reports whether this deploy force-recreates the self service.
+// An empty service list with RecreateForce applies to the whole project.
+func selfRecreateForced(mode string, services []string, name string) bool {
+	if mode != api.RecreateForce {
+		return false
+	}
+
+	return len(services) == 0 || slices.Contains(services, name)
+}
+
+// selfServiceUnchanged reports whether this deploy can leave the running
+// doco-cd container in the compose create. project must already be path-pinned.
+func selfServiceUnchanged(
+	ctx context.Context,
+	apiClient client.APIClient,
+	project *types.Project,
+	target *selfTarget,
+	recreateMode string,
+	services []string,
+) (bool, error) {
+	svc := project.Services[target.Service]
+
+	// Compose hashes service: references after resolving them to container:<id>.
+	// A restart: true dependency is stopped during Create, which kills this process.
+	if selfParentReference(svc) || selfDependencyRestarts(svc) {
+		return false, nil
+	}
+
+	// Scale is excluded from the config hash, but a replica change still recreates.
+	if svc.GetScale() != 1 || selfRecreateForced(recreateMode, services, target.Service) {
+		return false, nil
+	}
+
+	for _, volume := range svc.Volumes {
+		if volume.Type == types.VolumeTypeImage {
+			return false, nil
+		}
+	}
+
+	inspected, err := apiClient.ContainerInspect(ctx, SelfUpdateConfig().Identity.ContainerID, client.ContainerInspectOptions{})
+	if err != nil {
+		return false, fmt.Errorf("inspect own container: %w", err)
+	}
+
+	var labels map[string]string
+	if inspected.Container.Config != nil {
+		labels = inspected.Container.Config.Labels
+	}
+
+	runningHash := labels[api.ConfigHashLabel]
+	if runningHash == "" || labels[api.ImageVolumeDigestLabel] != "" {
+		return false, nil
+	}
+
+	drift, err := networkDrift(ctx, apiClient, project, svc)
+	if err != nil {
+		return false, err
+	}
+
+	if drift {
+		return false, nil
+	}
+
+	attached, err := selfContainerOnNetworks(ctx, apiClient, project, svc, inspected.Container.NetworkSettings)
+	if err != nil {
+		return false, err
+	}
+
+	if !attached || !selfVolumesMounted(project, svc, inspected.Container.Mounts) {
+		return false, nil
+	}
+
+	want, err := composeServiceHash(svc)
+	if err != nil {
+		return false, err
+	}
+
+	if want != runningHash {
+		return false, nil
+	}
+
+	return selfImageDigestMatches(ctx, apiClient, project.Name, svc, labels[api.ImageDigestLabel])
+}
+
+// selfParentReference reports whether the service uses another service's namespace or volumes.
+func selfParentReference(svc types.ServiceConfig) bool {
+	for _, mode := range []string{svc.NetworkMode, svc.Ipc, svc.Pid} {
+		if strings.HasPrefix(mode, "service:") {
+			return true
+		}
+	}
+
+	return len(svc.VolumesFrom) > 0
+}
+
+func selfDependencyRestarts(svc types.ServiceConfig) bool {
+	for _, dep := range svc.DependsOn {
+		if dep.Restart {
+			return true
+		}
+	}
+
+	return false
+}
+
+// selfContainerOnNetworks reports whether the running container is attached to
+// every network the service declares, by network ID. External networks count.
+func selfContainerOnNetworks(
+	ctx context.Context,
+	apiClient client.APIClient,
+	project *types.Project,
+	svc types.ServiceConfig,
+	settings *container.NetworkSettings,
+) (bool, error) {
+	if len(svc.Networks) == 0 {
+		return true, nil
+	}
+
+	for key := range svc.Networks {
+		name := selfServiceNetworkName(project, key)
+		if name == "" {
+			return false, nil
+		}
+
+		inspected, err := apiClient.NetworkInspect(ctx, name, client.NetworkInspectOptions{})
+		if err != nil {
+			return false, selfNetworkInspectErr(name, err)
+		}
+
+		if !endpointHasNetworkID(settings, inspected.Network.ID) {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func selfServiceNetworkName(project *types.Project, key string) string {
+	cfg, ok := project.Networks[key]
+	if !ok {
+		return ""
+	}
+
+	if cfg.Name != "" {
+		return cfg.Name
+	}
+
+	if bool(cfg.External) {
+		return ""
+	}
+
+	return project.Name + "_" + key
+}
+
+// A missing network is created during the handover, so NotFound is not a deploy error.
+func selfNetworkInspectErr(name string, err error) error {
+	if errdefs.IsNotFound(err) {
+		return nil
+	}
+
+	return fmt.Errorf("inspect self stack network %s: %w", name, err)
+}
+
+func endpointHasNetworkID(settings *container.NetworkSettings, id string) bool {
+	if settings == nil || id == "" {
+		return false
+	}
+
+	for _, endpoint := range settings.Networks {
+		if endpoint != nil && endpoint.NetworkID == id {
+			return true
+		}
+	}
+
+	return false
+}
+
+// selfVolumesMounted reports whether the running container mounts every resolved named volume.
+func selfVolumesMounted(project *types.Project, svc types.ServiceConfig, mounts []container.MountPoint) bool {
+	for _, vol := range svc.Volumes {
+		if vol.Type != types.VolumeTypeVolume || vol.Source == "" {
+			continue
+		}
+
+		name := selfVolumeDockerName(project, vol.Source)
+		if name == "" || !volumeMountNamed(mounts, name) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func selfVolumeDockerName(project *types.Project, source string) string {
+	cfg, ok := project.Volumes[source]
+	if !ok {
+		return ""
+	}
+
+	if cfg.Name != "" {
+		return cfg.Name
+	}
+
+	if bool(cfg.External) {
+		return ""
+	}
+
+	return project.Name + "_" + source
+}
+
+func volumeMountNamed(mounts []container.MountPoint, name string) bool {
+	for _, mountPoint := range mounts {
+		if mountPoint.Type == mount.TypeVolume && mountPoint.Name == name {
+			return true
+		}
+	}
+
+	return false
+}
+
+// selfImageDigestMatches reports whether Compose's image-digest label would
+// also leave the container in place. That label is not part of the config hash.
+func selfImageDigestMatches(
+	ctx context.Context,
+	apiClient client.APIClient,
+	projectName string,
+	svc types.ServiceConfig,
+	running string,
+) (bool, error) {
+	if running == "" {
+		return false, nil
+	}
+
+	ref := api.GetImageNameOrDefault(svc, projectName)
+
+	inspected, err := apiClient.ImageInspect(ctx, ref, client.ImageInspectWithManifests(true))
+	if err != nil {
+		inspected, err = apiClient.ImageInspect(ctx, ref)
+	}
+
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, err
+		}
+
+		return false, nil
+	}
+
+	got, err := composeImageContentDigest(inspected.InspectResponse, svc.Platform)
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, err
+		}
+
+		return false, nil
+	}
+
+	return got == running, nil
 }
 
 // selectSelfStrategy resolves the strategy for the self service, including the
