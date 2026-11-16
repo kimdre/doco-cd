@@ -22,6 +22,17 @@ func isScaledToZero(svc types.ServiceConfig) bool {
 	return svc.GetScale() == 0
 }
 
+// hasJobLabels reports whether a service has at least one cd.doco.job.* label.
+func hasJobLabels(svc types.ServiceConfig) bool {
+	for key := range getServiceSchedulerLabels(svc) {
+		if strings.HasPrefix(key, jobLabelPrefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // behaviorLabelPrefixes lists the cd.doco.* label prefixes that configure behaviour and
 // should therefore be included in the project hash for redeploy detection.
 // All other cd.doco.* labels (metadata, timestamps, …) are excluded.
@@ -132,8 +143,10 @@ func ProjectHash(p *types.Project, sourceRoot string) (string, error) {
 	pCopy := clone.New(p)
 
 	// Services scaled to zero never create containers, so they must not affect restart-time hash checks.
+	// Keep scheduled jobs scaled to zero. Their cd.doco.job.* labels configure the scheduler,
+	// so a change to the job definition must trigger a redeploy.
 	for name, svc := range pCopy.Services {
-		if isScaledToZero(svc) {
+		if isScaledToZero(svc) && !hasJobLabels(svc) {
 			delete(pCopy.Services, name)
 		}
 	}

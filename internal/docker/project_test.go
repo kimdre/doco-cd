@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -208,6 +209,84 @@ func TestProjectHash_IgnoresScaleZeroServices(t *testing.T) {
 
 	if baseHash != withScaledToZeroServiceHash {
 		t.Fatalf("expected scaled to zero services to be ignored, got %q and %q", baseHash, withScaledToZeroServiceHash)
+	}
+}
+
+func TestProjectHash_IncludesScaleZeroJobServices(t *testing.T) {
+	t.Parallel()
+
+	makeProject := func(withJob bool, jobLabels types.Labels) *types.Project {
+		services := types.Services{
+			"api": {
+				Name:  "api",
+				Image: "nginx:latest",
+			},
+		}
+
+		if withJob {
+			services["backup"] = types.ServiceConfig{
+				Name:    "backup",
+				Image:   "alpine:3.22",
+				Command: types.ShellCommand{"sleep", "infinity"},
+				Labels:  jobLabels,
+				Deploy: &types.DeployConfig{
+					Mode:     "replicated",
+					Replicas: new(0),
+				},
+			}
+		}
+
+		return &types.Project{Services: services}
+	}
+
+	jobLabels := func(extra types.Labels) types.Labels {
+		labels := types.Labels{
+			DocoCDJobLabels.JobEnabled:       "true",
+			DocoCDJobLabels.JobSchedule:      "@every 10m",
+			DocoCDJobLabels.JobExecutionMode: "one_off",
+			DocoCDJobLabels.JobSkipRunning:   "true",
+		}
+
+		maps.Copy(labels, extra)
+
+		return labels
+	}
+
+	hash := func(t *testing.T, p *types.Project) string {
+		t.Helper()
+
+		h, err := ProjectHash(p, "")
+		if err != nil {
+			t.Fatalf("ProjectHash() error: %v", err)
+		}
+
+		return h
+	}
+
+	baseHash := hash(t, makeProject(false, nil))
+	jobHash := hash(t, makeProject(true, jobLabels(nil)))
+
+	if jobHash == baseHash {
+		t.Fatal("expected a scaled to zero job service to affect the project hash")
+	}
+
+	if again := hash(t, makeProject(true, jobLabels(nil))); again != jobHash {
+		t.Fatalf("expected a deterministic hash, got %q and %q", jobHash, again)
+	}
+
+	withTimeoutHash := hash(t, makeProject(true, jobLabels(types.Labels{DocoCDJobLabels.JobTimeout: "30m"})))
+	if withTimeoutHash == jobHash {
+		t.Fatal("expected a new job label on a scaled to zero job service to change the project hash")
+	}
+
+	changedTimeoutHash := hash(t, makeProject(true, jobLabels(types.Labels{DocoCDJobLabels.JobTimeout: "1h"})))
+	if changedTimeoutHash == withTimeoutHash {
+		t.Fatal("expected a changed job label on a scaled to zero job service to change the project hash")
+	}
+
+	withMetadataHash := hash(t, makeProject(true, jobLabels(types.Labels{DocoCDLabels.Deployment.Timestamp: "2026-01-01T00:00:00Z"})))
+	if withMetadataHash != jobHash {
+		t.Fatalf("expected doco-cd metadata labels to be ignored, got %q and %q", jobHash, withMetadataHash)
 	}
 }
 
