@@ -100,6 +100,12 @@ echo "$*" >> "$FAKE_DOCKER_LOG"
 case "$1 $2" in
 "image prune") exit "$FAKE_PRUNE_EXIT" ;;
 "image ls") printf '%s\n' "$FAKE_IMAGES" ;;
+"image inspect")
+	case "$5" in
+	*fresh*) date +%s ;;
+	*gone*) exit 1 ;;
+	*) echo 1700000000 ;;
+	esac ;;
 "image rm")
 	case "$3" in
 	*inuse*) echo "Error response from daemon: conflict: unable to delete $3 (must be forced)" >&2; exit 1 ;;
@@ -115,9 +121,13 @@ func TestImagePruneScript(t *testing.T) {
 		"<none> registry.example/replaced@sha256:aaa",
 		"<none> registry.example/inuse@sha256:bbb",
 		"<none> registry.example/broken@sha256:ccc",
+		"<none> registry.example/fresh@sha256:eee",
+		"<none> registry.example/gone@sha256:fff",
 		"1.0 registry.example/tagged@sha256:ddd",
 		"<none> <none>@<none>",
 	}, "\n")
+
+	inspect := "image inspect --format {{.Metadata.LastTagTime.Unix}} "
 
 	testCases := []struct {
 		name      string
@@ -127,14 +137,19 @@ func TestImagePruneScript(t *testing.T) {
 		wantLog   string
 	}{
 		{
-			name:      "removes only unused digest-only images",
+			name:      "removes only unused digest-only images pulled over an hour ago",
 			pruneExit: "0",
 			wantCalls: []string{
 				"image prune --force",
 				"image ls --digests --format {{.Tag}} {{.Repository}}@{{.Digest}}",
+				inspect + "registry.example/replaced@sha256:aaa",
 				"image rm registry.example/replaced@sha256:aaa",
+				inspect + "registry.example/inuse@sha256:bbb",
 				"image rm registry.example/inuse@sha256:bbb",
+				inspect + "registry.example/broken@sha256:ccc",
 				"image rm registry.example/broken@sha256:ccc",
+				inspect + "registry.example/fresh@sha256:eee",
+				inspect + "registry.example/gone@sha256:fff",
 			},
 			wantLog: "broken store",
 		},

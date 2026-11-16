@@ -205,11 +205,15 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 
 // imagePruneScript also removes unused digest-only images: on the containerd image store a
 // Swarm digest pull keeps a repo@digest name, so the image is never dangling. rm without
-// --force skips images any container uses, including the task history kept for rollback.
+// --force keeps images any container uses, including the task history kept for rollback,
+// and the age check keeps fresh pulls a concurrent deployment has not started yet.
 const imagePruneScript = `docker image prune --force &&
+cutoff=$(($(date +%s) - 3600)) &&
 docker image ls --digests --format '{{.Tag}} {{.Repository}}@{{.Digest}}' |
 awk '$1 == "<none>" && $2 !~ /<none>/ {print $2}' |
 while read -r ref; do
+	pulled=$(docker image inspect --format '{{.Metadata.LastTagTime.Unix}}' "$ref" 2>/dev/null) || continue
+	[ "$pulled" -lt "$cutoff" ] || continue
 	out=$(docker image rm "$ref" 2>&1) || case "$out" in *conflict*) ;; *) echo "$out" >&2 ;; esac
 done`
 

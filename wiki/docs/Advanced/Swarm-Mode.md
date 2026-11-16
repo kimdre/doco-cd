@@ -38,7 +38,7 @@ If you later change the content of the config to `hello universe`, doco-cd will 
 
 With `prune_images` enabled, doco-cd runs a global job on every node after a deployment.
 It prunes dangling images and removes unused images that are known only by their digest, which is how Swarm pulls service images.
-Images that any container still uses, running or stopped, are kept.
+Images that any container still uses, running or stopped, are kept, and so are images pulled within the last hour, which another deployment may be about to use.
 
 Swarm keeps the containers of replaced tasks as task history so that a service can be rolled back, and those containers keep their images in use.
 With the default task history limit of 5, the images a deployment replaced therefore stay on the nodes until Swarm drops the old tasks.
