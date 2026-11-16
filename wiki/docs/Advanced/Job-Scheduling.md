@@ -98,6 +98,9 @@ The execution mode determines how scheduled jobs are run and managed by doco-cd 
     - Docker (Standalone): the container is created but not started.
     - Docker Swarm: the service is deployed with `0` replicas (see the limitation for `global` restart-mode jobs below).
 
+Changes to `cd.doco.job.*` labels trigger a redeployment even when a Swarm job service has `#!yaml deploy.replicas: 0`.
+This updates the scheduler configuration without starting the job.
+
 ### `restart`
 
 By default, scheduled jobs will be executed in `restart` mode, which means the service will be created on deployment 

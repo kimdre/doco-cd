@@ -142,9 +142,8 @@ func normalizeSourceRoot(b []byte, sourceRoot string) []byte {
 func ProjectHash(p *types.Project, sourceRoot string) (string, error) {
 	pCopy := clone.New(p)
 
-	// Services scaled to zero never create containers, so they must not affect restart-time hash checks.
-	// Keep scheduled jobs scaled to zero. Their cd.doco.job.* labels configure the scheduler,
-	// so a change to the job definition must trigger a redeploy.
+	// Exclude parked services without job labels from restart-time hash checks.
+	// Keep job definitions so scheduler configuration changes trigger a redeploy.
 	for name, svc := range pCopy.Services {
 		if isScaledToZero(svc) && !hasJobLabels(svc) {
 			delete(pCopy.Services, name)
