@@ -24,6 +24,17 @@ Follow the installation instructions for the following dependencies:
 
 - [Bitwarden Go SDK](https://github.com/bitwarden/sdk-go/tree/main?tab=readme-ov-file#installation) (optional, only required if you're building with Bitwarden support. Not required when building with the `nobitwarden` build tag)
 
+#### Bitwarden SDK library and LLVM bitcode
+
+The prebuilt Bitwarden SDK library contains LLVM bitcode sections. Go 1.27.4 and later refuse to link libraries with these sections.
+The script `scripts/strip-bitwarden-lto.sh` removes them from the library in your Go module cache.
+The Make targets that compile the Bitwarden SDK (`make test`, `make fmt`, `make build-bitwarden`, and others) run this script automatically. You can also run it with `make strip-bitwarden-lto`.
+
+The script needs an `objcopy` that can edit the library:
+
+- Linux: GNU `objcopy` from binutils.
+- macOS: LLVM `objcopy`. Install it with `brew install llvm`, or set the `OBJCOPY` environment variable to an LLVM `objcopy` binary (for example `rust-objcopy` from `rustup component add llvm-tools`).
+
 ### Getting started
 
 1. Set up [Git Commit Signing](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits) if you haven't already done so. Please always sign your commits!

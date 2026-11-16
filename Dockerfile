@@ -48,6 +48,8 @@ ARG APP_VERSION=dev
 # armv7 and riscv64 builds are automatically built without Bitwarden
 # CGO_ENABLED=1 and CC=musl-gcc are required for Bitwarden SDK when enabled
 # The sources are bind-mounted from the build context, so they are not copied into a layer
+# strip-bitwarden-lto.sh runs in the same step as the build, because the module
+# cache mount can be empty again after a cache prune
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target="/root/.cache/go-build" \
     --mount=type=bind,target=. \
@@ -56,6 +58,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
         CGO_ENABLED=1 go build -trimpath -tags nobitwarden -ldflags="-s -w -X github.com/kimdre/doco-cd/internal/config/app.Version=${APP_VERSION}" -o / ./cmd/doco-cd; \
     else \
         echo "Building with Bitwarden support"; \
+        sh ./scripts/strip-bitwarden-lto.sh && \
         CGO_ENABLED=1 CC=musl-gcc go build -trimpath -ldflags="-s -w -X github.com/kimdre/doco-cd/internal/config/app.Version=${APP_VERSION} ${BW_SDK_BUILD_FLAGS}" -o / ./cmd/doco-cd; \
     fi
 
