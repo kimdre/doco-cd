@@ -40,6 +40,7 @@ type unchangedSelfClient struct {
 	endpoints     map[string]*network.EndpointSettings
 	volumes       []volume.Volume
 	mounts        []container.MountPoint
+	networkErr    error
 }
 
 func (c unchangedSelfClient) ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
@@ -88,6 +89,10 @@ func (c unchangedSelfClient) ContainerList(context.Context, client.ContainerList
 }
 
 func (c unchangedSelfClient) NetworkInspect(context.Context, string, client.NetworkInspectOptions) (client.NetworkInspectResult, error) {
+	if c.networkErr != nil {
+		return client.NetworkInspectResult{}, c.networkErr
+	}
+
 	return client.NetworkInspectResult{Network: *c.network}, nil
 }
 
@@ -97,6 +102,25 @@ func (c unchangedSelfClient) VolumeList(context.Context, client.VolumeListOption
 
 func (c unchangedSelfClient) VolumeInspect(context.Context, string, client.VolumeInspectOptions) (client.VolumeInspectResult, error) {
 	return client.VolumeInspectResult{}, errdefs.ErrNotFound
+}
+
+func matchedSelfClient(t *testing.T, svc types.ServiceConfig) unchangedSelfClient {
+	t.Helper()
+
+	hash, err := composeServiceHash(svc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const digest = "sha256:running"
+
+	return unchangedSelfClient{
+		labels: map[string]string{
+			api.ConfigHashLabel:  hash,
+			api.ImageDigestLabel: digest,
+		},
+		image: image.InspectResponse{ID: digest},
+	}
 }
 
 // countingInspectClient fails ContainerInspect on the third call.
@@ -641,6 +665,22 @@ func TestSelfServiceUnchangedClosedFailures(t *testing.T) {
 		}
 	})
 
+	t.Run("missing network", func(t *testing.T) {
+		changed := *project
+		svc := project.Services["doco-cd"]
+		svc.Networks = map[string]*types.ServiceNetworkConfig{"backend": {}}
+		changed.Services = types.Services{"doco-cd": svc}
+		changed.Networks = types.Networks{"backend": {Name: "tools_backend"}}
+
+		apiClient := matchedSelfClient(t, svc)
+		apiClient.networkErr = errdefs.ErrNotFound
+
+		unchanged, err := selfServiceUnchanged(t.Context(), apiClient, &changed, target, api.RecreateDiverged, nil)
+		if err != nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
+		}
+	})
+
 	t.Run("external volume rename", func(t *testing.T) {
 		changed := *project
 		svc := project.Services["doco-cd"]
@@ -696,12 +736,26 @@ func TestSelfServiceParentReferenceHandsOver(t *testing.T) {
 			tc.edit(&svc)
 			changed.Services = types.Services{"doco-cd": svc}
 
-			unchanged, err := selfServiceUnchanged(t.Context(), unchangedSelfClient{}, &changed, target, api.RecreateDiverged, nil)
+			unchanged, err := selfServiceUnchanged(t.Context(), matchedSelfClient(t, svc), &changed, target, api.RecreateDiverged, nil)
 			if err != nil || unchanged {
 				t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
 			}
 		})
 	}
+
+	t.Run("dependency restart", func(t *testing.T) {
+		t.Parallel()
+
+		changed := *project
+		svc := project.Services["doco-cd"]
+		svc.DependsOn = types.DependsOnConfig{"db": {Restart: true}}
+		changed.Services = types.Services{"doco-cd": svc}
+
+		unchanged, err := selfServiceUnchanged(t.Context(), matchedSelfClient(t, svc), &changed, target, api.RecreateDiverged, nil)
+		if err != nil || unchanged {
+			t.Fatalf("selfServiceUnchanged() = %v, %v; want handover", unchanged, err)
+		}
+	})
 }
 
 func TestComposeImageContentDigestBranches(t *testing.T) {

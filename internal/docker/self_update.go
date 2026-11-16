@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
@@ -228,7 +229,8 @@ func selfServiceUnchanged(
 	svc := project.Services[target.Service]
 
 	// Compose hashes service: references after resolving them to container:<id>.
-	if selfParentReference(svc) {
+	// A restart: true dependency is stopped during Create, which kills this process.
+	if selfParentReference(svc) || selfDependencyRestarts(svc) {
 		return false, nil
 	}
 
@@ -299,6 +301,16 @@ func selfParentReference(svc types.ServiceConfig) bool {
 	return len(svc.VolumesFrom) > 0
 }
 
+func selfDependencyRestarts(svc types.ServiceConfig) bool {
+	for _, dep := range svc.DependsOn {
+		if dep.Restart {
+			return true
+		}
+	}
+
+	return false
+}
+
 // selfContainerOnNetworks reports whether the running container is attached to
 // every network the service declares, by network ID. External networks count.
 func selfContainerOnNetworks(
@@ -320,7 +332,7 @@ func selfContainerOnNetworks(
 
 		inspected, err := apiClient.NetworkInspect(ctx, name, client.NetworkInspectOptions{})
 		if err != nil {
-			return false, fmt.Errorf("inspect self stack network %s: %w", name, err)
+			return false, selfNetworkInspectErr(name, err)
 		}
 
 		if !endpointHasNetworkID(settings, inspected.Network.ID) {
@@ -346,6 +358,15 @@ func selfServiceNetworkName(project *types.Project, key string) string {
 	}
 
 	return project.Name + "_" + key
+}
+
+// A missing network is created during the handover, so NotFound is not a deploy error.
+func selfNetworkInspectErr(name string, err error) error {
+	if errdefs.IsNotFound(err) {
+		return nil
+	}
+
+	return fmt.Errorf("inspect self stack network %s: %w", name, err)
 }
 
 func endpointHasNetworkID(settings *container.NetworkSettings, id string) bool {
