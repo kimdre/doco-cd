@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
@@ -77,8 +78,12 @@ func guardSelfUpdate(project *types.Project, target *selfTarget, self *SelfDeplo
 		return nil
 	}
 
-	// The successor of that handover owns the commit status now.
+	// The successor finishes the handover's check. Close only the check this run opened.
 	self.stopPhaseReports()
+
+	if !legacyCommitStatusShared(self, active) {
+		self.concludeOwnStatus()
+	}
 
 	// Not a failure: the handover this instance is part of is still being
 	// converged. Reporting it as one would record a failed deploy and make
@@ -89,6 +94,23 @@ func guardSelfUpdate(project *types.Project, target *selfTarget, self *SelfDeplo
 	)
 
 	return selfupdate.ErrHandover
+}
+
+// legacyCommitStatusShared reports whether this run posts to the handover's
+// legacy commit status. Closing that status would replace the pending result.
+func legacyCommitStatusShared(self *SelfDeployInput, active *selfupdate.Record) bool {
+	if self == nil || self.CommitStatus == nil || active.Source.CommitStatus == nil {
+		return false
+	}
+
+	own := self.CommitStatus
+	theirs := active.Source.CommitStatus
+
+	if own.CommitSHA == "" || own.CommitSHA != theirs.CommitSHA || own.Context != theirs.Context {
+		return false
+	}
+
+	return own.Target == nil || own.Target.Backend != commitstatus.BackendChecks
 }
 
 func selfUpdateLogger(self *SelfDeployInput) *slog.Logger {

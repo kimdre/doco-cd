@@ -222,14 +222,18 @@ func TestPhaseReporterContinuesAfterOrdinaryFailure(t *testing.T) {
 
 // checkPhaseServer records the titles of check run updates and answers with status.
 type checkPhaseServer struct {
-	mu     sync.Mutex
-	titles []string
-	status int
+	mu          sync.Mutex
+	titles      []string
+	statuses    []string
+	conclusions []string
+	status      int
 }
 
 func (s *checkPhaseServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Output struct {
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+		Output     struct {
 			Title string `json:"title"`
 		} `json:"output"`
 	}
@@ -244,6 +248,8 @@ func (s *checkPhaseServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	s.titles = append(s.titles, body.Output.Title)
+	s.statuses = append(s.statuses, body.Status)
+	s.conclusions = append(s.conclusions, body.Conclusion)
 	status := s.status
 	s.mu.Unlock()
 
@@ -257,6 +263,13 @@ func (s *checkPhaseServer) snapshot() []string {
 	defer s.mu.Unlock()
 
 	return slices.Clone(s.titles)
+}
+
+func (s *checkPhaseServer) results() (titles, statuses, conclusions []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return slices.Clone(s.titles), slices.Clone(s.statuses), slices.Clone(s.conclusions)
 }
 
 func newPhaseTestManager(t *testing.T, server *httptest.Server) *StageManager {
@@ -350,5 +363,60 @@ func TestStartPhaseReporterSkipsUnsupportedDeployments(t *testing.T) {
 				t.Fatal("startPhaseReporter() returned a reporter, want nil")
 			}
 		})
+	}
+}
+
+func TestConcludeCollidingCommitStatusClosesOwnCheck(t *testing.T) {
+	t.Parallel()
+
+	checks := &checkPhaseServer{}
+	server := httptest.NewServer(checks)
+	t.Cleanup(server.Close)
+
+	sm := newPhaseTestManager(t, server)
+	sm.concludeCollidingCommitStatus(t.Context())
+
+	const want = "Skipped: self-update handover in progress"
+
+	titles, statuses, conclusions := checks.results()
+	if len(titles) != 1 || titles[0] != want || statuses[0] != "completed" || conclusions[0] != "skipped" {
+		t.Fatalf("check = titles %q statuses %q conclusions %q, want completed/skipped", titles, statuses, conclusions)
+	}
+
+	sm.inProgressPosted = false
+	sm.commitStatusTarget.CheckRunID = 0
+	sm.concludeCollidingCommitStatus(t.Context())
+
+	if got := checks.snapshot(); len(got) != 1 {
+		t.Fatalf("check titles = %q, want no second post", got)
+	}
+
+	sm.commitStatusTarget.CheckRunID = 123
+	sm.concludeCollidingCommitStatus(t.Context())
+
+	if _, _, conclusions = checks.results(); len(conclusions) != 2 || conclusions[1] != "skipped" {
+		t.Fatalf("queued check conclusions = %q, want a second skipped close", conclusions)
+	}
+}
+
+func TestDeployRequestClosesCollidingCheck(t *testing.T) {
+	t.Parallel()
+
+	checks := &checkPhaseServer{}
+	server := httptest.NewServer(checks)
+	t.Cleanup(server.Close)
+
+	sm := newPhaseTestManager(t, server)
+	req := sm.deployRequest(t.Context(), sm.Log, "deadbeef", nil)
+
+	if req.ConcludeOwnStatus == nil {
+		t.Fatal("deploy request has no colliding-check close")
+	}
+
+	req.ConcludeOwnStatus()
+
+	_, statuses, conclusions := checks.results()
+	if len(statuses) != 1 || statuses[0] != "completed" || len(conclusions) != 1 || conclusions[0] != "skipped" {
+		t.Fatalf("check status = %q conclusion = %q, want completed/skipped", statuses, conclusions)
 	}
 }

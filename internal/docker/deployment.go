@@ -191,6 +191,9 @@ type DeployRequest struct {
 	CommitStatus *selfupdate.CommitStatusInfo
 	// SelfUpdateRecovery preserves the failure target and desired fingerprints across a Swarm handover.
 	SelfUpdateRecovery *SwarmRecoveryInfo
+	// ConcludeOwnStatus closes the commit status this deployment already
+	// opened when it skips because another handover is still in progress.
+	ConcludeOwnStatus func() `validate:"-"`
 	// PhaseReporter optionally receives the deployment's phase changes. It is
 	// stopped before a self-update hands over, so it never reports past the
 	// point where a successor takes over the commit status.
