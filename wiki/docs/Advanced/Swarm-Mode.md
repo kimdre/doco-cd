@@ -34,6 +34,23 @@ For example, if you deploy a stack named `myapp` with a config named `db-setting
 
 If you later change the content of the config to `hello universe`, doco-cd will create a new config named `myapp_db-settings_0b5c6934`, redeploy the service/container with the new config and then prune older config revisions according to the configured retention.
 
+## Image pruning
+
+With `prune_images` enabled, doco-cd runs a global job on every node after a deployment.
+It prunes dangling images and removes unused images whose only name is a single digest reference, which is how Swarm pulls service images.
+Images that any container still uses, running or stopped, are kept, and so are images pulled within the last hour, which another deployment may be about to use.
+Images that also have a tag or a digest reference in another repository are kept as well.
+
+Swarm keeps the containers of replaced tasks as task history so that a service can be rolled back, and those containers keep their images in use.
+With the default task history limit of 5, the images a deployment replaced therefore stay on the nodes until Swarm drops the old tasks.
+To free them on the next prune, lower the limit on a manager node:
+
+```shell
+docker swarm update --task-history-limit 1
+```
+
+`docker service rollback` still works with a lower limit or with `0`, because Swarm rolls back to the previous service spec and pulls its image again if it is no longer on the node, so the registry has to be reachable.
+
 ## Docker API Permissions
 
 Swarm deployments need access to more Docker API resources than Compose deployments, namely
