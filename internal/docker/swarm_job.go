@@ -203,9 +203,28 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	return nil
 }
 
+// imagePruneScript also removes unused digest-only images: on the containerd image store a
+// Swarm digest pull keeps a repo@digest name, so the image is never dangling. rm without
+// --force keeps images any container uses, including the task history kept for rollback,
+// and the age check keeps fresh pulls a concurrent deployment has not started yet.
+// Images with any other name are skipped, because rm would only untag them without
+// checking for containers. The containerd store also lists digest names in RepoTags.
+const imagePruneScript = `docker image prune --force &&
+cutoff=$(($(date +%s) - 3600)) &&
+docker image ls --digests --format '{{.Tag}} {{.Repository}}@{{.Digest}}' |
+awk '$1 == "<none>" && $2 !~ /<none>/ {print $2}' |
+while read -r ref; do
+	info=$(docker image inspect --format '{{.Metadata.LastTagTime.Unix}}{{range .RepoTags}} {{.}}{{end}}{{range .RepoDigests}} {{.}}{{end}}' "$ref" 2>/dev/null) || continue
+	set -- $info
+	[ "$1" -lt "$cutoff" ] || continue
+	shift
+	for name; do [ "$name" = "$ref" ] || continue 2; done
+	out=$(docker image rm "$ref" 2>&1) || case "$out" in *conflict*) ;; *) echo "$out" >&2 ;; esac
+done`
+
 // RunImagePruneJob runs a Docker Swarm global job to prune unused images on all nodes.
 func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli, logs ...*slog.Logger) error {
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, []string{"docker", "image", "prune", "--force"}, "image-prune", logs...)
+	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, []string{"sh", "-c", imagePruneScript}, "image-prune", logs...)
 }
 
 // RunImageRemoveJob runs a Docker Swarm global job to remove specified images.

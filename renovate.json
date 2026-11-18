@@ -3,7 +3,9 @@
   "extends": [
     "config:best-practices"
   ],
-  "dependencyDashboardLabels": ["dependencies"],
+  "dependencyDashboard": {
+    "labels": ["dependencies"]
+  },
   "labels": ["dependencies"],
   "timezone": "Europe/Berlin",
   "schedule": ["* 22-23,0-7 * * *"],

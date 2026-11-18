@@ -193,7 +193,7 @@ Exit results are kept in memory. When no result is available, the API falls back
 
 !!! note "Restart policy constraints"
 
-    - Docker (Standalone): service `restart` must be unset or `no`
+    - Docker (Standalone): the effective `restart` policy must be unset or `no`. If you also set `deploy.restart_policy.condition`, it takes precedence over `restart`. Use `none` to disable restarts.
     - Docker Swarm: service `deploy.restart_policy.condition` must be unset or `none`
 
 Use the following service labels to configure scheduled jobs:

@@ -23,12 +23,12 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.51.0
 	github.com/bitwarden/sdk-go/v2 v2.1.0
 	github.com/caarlos0/env/v11 v11.4.2
-	github.com/compose-spec/compose-go/v2 v2.16.2
+	github.com/compose-spec/compose-go/v2 v2.17.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/platforms v1.0.0-rc.5
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.9.3+incompatible
-	github.com/docker/compose/v5 v5.7.1
+	github.com/docker/cli v29.10.0+incompatible
+	github.com/docker/compose/v5 v5.7.2
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getkin/kin-openapi v0.153.0
 	github.com/getsops/sops/v3 v3.13.3
@@ -87,7 +87,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal v1.2.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20261006220739-8c912ac31dd4 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.1 // indirect
-	github.com/DefangLabs/secret-detector v0.0.0-20260916192156-3e28d7ed64df // indirect
+	github.com/DefangLabs/secret-detector v1.1.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.35.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.58.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.58.0 // indirect
@@ -220,7 +220,6 @@ require (
 	github.com/in-toto/attestation v1.2.0 // indirect
 	github.com/in-toto/in-toto-golang v0.11.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/inhies/go-bytesize v0.0.0-20220417184213-4913239db9cf // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jedisct1/go-minisign v0.0.0-20230811132847-661be99b8267 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect

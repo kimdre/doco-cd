@@ -46,6 +46,14 @@ include:
 
 With `project_directory: .`, any `.env` file you place in your repository root (or the directory configured as `working_dir` in `.doco-cd.yml`) will be picked up correctly by the included compose file.
 
+For nested includes, relative `project_directory` and include-level `env_file` paths are resolved from the project directory of the file that declares the include, not from where doco-cd started.
+
+## Configuring restart policies in standalone mode
+
+Define the complete restart policy in either `restart` or `deploy.restart_policy`. Docker Compose can ignore `restart` when `deploy.restart_policy` is present, even if the block only sets `delay` ([docker/compose#14383](https://github.com/docker/compose/issues/14383)).
+
+For example, use `restart: on-failure:3`, or set both `condition: on-failure` and `max_attempts: 3` under `deploy.restart_policy`. Do not split those settings between the two fields.
+
 ## Removing a container service
 
 === "Docker Standalone"
