@@ -207,13 +207,18 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 // Swarm digest pull keeps a repo@digest name, so the image is never dangling. rm without
 // --force keeps images any container uses, including the task history kept for rollback,
 // and the age check keeps fresh pulls a concurrent deployment has not started yet.
+// Images with any other name are skipped, because rm would only untag them without
+// checking for containers. The containerd store also lists digest names in RepoTags.
 const imagePruneScript = `docker image prune --force &&
 cutoff=$(($(date +%s) - 3600)) &&
 docker image ls --digests --format '{{.Tag}} {{.Repository}}@{{.Digest}}' |
 awk '$1 == "<none>" && $2 !~ /<none>/ {print $2}' |
 while read -r ref; do
-	pulled=$(docker image inspect --format '{{.Metadata.LastTagTime.Unix}}' "$ref" 2>/dev/null) || continue
-	[ "$pulled" -lt "$cutoff" ] || continue
+	info=$(docker image inspect --format '{{.Metadata.LastTagTime.Unix}}{{range .RepoTags}} {{.}}{{end}}{{range .RepoDigests}} {{.}}{{end}}' "$ref" 2>/dev/null) || continue
+	set -- $info
+	[ "$1" -lt "$cutoff" ] || continue
+	shift
+	for name; do [ "$name" = "$ref" ] || continue 2; done
 	out=$(docker image rm "$ref" 2>&1) || case "$out" in *conflict*) ;; *) echo "$out" >&2 ;; esac
 done`
 

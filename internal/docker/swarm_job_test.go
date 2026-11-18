@@ -102,9 +102,12 @@ case "$1 $2" in
 "image ls") printf '%s\n' "$FAKE_IMAGES" ;;
 "image inspect")
 	case "$5" in
-	*fresh*) date +%s ;;
+	*fresh*) echo "$(date +%s) $5 $5" ;;
 	*gone*) exit 1 ;;
-	*) echo 1700000000 ;;
+	*graphdriver*) echo "1700000000 $5" ;;
+	*aliased*) echo "1700000000 $5 other.example/app:1.0 $5 other.example/app@sha256:hhh" ;;
+	*mirrored*) echo "1700000000 $5 mirror.example/app@sha256:iii $5 mirror.example/app@sha256:iii" ;;
+	*) echo "1700000000 $5 $5" ;;
 	esac ;;
 "image rm")
 	case "$3" in
@@ -119,15 +122,18 @@ func TestImagePruneScript(t *testing.T) {
 
 	images := strings.Join([]string{
 		"<none> registry.example/replaced@sha256:aaa",
+		"<none> registry.example/graphdriver@sha256:ggg",
 		"<none> registry.example/inuse@sha256:bbb",
 		"<none> registry.example/broken@sha256:ccc",
 		"<none> registry.example/fresh@sha256:eee",
 		"<none> registry.example/gone@sha256:fff",
+		"<none> registry.example/aliased@sha256:hhh",
+		"<none> registry.example/mirrored@sha256:iii",
 		"1.0 registry.example/tagged@sha256:ddd",
 		"<none> <none>@<none>",
 	}, "\n")
 
-	inspect := "image inspect --format {{.Metadata.LastTagTime.Unix}} "
+	inspect := "image inspect --format {{.Metadata.LastTagTime.Unix}}{{range .RepoTags}} {{.}}{{end}}{{range .RepoDigests}} {{.}}{{end}} "
 
 	testCases := []struct {
 		name      string
@@ -137,19 +143,23 @@ func TestImagePruneScript(t *testing.T) {
 		wantLog   string
 	}{
 		{
-			name:      "removes only unused digest-only images pulled over an hour ago",
+			name:      "removes only unused images known by a single digest name and pulled over an hour ago",
 			pruneExit: "0",
 			wantCalls: []string{
 				"image prune --force",
 				"image ls --digests --format {{.Tag}} {{.Repository}}@{{.Digest}}",
 				inspect + "registry.example/replaced@sha256:aaa",
 				"image rm registry.example/replaced@sha256:aaa",
+				inspect + "registry.example/graphdriver@sha256:ggg",
+				"image rm registry.example/graphdriver@sha256:ggg",
 				inspect + "registry.example/inuse@sha256:bbb",
 				"image rm registry.example/inuse@sha256:bbb",
 				inspect + "registry.example/broken@sha256:ccc",
 				"image rm registry.example/broken@sha256:ccc",
 				inspect + "registry.example/fresh@sha256:eee",
 				inspect + "registry.example/gone@sha256:fff",
+				inspect + "registry.example/aliased@sha256:hhh",
+				inspect + "registry.example/mirrored@sha256:iii",
 			},
 			wantLog: "broken store",
 		},
