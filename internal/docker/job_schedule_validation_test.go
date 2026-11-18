@@ -2,10 +2,61 @@ package docker
 
 import (
 	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
 )
+
+func TestLoadedComposeJobRestartPolicies(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name           string
+		restartLine    string
+		condition      string
+		wantJobErr     bool
+		wantOneShotErr bool
+	}{
+		{name: "deploy policy only", condition: "any", wantJobErr: true, wantOneShotErr: true},
+		{name: "on failure", condition: "on-failure", wantJobErr: true},
+		{name: "deploy policy disables restarts", restartLine: "    restart: always\n", condition: "none"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			createComposeFile(t, filepath.Join(dir, "compose.yaml"), fmt.Sprintf(`services:
+  app:
+    image: alpine:3.22
+%s    deploy:
+      restart_policy:
+        condition: %s
+    labels:
+      %s: "true"
+      %s: "@every 1h"
+      %s: "true"
+`, tt.restartLine, tt.condition, DocoCDJobLabels.JobEnabled, DocoCDJobLabels.JobSchedule, DocoCDLabels.Deployment.OneShot))
+
+			project, err := LoadCompose(t.Context(), nil, dir, dir, "demo", []string{"compose.yaml"}, nil, nil, nil, ComposeLoadOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = validateScheduledJobPolicies(project, false)
+			if (err != nil) != tt.wantJobErr || err != nil && !strings.Contains(err.Error(), "deploy.restart_policy.condition") {
+				t.Errorf("scheduled job validation error = %v, want restart policy error = %v", err, tt.wantJobErr)
+			}
+
+			_, err = getOneShotServices(project)
+			if (err != nil) != tt.wantOneShotErr || err != nil && !strings.Contains(err.Error(), "deploy.restart_policy.condition") {
+				t.Errorf("one-shot validation error = %v, want restart policy error = %v", err, tt.wantOneShotErr)
+			}
+		})
+	}
+}
 
 func TestValidateScheduledJobPolicies_PreStart(t *testing.T) {
 	t.Parallel()
