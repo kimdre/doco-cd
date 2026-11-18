@@ -55,7 +55,7 @@ func validateScheduledJobPolicies(project *types.Project, swarmMode bool) error 
 			continue
 		}
 
-		return fmt.Errorf("service %s: restart=%q is not allowed for scheduled services; use no or unset", serviceName, svc.Restart)
+		return fmt.Errorf("service %s: effective restart policy %q is not allowed for scheduled services; disable restarts with restart: \"no\" or deploy.restart_policy.condition: none", serviceName, svc.Restart)
 	}
 
 	return nil

@@ -127,6 +127,52 @@ func TestLoadCompose(t *testing.T) {
 	}
 }
 
+func TestLoadCompose_NestedIncludePaths(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	nested := filepath.Join(root, "nested")
+	runtimeDir := filepath.Join(nested, "runtime")
+
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	createComposeFile(t, filepath.Join(root, "compose.yaml"), "include: [nested/compose.yaml]\n")
+	createComposeFile(t, filepath.Join(nested, "compose.yaml"), `include:
+  - path: explicit.yaml
+    env_file: selected.env
+  - path: default.yaml
+    project_directory: runtime
+`)
+	createComposeFile(t, filepath.Join(nested, "explicit.yaml"), `services:
+  explicit:
+    image: alpine
+    environment:
+      MARKER: ${DOCO_CD_INCLUDE_MARKER:?}
+`)
+	createComposeFile(t, filepath.Join(nested, "default.yaml"), `services:
+  default:
+    image: alpine
+    environment:
+      MARKER: ${DOCO_CD_INCLUDE_MARKER:?}
+`)
+	createComposeFile(t, filepath.Join(nested, "selected.env"), "DOCO_CD_INCLUDE_MARKER=explicit\n")
+	createComposeFile(t, filepath.Join(runtimeDir, ".env"), "DOCO_CD_INCLUDE_MARKER=default\n")
+
+	project, err := LoadCompose(t.Context(), nil, root, root, "nested-include", []string{"compose.yaml"}, nil, nil, nil, ComposeLoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"explicit", "default"} {
+		got := project.Services[name].Environment["MARKER"]
+		if got == nil || *got != name {
+			t.Errorf("service %s did not get MARKER=%s from its include", name, name)
+		}
+	}
+}
+
 // TestLoadCompose_PassEnvHonoredIndependentOfEnvVar proves that whether the doco-cd process's
 // own OS environment variables are passed through for interpolation is controlled solely by
 // ComposeLoadOptions.PassEnv, not by reading the PASS_ENV environment variable directly. A stale
