@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -115,10 +116,15 @@ func TestRegisterRoutesUsesExpectedPatternsAndOpaqueMounts(t *testing.T) {
 		APIPath + "/job/{jobName}/run",
 		APIPath + "/projects",
 		APIPath + "/project/{projectName}",
-		APIPath + "/project/{projectName}/{action}",
+		APIPath + "/project/{projectName}/start",
+		APIPath + "/project/{projectName}/stop",
+		APIPath + "/project/{projectName}/restart",
+		APIPath + "/project/{projectName}/recreate",
 		APIPath + "/stacks",
 		APIPath + "/stack/{stackName}",
-		APIPath + "/stack/{stackName}/{action}",
+		APIPath + "/stack/{stackName}/scale",
+		APIPath + "/stack/{stackName}/restart",
+		APIPath + "/stack/{stackName}/run",
 		APIPath + "/poll/run",
 		APIPath + "/storage/compact",
 		APIPath + "/sync-windows",
@@ -131,6 +137,18 @@ func TestRegisterRoutesUsesExpectedPatternsAndOpaqueMounts(t *testing.T) {
 		_, matchedPattern := mux.Handler(request)
 		if matchedPattern != pattern {
 			t.Errorf("request for %q matched %q", pattern, matchedPattern)
+		}
+	}
+
+	for _, path := range []string{
+		APIPath + "/project/project-name/invalid",
+		APIPath + "/stack/stack-name/invalid",
+	} {
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))
+
+		if response.Code != http.StatusNotFound {
+			t.Errorf("POST %s status = %d, want 404", path, response.Code)
 		}
 	}
 
@@ -164,17 +182,13 @@ func patternRequestPath(pattern string) string {
 		return APIPath + "/job/job-name/run"
 	case APIPath + "/project/{projectName}":
 		return APIPath + "/project/project-name"
-	case APIPath + "/project/{projectName}/{action}":
-		return APIPath + "/project/project-name/restart"
 	case APIPath + "/stack/{stackName}":
 		return APIPath + "/stack/stack-name"
-	case APIPath + "/stack/{stackName}/{action}":
-		return APIPath + "/stack/stack-name/restart"
 	case WebhookPath + "/{customTarget}":
 		return WebhookPath + "/production"
 	case "POST " + MCPPath:
 		return MCPPath
 	default:
-		return pattern
+		return strings.NewReplacer("{projectName}", "project-name", "{stackName}", "stack-name").Replace(pattern)
 	}
 }

@@ -34,17 +34,20 @@ func TestStackActionApiHandlerValidationPrecedence(t *testing.T) {
 		wantStatus int
 		contains   string
 	}{
-		{name: "invalid action before method", path: "/stack/stack/invalid", method: http.MethodGet, wantStatus: http.StatusBadRequest, contains: "invalid action"},
+		{name: "unknown action", path: "/stack/stack/invalid", method: http.MethodGet, wantStatus: http.StatusNotFound, contains: "404 page not found"},
 		{name: "method before wait parsing", path: "/stack/stack/restart?wait=invalid", method: http.MethodGet, wantStatus: http.StatusMethodNotAllowed, contains: "invalid http method"},
 		{name: "invalid wait aborts action", path: "/stack/stack/restart?wait=invalid", method: http.MethodPost, wantStatus: http.StatusBadRequest, contains: "wait"},
 		{name: "invalid replicas aborts action", path: "/stack/stack/scale?replicas=invalid", method: http.MethodPost, wantStatus: http.StatusBadRequest, contains: "replicas"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			mux := http.NewServeMux()
-			mux.HandleFunc("/stack/{stackName}/{action}", h.StackActionApiHandler)
 
-			req := httptest.NewRequest(testCase.method, testCase.path, nil)
+			mux := http.NewServeMux()
+			if _, err := RegisterRoutes(mux, h, Mounts{}); err != nil {
+				t.Fatal(err)
+			}
+
+			req := httptest.NewRequest(testCase.method, APIPath+testCase.path, nil)
 			req.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 			mux.ServeHTTP(rr, req)
 
@@ -62,10 +65,13 @@ func TestStackActionApiHandlerValidationPrecedence(t *testing.T) {
 func TestStackActionApiHandlerLooksUpStackBeforeValidation(t *testing.T) {
 	h := newStackActionRESTTestHandler(t, nil, nil)
 	rr := httptest.NewRecorder()
-	mux := http.NewServeMux()
-	mux.HandleFunc("/stack/{stackName}/{action}", h.StackActionApiHandler)
 
-	req := httptest.NewRequest(http.MethodGet, "/stack/missing/invalid", nil)
+	mux := http.NewServeMux()
+	if _, err := RegisterRoutes(mux, h, Mounts{}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, APIPath+"/stack/missing/restart", nil)
 	req.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 	mux.ServeHTTP(rr, req)
 
@@ -178,6 +184,50 @@ func TestStackActionApiHandlerSuccessResponses(t *testing.T) {
 	}
 }
 
+func TestRegisteredStackActionRoutes(t *testing.T) {
+	services := []dockerswarmtypes.Service{
+		{ID: "web-id", Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{Name: "stack_web"},
+			Mode:        dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}},
+		}},
+		{ID: "job-id", Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{Name: "stack_job"},
+			Mode:        dockerswarmtypes.ServiceMode{ReplicatedJob: &dockerswarmtypes.ReplicatedJob{}},
+		}},
+	}
+	h := newStackActionRESTSuccessTestHandler(t, services)
+	mux := http.NewServeMux()
+
+	if _, err := RegisterRoutes(mux, h, Mounts{}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		status int
+		body   string
+	}{
+		{http.MethodPost, "/stack/stack/scale?replicas=2&wait=false", http.StatusOK, "stack scaled: stack to 2 replicas"},
+		{http.MethodPost, "/stack/stack/restart", http.StatusOK, "stack restarted: stack"},
+		{http.MethodPost, "/stack/stack/run", http.StatusOK, "1 job(s) retriggered in stack: stack"},
+		{http.MethodPost, "/stack/stack/invalid", http.StatusNotFound, "404 page not found"},
+		{http.MethodGet, "/stack/stack/restart", http.StatusMethodNotAllowed, "invalid http method"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			request := httptest.NewRequest(tc.method, APIPath+tc.path, nil)
+			request.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
+
+			response := httptest.NewRecorder()
+			mux.ServeHTTP(response, request)
+
+			if response.Code != tc.status || !strings.Contains(response.Body.String(), tc.body) {
+				t.Fatalf("response = %d %s, want %d containing %q", response.Code, response.Body.String(), tc.status, tc.body)
+			}
+		})
+	}
+}
+
 // newStackActionRESTSuccessTestHandler backs stack action success tests with a
 // fake Docker daemon that lists and inspects the given services and accepts
 // every service update.
@@ -229,10 +279,13 @@ func callStackActionREST(t *testing.T, h *Handler, requestPath string) *httptest
 	t.Helper()
 
 	rr := httptest.NewRecorder()
-	mux := http.NewServeMux()
-	mux.HandleFunc("/stack/{stackName}/{action}", h.StackActionApiHandler)
 
-	req := httptest.NewRequest(http.MethodPost, requestPath, nil)
+	mux := http.NewServeMux()
+	if _, err := RegisterRoutes(mux, h, Mounts{}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, APIPath+requestPath, nil)
 	req.Header.Set(restAPI.KeyHeader, h.appConfig.APIKeys[0].Key)
 	mux.ServeHTTP(rr, req)
 

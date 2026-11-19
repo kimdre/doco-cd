@@ -58,44 +58,42 @@ func TestHandler_ProjectApiHandler(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		pattern        string
 		path           string
 		method         string
-		handler        http.HandlerFunc
 		expectedStatus int
 		assertRunning  bool
 	}{
-		{"Get all Projects", "/projects", "/projects?all=true", http.MethodGet, h.GetProjectsApiHandler, http.StatusOK, false},
-		{"Get Project", "/project/{projectName}", "/project/{projectName}", http.MethodGet, h.ProjectApiHandler, http.StatusOK, false},
-		{"Get Project - Non-existent Project", "/project/{projectName}", "/project/nonexistent", http.MethodGet, h.ProjectApiHandler, http.StatusNotFound, false},
-		{"Get Project - Missing Path Param", "/project/{projectName}", "/project/", http.MethodGet, h.ProjectApiHandler, http.StatusNotFound, false},
-		{"Remove Project - With all volumes", "/project/{projectName}", "/project/{projectName}?volumes=true&images=false", http.MethodDelete, h.ProjectApiHandler, http.StatusOK, false},
-		{"Remove Project - With all images", "/project/{projectName}", "/project/{projectName}?volumes=false&images=true", http.MethodDelete, h.ProjectApiHandler, http.StatusOK, false},
-		{"Remove Project - Invalid images Param", "/project/{projectName}", "/project/{projectName}?images=x", http.MethodDelete, h.ProjectApiHandler, http.StatusBadRequest, false},
-		{"Remove Project - Invalid volumes Param", "/project/{projectName}", "/project/{projectName}?volumes=x", http.MethodDelete, h.ProjectApiHandler, http.StatusBadRequest, false},
-		{"Restart Project", "/project/{projectName}/{action}", "/project/{projectName}/restart", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK, false},
-		{"Restart Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound, false},
-		{"Restart Project - Non-existent Project and Zero Timeout", "/project/{projectName}/{action}", "/project/nonexistent/restart?timeout=0", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound, false},
-		{"Restart Project - Non-existent Project and Overflowing Timeout", "/project/{projectName}/{action}", "/project/nonexistent/restart?timeout=" + strconv.FormatInt(controlplane.MaxProjectActionTimeout+1, 10), http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound, false},
-		{"Restart Project - With Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=60", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK, false},
-		{"Restart Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=x", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest, false},
-		{"Recreate Project", "/project/{projectName}/{action}", "/project/{projectName}/recreate", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK, false},
-		{"Recreate Project Service", "/project/{projectName}/{action}", "/project/{projectName}/recreate?service=nginx", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK, false},
-		{"Recreate Project Missing Service", "/project/{projectName}/{action}", "/project/{projectName}/recreate?service=missing", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound, false},
-		{"Stop Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=x", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest, true},
-		{"Stop Project - Zero Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=0", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest, true},
-		{"Stop Project - Negative Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=-1", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest, true},
-		{"Stop Project - Overflowing Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=" + strconv.FormatInt(controlplane.MaxProjectActionTimeout+1, 10), http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest, true},
-		{"Restart Project - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed, false},
-		{"Restart Project - Invalid Method and Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusNotFound, false},
-		{"Stop Project", "/project/{projectName}/{action}", "/project/{projectName}/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK, false},
-		{"Stop Project - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/stop", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed, true},
-		{"Stop Project - Invalid Method and Zero Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=0", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed, true},
-		{"Stop Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound, false},
-		{"Start Project", "/project/{projectName}/{action}", "/project/{projectName}/start", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK, false},
-		{"Invalid Action", "/project/{projectName}/{action}", "/project/{projectName}/invalid", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest, false},
-		{"Invalid Action - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/invalid", http.MethodGet, h.ProjectActionApiHandler, http.StatusBadRequest, false},
-		{"Invalid Action - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/invalid", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound, false},
+		{"Get all Projects", "/projects?all=true", http.MethodGet, http.StatusOK, false},
+		{"Get Project", "/project/{projectName}", http.MethodGet, http.StatusOK, false},
+		{"Get Project - Non-existent Project", "/project/nonexistent", http.MethodGet, http.StatusNotFound, false},
+		{"Get Project - Missing Path Param", "/project/", http.MethodGet, http.StatusNotFound, false},
+		{"Remove Project - With all volumes", "/project/{projectName}?volumes=true&images=false", http.MethodDelete, http.StatusOK, false},
+		{"Remove Project - With all images", "/project/{projectName}?volumes=false&images=true", http.MethodDelete, http.StatusOK, false},
+		{"Remove Project - Invalid images Param", "/project/{projectName}?images=x", http.MethodDelete, http.StatusBadRequest, false},
+		{"Remove Project - Invalid volumes Param", "/project/{projectName}?volumes=x", http.MethodDelete, http.StatusBadRequest, false},
+		{"Restart Project", "/project/{projectName}/restart", http.MethodPost, http.StatusOK, false},
+		{"Restart Project - Non-existent Project", "/project/nonexistent/restart", http.MethodPost, http.StatusNotFound, false},
+		{"Restart Project - Non-existent Project and Zero Timeout", "/project/nonexistent/restart?timeout=0", http.MethodPost, http.StatusNotFound, false},
+		{"Restart Project - Non-existent Project and Overflowing Timeout", "/project/nonexistent/restart?timeout=" + strconv.FormatInt(controlplane.MaxProjectActionTimeout+1, 10), http.MethodPost, http.StatusNotFound, false},
+		{"Restart Project - With Timeout", "/project/{projectName}/restart?timeout=60", http.MethodPost, http.StatusOK, false},
+		{"Restart Project - Invalid Timeout", "/project/{projectName}/restart?timeout=x", http.MethodPost, http.StatusBadRequest, false},
+		{"Recreate Project", "/project/{projectName}/recreate", http.MethodPost, http.StatusOK, false},
+		{"Recreate Project Service", "/project/{projectName}/recreate?service=nginx", http.MethodPost, http.StatusOK, false},
+		{"Recreate Project Missing Service", "/project/{projectName}/recreate?service=missing", http.MethodPost, http.StatusNotFound, false},
+		{"Stop Project - Invalid Timeout", "/project/{projectName}/stop?timeout=x", http.MethodPost, http.StatusBadRequest, true},
+		{"Stop Project - Zero Timeout", "/project/{projectName}/stop?timeout=0", http.MethodPost, http.StatusBadRequest, true},
+		{"Stop Project - Negative Timeout", "/project/{projectName}/stop?timeout=-1", http.MethodPost, http.StatusBadRequest, true},
+		{"Stop Project - Overflowing Timeout", "/project/{projectName}/stop?timeout=" + strconv.FormatInt(controlplane.MaxProjectActionTimeout+1, 10), http.MethodPost, http.StatusBadRequest, true},
+		{"Restart Project - Invalid Method", "/project/{projectName}/restart", http.MethodGet, http.StatusMethodNotAllowed, false},
+		{"Restart Project - Invalid Method and Non-existent Project", "/project/nonexistent/restart", http.MethodGet, http.StatusNotFound, false},
+		{"Stop Project", "/project/{projectName}/stop", http.MethodPost, http.StatusOK, false},
+		{"Stop Project - Invalid Method", "/project/{projectName}/stop", http.MethodGet, http.StatusMethodNotAllowed, true},
+		{"Stop Project - Invalid Method and Zero Timeout", "/project/{projectName}/stop?timeout=0", http.MethodGet, http.StatusMethodNotAllowed, true},
+		{"Stop Project - Non-existent Project", "/project/nonexistent/stop", http.MethodPost, http.StatusNotFound, false},
+		{"Start Project", "/project/{projectName}/start", http.MethodPost, http.StatusOK, false},
+		{"Invalid Action", "/project/{projectName}/invalid", http.MethodPost, http.StatusNotFound, false},
+		{"Invalid Action - Invalid Method", "/project/{projectName}/invalid", http.MethodGet, http.StatusNotFound, false},
+		{"Invalid Action - Non-existent Project", "/project/nonexistent/invalid", http.MethodPost, http.StatusNotFound, false},
 	}
 
 	for _, tc := range testCases {
@@ -113,13 +111,14 @@ func TestHandler_ProjectApiHandler(t *testing.T) {
 			test.ComposeUp(ctx, t, test.WithYAML(projectAPIComposeContent), test.WithName(stackName))
 
 			endpointPath := path.Join(APIPath, strings.Replace(tc.path, "{projectName}", stackName, 1))
-			endpointPattern := path.Join(APIPath, tc.pattern)
-
 			t.Logf("Testing API endpoint: %s", endpointPath)
 
 			rr := httptest.NewRecorder()
+
 			mux := http.NewServeMux()
-			mux.HandleFunc(endpointPattern, tc.handler)
+			if _, err := RegisterRoutes(mux, &h, Mounts{}); err != nil {
+				t.Fatal(err)
+			}
 
 			req, err := http.NewRequest(tc.method, endpointPath, nil)
 			if err != nil {

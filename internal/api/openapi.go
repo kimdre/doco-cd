@@ -517,16 +517,15 @@ func queryInt64Parameter(name, description string, defaultValue int64, minimum f
 	}
 }
 
-func queryOptionalIntParameter(name, description string, minimum float64) *openapi3.ParameterRef {
-	return &openapi3.ParameterRef{
-		Value: openapi3.NewQueryParameter(name).
-			WithDescription(description).
-			WithSchema(openapi3.NewIntegerSchema().WithMin(minimum)),
-	}
-}
-
 func contextParameter() *openapi3.ParameterRef {
 	return queryStringParameter("context", "Docker context name. Defaults to the default Docker context.")
+}
+
+func actionHandler(handler http.HandlerFunc, action string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.SetPathValue("action", action)
+		handler(w, r)
+	})
 }
 
 func webhookParameters(includeTarget bool) openapi3.Parameters {
@@ -860,17 +859,55 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			},
 		},
 		{
-			Pattern: APIPath + "/project/{projectName}/{action}",
-			Handler: http.HandlerFunc(h.ProjectActionApiHandler),
+			Pattern: APIPath + "/project/{projectName}/start",
+			Handler: actionHandler(h.ProjectActionApiHandler, "start"),
 			Enabled: restEnabled,
 			Root:    APIPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "runComposeProjectAction", "Run a Compose project action", []string{"Projects"}, openapi3.Parameters{
+				operation(http.MethodPost, "startComposeProject", "Start a Compose project", []string{"Projects"}, openapi3.Parameters{
 					pathParameter("projectName", "Compose project name."),
-					pathParameter("action", "Lifecycle action.", "start", "stop", "restart", "recreate"),
 					contextParameter(),
 					timeout,
-					queryStringParameter("service", "Optional service name for recreate action."),
+				}, nil, responses(mutationResponses), apiAuth),
+			},
+		},
+		{
+			Pattern: APIPath + "/project/{projectName}/stop",
+			Handler: actionHandler(h.ProjectActionApiHandler, "stop"),
+			Enabled: restEnabled,
+			Root:    APIPath,
+			Operations: []Operation{
+				operation(http.MethodPost, "stopComposeProject", "Stop a Compose project", []string{"Projects"}, openapi3.Parameters{
+					pathParameter("projectName", "Compose project name."),
+					contextParameter(),
+					timeout,
+				}, nil, responses(mutationResponses), apiAuth),
+			},
+		},
+		{
+			Pattern: APIPath + "/project/{projectName}/restart",
+			Handler: actionHandler(h.ProjectActionApiHandler, "restart"),
+			Enabled: restEnabled,
+			Root:    APIPath,
+			Operations: []Operation{
+				operation(http.MethodPost, "restartComposeProject", "Restart a Compose project", []string{"Projects"}, openapi3.Parameters{
+					pathParameter("projectName", "Compose project name."),
+					contextParameter(),
+					timeout,
+				}, nil, responses(mutationResponses), apiAuth),
+			},
+		},
+		{
+			Pattern: APIPath + "/project/{projectName}/recreate",
+			Handler: actionHandler(h.ProjectActionApiHandler, "recreate"),
+			Enabled: restEnabled,
+			Root:    APIPath,
+			Operations: []Operation{
+				operation(http.MethodPost, "recreateComposeProject", "Recreate a Compose project or service", []string{"Projects"}, openapi3.Parameters{
+					pathParameter("projectName", "Compose project name."),
+					contextParameter(),
+					timeout,
+					queryStringParameter("service", "Optional service name."),
 				}, nil, responses(mutationResponses), apiAuth),
 			},
 		},
@@ -902,18 +939,48 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			},
 		},
 		{
-			Pattern: APIPath + "/stack/{stackName}/{action}",
-			Handler: http.HandlerFunc(h.StackActionApiHandler),
+			Pattern: APIPath + "/stack/{stackName}/scale",
+			Handler: actionHandler(h.StackActionApiHandler, "scale"),
 			Enabled: restEnabled,
 			Root:    APIPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "runSwarmStackAction", "Run a Swarm stack action", []string{"Stacks"}, openapi3.Parameters{
+				operation(http.MethodPost, "scaleSwarmStack", "Scale a Swarm stack or service", []string{"Stacks"}, openapi3.Parameters{
 					pathParameter("stackName", "Swarm stack name."),
-					pathParameter("action", "Stack action.", "scale", "restart", "run"),
 					contextParameter(),
 					queryStringParameter("service", "Optional service name."),
-					queryOptionalIntParameter("replicas", "Non-negative replica count. Required for the scale action.", 0),
-					queryBoolParameter("wait", "Wait for services to become ready.", true),
+					{Value: openapi3.NewQueryParameter("replicas").
+						WithDescription("Non-negative replica count.").
+						WithRequired(true).
+						WithSchema(openapi3.NewIntegerSchema().WithMin(0))},
+					queryBoolParameter("wait", "Wait for services to become ready when scaling. Parsed but has no effect on other actions.", true),
+				}, nil, responses(mutationResponses), apiAuth),
+			},
+		},
+		{
+			Pattern: APIPath + "/stack/{stackName}/restart",
+			Handler: actionHandler(h.StackActionApiHandler, "restart"),
+			Enabled: restEnabled,
+			Root:    APIPath,
+			Operations: []Operation{
+				operation(http.MethodPost, "restartSwarmStack", "Restart a Swarm stack or service", []string{"Stacks"}, openapi3.Parameters{
+					pathParameter("stackName", "Swarm stack name."),
+					contextParameter(),
+					queryStringParameter("service", "Optional service name."),
+					queryBoolParameter("wait", "Wait for services to become ready when scaling. Parsed but has no effect on other actions.", true),
+				}, nil, responses(mutationResponses), apiAuth),
+			},
+		},
+		{
+			Pattern: APIPath + "/stack/{stackName}/run",
+			Handler: actionHandler(h.StackActionApiHandler, "run"),
+			Enabled: restEnabled,
+			Root:    APIPath,
+			Operations: []Operation{
+				operation(http.MethodPost, "runSwarmStack", "Trigger jobs in a Swarm stack", []string{"Stacks"}, openapi3.Parameters{
+					pathParameter("stackName", "Swarm stack name."),
+					contextParameter(),
+					queryStringParameter("service", "Optional service name."),
+					queryBoolParameter("wait", "Wait for services to become ready when scaling. Parsed but has no effect on other actions.", true),
 				}, nil, responses(mutationResponses), apiAuth),
 			},
 		},

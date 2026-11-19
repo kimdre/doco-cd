@@ -184,6 +184,79 @@ func TestOpenAPIDocumentMatchesRouteCatalog(t *testing.T) {
 	}
 }
 
+func TestOpenAPIDocumentsIndividualProjectAndStackActions(t *testing.T) {
+	t.Parallel()
+
+	handler := &Handler{appConfig: &app.Config{}, log: logger.New(logger.LevelCritical)}
+	builder := newSchemaBuilder()
+
+	routes, err := createRouteCatalog(handler, Mounts{}, builder)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	document, _, err := buildOpenAPIDocument(routes, builder.components)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{
+		APIPath + "/project/{projectName}/{action}",
+		APIPath + "/stack/{stackName}/{action}",
+	} {
+		if document.Paths.Find(path) != nil {
+			t.Errorf("generic action path %q must not be documented", path)
+		}
+	}
+
+	for _, tc := range []struct {
+		path       string
+		id         string
+		parameters []string
+	}{
+		{"/project/{projectName}/start", "startComposeProject", []string{"projectName", "context", "timeout"}},
+		{"/project/{projectName}/stop", "stopComposeProject", []string{"projectName", "context", "timeout"}},
+		{"/project/{projectName}/restart", "restartComposeProject", []string{"projectName", "context", "timeout"}},
+		{"/project/{projectName}/recreate", "recreateComposeProject", []string{"projectName", "context", "timeout", "service"}},
+		{"/stack/{stackName}/scale", "scaleSwarmStack", []string{"stackName", "context", "service", "replicas", "wait"}},
+		{"/stack/{stackName}/restart", "restartSwarmStack", []string{"stackName", "context", "service", "wait"}},
+		{"/stack/{stackName}/run", "runSwarmStack", []string{"stackName", "context", "service", "wait"}},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			path := document.Paths.Find(APIPath + tc.path)
+			if path == nil || path.Post == nil {
+				t.Fatalf("POST %s is missing", tc.path)
+			}
+
+			op := path.Post
+			if op.OperationID != tc.id {
+				t.Errorf("operation ID = %q, want %q", op.OperationID, tc.id)
+			}
+
+			if len(op.Parameters) != len(tc.parameters) {
+				t.Errorf("parameters = %d, want %d", len(op.Parameters), len(tc.parameters))
+			}
+
+			for _, name := range tc.parameters {
+				if parameterByName(op.Parameters, name) == nil {
+					t.Errorf("missing parameter %q", name)
+				}
+			}
+
+			if parameterByName(op.Parameters, "action") != nil {
+				t.Error("action must not be a parameter")
+			}
+
+			if tc.id == "scaleSwarmStack" {
+				replicas := parameterByName(op.Parameters, "replicas")
+				if replicas == nil || !replicas.Required {
+					t.Error("replicas must be required for scale")
+				}
+			}
+		})
+	}
+}
+
 func TestDocumentationVersion(t *testing.T) {
 	t.Parallel()
 
