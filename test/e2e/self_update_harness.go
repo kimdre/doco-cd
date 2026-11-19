@@ -741,9 +741,18 @@ func (h *Harness) readJournal() string {
 }
 
 // CrashHookFired reports whether a crash hook left its marker on the data
-// volume. The marker outlives the crashed container and its logs.
+// volume. The marker outlives the crashed container and its logs. The test
+// fails if the volume cannot be read, so a harness error is not reported as a
+// missing marker.
 func (h *Harness) CrashHookFired() bool {
-	return strings.TrimSpace(h.inspectDataVolume("ls /data/self-update/crash-* >/dev/null 2>&1 && echo fired")) == "fired"
+	h.t.Helper()
+
+	output, exitCode, err := h.runOnDataVolume("ls /data/self-update/crash-* >/dev/null 2>&1 && echo fired", true)
+	if err != nil {
+		h.t.Fatalf("check crash hook marker: %v", err)
+	}
+
+	return exitCode == 0 && strings.TrimSpace(output) == "fired"
 }
 
 // inspectDataVolume runs a shell command against the scenario data volume from
@@ -781,10 +790,19 @@ func (h *Harness) runOnDataVolume(script string, readOnly bool) (string, int, er
 		bind += ":ro"
 	}
 
+	// Use the gitserver image, not a fixture image such as alpine:3.22.
+	// Parallel scenarios prune or remove their fixture images, so a fixture
+	// image can disappear at any time. No fixture uses the gitserver image.
+	image, err := buildGitServerImageOnce()
+	if err != nil {
+		return "", 0, fmt.Errorf("build helper image: %w", err)
+	}
+
 	created, err := h.docker.ContainerCreate(h.ctx, client.ContainerCreateOptions{
 		Config: &container.Config{
-			Image: "alpine:3.22",
-			Cmd:   []string{"sh", "-c", script},
+			Image:      image,
+			Entrypoint: []string{"sh", "-c"},
+			Cmd:        []string{script},
 		},
 		HostConfig: &container.HostConfig{
 			Binds:      []string{bind},
