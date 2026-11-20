@@ -15,7 +15,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/git"
-	"github.com/kimdre/doco-cd/internal/lock"
 )
 
 // ErrDeploymentModeConflict means resources in the old deployment mode cannot
@@ -26,30 +25,10 @@ var ErrDeploymentModeConflict = errors.New("deployment mode migration conflicts 
 // but only after proving every discovered resource belongs to this doco-cd deployment.
 // Volumes are deliberately retained for the new mode.
 // It reports whether previous-mode resources were removed.
-func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli command.Cli, contextName, stackName, source string, swarmMode, swarmAvailable bool) (bool, error) {
-	if dockerCli == nil {
-		return false, errors.New("docker cli is required")
-	}
-
-	// Without Swarm capability there is no second mode to migrate between: the
-	// context is either a standalone engine or has Swarm features globally
-	// disabled, in which case its Swarm API must not be probed at all.
-	if !swarmAvailable {
-		return false, nil
-	}
-
-	stackLockKey := lock.StackKey(contextName, stackName)
-
-	lock.LockStack(stackLockKey)
-	defer lock.UnlockStack(stackLockKey)
-
-	required, err := deploymentModeMigrationRequired(ctx, dockerCli.Client(), stackName, source, swarmMode)
-	if err != nil {
+func (s *LockedStack) MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli command.Cli, source string, swarmMode, swarmAvailable bool) (bool, error) {
+	required, err := s.DeploymentModeMigrationRequired(ctx, dockerCli, source, swarmMode, swarmAvailable)
+	if err != nil || !required {
 		return false, err
-	}
-
-	if !required {
-		return false, nil
 	}
 
 	previousMode := !swarmMode
@@ -59,12 +38,12 @@ func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli comm
 	}
 
 	log.Info("removing previous deployment mode before migration",
-		slog.String("stack", stackName),
+		slog.String("stack", s.name),
 		slog.String("from", deploymentModeName(previousMode)),
 		slog.String("to", deploymentModeName(swarmMode)),
 	)
 
-	removeConfig := deployConfig.New(stackName, "")
+	removeConfig := deployConfig.New(s.name, "")
 	removeConfig.RemoveOrphans = true
 	removeConfig.Destroy.Enabled = true
 	removeConfig.Destroy.RemoveVolumes = false
@@ -79,21 +58,17 @@ func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli comm
 
 // DeploymentModeMigrationRequired checks whether the previous runtime mode
 // must be removed without mutating Docker state.
-func DeploymentModeMigrationRequired(ctx context.Context, dockerCli command.Cli, contextName, stackName, source string, swarmMode, swarmAvailable bool) (bool, error) {
+func (s *LockedStack) DeploymentModeMigrationRequired(ctx context.Context, dockerCli command.Cli, source string, swarmMode, swarmAvailable bool) (bool, error) {
 	if dockerCli == nil {
 		return false, errors.New("docker cli is required")
 	}
 
+	// Without Swarm there is no other mode. Do not probe its API.
 	if !swarmAvailable {
 		return false, nil
 	}
 
-	stackLockKey := lock.StackKey(contextName, stackName)
-
-	lock.LockStack(stackLockKey)
-	defer lock.UnlockStack(stackLockKey)
-
-	return deploymentModeMigrationRequired(ctx, dockerCli.Client(), stackName, source, swarmMode)
+	return deploymentModeMigrationRequired(ctx, dockerCli.Client(), s.name, source, swarmMode)
 }
 
 func deploymentModeMigrationRequired(ctx context.Context, dockerClient client.APIClient, stackName, source string, swarmMode bool) (bool, error) {

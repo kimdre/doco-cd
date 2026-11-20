@@ -18,6 +18,7 @@ const (
 	SkipReasonSelfUpdate     = "self-update to this commit failed before"
 	SkipReasonNothingDestroy = "nothing to destroy"
 	SkipReasonPaused         = "deployment paused"
+	SkipReasonStackLocked    = "stack is locked by another operation"
 )
 
 // maxSkippedStacksInSummary bounds the stacks listed in a skipped run summary.
@@ -57,6 +58,12 @@ func NothingToDestroy() error {
 // DeploymentPaused returns an ErrSkipDeployment for a stack when the deployment is paused.
 func DeploymentPaused() error {
 	return &SkipError{Reason: SkipReasonPaused, err: ErrDeploymentPaused}
+}
+
+// StackLocked returns an ErrStackLocked for a stack that another operation,
+// for example a running scheduled job, holds locked. holder names that operation.
+func StackLocked(holder string) error {
+	return &SkipError{Reason: SkipReasonStackLocked, Detail: holder, err: ErrStackLocked}
 }
 
 // WebhookFilterMismatch returns an ErrWebhookFilterMismatch naming the

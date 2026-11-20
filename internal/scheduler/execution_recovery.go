@@ -174,7 +174,15 @@ func (s *scheduler) recoverExecution(ctx context.Context, record *executionRecor
 		}
 	}
 
-	unlockStacks := lockStacks(s.contextName, append([]string{stackName}, resolveStopServiceStacks(cfg.StopServices, stackName)...)...)
+	unlockStacks, err := lockStacks(ctx, s.contextName, scheduledRunLockHolder(job.name, record.RunID),
+		append([]string{stackName}, resolveStopServiceStacks(cfg.StopServices, stackName)...)...)
+	if err != nil {
+		// Leave the record untouched on shutdown so the next process can adopt it.
+		runErr = errors.Join(runErr, err)
+
+		return
+	}
+
 	defer unlockStacks()
 
 	if !record.Reported {

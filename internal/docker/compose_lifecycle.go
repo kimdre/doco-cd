@@ -398,8 +398,13 @@ func RecreateProject(
 	secretProvider secretprovider.SecretProvider,
 	opts ScheduledComposeOptions,
 ) error {
-	lock.LockStack(lock.StackKey(contextName, projectName))
-	defer lock.UnlockStack(lock.StackKey(contextName, projectName))
+	stackLockKey := lock.StackKey(contextName, projectName)
+
+	if err := lock.LockStackContext(ctx, stackLockKey, "project action recreate"); err != nil {
+		return fmt.Errorf("acquire stack lock: %w", err)
+	}
+
+	defer lock.UnlockStack(stackLockKey)
 
 	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
 	if err != nil {

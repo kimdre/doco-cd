@@ -189,7 +189,15 @@ func (s *scheduler) triggerNow(ctx context.Context, runID, jobName, stackName st
 
 	// Lock the job's own stack plus any stacks referenced by stop_services (see lockStacks).
 	lockedStacks := append([]string{stack}, resolveStopServiceStacks(cfg.StopServices, stack)...)
-	unlockStacks := lockStacks(s.contextName, lockedStacks...)
+
+	unlockStacks, err := lockStacks(ctx, s.contextName, scheduledRunLockHolder(job.name, runID), lockedStacks...)
+	if err != nil {
+		// The lock wait only ends early when ctx ends, which is not a run failure.
+		recordTerminalMetrics = false
+		runErr = err
+
+		return runID, runErr
+	}
 
 	defer unlockStacks()
 

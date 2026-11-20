@@ -302,11 +302,14 @@ func (g *syncWindowGate) deferred() map[*deployConfig.Config]struct{} {
 }
 
 // isUnchangedOutcome reports whether err means the stack was already up to date.
+// A skip for a locked stack is not such an outcome: the stack can still have
+// changes that the next run must deploy.
 func isUnchangedOutcome(err error) bool {
 	return errors.Is(err, stages.ErrSkipDeployment) &&
 		!errors.Is(err, stages.ErrSyncWindowBlocked) &&
 		!errors.Is(err, stages.ErrDeploymentPaused) &&
-		!errors.Is(err, stages.ErrWebhookFilterMismatch)
+		!errors.Is(err, stages.ErrWebhookFilterMismatch) &&
+		!errors.Is(err, stages.ErrStackLocked)
 }
 
 func syncWindowLogAttrs(decision syncwindow.Decision) []any {

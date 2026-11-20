@@ -63,6 +63,8 @@ func (m *Manager) Deploy(ctx context.Context, req DeployRequest) error {
 	// Test runs use testName only to make stacks unique and do not need background
 	// Docker event watchers that can outlive the test and race with TempDir cleanup.
 	if req.TestName == "" {
+		deferred := deferLockedStacks(gate.deferred(), results)
+
 		if m.newerPauseObservation(req) {
 			// Keep the newer control intent, but remember operations admitted
 			// before it that actually completed.
@@ -78,12 +80,12 @@ func (m *Manager) Deploy(ctx context.Context, req DeployRequest) error {
 				return err
 			}
 
-			m.addJob(ctx, req, gate.deferred(), completed)
+			m.addJob(ctx, req, deferred, completed)
 
 			return err
 		}
 
-		m.addJob(ctx, req, gate.deferred(), successfulForcedDeployments(results))
+		m.addJob(ctx, req, deferred, successfulForcedDeployments(results))
 	}
 
 	return err
@@ -322,6 +324,24 @@ type stackResult struct {
 	name    string
 	context string
 	err     error
+}
+
+// deferLockedStacks keeps reconciliation on the deployed revision when a poll
+// skipped a locked stack, even if no sync window is configured.
+func deferLockedStacks(deferred map[*deployConfig.Config]struct{}, results []stackResult) map[*deployConfig.Config]struct{} {
+	for _, result := range results {
+		if !errors.Is(result.err, stages.ErrStackLocked) {
+			continue
+		}
+
+		if deferred == nil {
+			deferred = make(map[*deployConfig.Config]struct{})
+		}
+
+		deferred[result.config] = struct{}{}
+	}
+
+	return deferred
 }
 
 func successfulForcedDeployments(results []stackResult) map[*deployConfig.Config]struct{} {
@@ -571,8 +591,15 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 			return err
 		}
 
-		return stageMgr.RunStages(ctx, nil)
+		return stageMgr.RunStages(ctx, nil, nil)
 	}
+
+	stack, err := stageMgr.AcquireStack(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer stack.Release()
 
 	releasePreDeploy, err := m.acquireDeploymentPhase(ctx, deployLog, req.Repository.Name, phasePreDeploy, m.preDeployLimiter, true)
 	if err != nil {
@@ -584,7 +611,7 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 		}
 	}()
 
-	return stageMgr.RunStages(ctx, func(ctx context.Context) (func(), error) {
+	return stageMgr.RunStages(ctx, stack, func(ctx context.Context) (func(), error) {
 		releasePreDeploy()
 		releasePreDeploy = nil
 

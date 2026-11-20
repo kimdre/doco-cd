@@ -739,8 +739,7 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 
 	// No repository-wide lock is taken here:
 	// source preparation is keyed per-revision (internal/source.Prepare/MarkInFlight) and the actual deployment is
-	// keyed per-stack (internal/lock.LockStack, applied deep in internal/docker.Deploy), so unrelated stacks/revisions
-	// within the same repository run concurrently while conflicting ones still serialize at the layer that actually needs it.
+	// keyed per-stack before deployment admission. Unrelated stacks and revisions can run concurrently.
 	handleFn := func(ctx context.Context, w http.ResponseWriter) (controlplane.RunResult, error) {
 		return handleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, metadata, h.testName, h.deployment, h.notifier)
 	}

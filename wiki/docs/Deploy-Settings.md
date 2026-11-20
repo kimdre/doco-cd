@@ -907,6 +907,11 @@ Precedence:
 - Service label `cd.doco.job.wait_running_jobs` (if set)
 - Deployment default `wait_running_jobs`
 
+!!! note
+    An active scheduled run locks its stack. doco-cd checks `wait_running_jobs` only after the deployment has the stack lock,
+    so `#!yaml wait_running_jobs: false` does not let a deployment start during an active run.
+    See [Deployments during a job run](Advanced/Job-Scheduling.md#deployments-during-a-job-run).
+
 ### Swarm settings
 
 The following settings can be configured in the nested `swarm` object:

@@ -1,0 +1,6 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done"]
+    environment:
+      REVISION: "1"

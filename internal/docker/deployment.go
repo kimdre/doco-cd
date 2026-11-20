@@ -218,26 +218,42 @@ func (r runtimeDeployRequest) recordError() {
 	prometheus.DeploymentErrorsTotal.WithLabelValues(r.repositoryLabel, r.deploymentLabel, r.contextLabel).Inc()
 }
 
-// DeployStack performs shared deployment lifecycle work and dispatches to the selected runtime.
+// DeployStack deploys a stack, waiting for the stack lock if needed.
 func DeployStack(ctx context.Context, req DeployRequest) error {
 	if err := validation.Validate(req); err != nil {
 		return fmt.Errorf("validate deploy stack request: %w", err)
 	}
 
+	stack, err := AcquireStackLock(ctx, req.JobLog.With(slog.String("stack", req.DeployConfig.Name)),
+		req.DeployConfig.Context, req.DeployConfig.Name, StackLockOptions{})
+	if err != nil {
+		return fmt.Errorf("acquire stack lock: %w", err)
+	}
+
+	defer stack.Release()
+
+	return stack.deploy(ctx, req)
+}
+
+// Deploy runs the deployment while the caller holds the stack lock.
+func (s *LockedStack) Deploy(ctx context.Context, req DeployRequest) error {
+	if err := validation.Validate(req); err != nil {
+		return fmt.Errorf("validate deploy stack request: %w", err)
+	}
+
+	if key := lock.StackKey(req.DeployConfig.Context, req.DeployConfig.Name); key != s.key {
+		return fmt.Errorf("deploy stack %q with lock for stack %q", key, s.key)
+	}
+
+	return s.deploy(ctx, req)
+}
+
+func (s *LockedStack) deploy(ctx context.Context, req DeployRequest) error {
 	startTime := time.Now()
 	repositoryLabel := resolveDeploymentMetricsRepositoryLabel(req.Payload)
 	deploymentLabel := resolveDeploymentMetricsDeploymentLabel(req.DeployConfig.Name)
 	contextLabel := DisplayContextName(req.DeployConfig.Context)
 	stackLog := req.JobLog.With(slog.String("stack", req.DeployConfig.Name))
-
-	stackLog.Debug("waiting for scheduler/deploy lock")
-
-	stackLockKey := lock.StackKey(req.DeployConfig.Context, req.DeployConfig.Name)
-
-	lock.LockStack(stackLockKey)
-	defer lock.UnlockStack(stackLockKey)
-
-	stackLog.Debug("acquired scheduler/deploy lock")
 
 	deploymentPhase := newDeploymentPhaseState("resolving working directory", req.PhaseReporter)
 
