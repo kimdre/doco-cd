@@ -174,7 +174,7 @@ func rotateSwarmProjectCertificates(
 	}
 	defer unlockSource()
 
-	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, certOpts.Scheduled)
+	project, deployConfig, err := loadScheduledProjectAll(ctx, dockerCli, ref, secretProvider, certOpts.Scheduled)
 	if err != nil {
 		return fmt.Errorf("reload deploy config for cert rotation of %s: %w", ref.Project, err)
 	}

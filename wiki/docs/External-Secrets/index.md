@@ -94,6 +94,41 @@ services:
       POSTGRES_PASSWORD: supersecretpassword123 # Value of external secret fetched from Bitwarden Secrets Manager
 ```
 
+### As Compose Secrets and Configs
+
+You can also pass external secrets to a service as a file with the top-level Compose `secrets` or `configs` sections.
+Use the `environment` attribute to read the value from the external secret.
+
+```yaml title="docker-compose.yml"
+services:
+  app:
+    image: myapp:latest
+    secrets:
+      - db_password
+
+secrets:
+  db_password:
+    environment: DB_PASSWORD # Name of the external secret in .doco-cd.yml
+```
+
+Compose writes the value into the container only when it creates the container.
+For this reason, doco-cd adds the `cd.doco.deployment.content.sha` label to each service that uses an
+`environment`-backed secret or a config with an `environment` or `content` source.
+When the value changes, doco-cd redeploys the project and Compose recreates the services that use it.
+This change alone does not recreate unrelated services.
+
+!!! note
+    - The label holds a SHA-256 hash of the consumed values. Everyone with access to `docker inspect` can read the hash.
+      Use secret values that are hard to guess, because a short or common value can be found from its hash.
+    - Secrets and configs that [`cd.doco.deployment.recreate.ignore`](../Deploy-Settings.md#prevent-recreation-on-config-secret-or-bind-mount-changes)
+      matches are not included in the label. Changes to their values do not recreate the service.
+    - For `environment`-backed secrets and configs that use a `pki-role:` certificate, key, or full chain,
+      doco-cd uses the reference in the digest. Reissuing the certificate does not change the label.
+      [Automatic certificate rotation](Openbao.md#automatic-certificate-rotation) recreates these services.
+    - This applies to Docker (Standalone) deployments only. Docker Swarm deployments do not get this label.
+    - After an upgrade to a doco-cd version with this label, doco-cd redeploys affected projects one time
+      and recreates the services that consume such secrets or configs.
+
 ### With Interpolation
 
 External-secret references can optionally support Compose-style interpolation using environment variables set on the doco-cd deployment itself. 

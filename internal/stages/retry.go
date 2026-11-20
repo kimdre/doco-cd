@@ -182,7 +182,7 @@ func (s *StageManager) prepareDeploymentRetry(ctx context.Context, stageLog *slo
 
 	if s.Docker.ProjectHash == "" {
 		hashProject := docker.WithNormalizedEnvValues(s.Docker.Project,
-			pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
+			docker.PKIRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
 
 		hash, err := docker.ProjectHash(hashProject, s.Repository.PathExternal)
 		if err != nil {
