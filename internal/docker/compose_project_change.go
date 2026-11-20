@@ -57,7 +57,8 @@ func HasChangedConfigs(repoPathExternal string, paths []string, project *types.P
 	)
 
 	for cfgName, c := range project.Configs {
-		// Changes in config.Content are handled in project hash comparison
+		// The content digest label handles changes in environment and content configs.
+		// See ApplyContentDigestLabels.
 		if c.File == "" {
 			continue
 		}
@@ -96,6 +97,8 @@ func HasChangedSecrets(repoPathExternal string, paths []string, project *types.P
 	)
 
 	for secretName, s := range project.Secrets {
+		// The content digest label handles changes in environment and content secrets.
+		// See ApplyContentDigestLabels.
 		if s.File == "" {
 			continue
 		}

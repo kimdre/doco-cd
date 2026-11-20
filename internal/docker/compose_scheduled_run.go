@@ -416,7 +416,31 @@ func validateComposeScheduledRefMetadata(ref composeScheduledServiceRef) error {
 // This is shared by the scheduled-job runner (which then selects a single service) and certificate
 // rotation (which needs every service in the project reloaded to identify those consuming the
 // freshly issued certificates).
+//
+// The project gets the content digest labels, so the Compose config hash of a recreated service
+// agrees with a normal deployment. Swarm callers use loadScheduledProjectAll instead.
 func loadComposeScheduledProjectAll(
+	ctx context.Context,
+	dockerCli command.Cli,
+	ref composeScheduledServiceRef,
+	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
+) (*types.Project, *deploy.Config, error) {
+	project, deployConfig, err := loadScheduledProjectAll(ctx, dockerCli, ref, secretProvider, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err = ApplyContentDigestLabels(project, deployConfig.ExternalSecrets); err != nil {
+		return nil, nil, fmt.Errorf("set content digest labels for project %s: %w", ref.Project, err)
+	}
+
+	return project, deployConfig, nil
+}
+
+// loadScheduledProjectAll is loadComposeScheduledProjectAll without the Compose-only
+// content digest labels. Swarm deployments do not use these labels.
+func loadScheduledProjectAll(
 	ctx context.Context,
 	dockerCli command.Cli,
 	ref composeScheduledServiceRef,
@@ -545,7 +569,7 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 // service's labels for cert rotation. Unlike composeScheduledServiceRefFromLabels, Swarm services
 // never carry the Compose-managed com.docker.compose.* labels (docker stack deploy doesn't set them),
 // so the stack name and working directory are read from doco-cd's own labels instead, and
-// ConfigFiles is left empty for loadComposeScheduledProjectAll to fall back to the reloaded
+// ConfigFiles is left empty for loadScheduledProjectAll to fall back to the reloaded
 // deploy config. Service is also left empty: RotateProjectCertificates operates on the whole
 // stack in Swarm mode rather than a single named service.
 func composeScheduledServiceRefFromSwarmLabels(labels map[string]string) (composeScheduledServiceRef, error) {

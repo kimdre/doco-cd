@@ -282,6 +282,13 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 		if err != nil {
 			return fmt.Errorf("failed to load compose config: %w", err)
 		}
+
+		// Preloaded projects already have these labels from the pre-deploy stage.
+		if !req.SwarmMode {
+			if err = ApplyContentDigestLabels(project, req.DeployConfig.ExternalSecrets); err != nil {
+				return fmt.Errorf("failed to set content digest labels: %w", err)
+			}
+		}
 	}
 
 	if err = validateScheduledJobPolicies(project, req.SwarmMode); err != nil {

@@ -687,7 +687,7 @@ func TestPkiRoleNormMap_BuildsStablePlaceholders(t *testing.T) {
 		"CERT_FULL": fullChainPEM,
 	}
 
-	norm := pkiRoleNormMap(externalSecrets, env)
+	norm := docker.PKIRoleNormMap(externalSecrets, env)
 
 	if norm[certPEM] != ref {
 		t.Errorf("cert placeholder: want %q, got %q", ref, norm[certPEM])
@@ -714,14 +714,14 @@ func TestPkiRoleNormMap_SkipsNonPKIRoleRefs(t *testing.T) {
 		"API_KEY":     "apikey123",
 	}
 
-	norm := pkiRoleNormMap(externalSecrets, env)
+	norm := docker.PKIRoleNormMap(externalSecrets, env)
 
 	if len(norm) != 0 {
 		t.Errorf("expected empty norm map for non-pki-role refs, got %v", norm)
 	}
 }
 
-// TestPkiRoleNormMap_HashStability is an end-to-end check: using pkiRoleNormMap
+// TestPkiRoleNormMap_HashStability is an end-to-end check: using docker.PKIRoleNormMap
 // + docker.WithNormalizedEnvValues, consecutive cert re-issues should not change
 // the project hash.
 func TestPkiRoleNormMap_HashStability(t *testing.T) {
@@ -741,8 +741,8 @@ func TestPkiRoleNormMap_HashStability(t *testing.T) {
 	env1 := map[string]string{"CERT": cert1, "CERT_KEY": key1, "CERT_FULL": fullChain1}
 	env2 := map[string]string{"CERT": cert2, "CERT_KEY": key2, "CERT_FULL": fullChain2}
 
-	norm1 := pkiRoleNormMap(externalSecrets, env1)
-	norm2 := pkiRoleNormMap(externalSecrets, env2)
+	norm1 := docker.PKIRoleNormMap(externalSecrets, env1)
+	norm2 := docker.PKIRoleNormMap(externalSecrets, env2)
 
 	strPtr := func(s string) *string { return &s }
 
@@ -750,6 +750,7 @@ func TestPkiRoleNormMap_HashStability(t *testing.T) {
 	// config fed from CERT_FULL, the way TLS servers typically mount a fullchain bundle.
 	makeProject := func(cert, key, fullChain string) *types.Project {
 		return &types.Project{
+			Environment: types.Mapping{"CERT": cert, "CERT_KEY": key, "CERT_FULL": fullChain},
 			Services: types.Services{
 				"app": {
 					Name:  "app",
@@ -770,12 +771,23 @@ func TestPkiRoleNormMap_HashStability(t *testing.T) {
 		}
 	}
 
-	h1, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert1, key1, fullChain1), norm1), "")
+	// The content digest label must also stay stable, because the config is content-based.
+	project1 := makeProject(cert1, key1, fullChain1)
+	if err := docker.ApplyContentDigestLabels(project1, externalSecrets); err != nil {
+		t.Fatalf("content digest 1: %v", err)
+	}
+
+	project2 := makeProject(cert2, key2, fullChain2)
+	if err := docker.ApplyContentDigestLabels(project2, externalSecrets); err != nil {
+		t.Fatalf("content digest 2: %v", err)
+	}
+
+	h1, err := docker.ProjectHash(docker.WithNormalizedEnvValues(project1, norm1), "")
 	if err != nil {
 		t.Fatalf("hash 1: %v", err)
 	}
 
-	h2, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert2, key2, fullChain2), norm2), "")
+	h2, err := docker.ProjectHash(docker.WithNormalizedEnvValues(project2, norm2), "")
 	if err != nil {
 		t.Fatalf("hash 2: %v", err)
 	}
@@ -855,6 +867,85 @@ func TestLoadComposeProjectHashCachesProjectAndHash(t *testing.T) {
 
 	if got == "" || manager.Docker.ProjectHash != got {
 		t.Fatalf("cached project hash = %q, returned %q", manager.Docker.ProjectHash, got)
+	}
+}
+
+// TestLoadComposeProjectHash_ExternalSecretValueChange reproduces #2210: a changed external
+// secret value that a service consumes through a top-level `secrets: environment:` entry
+// must change the project hash and the service labels, so doco-cd redeploys and Compose
+// recreates the service.
+func TestLoadComposeProjectHash_ExternalSecretValueChange(t *testing.T) {
+	t.Parallel()
+
+	repoPath := t.TempDir()
+
+	compose := `services:
+  app:
+    image: busybox:latest
+    secrets:
+      - db_password
+  other:
+    image: busybox:latest
+secrets:
+  db_password:
+    environment: DB_PASSWORD
+`
+
+	composePath := filepath.Join(repoPath, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte(compose), 0o600); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+
+	load := func(password string) *StageManager {
+		config := deploy.New("app", "main")
+		config.WorkingDirectory = "."
+		config.ComposeFiles = []string{"compose.yaml"}
+		config.EnvFiles = nil
+		config.ExternalSecrets = map[string]secrettypes.ExternalSecretRef{
+			"DB_PASSWORD": {LegacyRef: "kv/secret/db#password"},
+		}
+		config.Internal.Environment = map[string]string{"DB_PASSWORD": password}
+
+		manager := &StageManager{
+			AppConfig:    &app.Config{},
+			DeployConfig: config,
+			Docker:       &Docker{},
+			Repository: &RepositoryData{
+				PathInternal: repoPath,
+				PathExternal: repoPath,
+			},
+		}
+
+		if _, err := manager.loadComposeProjectHash(context.Background()); err != nil {
+			t.Fatalf("loadComposeProjectHash() error = %v", err)
+		}
+
+		return manager
+	}
+
+	first := load("secret-1")
+	same := load("secret-1")
+	changed := load("secret-2")
+
+	if first.Docker.ProjectHash != same.Docker.ProjectHash {
+		t.Fatal("expected the same secret value to keep the project hash")
+	}
+
+	if first.Docker.ProjectHash == changed.Docker.ProjectHash {
+		t.Fatal("expected a changed secret value to change the project hash")
+	}
+
+	label := docker.DocoCDLabels.Deployment.ContentDigest
+
+	firstDigest := first.Docker.Project.Services["app"].Labels[label]
+	changedDigest := changed.Docker.Project.Services["app"].Labels[label]
+
+	if firstDigest == "" || firstDigest == changedDigest {
+		t.Fatalf("expected a changed content digest label on app, got %q and %q", firstDigest, changedDigest)
+	}
+
+	if _, ok := changed.Docker.Project.Services["other"].Labels[label]; ok {
+		t.Fatal("expected no content digest label on a service that does not consume the secret")
 	}
 }
 

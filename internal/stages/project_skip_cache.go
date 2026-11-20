@@ -530,7 +530,7 @@ func (s *StageManager) cacheUnchangedProject(stageLog *slog.Logger, deployedComm
 // resolution, and the Compose project hash already normalizes them the same
 // way, so the raw config hash would never match a cached snapshot.
 func (s *StageManager) projectSkipConfigHash() (string, error) {
-	norm := pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment)
+	norm := docker.PKIRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment)
 	if len(norm) == 0 {
 		return s.DeployConfig.Internal.Hash, nil
 	}

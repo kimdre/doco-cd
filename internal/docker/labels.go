@@ -31,6 +31,7 @@ type docoCdLabelNamesDeployment struct {
 	PinnedRevisions      string // Comma-separated source revisions whose artifacts are still mounted by a service because their content is unchanged
 	LiveResources        string // Comma-separated repository paths a service mounts from its stack's live directory (see recreate.ignore)
 	LifecycleHooks       string // Comma-separated Compose lifecycle hook phases that the service declares (pre_start, post_start, pre_stop)
+	ContentDigest        string // SHA256 digest of the inline secret and config values (environment/content) that a service consumes
 }
 
 // docoCdLabelNamesSource contains the labels used by DocoCD to identify the deployment source.
@@ -86,6 +87,7 @@ var DocoCDLabels = docoCdLabelNames{
 		PinnedRevisions:      "cd.doco.deployment.pinned_revisions",
 		LiveResources:        "cd.doco.deployment.live_resources",
 		LifecycleHooks:       "cd.doco.deployment.lifecycle_hooks",
+		ContentDigest:        "cd.doco.deployment.content.sha",
 	},
 	Source: docoCdLabelNamesSource{
 		Type:             "cd.doco.source",

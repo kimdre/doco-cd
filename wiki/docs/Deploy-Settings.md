@@ -812,6 +812,10 @@ It accepts one or more of the following scopes: `configs`, `secrets`, `bindMount
 1. `configs` and `secrets` items refer to names defined in the top-level `configs` and `secrets` sections.
 2. `bindMounts` items refer to the **target paths** of bind mounts (not the source paths).
 
+Ignored configs and secrets with an `environment` or `content` attribute (for example [external secrets](External-Secrets/index.md#as-compose-secrets-and-configs))
+do not recreate the service when their value changes. The container keeps the old value until the service is recreated for another reason.
+A [signal](#send-signal-on-ignored-recreation) does not deliver the new value to the container.
+
 Ignored files and directories from the repository are mounted from a [live copy](Reference/Artifact-Storage.md#live-files)
 that doco-cd updates in place on each deployment, so the service sees the changed content without being recreated
 (e.g. to reload it on a [signal](#send-signal-on-ignored-recreation) or by watching the files).

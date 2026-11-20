@@ -297,7 +297,7 @@ func TestRetryIdentityNormalizesPKICertificatesAndRuntimeValues(t *testing.T) {
 		}
 
 		hash, err := docker.ProjectHash(docker.WithNormalizedEnvValues(sm.Docker.Project,
-			pkiRoleNormMap(sm.DeployConfig.ExternalSecrets, sm.DeployConfig.Internal.Environment)), "")
+			docker.PKIRoleNormMap(sm.DeployConfig.ExternalSecrets, sm.DeployConfig.Internal.Environment)), "")
 		if err != nil {
 			t.Fatal(err)
 		}

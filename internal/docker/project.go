@@ -46,7 +46,7 @@ func shouldIgnoreLabelInProjectHash(label string) bool {
 		return true
 	}
 
-	if !strings.HasPrefix(label, "cd.doco.") {
+	if !strings.HasPrefix(label, "cd.doco.") || label == DocoCDLabels.Deployment.ContentDigest {
 		return false
 	}
 
