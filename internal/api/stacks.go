@@ -27,7 +27,20 @@ func (h *Handler) StackActionApiHandler(w http.ResponseWriter, r *http.Request) 
 
 	jobLog.Debug("received api request")
 
-	if !h.authorize(w, r, jobLog, jobID, opRunSwarmStack) {
+	action := r.PathValue("action")
+
+	var operationID apiOperation
+
+	switch action {
+	case "scale":
+		operationID = opScaleSwarmStack
+	case "restart":
+		operationID = opRestartSwarmStack
+	case "run":
+		operationID = opRunSwarmStackJobs
+	}
+
+	if !h.authorize(w, r, jobLog, jobID, operationID) {
 		return
 	}
 
@@ -62,27 +75,21 @@ func (h *Handler) StackActionApiHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	action := r.PathValue("action")
-	if action != "scale" && action != "restart" && action != "run" {
-		jobLog.Error(restapi.ErrInvalidAction.Error())
-		restapi.JSONError(w, restapi.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
-
-		return
-	}
-
 	if !requireMethod(w, jobLog, r, http.MethodPost) {
 		return
 	}
 
 	serviceName := r.URL.Query().Get("service")
 
-	waitForServices, ok := getBoolQueryParam(r, w, jobLog, jobID, "wait", true)
-	if !ok {
-		return
-	}
-
 	replicas := -1
+
+	waitForServices := false
 	if action == "scale" {
+		waitForServices, ok = getBoolQueryParam(r, w, jobLog, jobID, "wait", true)
+		if !ok {
+			return
+		}
+
 		replicas, ok = getIntQueryParam(r, w, jobLog, jobID, "replicas", -1)
 		if !ok {
 			return

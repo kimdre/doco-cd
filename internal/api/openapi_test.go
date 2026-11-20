@@ -219,8 +219,8 @@ func TestOpenAPIDocumentsIndividualProjectAndStackActions(t *testing.T) {
 		{"/project/{projectName}/restart", "restartComposeProject", []string{"projectName", "context", "timeout"}},
 		{"/project/{projectName}/recreate", "recreateComposeProject", []string{"projectName", "context", "timeout", "service"}},
 		{"/stack/{stackName}/scale", "scaleSwarmStack", []string{"stackName", "context", "service", "replicas", "wait"}},
-		{"/stack/{stackName}/restart", "restartSwarmStack", []string{"stackName", "context", "service", "wait"}},
-		{"/stack/{stackName}/run", "runSwarmStack", []string{"stackName", "context", "service", "wait"}},
+		{"/stack/{stackName}/restart", "restartSwarmStack", []string{"stackName", "context", "service"}},
+		{"/stack/{stackName}/run", "runSwarmStack", []string{"stackName", "context", "service"}},
 	} {
 		t.Run(tc.id, func(t *testing.T) {
 			path := document.Paths.Find(APIPath + tc.path)

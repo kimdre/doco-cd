@@ -997,13 +997,11 @@ func TestRecheckSelfSkip(t *testing.T) {
 		drifted.Networks = types.Networks{"backend": netCfg}
 		inspectErr := errors.New("inspect failed")
 		apiClient := &countingInspectClient{
-			unchangedSelfClient: unchangedSelfClient{
-				labels: map[string]string{api.ConfigHashLabel: "present"},
-				network: &network.Inspect{
-					ID: "network-id", Name: netCfg.Name,
-					Labels: map[string]string{
-						api.ProjectLabel: "tools", api.NetworkLabel: "backend", api.ConfigHashLabel: "old",
-					},
+			labels: map[string]string{api.ConfigHashLabel: "present"},
+			network: &network.Inspect{
+				ID: "network-id", Name: netCfg.Name,
+				Labels: map[string]string{
+					api.ProjectLabel: "tools", api.NetworkLabel: "backend", api.ConfigHashLabel: "old",
 				},
 			},
 			err: inspectErr,

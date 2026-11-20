@@ -29,12 +29,16 @@ const projectAPIComposeContent = `services:
 `
 
 func TestHandler_ProjectApiHandler(t *testing.T) {
+	t.Setenv("WEBHOOK_SECRET", "test_Secret1")
+
 	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	appConfig.APIKeys = testAPIKeys("test-api-secret")
+	appConfig.WebhookSecret = ""
+	appConfig.McpEnabled = false
 
 	log := logger.New(logger.LevelCritical)
 
@@ -54,6 +58,11 @@ func TestHandler_ProjectApiHandler(t *testing.T) {
 		dockerCli: dockerCli,
 		appConfig: appConfig,
 		log:       log,
+	}
+
+	mux := http.NewServeMux()
+	if _, err := RegisterRoutes(mux, &h, Mounts{}); err != nil {
+		t.Fatal(err)
 	}
 
 	testCases := []struct {
@@ -114,11 +123,6 @@ func TestHandler_ProjectApiHandler(t *testing.T) {
 			t.Logf("Testing API endpoint: %s", endpointPath)
 
 			rr := httptest.NewRecorder()
-
-			mux := http.NewServeMux()
-			if _, err := RegisterRoutes(mux, &h, Mounts{}); err != nil {
-				t.Fatal(err)
-			}
 
 			req, err := http.NewRequest(tc.method, endpointPath, nil)
 			if err != nil {

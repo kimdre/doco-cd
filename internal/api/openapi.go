@@ -864,7 +864,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Enabled: restEnabled,
 			Root:    APIPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "startComposeProject", "Start a Compose project", []string{"Projects"}, openapi3.Parameters{
+				operation(http.MethodPost, string(opStartComposeProject), "Start a Compose project", []string{"Projects"}, openapi3.Parameters{
 					pathParameter("projectName", "Compose project name."),
 					contextParameter(),
 					timeout,
@@ -877,7 +877,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Enabled: restEnabled,
 			Root:    APIPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "stopComposeProject", "Stop a Compose project", []string{"Projects"}, openapi3.Parameters{
+				operation(http.MethodPost, string(opStopComposeProject), "Stop a Compose project", []string{"Projects"}, openapi3.Parameters{
 					pathParameter("projectName", "Compose project name."),
 					contextParameter(),
 					timeout,
@@ -890,7 +890,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Enabled: restEnabled,
 			Root:    APIPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "restartComposeProject", "Restart a Compose project", []string{"Projects"}, openapi3.Parameters{
+				operation(http.MethodPost, string(opRestartComposeProject), "Restart a Compose project", []string{"Projects"}, openapi3.Parameters{
 					pathParameter("projectName", "Compose project name."),
 					contextParameter(),
 					timeout,
@@ -903,7 +903,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Enabled: restEnabled,
 			Root:    APIPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "recreateComposeProject", "Recreate a Compose project or service", []string{"Projects"}, openapi3.Parameters{
+				operation(http.MethodPost, string(opRecreateComposeProject), "Recreate a Compose project or service", []string{"Projects"}, openapi3.Parameters{
 					pathParameter("projectName", "Compose project name."),
 					contextParameter(),
 					timeout,
@@ -944,7 +944,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Enabled: restEnabled,
 			Root:    APIPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "scaleSwarmStack", "Scale a Swarm stack or service", []string{"Stacks"}, openapi3.Parameters{
+				operation(http.MethodPost, string(opScaleSwarmStack), "Scale a Swarm stack or service", []string{"Stacks"}, openapi3.Parameters{
 					pathParameter("stackName", "Swarm stack name."),
 					contextParameter(),
 					queryStringParameter("service", "Optional service name."),
@@ -952,7 +952,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 						WithDescription("Non-negative replica count.").
 						WithRequired(true).
 						WithSchema(openapi3.NewIntegerSchema().WithMin(0))},
-					queryBoolParameter("wait", "Wait for services to become ready when scaling. Parsed but has no effect on other actions.", true),
+					queryBoolParameter("wait", "Wait for services to become ready after scaling.", true),
 				}, nil, responses(mutationResponses), apiAuth),
 			},
 		},
@@ -962,11 +962,10 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Enabled: restEnabled,
 			Root:    APIPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "restartSwarmStack", "Restart a Swarm stack or service", []string{"Stacks"}, openapi3.Parameters{
+				operation(http.MethodPost, string(opRestartSwarmStack), "Restart a Swarm stack or service", []string{"Stacks"}, openapi3.Parameters{
 					pathParameter("stackName", "Swarm stack name."),
 					contextParameter(),
 					queryStringParameter("service", "Optional service name."),
-					queryBoolParameter("wait", "Wait for services to become ready when scaling. Parsed but has no effect on other actions.", true),
 				}, nil, responses(mutationResponses), apiAuth),
 			},
 		},
@@ -976,11 +975,10 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Enabled: restEnabled,
 			Root:    APIPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "runSwarmStack", "Trigger jobs in a Swarm stack", []string{"Stacks"}, openapi3.Parameters{
+				operation(http.MethodPost, string(opRunSwarmStackJobs), "Trigger jobs in a Swarm stack", []string{"Stacks"}, openapi3.Parameters{
 					pathParameter("stackName", "Swarm stack name."),
 					contextParameter(),
 					queryStringParameter("service", "Optional service name."),
-					queryBoolParameter("wait", "Wait for services to become ready when scaling. Parsed but has no effect on other actions.", true),
 				}, nil, responses(mutationResponses), apiAuth),
 			},
 		},

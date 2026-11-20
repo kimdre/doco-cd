@@ -17,7 +17,6 @@ const (
 	opListComposeProjects    apiOperation = "listComposeProjects"
 	opGetComposeProject      apiOperation = "getComposeProject"
 	opDeleteComposeProject   apiOperation = "deleteComposeProject"
-	opRunComposeProject      apiOperation = "runComposeProjectAction"
 	opStartComposeProject    apiOperation = "startComposeProject"
 	opStopComposeProject     apiOperation = "stopComposeProject"
 	opRestartComposeProject  apiOperation = "restartComposeProject"
@@ -25,7 +24,6 @@ const (
 	opListSwarmStacks        apiOperation = "listSwarmStacks"
 	opGetSwarmStack          apiOperation = "getSwarmStack"
 	opDeleteSwarmStack       apiOperation = "deleteSwarmStack"
-	opRunSwarmStack          apiOperation = "runSwarmStackAction"
 	opScaleSwarmStack        apiOperation = "scaleSwarmStack"
 	opRestartSwarmStack      apiOperation = "restartSwarmStack"
 	opRunSwarmStackJobs      apiOperation = "runSwarmStack"
@@ -48,9 +46,9 @@ func permissionForOperation(operation apiOperation) restapi.Permission {
 		return restapi.PermissionStacksInspect
 	case opTriggerScheduledJob:
 		return restapi.PermissionJobsTrigger
-	case opRunComposeProject, opStartComposeProject, opStopComposeProject, opRestartComposeProject, opRecreateComposeProject:
+	case opStartComposeProject, opStopComposeProject, opRestartComposeProject, opRecreateComposeProject:
 		return restapi.PermissionProjectsControl
-	case opRunSwarmStack, opScaleSwarmStack, opRestartSwarmStack, opRunSwarmStackJobs:
+	case opScaleSwarmStack, opRestartSwarmStack, opRunSwarmStackJobs:
 		return restapi.PermissionStacksControl
 	case opTriggerPoll:
 		return restapi.PermissionPollTrigger

@@ -80,8 +80,14 @@ func TestRESTOperationPermissions(t *testing.T) {
 		{"get stack", http.MethodGet, "/stack/", restapi.PermissionStacksInspect, h.StackApiHandler},
 		{"list sync windows", http.MethodGet, "/sync-windows?origin=invalid", restapi.PermissionSyncWindowsRead, h.GetSyncWindowsHandler},
 		{"trigger job", http.MethodPost, "/job/run", restapi.PermissionJobsTrigger, h.TriggerScheduledJobHandler},
-		{"control project", http.MethodPost, "/project/start", restapi.PermissionProjectsControl, h.ProjectActionApiHandler},
-		{"control stack", http.MethodPost, "/stack/restart", restapi.PermissionStacksControl, h.StackActionApiHandler},
+		{"control project", http.MethodPost, "/project/start", restapi.PermissionProjectsControl, func(w http.ResponseWriter, r *http.Request) {
+			r.SetPathValue("action", "start")
+			h.ProjectActionApiHandler(w, r)
+		}},
+		{"control stack", http.MethodPost, "/stack/restart", restapi.PermissionStacksControl, func(w http.ResponseWriter, r *http.Request) {
+			r.SetPathValue("action", "restart")
+			h.StackActionApiHandler(w, r)
+		}},
 		{"trigger poll", http.MethodPost, "/poll/run", restapi.PermissionPollTrigger, h.TriggerPollHandler},
 		{"compact mirrors", http.MethodPost, "/storage/compact?max_size=invalid", restapi.PermissionMirrorsCompact, h.CompactMirrorsHandler},
 		{"delete project", http.MethodDelete, "/project/", restapi.PermissionProjectsDelete, h.ProjectApiHandler},
@@ -111,6 +117,101 @@ func TestRESTOperationPermissions(t *testing.T) {
 					t.Fatalf("status = %d, want %d; body = %s", response.Code, want, response.Body.String())
 				}
 			})
+		}
+	}
+}
+
+func TestRESTActionRoutePermissions(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{
+		appConfig: &app.Config{APIKeys: restapi.Keyring{
+			{Key: "reader", Role: restapi.RoleRead},
+			{Key: "writer", Role: restapi.RoleWrite},
+		}},
+		log: logger.New(logger.LevelCritical),
+	}
+
+	mux := http.NewServeMux()
+	if _, err := RegisterRoutes(mux, h, Mounts{}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{
+		"/project/example/start", "/project/example/stop", "/project/example/restart", "/project/example/recreate",
+		"/stack/example/scale", "/stack/example/restart", "/stack/example/run",
+	} {
+		for _, tc := range []struct {
+			key    string
+			status int
+		}{
+			{"", http.StatusUnauthorized},
+			{"reader", http.StatusForbidden},
+			{"writer", http.StatusBadRequest},
+		} {
+			t.Run(path+"/"+tc.key, func(t *testing.T) {
+				t.Parallel()
+
+				request := httptest.NewRequest(http.MethodPost, APIPath+path+"?context=unknown", nil)
+				request.Header.Set(restapi.KeyHeader, tc.key)
+
+				response := httptest.NewRecorder()
+				mux.ServeHTTP(response, request)
+
+				if response.Code != tc.status {
+					t.Fatalf("status = %d, want %d; body = %s", response.Code, tc.status, response.Body.String())
+				}
+			})
+		}
+	}
+}
+
+func TestRESTActionHandlersRejectUnclassifiedActions(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{
+		appConfig: &app.Config{APIKeys: testAPIKeys("admin")},
+		log:       logger.New(logger.LevelCritical),
+	}
+
+	for _, handler := range []http.HandlerFunc{h.ProjectActionApiHandler, h.StackActionApiHandler} {
+		request := httptest.NewRequest(http.MethodPost, "/", nil)
+		request.SetPathValue("action", "unclassified")
+		request.Header.Set(restapi.KeyHeader, "admin")
+
+		response := httptest.NewRecorder()
+		handler(response, request)
+
+		if response.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d; body = %s", response.Code, http.StatusInternalServerError, response.Body.String())
+		}
+	}
+}
+
+func TestRESTUnknownActionReturnsNotFoundBeforeAuthentication(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{
+		appConfig: &app.Config{APIKeys: testAPIKeys("admin")},
+		log:       logger.New(logger.LevelCritical),
+	}
+
+	mux := http.NewServeMux()
+	if _, err := RegisterRoutes(mux, h, Mounts{}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/project/example/unknown", "/stack/example/unknown"} {
+		for _, key := range []string{"", "admin"} {
+			request := httptest.NewRequest(http.MethodPost, APIPath+path, nil)
+			request.Header.Set(restapi.KeyHeader, key)
+
+			response := httptest.NewRecorder()
+			mux.ServeHTTP(response, request)
+
+			if response.Code != http.StatusNotFound || response.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
+				t.Errorf("%s, key %q: status = %d, content type = %q", path, key, response.Code, response.Header().Get("Content-Type"))
+			}
 		}
 	}
 }

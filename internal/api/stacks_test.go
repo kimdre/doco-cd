@@ -36,7 +36,6 @@ func TestStackActionApiHandlerValidationPrecedence(t *testing.T) {
 	}{
 		{name: "unknown action", path: "/stack/stack/invalid", method: http.MethodGet, wantStatus: http.StatusNotFound, contains: "404 page not found"},
 		{name: "method before wait parsing", path: "/stack/stack/restart?wait=invalid", method: http.MethodGet, wantStatus: http.StatusMethodNotAllowed, contains: "invalid http method"},
-		{name: "invalid wait aborts action", path: "/stack/stack/restart?wait=invalid", method: http.MethodPost, wantStatus: http.StatusBadRequest, contains: "wait"},
 		{name: "invalid replicas aborts action", path: "/stack/stack/scale?replicas=invalid", method: http.MethodPost, wantStatus: http.StatusBadRequest, contains: "replicas"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -59,6 +58,30 @@ func TestStackActionApiHandlerValidationPrecedence(t *testing.T) {
 
 	if actionRequests != 0 {
 		t.Fatalf("validation failures dispatched %d stack actions", actionRequests)
+	}
+}
+
+func TestStackActionApiHandlerIgnoresWaitForNonScaleActions(t *testing.T) {
+	services := []dockerswarmtypes.Service{
+		{ID: "web-id", Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{Name: "stack_web"},
+			Mode:        dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}},
+		}},
+		{ID: "job-id", Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{Name: "stack_job"},
+			Mode:        dockerswarmtypes.ServiceMode{ReplicatedJob: &dockerswarmtypes.ReplicatedJob{}},
+		}},
+	}
+
+	for _, action := range []string{"restart", "run"} {
+		t.Run(action, func(t *testing.T) {
+			h := newStackActionRESTSuccessTestHandler(t, services)
+			rr := callStackActionREST(t, h, "/stack/stack/"+action+"?wait=invalid")
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("response = %d %s, want 200", rr.Code, rr.Body.String())
+			}
+		})
 	}
 }
 
