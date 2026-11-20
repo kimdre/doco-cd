@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -548,9 +549,11 @@ func TestScheduledOneOff_RecoversAfterForcedDaemonTermination(t *testing.T) {
 		return h.RemoteOneOffContainerID(scheduledOneOffRecoveryStack, scheduledOneOffJobService) == ""
 	})
 
-	h.WaitFor(30*time.Second, "dependency restored by recovered one-off job", func() bool {
-		return h.RemoteComposeContainerID(scheduledOneOffRecoveryStack, scheduledOneOffAppService) != ""
-	})
+	waitForRecoveredServiceRestore(t, h, "dependency restored by recovered one-off job",
+		"restarting services after scheduled job",
+		`"project":"`+scheduledOneOffRecoveryStack+`"`,
+		`"services":["`+scheduledOneOffAppService+`"]`,
+	)
 	waitForRecoveredScheduledRun(t, h, runID, *startedAt)
 }
 
@@ -607,10 +610,37 @@ func TestScheduledOneOff_SwarmRecoversAfterForcedDaemonTermination(t *testing.T)
 		return h.SwarmOneOffServiceID(scheduledOneOffSwarmRecoveryStack) == ""
 	})
 
-	h.WaitFor(30*time.Second, "Swarm dependency restored by recovered one-off job", func() bool {
-		return h.SwarmContainerID(scheduledOneOffSwarmRecoveryStack, scheduledOneOffAppService) != ""
-	})
+	waitForRecoveredServiceRestore(t, h, "Swarm dependency restored by recovered one-off job",
+		"restarting swarm service after scheduled job",
+		`"service":"`+scheduledOneOffSwarmRecoveryStack+"_"+scheduledOneOffAppService+`"`,
+	)
 	waitForRecoveredScheduledRun(t, h, runID, *startedAt)
+}
+
+// waitForRecoveredServiceRestore waits until the replacement daemon logs the
+// restore of the stopped dependency. The check uses the log and not the Docker
+// state: the next scheduled run takes the stack lock as soon as the recovered
+// run releases it, and can stop the dependency again within a second. The
+// restore line has no run ID, so a scheduled run that starts before the
+// restore fails the test. With skip_running, only the recovered run can
+// restore the dependency before the next run starts.
+func waitForRecoveredServiceRestore(t *testing.T, h *Harness, desc string, substrs ...string) {
+	t.Helper()
+
+	h.WaitFor(30*time.Second, desc, func() bool {
+		// The replacement daemon is a new container, so its log starts after the restart.
+		for line := range strings.Lines(h.logsSince(0)) {
+			if strings.Contains(line, "triggering scheduled run") {
+				t.Fatalf("scheduled run started before the recovered run restored the dependency: %s", line)
+			}
+
+			if containsAll(line, substrs) {
+				return true
+			}
+		}
+
+		return false
+	})
 }
 
 func waitForRecoveredScheduledRun(t *testing.T, h *Harness, runID string, startedAt time.Time) {

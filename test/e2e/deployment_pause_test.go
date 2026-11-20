@@ -168,7 +168,7 @@ func TestDeploymentPauseCompose(t *testing.T) {
 	h.ReplaceInWorktree(".doco-cd.yml", "pause: true", "pause: false")
 	mark = h.LogMark()
 	h.RepoPush("resume deployment at the latest source")
-	runID = deploymentPauseTrigger(h)
+	runID = deploymentPauseTriggerDeploy(t, h)
 
 	latestID := waitVersion(stack, "2")
 	if latestID == initialID || latestID == recoveredID {
@@ -278,7 +278,7 @@ func TestDeploymentPauseSwarm(t *testing.T) {
 	h.ReplaceInWorktree(".doco-cd.yml", "pause: true", "pause: false")
 	mark = h.LogMark()
 	h.RepoPush("resume deployment at the latest source")
-	runID = deploymentPauseTrigger(h)
+	runID = deploymentPauseTriggerDeploy(t, h)
 
 	latest := waitVersion(stack, "2")
 	if latest.Version.Index == recovered.Version.Index {
@@ -307,25 +307,10 @@ func deploymentPauseCommit(h *Harness) (int, string) {
 func deploymentPauseWaitDeployment(t *testing.T, h *Harness, mark int, runID, activeStack, pausedStack string) {
 	t.Helper()
 
-	h.WaitFor(3*time.Minute, "completed active deployment run for "+activeStack, func() bool {
-		var response struct {
-			Content controlplane.Run `json:"content"`
-		}
-		if err := json.Unmarshal(h.APIRequest(http.MethodGet, "/v1/api/run/"+url.PathEscape(runID),
-			http.StatusOK), &response); err != nil {
-			t.Fatalf("decode active deployment run: %v", err)
-		}
-
-		if response.Content.FinishedAt == nil {
-			return false
-		}
-
-		if response.Content.Status != controlplane.RunStatusSucceeded {
-			t.Fatalf("active deployment run = %#v, want succeeded", response.Content)
-		}
-
-		return true
-	})
+	run := deploymentPauseWaitRun(t, h, "completed active deployment run for "+activeStack, runID)
+	if run.Status != controlplane.RunStatusSucceeded {
+		t.Fatalf("active deployment run = %#v, want succeeded", run)
+	}
 
 	h.WaitForLogLineAfter(mark, time.Minute, `"msg":"completed stage: post-deploy"`,
 		`"job_id":"`+runID+`"`, `"stack":"`+activeStack+`"`)
@@ -363,30 +348,79 @@ func deploymentPauseManualRun(t *testing.T, h *Harness) {
 
 	runID := deploymentPauseTrigger(h)
 
-	h.WaitFor(2*time.Minute, "manual trigger is skipped rather than bypassing deployment pause", func() bool {
+	run := deploymentPauseWaitRun(t, h, "manual trigger is skipped rather than bypassing deployment pause", runID)
+	if run.Status != controlplane.RunStatusSkipped {
+		t.Fatalf("manual paused run = %#v, want skipped", run)
+	}
+
+	if !strings.Contains(run.Message, "deployment paused") || !strings.Contains(run.Message, "e2e-"+h.scenario) {
+		t.Fatalf("skipped manual run lost pause identity: %#v", run)
+	}
+}
+
+// deploymentPauseTriggerDeploy triggers a poll that must deploy the resumed
+// stack. A poll skips a stack while another operation holds its stack lock.
+// The paused fixture runs a scheduled job every 3 seconds, and the job holds
+// the stack lock while it runs. The helper triggers the poll again when the
+// stack lock skipped the stack. The sibling stack is already at the latest
+// version, so a skipped run also means that the resumed stack did not deploy.
+func deploymentPauseTriggerDeploy(t *testing.T, h *Harness) string {
+	t.Helper()
+
+	const attempts = 10
+
+	for range attempts {
+		mark := h.LogMark()
+		runID := deploymentPauseTrigger(h)
+		run := deploymentPauseWaitRun(t, h, "completed resume poll run "+runID, runID)
+
+		if strings.Contains(run.Message, "deployment paused") {
+			t.Fatalf("resume poll run = %#v, want the stack to be resumed", run)
+		}
+
+		locked := run.Status == controlplane.RunStatusSkipped
+
+		for line := range strings.Lines(h.logsSince(mark)) {
+			if containsAll(line, []string{"stack is locked by another operation, skipping deployment", `"job_id":"` + runID + `"`}) {
+				locked = true
+
+				break
+			}
+		}
+
+		if !locked {
+			return runID
+		}
+
+		h.logf("resume poll run %s did not deploy (status %s), triggering the poll again", runID, run.Status)
+	}
+
+	t.Fatalf("stack lock skipped all %d resume poll runs", attempts)
+
+	return ""
+}
+
+// deploymentPauseWaitRun waits until the tracked run finishes and returns it.
+func deploymentPauseWaitRun(t *testing.T, h *Harness, desc, runID string) controlplane.Run {
+	t.Helper()
+
+	var run controlplane.Run
+
+	h.WaitFor(3*time.Minute, desc, func() bool {
 		var response struct {
 			Content controlplane.Run `json:"content"`
 		}
 		if err := json.Unmarshal(h.APIRequest(http.MethodGet, "/v1/api/run/"+url.PathEscape(runID),
 			http.StatusOK), &response); err != nil {
-			t.Fatalf("decode manual paused run: %v", err)
+			t.Fatalf("decode run %s: %v", runID, err)
 		}
 
-		run := response.Content
-		if run.FinishedAt == nil {
-			return false
-		}
+		run = response.Content
 
-		if run.Status != controlplane.RunStatusSkipped {
-			t.Fatalf("manual paused run = %#v, want skipped", run)
-		}
-
-		if !strings.Contains(run.Message, "deployment paused") || !strings.Contains(run.Message, "e2e-"+h.scenario) {
-			t.Fatalf("skipped manual run lost pause identity: %#v", run)
-		}
-
-		return true
+		return run.FinishedAt != nil
 	})
+
+	return run
 }
 
 func deploymentPauseVersion(env []string) string {
