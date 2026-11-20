@@ -51,7 +51,7 @@ func TestAutostartDisabledPollSkipHasNoDeploymentSideEffects(t *testing.T) {
 		t.Fatal("commit status must be enabled to verify that skipped polls do not post it")
 	}
 
-	order := s.GetDeployStageOrder()
+	order := s.GetDeployStageOrder(nil)
 
 	var entered []StageName
 

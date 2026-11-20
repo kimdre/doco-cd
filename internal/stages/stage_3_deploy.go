@@ -12,7 +12,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
-func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger) error {
+func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger, stack *docker.LockedStack) error {
 	s.Stages.Deploy.StartedAt = time.Now()
 
 	defer func() {
@@ -37,12 +37,10 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 
 	// Migrate deployment mode if needed
 	if s.DeployState.modeMigrationNeeded {
-		_, err = docker.MigrateDeploymentMode(
+		_, err = stack.MigrateDeploymentMode(
 			ctx,
 			stageLog,
 			s.Docker.Cmd,
-			s.DeployConfig.Context,
-			s.DeployConfig.Name,
 			s.migrationSource(),
 			s.Docker.SwarmMode,
 			s.Docker.SwarmAvailable,
@@ -75,7 +73,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		defer reporter.Stop()
 	}
 
-	err = docker.DeployStack(ctx, s.deployRequest(ctx, stageLog, latestCommit, phaseReporter))
+	err = stack.Deploy(ctx, s.deployRequest(ctx, stageLog, latestCommit, phaseReporter))
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
 	}

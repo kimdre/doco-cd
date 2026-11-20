@@ -84,7 +84,8 @@ func TestRunDeployStageCachesActiveRepositoryIdentity(t *testing.T) {
 				},
 			}
 
-			require.NoError(t, manager.RunDeployStage(ctx, logger))
+			lockedStack := acquireTestStack(t, manager)
+			require.NoError(t, manager.RunDeployStage(ctx, logger, lockedStack))
 
 			status, err := docker.GetLatestDeployStatus(ctx, apiClient, false, repository, stack)
 			require.NoError(t, err)

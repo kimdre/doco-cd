@@ -28,6 +28,9 @@ const certRotationTrigger = "cert.rotation"
 // ErrCertificateRotationPaused marks a rotation intentionally skipped by admission.
 var ErrCertificateRotationPaused = errors.New("certificate rotation paused")
 
+// certificateRotationLockHolder names certificate rotation as stack lock holder.
+const certificateRotationLockHolder = "certificate rotation"
+
 // RotateProjectCertificates reloads the deploy config for a rotatable deployment (identified by
 // its doco-cd labels, see DocoCDLabels.Deployment.CertRotatable), re-resolves its external secrets
 // (reissuing any pki-role certificates through the configured secret provider), and redeploys so
@@ -67,7 +70,10 @@ func RotateProjectCertificates(
 
 	stackLockKey := lock.StackKey(contextName, stackName)
 
-	lock.LockStack(stackLockKey)
+	if err := lock.LockStackContext(ctx, stackLockKey, certificateRotationLockHolder); err != nil {
+		return fmt.Errorf("acquire stack lock for cert rotation: %w", err)
+	}
+
 	defer lock.UnlockStack(stackLockKey)
 
 	if opts.Admission != nil && !opts.Admission(contextName, labels) {
@@ -154,7 +160,10 @@ func rotateSwarmProjectCertificates(
 
 	stackLockKey := lock.StackKey(contextName, ref.Project)
 
-	lock.LockStack(stackLockKey)
+	if err := lock.LockStackContext(ctx, stackLockKey, certificateRotationLockHolder); err != nil {
+		return fmt.Errorf("acquire stack lock for cert rotation: %w", err)
+	}
+
 	defer lock.UnlockStack(stackLockKey)
 
 	if certOpts.Admission != nil && !certOpts.Admission(contextName, labels) {

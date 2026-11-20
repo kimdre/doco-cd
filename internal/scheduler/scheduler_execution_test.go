@@ -1,11 +1,14 @@
 package scheduler
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
@@ -77,18 +80,29 @@ func TestResolveStopServiceStacks(t *testing.T) {
 	}
 }
 
+func mustLockStacks(t *testing.T, contextName string, stacks ...string) func() {
+	t.Helper()
+
+	unlock, err := lockStacks(context.Background(), contextName, "test", stacks...)
+	if err != nil {
+		t.Fatalf("lockStacks() error = %v", err)
+	}
+
+	return unlock
+}
+
 func TestLockStacks_DeduplicatesAndLocksSortedOrder(t *testing.T) {
 	t.Parallel()
 
 	// Repeated/empty entries must not cause a self-deadlock (locking the same
 	// stack twice) and must not be double-unlocked.
-	unlock := lockStacks("", "zeta", "alpha", "alpha", "", "zeta")
+	unlock := mustLockStacks(t, "", "lockstacks-zeta", "lockstacks-alpha", "lockstacks-alpha", "", "lockstacks-zeta")
 	unlock()
 
 	// If dedup/unlock bookkeeping were broken, acquiring the same stacks again
 	// would deadlock (this call would hang forever), so a normal test timeout
 	// failure would catch it.
-	unlock2 := lockStacks("", "alpha", "zeta")
+	unlock2 := mustLockStacks(t, "", "lockstacks-alpha", "lockstacks-zeta")
 	unlock2()
 }
 
@@ -98,14 +112,20 @@ func TestLockStacks_SameStackDifferentContextsDoNotBlock(t *testing.T) {
 	// Two different Docker contexts using the same stack name must not share
 	// a lock (see lock.StackKey): locking "prod" on "context-a" must not block
 	// locking "prod" on "context-b" concurrently.
-	unlockA := lockStacks("context-a", "prod")
+	unlockA := mustLockStacks(t, "context-a", "prod")
 
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
 
-		unlockB := lockStacks("context-b", "prod")
+		unlockB, err := lockStacks(context.Background(), "context-b", "test", "prod")
+		if err != nil {
+			t.Errorf("lockStacks() error = %v", err)
+
+			return
+		}
+
 		unlockB()
 	}()
 
@@ -116,6 +136,53 @@ func TestLockStacks_SameStackDifferentContextsDoNotBlock(t *testing.T) {
 	}
 
 	unlockA()
+}
+
+func TestLockStacks_RecordsHolder(t *testing.T) {
+	t.Parallel()
+
+	holder := scheduledRunLockHolder("backup", "run-1")
+
+	unlock, err := lockStacks(context.Background(), "", holder, "lockstacks-holder")
+	if err != nil {
+		t.Fatalf("lockStacks() error = %v", err)
+	}
+
+	got, locked := lock.StackLockHolder("lockstacks-holder")
+	if !locked || got != holder {
+		t.Fatalf("StackLockHolder() = (%q, %v), want (%q, true)", got, locked, holder)
+	}
+
+	unlock()
+
+	if _, locked := lock.StackLockHolder("lockstacks-holder"); locked {
+		t.Fatal("StackLockHolder() reports a lock after unlock")
+	}
+}
+
+func TestLockStacks_CancelReleasesAcquiredLocks(t *testing.T) {
+	t.Parallel()
+
+	// The run holds the second stack in sort order. A new run locks the first
+	// stack, then waits for the second one until its context ends.
+	unlockBusy := mustLockStacks(t, "", "lockstacks-cancel-b")
+	defer unlockBusy()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	unlock, err := lockStacks(ctx, "", "test", "lockstacks-cancel-b", "lockstacks-cancel-a")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("lockStacks() error = %v, want context.DeadlineExceeded", err)
+	}
+
+	if unlock != nil {
+		t.Fatal("lockStacks() returned an unlock function on error")
+	}
+
+	if _, locked := lock.StackLockHolder("lockstacks-cancel-a"); locked {
+		t.Fatal("lockStacks() kept the first stack locked after the wait was canceled")
+	}
 }
 
 func TestStopHold_RefCounting(t *testing.T) {

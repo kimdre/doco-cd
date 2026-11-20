@@ -587,7 +587,7 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 	return nil
 }
 
-// lockStacks acquires the per-stack scheduler/deploy lock (see lock.LockStack)
+// lockStacks acquires the per-stack scheduler/deploy lock (see lock.LockStackContext)
 // for every distinct, non-empty stack name given, in a deterministic (sorted)
 // order. Locking multiple stacks in a fixed global order rather than in
 // caller-supplied order prevents ABBA deadlocks when two scheduled runs
@@ -596,9 +596,12 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 // need to lock in the opposite order). Stack names are only unique within a
 // Docker context (see lock.StackKey), so contextName is included in every
 // lock key to keep same-named stacks on different contexts from blocking each
-// other. It returns an unlock function that releases all acquired locks;
+// other. holder describes the run in log and skip messages of deployments
+// that find the stack locked. When ctx ends while it waits, lockStacks
+// releases the locks it already holds and returns the context error.
+// On success it returns an unlock function that releases all acquired locks;
 // callers must call it exactly once.
-func lockStacks(contextName string, stacks ...string) (unlock func()) {
+func lockStacks(ctx context.Context, contextName, holder string, stacks ...string) (unlock func(), err error) {
 	seen := set.New[string]()
 	unique := make([]string, 0, len(stacks))
 
@@ -619,15 +622,26 @@ func lockStacks(contextName string, stacks ...string) (unlock func()) {
 
 	sort.Strings(unique)
 
-	for _, key := range unique {
-		lock.LockStack(key)
-	}
-
-	return func() {
-		for _, u := range slices.Backward(unique) {
+	unlockAll := func(keys []string) {
+		for _, u := range slices.Backward(keys) {
 			lock.UnlockStack(u)
 		}
 	}
+
+	for i, key := range unique {
+		if err := lock.LockStackContext(ctx, key, holder); err != nil {
+			unlockAll(unique[:i])
+
+			return nil, err
+		}
+	}
+
+	return func() { unlockAll(unique) }, nil
+}
+
+// scheduledRunLockHolder describes a scheduled run as the holder of a stack lock.
+func scheduledRunLockHolder(jobName, runID string) string {
+	return fmt.Sprintf("scheduled job %q (run %s)", jobName, runID)
 }
 
 // resolveStopServiceStacks returns the distinct resolved stack/project names

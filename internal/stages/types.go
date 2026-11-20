@@ -54,6 +54,11 @@ var (
 	// deployment. It wraps ErrSkipDeployment, because a deferred deployment is
 	// an intentional no-op and not a failure.
 	ErrSyncWindowBlocked = fmt.Errorf("deferred by sync window: %w", ErrSkipDeployment)
+
+	// ErrStackLocked is returned when the deployment is skipped because another
+	// operation, for example a running scheduled job, holds the stack lock. It
+	// wraps ErrSkipDeployment, so the next poll tries the stack again.
+	ErrStackLocked = fmt.Errorf("stack locked: %w", ErrSkipDeployment)
 )
 
 // SyncWindowBlockedError describes stacks whose deployment was deferred by

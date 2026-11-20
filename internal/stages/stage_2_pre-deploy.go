@@ -254,7 +254,7 @@ func measurePreDeployOperation[T any](
 	return value, err
 }
 
-func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
+func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger, stack *docker.LockedStack) error {
 	s.Stages.PreDeploy.StartedAt = time.Now()
 
 	defer func() {
@@ -312,11 +312,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	// before any skip detection, otherwise an unchanged source could leave the
 	// previous runtime mode alive indefinitely.
 	s.DeployState.modeMigrationNeeded, err = measurePreDeployOperation(stageLog, "deployment_mode_inspection", func() (bool, error) {
-		return docker.DeploymentModeMigrationRequired(
+		return stack.DeploymentModeMigrationRequired(
 			ctx,
 			s.Docker.Cmd,
-			s.DeployConfig.Context,
-			s.DeployConfig.Name,
 			s.migrationSource(),
 			s.Docker.SwarmMode,
 			s.Docker.SwarmAvailable,
@@ -707,7 +705,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		s.DeployState.imageChangedServices = imageChangedServices
 		s.DeployState.ignoredInfo = ignoredInfo
 
-		stageLog.Debug("changes detected, proceeding with deployment",
+		stageLog.Info("changes detected, proceeding with deployment",
 			slog.String("directory", s.DeployConfig.WorkingDirectory),
 			slog.Bool("force_recreate", s.DeployConfig.ForceRecreate),
 			slog.Group("has_changes",

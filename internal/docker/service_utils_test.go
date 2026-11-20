@@ -289,6 +289,127 @@ func TestServiceInventory_IgnoresContainersWithoutServiceLabel(t *testing.T) {
 	}
 }
 
+// A running scheduler one-off clone shares the service label of its source but has no
+// doco-cd deployment labels. Docker lists it first because it is the newest container.
+// It must not supply the service labels or count as a replica (#2211).
+func TestServiceInventory_IgnoresOneOffContainers(t *testing.T) {
+	t.Parallel()
+
+	const project = "ops"
+
+	deploymentLabels := func(service string) Labels {
+		return Labels{
+			api.ProjectLabel:                    project,
+			api.ServiceLabel:                    service,
+			api.OneoffLabel:                     "False",
+			DocoCDLabels.Source.Name:            "owner/repo",
+			DocoCDLabels.Deployment.CommitSHA:   "deployed-commit",
+			DocoCDLabels.Deployment.ComposeHash: "deployed-compose",
+			DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deploy.AutoDiscoveryConfig{
+				Enabled: true,
+			}),
+			DocoCDLabels.Deployment.Timestamp: "2026-10-14T07:00:00Z",
+		}
+	}
+
+	appLabels := deploymentLabels("app")
+	jobLabels := deploymentLabels("backup")
+	jobLabels[DocoCDJobLabels.JobEnabled] = "true"
+
+	app := container.Summary{State: container.StateRunning, Labels: appLabels}
+	source := container.Summary{State: container.StateCreated, Labels: jobLabels}
+	schedulerRun := container.Summary{State: container.StateRunning, Labels: Labels{
+		api.ProjectLabel:                   project,
+		api.ServiceLabel:                   "backup",
+		api.OneoffLabel:                    "True",
+		DocoCDJobLabels.JobEnabled:         "true",
+		DocoCDJobLabels.JobEphemeral:       "true",
+		DocoCDJobLabels.JobRunID:           "run-1",
+		DocoCDJobLabels.JobStartedAt:       "2026-10-14T08:00:00Z",
+		DocoCDJobLabels.JobScheduledAt:     "2026-10-14T08:00:00Z",
+		DocoCDJobLabels.JobSourceServiceID: "source-id",
+	}}
+	containerClone := container.Summary{State: container.StateRunning, Labels: Labels{
+		api.ProjectLabel:             project,
+		api.ServiceLabel:             "app",
+		api.OneoffLabel:              "False",
+		DocoCDJobLabels.JobEphemeral: "true",
+	}}
+	composeRun := container.Summary{State: container.StateRunning, Labels: Labels{
+		api.ProjectLabel: project,
+		api.ServiceLabel: "app",
+		api.OneoffLabel:  "True",
+	}}
+
+	services := types.Services{
+		"app":    {Name: "app", Restart: "unless-stopped"},
+		"backup": {Name: "backup", Restart: "no"},
+	}
+	wantStatus := map[Service]ServiceStatus{
+		"app":    {Labels: appLabels, Replicas: 1, Containers: 1},
+		"backup": {Labels: jobLabels, Containers: 1},
+	}
+
+	for _, tt := range []struct {
+		name       string
+		containers []container.Summary
+	}{
+		{name: "one-off containers first", containers: []container.Summary{schedulerRun, containerClone, composeRun, app, source}},
+		{name: "one-off containers last", containers: []container.Summary{app, source, schedulerRun, containerClone, composeRun}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			inventory := getServiceStatusFromContainerStatus(project, tt.containers)
+			status := getLatestServiceStatus(&sync.Map{}, inventory, "https://github.com/owner/repo.git", project)
+
+			if !reflect.DeepEqual(status.DeployedStatus, wantStatus) {
+				t.Fatalf("deployed status = %#v, want %#v", status.DeployedStatus, wantStatus)
+			}
+
+			if status.deploymentCommitSHA != "deployed-commit" || status.deploymentComposeHash != "deployed-compose" {
+				t.Fatalf("deployment metadata = %q/%q, want deployed-commit/deployed-compose",
+					status.deploymentCommitSHA, status.deploymentComposeHash)
+			}
+
+			mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, services)
+			if err != nil {
+				t.Fatalf("CheckServiceMismatch() error = %v", err)
+			}
+
+			if len(mismatches) != 0 {
+				t.Fatalf("CheckServiceMismatch() = %#v, want no mismatches", mismatches)
+			}
+		})
+	}
+}
+
+func TestIsOneOffContainer(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		labels Labels
+		want   bool
+	}{
+		{name: "no labels"},
+		{name: "service container", labels: Labels{api.OneoffLabel: "False"}},
+		{name: "compose run", labels: Labels{api.OneoffLabel: "True"}, want: true},
+		{name: "compose run lower case", labels: Labels{api.OneoffLabel: " true "}, want: true},
+		{name: "scheduler run", labels: Labels{api.OneoffLabel: "False", DocoCDJobLabels.JobEphemeral: "true"}, want: true},
+		{name: "ephemeral false", labels: Labels{DocoCDJobLabels.JobEphemeral: "false"}},
+		{name: "ephemeral invalid", labels: Labels{DocoCDJobLabels.JobEphemeral: "maybe"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isOneOffContainer(tt.labels); got != tt.want {
+				t.Fatalf("isOneOffContainer(%v) = %v, want %v", tt.labels, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDeploymentTimestampAtLeastSubsecond(t *testing.T) {
 	t.Parallel()
 

@@ -111,6 +111,9 @@ func cleanupObsoleteAutoDiscoveredContainersResult(ctx context.Context, jobLog *
 	return c.pending || len(errs) > 0, errors.Join(errs...)
 }
 
+// obsoleteStackCleanupLockHolder describes the obsolete stack cleanup as a stack lock holder.
+const obsoleteStackCleanupLockHolder = "obsolete stack cleanup"
+
 // obsoleteStackCleanup holds the state of one cleanup run.
 type obsoleteStackCleanup struct {
 	log         *slog.Logger
@@ -522,13 +525,24 @@ func artifactRelativeDir(workingDir, storeName string) (string, bool) {
 }
 
 // remove destroys the obsolete stack with services. It holds the stack's deployment lock and skips the stack if
-// it was redeployed or removed since services were listed.
+// it was redeployed or removed since services were listed. When another operation holds the lock, for example a
+// scheduled job run, it skips the stack and marks the cleanup as pending, so a later run tries again.
 func (c *obsoleteStackCleanup) remove(ctx context.Context, stackLog *slog.Logger, stackName string,
 	services map[docker.Service]map[string]string, policy deployConfig.AutoDiscoveryConfig, notifier notification.Sender,
 ) error {
 	stackLockKey := lock.StackKey(c.contextName, stackName)
 
-	lock.LockStack(stackLockKey)
+	locked, holder := lock.TryLockStack(stackLockKey, obsoleteStackCleanupLockHolder)
+	if !locked {
+		stackLog.Info("skipping removal of obsolete auto-discovered stack as the stack is locked by another operation",
+			slog.String("lock_holder", holder),
+		)
+
+		c.pending = true
+
+		return nil
+	}
+
 	defer lock.UnlockStack(stackLockKey)
 
 	current, err := docker.GetDeploymentServices(ctx, c.dockerCli.Client(), c.swarmMode, stackName)

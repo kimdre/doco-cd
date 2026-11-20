@@ -274,7 +274,7 @@ Behavior:
     Services deployed with `#!yaml deploy.mode: global` (or `global-job`) cannot be scaled to 0 replicas, so they are skipped with a warning instead of being stopped.
 
 ??? note "Concurrency and shared targets"
-    While services are held stopped, doco-cd locks the job's own stack **and** every stack referenced by `cd.doco.job.stop_services`, so a concurrent deployment or another scheduled run cannot race with the reconciliation of those stacks.
+    While services are held stopped, doco-cd locks the job's own stack **and** every stack referenced by `cd.doco.job.stop_services`, so a concurrent deployment or another scheduled run cannot race with the reconciliation of those stacks. See [Deployments during a job run](#deployments-during-a-job-run) for how deployments handle a locked stack.
 
     If two scheduled jobs happen to list the same target service (e.g. two backup jobs sharing a cache), the target is only actually restarted once every job that stopped it has finished. It will not be brought back up prematurely while another job still needs it stopped.
 
@@ -349,7 +349,7 @@ The timeout also applies to [manual job executions](#manual-job-execution).
 !!! note "Restart mode waits for the job to exit"
     Without a timeout or `stop_services`, a standalone `restart`-mode run ends when the container has started.
     With a timeout, doco-cd waits until the container exits, so the run result is the exit status of the job.
-    Deployments of the same stack wait until the run finishes.
+    Deployments of the same stack do not start until the run finishes. See [Deployments during a job run](#deployments-during-a-job-run).
     doco-cd cannot detect when a restart-mode Swarm service completes, so it cannot limit its runtime.
     A Swarm job with a timeout must use `#!yaml cd.doco.job.execution_mode: "one_off"`. Otherwise, the
     deployment fails, and an already deployed job is listed as invalid with a `schedule_error`.
@@ -361,6 +361,40 @@ The timeout also applies to [manual job executions](#manual-job-execution).
     A run that finished while doco-cd was down reports its own result, even if it ran longer than the timeout.
 
     `restart`-mode runs are not recovered, so doco-cd does not enforce their timeout across a restart.
+
+## Deployments during a job run
+
+A scheduled run locks its stack until the run finishes. With [`stop_services`](#temporarily-stop-services-during-a-job-run),
+the run also locks every stack that it stops. A long `one_off` job can hold the lock for hours.
+The lock keeps a deployment from changing the stack while the job uses it.
+
+The operation controls what happens when the stack is locked:
+
+| Operation                                                                                                                     | Behavior                                                                                   |
+|-------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| [Polls](../Poll-Settings.md), including polls triggered through the [REST API](../Endpoints/REST-API.md#polling) or MCP       | Skip the stack at once and try it again on the next poll. Other stacks continue to deploy. |
+| Reconciliation redeploys and removal of obsolete auto-discovered stacks                                                       | Skip the stack. A later poll or event tries again.                                         |
+| [Webhooks](../Git-Settings.md)                                                                                                | Wait until the run finishes, then deploy the stack. Shutdown of doco-cd cancels the wait.  |
+| [Compose project actions](../Endpoints/REST-API.md#compose-projects) of the REST API and MCP, for example `stop` or `restart` | Wait until the run finishes or the request is canceled.                                    |
+
+Deployments take the stack lock before pre-deploy checks. A webhook that waits for the lock does not use a
+concurrency slot. If a poll skips a locked stack, reconciliation keeps using the last deployed revision.
+
+A skipped stack has the skip reason `stack is locked by another operation`. doco-cd logs this message at the `INFO` level
+with the `lock_holder` attribute, for example `scheduled job "backup" (run <run-id>)`:
+
+```text
+stack is locked by another operation, skipping deployment
+```
+
+A deployment that waits for the lock logs `waiting for stack lock` with the same attribute.
+
+The temporary container of a running `one_off` job is not a replica of its source service.
+doco-cd ignores it when it compares the deployed state with the repository, so a running job does not cause a redeployment.
+
+!!! note
+    The [`wait_running_jobs`](../Deploy-Settings.md#wait-for-running-scheduled-jobs-before-deployment) setting
+    does not change this behavior. doco-cd checks it only after the deployment has the stack lock.
 
 ## Examples
 

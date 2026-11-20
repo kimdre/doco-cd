@@ -274,6 +274,9 @@ func getDeployStatus(ctx context.Context, client client.APIClient, swarmMode boo
 // getServiceStatusFromContainerStatus returns a map of service names to their current status.
 // Compose lifecycle-hook runners are not service replicas and do not carry the doco-cd deployment labels,
 // so they are excluded.
+// One-off containers are also excluded. This includes scheduler job runs, which share the service label
+// but do not carry the doco-cd deployment labels. Docker lists the newest container first, so a running
+// one-off would otherwise supply the service labels and make the stack look changed on every poll.
 // Containers without a Compose service label are also excluded. They are not replicas of any service,
 // for example helper containers that other tools start with only the project label.
 // Compose ignores them too, so a deployment cannot remove them and they must not count as drift.
@@ -281,7 +284,7 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 	result := make(map[Service]ServiceStatus)
 
 	for _, cont := range containers {
-		if cont.Labels[api.ProjectLabel] != projectName || cont.Labels[api.HookLabel] != "" {
+		if cont.Labels[api.ProjectLabel] != projectName || cont.Labels[api.HookLabel] != "" || isOneOffContainer(cont.Labels) {
 			continue
 		}
 
@@ -310,6 +313,17 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 	}
 
 	return result
+}
+
+// isOneOffContainer reports whether labels belong to a one-off container.
+// Compose marks "compose run" containers with oneoff=True. The scheduler marks its job runs as ephemeral.
+// Containers without the oneoff label are not one-off containers.
+func isOneOffContainer(labels Labels) bool {
+	if isEphemeral, err := strconv.ParseBool(strings.TrimSpace(labels[DocoCDJobLabels.JobEphemeral])); err == nil && isEphemeral {
+		return true
+	}
+
+	return strings.EqualFold(strings.TrimSpace(labels[api.OneoffLabel]), "true")
 }
 
 const (

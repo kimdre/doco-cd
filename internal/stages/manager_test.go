@@ -169,7 +169,7 @@ func TestStageOrders(t *testing.T) {
 
 	sm := newTestStageManager(t)
 
-	deployOrder := sm.GetDeployStageOrder()
+	deployOrder := sm.GetDeployStageOrder(nil)
 	if want := []StageName{StageInit, StagePreDeploy, StageDeploy, StagePostDeploy, StageCleanup}; !slices.Equal(deployOrder.Order, want) {
 		t.Fatalf("GetDeployStageOrder() order = %v, want %v", deployOrder.Order, want)
 	}

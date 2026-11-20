@@ -56,6 +56,7 @@ state shared by parallel tests:
 | Appended documents    | Plain additions, first encrypted addition, and later additions after decryption, preserving existing containers                   |
 | Scheduled status      | Uninterrupted automatic execution, dependency stop/restore, cleanup, failed-source isolation, manual execution, and API reporting |
 | Scheduled pre_start   | Unrelated webhook skips, repeated hooks without source recreation, hook failure/retry, and unsupported one-off rejection          |
+| Stack lock            | Polls skip a stack locked by a running one-off job, keep deploying other stacks, and deploy the skipped change after the job ends |
 | Autostart drift       | Explicit and discovered stopped-service polling, cached skips, external start/stop, missing-container recovery, and config changes |
 | Self-update scale-out | Bootstrap adoption and labels, followed by healthy overlap and handover                                                           |
 | API key roles         | REST and MCP role presets and explicit permissions for Compose and isolated Swarm, including control and removal                   |

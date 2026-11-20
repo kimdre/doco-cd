@@ -1,0 +1,15 @@
+name: e2e-stack-lock-busy
+working_dir: busy
+compose_files: [compose.yaml]
+context: remote
+swarm:
+  enabled: false
+reconciliation: false
+---
+name: e2e-stack-lock-free
+working_dir: free
+compose_files: [compose.yaml]
+context: remote
+swarm:
+  enabled: false
+reconciliation: false

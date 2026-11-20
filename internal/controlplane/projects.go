@@ -193,7 +193,10 @@ func ExecuteProjectAction(ctx context.Context, operation ProjectAction, timeoutS
 	// RecreateProject takes this lock itself while it resolves the deployed
 	// source revision. Other lifecycle actions must serialize with deployments.
 	if operation.action != "recreate" {
-		lock.LockStack(operation.lockKey)
+		if err := lock.LockStackContext(ctx, operation.lockKey, "project action "+operation.action); err != nil {
+			return ProjectActionResult{}, fmt.Errorf("acquire stack lock: %w", err)
+		}
+
 		defer lock.UnlockStack(operation.lockKey)
 	}
 

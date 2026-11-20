@@ -2,6 +2,7 @@ package lock
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"testing"
@@ -585,4 +586,261 @@ func TestLockStack_SameStackDifferentContextsDontBlock(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("LockStack for the same stack name on a different context should not block")
 	}
+}
+
+func TestTryLockStack_ReportsHolder(t *testing.T) {
+	t.Parallel()
+
+	key := t.Name()
+
+	ok, holder := TryLockStack(key, "scheduled job backup")
+	if !ok || holder != "" {
+		t.Fatalf("TryLockStack() on a free lock = (%v, %q), want (true, \"\")", ok, holder)
+	}
+
+	got, locked := StackLockHolder(key)
+	if !locked || got != "scheduled job backup" {
+		t.Fatalf("StackLockHolder() = (%q, %v), want (%q, true)", got, locked, "scheduled job backup")
+	}
+
+	ok, holder = TryLockStack(key, "deployment")
+	if ok || holder != "scheduled job backup" {
+		t.Fatalf("TryLockStack() on a busy lock = (%v, %q), want (false, %q)", ok, holder, "scheduled job backup")
+	}
+
+	UnlockStack(key)
+
+	if got, locked := StackLockHolder(key); locked || got != "" {
+		t.Fatalf("StackLockHolder() after unlock = (%q, %v), want (\"\", false)", got, locked)
+	}
+
+	ok, _ = TryLockStack(key, "deployment")
+	if !ok {
+		t.Fatal("TryLockStack() after unlock = false, want true")
+	}
+
+	UnlockStack(key)
+}
+
+func TestTryLockStack_EmptyHolderUsesGenericText(t *testing.T) {
+	t.Parallel()
+
+	key := t.Name()
+
+	LockStack(key)
+	defer UnlockStack(key)
+
+	if ok, holder := TryLockStack(key, "deployment"); ok || holder != unknownStackHolder {
+		t.Fatalf("TryLockStack() = (%v, %q), want (false, %q)", ok, holder, unknownStackHolder)
+	}
+}
+
+func TestStackLockHolder_UnknownKey(t *testing.T) {
+	t.Parallel()
+
+	if holder, locked := StackLockHolder(t.Name()); locked || holder != "" {
+		t.Fatalf("StackLockHolder() = (%q, %v), want (\"\", false)", holder, locked)
+	}
+
+	if holder, locked := StackLockHolder(""); locked || holder != "" {
+		t.Fatalf("StackLockHolder(\"\") = (%q, %v), want (\"\", false)", holder, locked)
+	}
+}
+
+func TestLockStackContext_HonorsCancellation(t *testing.T) {
+	t.Parallel()
+
+	key := t.Name()
+
+	if err := LockStackContext(t.Context(), key, "scheduled job"); err != nil {
+		t.Fatalf("LockStackContext() error = %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	if err := LockStackContext(ctx, key, "deployment"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("LockStackContext() on a busy lock error = %v, want context.DeadlineExceeded", err)
+	}
+
+	// The cancelled waiter must not take or describe the lock.
+	if holder, _ := StackLockHolder(key); holder != "scheduled job" {
+		t.Fatalf("StackLockHolder() = %q, want %q", holder, "scheduled job")
+	}
+
+	UnlockStack(key)
+
+	if err := LockStackContext(t.Context(), key, "deployment"); err != nil {
+		t.Fatalf("LockStackContext() after unlock error = %v", err)
+	}
+
+	UnlockStack(key)
+}
+
+func TestLockStackContext_CancelledContextDoesNotAcquireFreeLock(t *testing.T) {
+	t.Parallel()
+
+	key := t.Name()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	if err := LockStackContext(ctx, key, "deployment"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("LockStackContext() error = %v, want context.Canceled", err)
+	}
+
+	if _, locked := StackLockHolder(key); locked {
+		t.Fatal("LockStackContext() with a cancelled context acquired the lock")
+	}
+}
+
+func TestAcquireStack_SkipReturnsBusyError(t *testing.T) {
+	t.Parallel()
+
+	key := t.Name()
+
+	if err := LockStackContext(t.Context(), key, "scheduled job backup"); err != nil {
+		t.Fatalf("LockStackContext() error = %v", err)
+	}
+
+	defer UnlockStack(key)
+
+	onWaitCalled := false
+
+	release, err := AcquireStack(t.Context(), key, AcquireStackOptions{
+		Holder: "deployment",
+		OnWait: func(string) { onWaitCalled = true },
+	})
+	if release != nil {
+		t.Fatal("AcquireStack() returned a release function for a busy lock")
+	}
+
+	if !errors.Is(err, ErrStackBusy) {
+		t.Fatalf("AcquireStack() error = %v, want ErrStackBusy", err)
+	}
+
+	busy, ok := errors.AsType[*StackBusyError](err)
+	if !ok || busy.Key != key || busy.Holder != "scheduled job backup" {
+		t.Fatalf("AcquireStack() error = %#v, want StackBusyError for %q held by %q", err, key, "scheduled job backup")
+	}
+
+	if onWaitCalled {
+		t.Fatal("AcquireStack() called OnWait without Wait")
+	}
+}
+
+func TestAcquireStack_CanceledContextDoesNotAcquireFreeLock(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	for _, wait := range []bool{false, true} {
+		release, err := AcquireStack(ctx, t.Name(), AcquireStackOptions{Wait: wait})
+		if release != nil {
+			release()
+			t.Fatalf("AcquireStack(Wait=%t) acquired the lock with a canceled context", wait)
+		}
+
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("AcquireStack(Wait=%t) error = %v, want context.Canceled", wait, err)
+		}
+
+		if _, held := StackLockHolder(t.Name()); held {
+			t.Fatalf("AcquireStack(Wait=%t) left the lock held", wait)
+		}
+	}
+}
+
+func TestAcquireStack_WaitsForRelease(t *testing.T) {
+	t.Parallel()
+
+	key := t.Name()
+
+	if err := LockStackContext(t.Context(), key, "scheduled job backup"); err != nil {
+		t.Fatalf("LockStackContext() error = %v", err)
+	}
+
+	waiting := make(chan string, 1)
+	acquired := make(chan error, 1)
+
+	var release func()
+
+	go func() {
+		var err error
+
+		release, err = AcquireStack(t.Context(), key, AcquireStackOptions{
+			Holder: "deployment",
+			Wait:   true,
+			OnWait: func(holder string) { waiting <- holder },
+		})
+		acquired <- err
+	}()
+
+	select {
+	case holder := <-waiting:
+		if holder != "scheduled job backup" {
+			t.Fatalf("OnWait() holder = %q, want %q", holder, "scheduled job backup")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for OnWait")
+	}
+
+	select {
+	case err := <-acquired:
+		t.Fatalf("AcquireStack() returned %v while the lock was held", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	UnlockStack(key)
+
+	select {
+	case err := <-acquired:
+		if err != nil {
+			t.Fatalf("AcquireStack() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for AcquireStack")
+	}
+
+	if holder, _ := StackLockHolder(key); holder != "deployment" {
+		t.Fatalf("StackLockHolder() = %q, want %q", holder, "deployment")
+	}
+
+	release()
+
+	if _, locked := StackLockHolder(key); locked {
+		t.Fatal("release() did not unlock the stack")
+	}
+}
+
+func TestAcquireStack_WaitHonorsCancellation(t *testing.T) {
+	t.Parallel()
+
+	key := t.Name()
+
+	if err := LockStackContext(t.Context(), key, "scheduled job backup"); err != nil {
+		t.Fatalf("LockStackContext() error = %v", err)
+	}
+
+	defer UnlockStack(key)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	release, err := AcquireStack(ctx, key, AcquireStackOptions{Holder: "deployment", Wait: true})
+	if release != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("AcquireStack() = (%v, %v), want (nil, context.DeadlineExceeded)", release != nil, err)
+	}
+}
+
+func TestAcquireStack_EmptyKeyIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	release, err := AcquireStack(t.Context(), "", AcquireStackOptions{})
+	if err != nil || release == nil {
+		t.Fatalf("AcquireStack(\"\") = (%v, %v), want a release function and nil", release != nil, err)
+	}
+
+	release()
 }
