@@ -380,15 +380,6 @@ The operation controls what happens when the stack is locked:
 Deployments take the stack lock before pre-deploy checks. A webhook that waits for the lock does not use a
 concurrency slot. If a poll skips a locked stack, reconciliation keeps using the last deployed revision.
 
-A skipped stack has the skip reason `stack is locked by another operation`. doco-cd logs this message at the `INFO` level
-with the `lock_holder` attribute, for example `scheduled job "backup" (run <run-id>)`:
-
-```text
-stack is locked by another operation, skipping deployment
-```
-
-A deployment that waits for the lock logs `waiting for stack lock` with the same attribute.
-
 The temporary container of a running `one_off` job is not a replica of its source service.
 doco-cd ignores it when it compares the deployed state with the repository, so a running job does not cause a redeployment.
 
