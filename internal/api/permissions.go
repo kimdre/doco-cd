@@ -10,21 +10,26 @@ import (
 type apiOperation string
 
 const (
-	opListDeploymentRuns   apiOperation = "listDeploymentRuns"
-	opGetDeploymentRun     apiOperation = "getDeploymentRun"
-	opListScheduledJobs    apiOperation = "listScheduledJobs"
-	opTriggerScheduledJob  apiOperation = "triggerScheduledJob"
-	opListComposeProjects  apiOperation = "listComposeProjects"
-	opGetComposeProject    apiOperation = "getComposeProject"
-	opDeleteComposeProject apiOperation = "deleteComposeProject"
-	opRunComposeProject    apiOperation = "runComposeProjectAction"
-	opListSwarmStacks      apiOperation = "listSwarmStacks"
-	opGetSwarmStack        apiOperation = "getSwarmStack"
-	opDeleteSwarmStack     apiOperation = "deleteSwarmStack"
-	opRunSwarmStack        apiOperation = "runSwarmStackAction"
-	opTriggerPoll          apiOperation = "triggerPoll"
-	opCompactMirrors       apiOperation = "compactMirrors"
-	opListSyncWindows      apiOperation = "listSyncWindows"
+	opListDeploymentRuns     apiOperation = "listDeploymentRuns"
+	opGetDeploymentRun       apiOperation = "getDeploymentRun"
+	opListScheduledJobs      apiOperation = "listScheduledJobs"
+	opTriggerScheduledJob    apiOperation = "triggerScheduledJob"
+	opListComposeProjects    apiOperation = "listComposeProjects"
+	opGetComposeProject      apiOperation = "getComposeProject"
+	opDeleteComposeProject   apiOperation = "deleteComposeProject"
+	opStartComposeProject    apiOperation = "startComposeProject"
+	opStopComposeProject     apiOperation = "stopComposeProject"
+	opRestartComposeProject  apiOperation = "restartComposeProject"
+	opRecreateComposeProject apiOperation = "recreateComposeProject"
+	opListSwarmStacks        apiOperation = "listSwarmStacks"
+	opGetSwarmStack          apiOperation = "getSwarmStack"
+	opDeleteSwarmStack       apiOperation = "deleteSwarmStack"
+	opScaleSwarmStack        apiOperation = "scaleSwarmStack"
+	opRestartSwarmStack      apiOperation = "restartSwarmStack"
+	opRunSwarmStackJobs      apiOperation = "runSwarmStack"
+	opTriggerPoll            apiOperation = "triggerPoll"
+	opCompactMirrors         apiOperation = "compactMirrors"
+	opListSyncWindows        apiOperation = "listSyncWindows"
 )
 
 func permissionForOperation(operation apiOperation) restapi.Permission {
@@ -41,9 +46,9 @@ func permissionForOperation(operation apiOperation) restapi.Permission {
 		return restapi.PermissionStacksInspect
 	case opTriggerScheduledJob:
 		return restapi.PermissionJobsTrigger
-	case opRunComposeProject:
+	case opStartComposeProject, opStopComposeProject, opRestartComposeProject, opRecreateComposeProject:
 		return restapi.PermissionProjectsControl
-	case opRunSwarmStack:
+	case opScaleSwarmStack, opRestartSwarmStack, opRunSwarmStackJobs:
 		return restapi.PermissionStacksControl
 	case opTriggerPoll:
 		return restapi.PermissionPollTrigger

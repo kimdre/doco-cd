@@ -177,7 +177,22 @@ func (h *Handler) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request
 
 	jobLog.Debug("received api request")
 
-	if !h.authorize(w, r, jobLog, jobID, opRunComposeProject) {
+	action := r.PathValue("action")
+
+	var operationID apiOperation
+
+	switch action {
+	case "start":
+		operationID = opStartComposeProject
+	case "stop":
+		operationID = opStopComposeProject
+	case "restart":
+		operationID = opRestartComposeProject
+	case "recreate":
+		operationID = opRecreateComposeProject
+	}
+
+	if !h.authorize(w, r, jobLog, jobID, operationID) {
 		return
 	}
 
@@ -202,7 +217,6 @@ func (h *Handler) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	action := r.PathValue("action")
 	serviceName := r.URL.Query().Get("service")
 
 	operation, err := controlplane.ResolveProjectAction(ctx, dockerCli, projectName, action, controlplane.ProjectActionOptions{

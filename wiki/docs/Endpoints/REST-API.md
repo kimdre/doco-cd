@@ -89,6 +89,11 @@ Missing or invalid credentials return `401 Unauthorized`. A valid key without
 the required permission returns `403 Forbidden`. The health, webhook, metrics,
 profiling, and public OpenAPI endpoints have separate access rules.
 
+Unknown Compose project or Swarm stack action paths return a plain-text
+`404 Not Found` before authentication, including for requests without a valid
+key. Previously, authenticated requests for an existing project or stack
+returned a JSON `400 Bad Request` with `invalid action`.
+
 ### Roles
 
 Roles are cumulative: `inspect` includes `read`, `write` includes `inspect`,
@@ -486,6 +491,9 @@ reporting success.
 | `/v1/api/stack/{stackName}/scale`   | POST   | Rescale a Swarm stack or service                                                                                  | - `replicas` (integer): Scale to n replicas.<br/>- `service` (string, optional): Name of service to scale.<br/>- `wait` (boolean, default: `true`): Wait for service to be running/healthy | 
 | `/v1/api/stack/{stackName}/restart` | POST   | Restart/Redeploy a Swarm stack or service                                                                         | - `service` (string, optional): Name of service to restart.                                                                                                                                | 
 | `/v1/api/stack/{stackName}/run`     | POST   | Trigger one or all [jobs](https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job) in stack | - `service` (string, optional): Name of the job service to run.                                                                                                                            |
+
+The `wait` parameter has no effect on `restart` or `run`, but is still
+validated as a boolean. Invalid values return `400 Bad Request`.
 
 ## Example Request
 
