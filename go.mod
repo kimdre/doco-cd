@@ -1,6 +1,6 @@
 module github.com/kimdre/doco-cd
 
-go 1.27.3
+go 1.27.4
 
 tool (
 	github.com/bombsimon/wsl/v5/cmd/wsl
