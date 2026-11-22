@@ -10,7 +10,6 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/common/types/slice"
@@ -33,7 +32,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		afterImages  map[string]api.ImageSummary // Images used by stack after deployment
 	)
 
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return err
 	}
@@ -41,6 +40,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	if recreateMode == "" {
 		recreateMode = api.RecreateDiverged
 	}
+
+	warnSkippedNativeJobs(opts.logger(), project)
 
 	if deployConfig.ForceImagePull {
 		for i, s := range project.Services {

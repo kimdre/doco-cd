@@ -18,7 +18,6 @@ import (
 	"github.com/docker/cli/cli/config/configfile"
 	configtypes "github.com/docker/cli/cli/config/types"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
@@ -488,7 +487,7 @@ func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([
 
 // PullImages pulls all images defined in the named compose project.
 func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) error {
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return err
 	}

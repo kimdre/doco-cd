@@ -13,7 +13,6 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/google/uuid"
 	"github.com/moby/moby/client"
 
@@ -589,7 +588,7 @@ func selfUpdateScaleOut(
 	opts := SelfUpdateConfig()
 	apiClient := dockerCli.Client()
 
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return err
 	}

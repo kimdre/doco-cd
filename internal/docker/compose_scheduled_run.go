@@ -13,7 +13,6 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	containerTypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
@@ -93,7 +92,7 @@ func RunComposeScheduledContainer(
 		return restartComposeScheduledContainer(ctx, dockerCli.Client(), containerID, project.Services[ref.Service], waitForExit)
 	}
 
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return fmt.Errorf("create compose service: %w", err)
 	}
@@ -261,7 +260,7 @@ func RunComposeOneOffFromServiceDefinitionWithOptions(
 		return err
 	}
 
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return fmt.Errorf("create compose service: %w", err)
 	}

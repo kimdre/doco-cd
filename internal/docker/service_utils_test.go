@@ -410,6 +410,69 @@ func TestIsOneOffContainer(t *testing.T) {
 	}
 }
 
+func TestIsEngineJobRun(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		labels Labels
+		want   bool
+	}{
+		{name: "no labels"},
+		{name: "service container", labels: Labels{api.ServiceLabel: "app", api.OneoffLabel: "False"}},
+		{name: "engine job run", labels: Labels{api.ServiceLabel: "backup", engineJobRunLabel: "job-run-1"}, want: true},
+		{name: "native job label", labels: Labels{api.ServiceLabel: "backup", api.JobLabel: "backup"}, want: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isEngineJobRun(tt.labels); got != tt.want {
+				t.Fatalf("isEngineJobRun(%v) = %v, want %v", tt.labels, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetServiceStatusFromContainerStatus_ExcludesEngineJobRuns(t *testing.T) {
+	t.Parallel()
+
+	const project = "test-project"
+
+	appLabels := Labels{
+		api.ProjectLabel:                  project,
+		api.ServiceLabel:                  "app",
+		api.OneoffLabel:                   "False",
+		DocoCDLabels.Source.Name:          "owner/repo",
+		DocoCDLabels.Deployment.CommitSHA: "deployed-commit",
+	}
+	app := container.Summary{State: container.StateRunning, Labels: appLabels}
+	engineRun := container.Summary{State: container.StateRunning, Labels: Labels{
+		api.ProjectLabel:  project,
+		api.ServiceLabel:  "backup",
+		api.OneoffLabel:   "False",
+		engineJobRunLabel: "job-run-1",
+	}}
+
+	for _, containers := range [][]container.Summary{{engineRun, app}, {app, engineRun}} {
+		inventory := getServiceStatusFromContainerStatus(project, containers)
+		status := getLatestServiceStatus(&sync.Map{}, inventory, "https://github.com/owner/repo.git", project)
+
+		want := map[Service]ServiceStatus{"app": {Labels: appLabels, Replicas: 1, Containers: 1}}
+		if !reflect.DeepEqual(status.DeployedStatus, want) {
+			t.Fatalf("deployed status = %#v, want %#v", status.DeployedStatus, want)
+		}
+
+		mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, types.Services{"app": {Name: "app", Restart: "unless-stopped"}})
+		if err != nil {
+			t.Fatalf("CheckServiceMismatch() error = %v", err)
+		}
+
+		if len(mismatches) != 0 {
+			t.Fatalf("CheckServiceMismatch() = %#v, want no mismatches", mismatches)
+		}
+	}
+}
+
 func TestDeploymentTimestampAtLeastSubsecond(t *testing.T) {
 	t.Parallel()
 

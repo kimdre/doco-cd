@@ -17,6 +17,21 @@ This is useful for running periodic tasks such as backups, maintenance scripts, 
 
     To avoid duplicate runs, enable the scheduler only on the instance that should own scheduled jobs and set [`SCHEDULER_ENABLED`](../App-Settings.md#:~:text=when%20not%20specified-,SCHEDULER_ENABLED,-boolean) to `false` on secondary or self-updater instances.
 
+!!! info "Compose native `jobs:` are not scheduled yet"
+    Docker Compose 5.8.0 and later can parse a top-level [`jobs:`](https://docs.docker.com/reference/compose-file/) element with `triggers.schedule`.
+    Compose hands such jobs to the Docker Engine jobs extension. Native jobs are experimental and can change in later Docker releases.
+    The extension needs Docker Engine 29.10.0 or later and is off by default.
+
+    Doco-CD does not use the Engine jobs extension. It never registers native jobs with the Docker Engine, so a Compose file with a scheduled `jobs:` entry deploys like any other file.
+    Doco-CD does not run native jobs on a schedule yet and logs a warning with the job names. Use the [service labels](#configuration) on this page to schedule jobs.
+
+    Jobs that the Docker Compose CLI registered earlier stay on the Engine and keep their schedule while the Compose file still declares them.
+    If you remove such a job from the Compose file, doco-cd removes it from the Engine on the next deployment when [`remove_orphans`](../Deploy-Settings.md) is `true`.
+    A [destroy](../Deploy-Settings.md#destroy-settings) removes all registered jobs of the stack.
+    To remove them earlier, run `docker compose down` for the project.
+
+    In [Swarm mode](Swarm-Mode.md) the `jobs:` element is ignored and doco-cd logs a warning.
+
 ## Schedule formats
 
 - [Cron expressions](https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format) **without** seconds (`minute hour day-of-month month day-of-week`)
