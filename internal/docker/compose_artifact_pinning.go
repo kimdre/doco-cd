@@ -165,8 +165,8 @@ func pinUnchangedComposeServices(
 	return nil
 }
 
-// composeServiceContainers returns the containers of a project by service, excluding one-off
-// and ephemeral job containers, which Compose does not reconcile.
+// composeServiceContainers returns the containers of a project by service, excluding one-off,
+// ephemeral job and native job run containers, which Compose does not reconcile.
 func composeServiceContainers(ctx context.Context, apiClient client.APIClient, projectName string) (map[string][]container.Summary, error) {
 	result, err := apiClient.ContainerList(ctx, client.ContainerListOptions{
 		All: true,
@@ -181,7 +181,7 @@ func composeServiceContainers(ctx context.Context, apiClient client.APIClient, p
 	byService := make(map[string][]container.Summary)
 
 	for _, c := range result.Items {
-		if strings.EqualFold(strings.TrimSpace(c.Labels[DocoCDJobLabels.JobEphemeral]), "true") {
+		if strings.EqualFold(strings.TrimSpace(c.Labels[DocoCDJobLabels.JobEphemeral]), "true") || isEngineJobRun(c.Labels) {
 			continue
 		}
 

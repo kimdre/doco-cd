@@ -14,7 +14,6 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/types/duration"
@@ -64,7 +63,7 @@ func DestroyStack(
 		return nil
 	}
 
-	service, err := compose.NewComposeService(*dockerCli)
+	service, err := newComposeService(*dockerCli)
 	if err != nil {
 		return err
 	}
@@ -99,7 +98,7 @@ func DestroyStack(
 
 // RestartProject restarts all services in the specified project.
 func RestartProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return err
 	}
@@ -111,7 +110,7 @@ func RestartProject(ctx context.Context, dockerCli command.Cli, projectName stri
 
 // StopProject stops all services in the specified project.
 func StopProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return err
 	}
@@ -317,7 +316,7 @@ func hasComposeStartHooks(svc types.ServiceConfig) bool {
 // startComposeServiceWithHooks starts one service of a deployed project through Compose.
 // The project must contain only this service, so Compose does not start other services.
 func startComposeServiceWithHooks(ctx context.Context, dockerCli command.Cli, project *types.Project, serviceName string) error {
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return fmt.Errorf("create compose service: %w", err)
 	}
@@ -338,7 +337,7 @@ func startComposeServiceWithHooks(ctx context.Context, dockerCli command.Cli, pr
 
 // StartProject starts all services in the specified project.
 func StartProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return err
 	}
@@ -351,7 +350,7 @@ func StartProject(ctx context.Context, dockerCli command.Cli, projectName string
 
 // RemoveProject removes the entire project including containers, networks, volumes and images.
 func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration, removeVolumes, removeImages bool) error {
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return err
 	}
@@ -375,7 +374,7 @@ func projectDownOptions(timeout time.Duration, removeVolumes, removeImages bool)
 
 // GetProjects returns a list of all projects.
 func GetProjects(ctx context.Context, dockerCli command.Cli, showDisabled bool) ([]api.Stack, error) {
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return nil, err
 	}
@@ -796,7 +795,7 @@ func recreateStandardProject(
 
 	addComposeServiceTrackingLabels(project)
 
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return fmt.Errorf("create compose service: %w", err)
 	}
@@ -845,7 +844,7 @@ func selectRecreateServices(project *types.Project, serviceName string, activeSe
 
 // GetProjectContainers returns the status of all services in the specified project.
 func GetProjectContainers(ctx context.Context, dockerCli command.Cli, projectName string) ([]api.ContainerSummary, error) {
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return nil, err
 	}

@@ -311,6 +311,10 @@ func (s *LockedStack) deploy(ctx context.Context, req DeployRequest) error {
 		return fmt.Errorf("invalid scheduled job configuration: %w", err)
 	}
 
+	if req.SwarmMode {
+		warnSwarmNativeJobs(stackLog, project)
+	}
+
 	if req.DeployConfig.WaitRunningJobs {
 		deploymentPhase.Set("waiting for running scheduled jobs")
 

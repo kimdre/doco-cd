@@ -277,6 +277,8 @@ func getDeployStatus(ctx context.Context, client client.APIClient, swarmMode boo
 // One-off containers are also excluded. This includes scheduler job runs, which share the service label
 // but do not carry the doco-cd deployment labels. Docker lists the newest container first, so a running
 // one-off would otherwise supply the service labels and make the stack look changed on every poll.
+// Runs of native Compose jobs are also excluded. The Docker Engine jobs extension creates them with the job name
+// as service label, and they do not carry the doco-cd deployment labels either.
 // Containers without a Compose service label are also excluded. They are not replicas of any service,
 // for example helper containers that other tools start with only the project label.
 // Compose ignores them too, so a deployment cannot remove them and they must not count as drift.
@@ -284,7 +286,7 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 	result := make(map[Service]ServiceStatus)
 
 	for _, cont := range containers {
-		if cont.Labels[api.ProjectLabel] != projectName || cont.Labels[api.HookLabel] != "" || isOneOffContainer(cont.Labels) {
+		if cont.Labels[api.ProjectLabel] != projectName || cont.Labels[api.HookLabel] != "" || isOneOffContainer(cont.Labels) || isEngineJobRun(cont.Labels) {
 			continue
 		}
 
@@ -324,6 +326,21 @@ func isOneOffContainer(labels Labels) bool {
 	}
 
 	return strings.EqualFold(strings.TrimSpace(labels[api.OneoffLabel]), "true")
+}
+
+// engineJobRunLabel is the reserved label of the Docker Engine jobs extension on the container of a job run.
+const engineJobRunLabel = "com.docker.job.id"
+
+// isEngineJobRun reports whether labels belong to a run of a native Compose job.
+// The Docker Engine jobs extension creates these containers. They are not replicas of a service.
+func isEngineJobRun(labels Labels) bool {
+	if _, ok := labels[engineJobRunLabel]; ok {
+		return true
+	}
+
+	_, ok := labels[api.JobLabel]
+
+	return ok
 }
 
 const (
