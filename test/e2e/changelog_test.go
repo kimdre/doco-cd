@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"slices"
-	"strings"
 	"testing"
 	"time"
 )
@@ -69,11 +68,12 @@ func TestChangelog(t *testing.T) {
 }
 
 // assertChangelog checks that n reports a completed deployment listing exactly want.
+// It also checks the title notificationTitleTemplate renders, the only end-to-end test of that setting.
 func assertChangelog(t *testing.T, n Notification, want []string) {
 	t.Helper()
 
-	if !strings.Contains(n.Title, "Deployment completed") {
-		t.Fatalf("notification of %s is %q, want a completed deployment", n.Stack, n.Title)
+	if wantTitle := n.Stack + ": ✅ Deployment completed"; n.Title != wantTitle {
+		t.Fatalf("notification title of %s is %q, want %q", n.Stack, n.Title, wantTitle)
 	}
 
 	if !slices.Equal(n.Commits, want) {

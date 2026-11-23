@@ -188,6 +188,7 @@ func run() error {
 		NotifyURLs:            c.AppriseNotifyUrls,
 		NotifyLevel:           c.AppriseNotifyLevel,
 		BodyTemplate:          c.AppriseNotifyBodyTemplate,
+		TitleTemplate:         c.AppriseNotifyTitleTemplate,
 		FailureRepeatInterval: c.AppriseNotifyRepeatInterval,
 	})
 	if err != nil {
