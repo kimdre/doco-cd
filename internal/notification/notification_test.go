@@ -94,15 +94,36 @@ func TestSend(t *testing.T) {
 func TestNewValidatesTemplates(t *testing.T) {
 	t.Parallel()
 
-	for name, config := range map[string]Config{
-		"invalid body template":  {BodyTemplate: "{{.Missing}}"},
-		"invalid title template": {TitleTemplate: "{{.Missing}}"},
+	for name, tc := range map[string]struct {
+		config       Config
+		wantSetting  string
+		otherSetting string
+	}{
+		"invalid body template": {
+			config:       Config{BodyTemplate: "{{.Missing}}"},
+			wantSetting:  "APPRISE_NOTIFY_BODY_TEMPLATE",
+			otherSetting: "APPRISE_NOTIFY_TITLE_TEMPLATE",
+		},
+		"invalid title template": {
+			config:       Config{TitleTemplate: "{{.Missing}}"},
+			wantSetting:  "APPRISE_NOTIFY_TITLE_TEMPLATE",
+			otherSetting: "APPRISE_NOTIFY_BODY_TEMPLATE",
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if _, err := New(config); !errors.Is(err, ErrInvalidTemplate) {
+			_, err := New(tc.config)
+			if !errors.Is(err, ErrInvalidTemplate) {
 				t.Fatalf("New() error = %v, want ErrInvalidTemplate", err)
+			}
+
+			if !strings.Contains(err.Error(), tc.wantSetting) {
+				t.Fatalf("New() error = %q, want it to name %s", err, tc.wantSetting)
+			}
+
+			if strings.Contains(err.Error(), tc.otherSetting) {
+				t.Fatalf("New() error = %q, must not name %s", err, tc.otherSetting)
 			}
 		})
 	}

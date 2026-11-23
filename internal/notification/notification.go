@@ -154,9 +154,10 @@ type Notifier struct {
 
 // New constructs an instance-owned notifier and validates its body and title templates.
 func New(config Config) (*Notifier, error) {
+	// Name the setting in errors. Both templates fail with the same error otherwise.
 	bodyTemplate, err := validateTemplate(config.BodyTemplate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("APPRISE_NOTIFY_BODY_TEMPLATE: %w", err)
 	}
 
 	if bodyTemplate == nil {
@@ -165,7 +166,7 @@ func New(config Config) (*Notifier, error) {
 
 	titleTemplate, err := validateTemplate(config.TitleTemplate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("APPRISE_NOTIFY_TITLE_TEMPLATE: %w", err)
 	}
 
 	if titleTemplate == nil {
