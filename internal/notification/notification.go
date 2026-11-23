@@ -62,6 +62,10 @@ var urlLikePattern = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.-]*://[^\s,"]+`)
 // user templates so they can extend the built-in format instead of replacing it.
 var defaultTemplate = template.Must(template.New("notification").Parse("{{ .DefaultBody }}"))
 
+// defaultTitleTemplate is the title counterpart of defaultTemplate, used when no
+// APPRISE_NOTIFY_TITLE_TEMPLATE is configured.
+var defaultTitleTemplate = template.Must(template.New("notification-title").Parse("{{ .DefaultTitle }}"))
+
 // ErrNotifyFailed is returned when the Apprise request fails due to invalid notify URLs or unreachable service.
 var ErrNotifyFailed = errors.New("request to apprise failed")
 
@@ -69,7 +73,7 @@ var ErrNotifyFailed = errors.New("request to apprise failed")
 // destination but another destination failed.
 var ErrNotifyPartial = fmt.Errorf("%w: partial delivery", ErrNotifyFailed)
 
-// ErrInvalidTemplate is returned when the configured notification body template fails to parse or execute.
+// ErrInvalidTemplate is returned when the configured notification template fails to parse or execute.
 var ErrInvalidTemplate = errors.New("invalid notification template")
 
 // appriseRequest represents the structure of a request to the Apprise notification service.
@@ -104,6 +108,7 @@ type Config struct {
 	NotifyURLs            string
 	NotifyLevel           string
 	BodyTemplate          string
+	TitleTemplate         string
 	FailureRepeatInterval time.Duration
 }
 
@@ -136,17 +141,18 @@ func WouldSend(sender Sender, level Level) bool {
 
 // Notifier owns notification configuration and repeat-failure state.
 type Notifier struct {
-	apiURL       string
-	notifyURLs   string
-	notifyLevel  Level
-	bodyTemplate *template.Template
+	apiURL        string
+	notifyURLs    string
+	notifyLevel   Level
+	bodyTemplate  *template.Template
+	titleTemplate *template.Template
 
 	failureMu             sync.Mutex
 	lastFailures          map[string]failureRecord
 	failureRepeatInterval time.Duration
 }
 
-// New constructs an instance-owned notifier and validates its body template.
+// New constructs an instance-owned notifier and validates its body and title templates.
 func New(config Config) (*Notifier, error) {
 	bodyTemplate, err := validateTemplate(config.BodyTemplate)
 	if err != nil {
@@ -157,17 +163,27 @@ func New(config Config) (*Notifier, error) {
 		bodyTemplate = defaultTemplate
 	}
 
+	titleTemplate, err := validateTemplate(config.TitleTemplate)
+	if err != nil {
+		return nil, err
+	}
+
+	if titleTemplate == nil {
+		titleTemplate = defaultTitleTemplate
+	}
+
 	return &Notifier{
 		apiURL:                config.APIURL,
 		notifyURLs:            config.NotifyURLs,
 		notifyLevel:           parseLevel(config.NotifyLevel),
 		bodyTemplate:          bodyTemplate,
+		titleTemplate:         titleTemplate,
 		lastFailures:          make(map[string]failureRecord),
 		failureRepeatInterval: config.FailureRepeatInterval,
 	}, nil
 }
 
-// TemplateData is the data exposed to a user-configured notification body template.
+// TemplateData is the data exposed to a user-configured notification body or title template.
 // Metadata is embedded, so its fields (Repository, Stack, Revision, JobID, ...) are
 // referenced directly, e.g. {{.Stack}} or {{.Repository}}.
 type TemplateData struct {
@@ -179,8 +195,8 @@ type TemplateData struct {
 	Metadata                // embedded metadata fields
 }
 
-// validateTemplate parses and validates a notification body template. An empty
-// string returns a nil template, signalling the caller to use defaultTemplate.
+// validateTemplate parses and validates a notification body or title template. An empty
+// string returns a nil template, signalling the caller to use its built-in template.
 // The template is executed against a fully populated sample so field-reference
 // mistakes fail fast at config time.
 func validateTemplate(tmpl string) (*template.Template, error) {
@@ -449,16 +465,17 @@ func redactSensitiveText(s string) string {
 type SendOption func(*sendOptions)
 
 type sendOptions struct {
-	skipBodyTemplate bool
+	skipTemplates bool
 }
 
-// WithoutBodyTemplate renders the notification with the built-in body format,
-// ignoring any configured APPRISE_NOTIFY_BODY_TEMPLATE. Use it for app-level
-// notifications (e.g. the "new version available" ping) that are not tied to a
-// deployment and therefore carry no stack/context/revision the template expects.
-func WithoutBodyTemplate() SendOption {
+// WithoutTemplates renders the notification with the built-in title and body,
+// ignoring any configured APPRISE_NOTIFY_BODY_TEMPLATE and
+// APPRISE_NOTIFY_TITLE_TEMPLATE. Use it for app-level notifications (e.g. the
+// "new version available" ping) that are not tied to a deployment and therefore
+// carry no stack/context/revision the templates expect.
+func WithoutTemplates() SendOption {
 	return func(o *sendOptions) {
-		o.skipBodyTemplate = true
+		o.skipTemplates = true
 	}
 }
 
@@ -508,19 +525,7 @@ func (n *Notifier) Send(level Level, title, message string, metadata Metadata, o
 		}
 	}
 
-	var o sendOptions
-	for _, opt := range opts {
-		opt(&o)
-	}
-
-	bodyTemplate := n.bodyTemplate
-	if o.skipBodyTemplate {
-		bodyTemplate = nil // renderTemplate falls back to the built-in default body
-	}
-
-	message = renderTemplate(bodyTemplate, level, title, message, metadata)
-
-	title = formatTitle(level, title, metadata)
+	title, message = n.render(level, title, message, metadata, opts...)
 
 	err := send(n.apiURL, n.notifyURLs, title, message, logLevels[level])
 	if err != nil {
@@ -534,14 +539,34 @@ func (n *Notifier) Send(level Level, title, message string, metadata Metadata, o
 	return nil
 }
 
-func formatTitle(level Level, title string, metadata Metadata) string {
-	formattedTitle := strings.TrimSpace(title)
-
-	if strings.TrimSpace(metadata.ReconciliationEvent) != "" {
-		formattedTitle = "[R] " + formattedTitle
+// render applies the send options and renders the title and body templates.
+func (n *Notifier) render(level Level, title, message string, metadata Metadata, opts ...SendOption) (renderedTitle, renderedBody string) {
+	var o sendOptions
+	for _, opt := range opts {
+		opt(&o)
 	}
 
-	return levelEmojis[level] + " " + formattedTitle
+	bodyTemplate, titleTemplate := n.bodyTemplate, n.titleTemplate
+	if o.skipTemplates {
+		bodyTemplate, titleTemplate = defaultTemplate, defaultTitleTemplate
+	}
+
+	data := newTemplateData(level, title, message, metadata)
+
+	return renderTemplate(titleTemplate, data, data.DefaultTitle), renderTemplate(bodyTemplate, data, data.DefaultBody)
+}
+
+// DefaultTitle renders the built-in notification title: level emoji, an [R]
+// marker for reconciliation events, then the title text. It backs
+// defaultTitleTemplate and is exposed to user templates as {{ .DefaultTitle }}.
+func (d TemplateData) DefaultTitle() string {
+	title := d.Title
+
+	if d.IsReconciliation {
+		title = "[R] " + title
+	}
+
+	return d.Emoji + " " + title
 }
 
 // DefaultBody renders the built-in notification body: the message text followed
@@ -661,16 +686,8 @@ func (d TemplateData) DefaultBody() string {
 	return sb.String()
 }
 
-// renderTemplate renders the notification body using the configured template
-// (defaultTemplate when t is nil). On execution failure it falls back to the
-// built-in body so an alert is never dropped because of a template mistake
-// (config-time validation catches most).
-func renderTemplate(t *template.Template, level Level, title, message string, m Metadata) string {
-	if t == nil {
-		t = defaultTemplate
-	}
-
-	data := TemplateData{
+func newTemplateData(level Level, title, message string, m Metadata) TemplateData {
+	return TemplateData{
 		Level:            logLevels[level],
 		Emoji:            levelEmojis[level],
 		Title:            strings.TrimSpace(title),
@@ -678,10 +695,15 @@ func renderTemplate(t *template.Template, level Level, title, message string, m 
 		IsReconciliation: strings.TrimSpace(m.ReconciliationEvent) != "",
 		Metadata:         m,
 	}
+}
 
+// renderTemplate renders t with data. On execution failure it returns fallback()
+// so an alert is never dropped because of a template mistake (config-time
+// validation catches most).
+func renderTemplate(t *template.Template, data TemplateData, fallback func() string) string {
 	var sb strings.Builder
 	if err := t.Execute(&sb, data); err != nil {
-		return data.DefaultBody()
+		return fallback()
 	}
 
 	return strings.TrimRight(sb.String(), "\n")

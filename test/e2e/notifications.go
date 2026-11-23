@@ -13,6 +13,10 @@ import (
 // following line, so a scenario can assert on the changelog without parsing prose.
 const notificationBodyTemplate = "{{.Stack}}{{range .Commits}}\n{{.Subject}}{{end}}"
 
+// notificationTitleTemplate prefixes the stack to the built-in title, which exercises the
+// title template while keeping the default text for assertions.
+const notificationTitleTemplate = "{{.Stack}}: {{.DefaultTitle}}"
+
 // Notification is one Apprise request the daemon sent, in the shape
 // notificationBodyTemplate renders.
 type Notification struct {
@@ -30,6 +34,7 @@ func (h *Harness) CaptureNotifications() {
 	h.SetEnv("APPRISE_NOTIFY_URLS", "json://localhost")
 	h.SetEnv("APPRISE_NOTIFY_LEVEL", "success")
 	h.SetEnv("APPRISE_NOTIFY_BODY_TEMPLATE", notificationBodyTemplate)
+	h.SetEnv("APPRISE_NOTIFY_TITLE_TEMPLATE", notificationTitleTemplate)
 }
 
 // Notifications returns every notification the daemon sent so far, oldest first.

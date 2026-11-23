@@ -12,15 +12,17 @@ For that, specify the required settings in the app `environment` section and add
 
 ## Settings
 
-| Key                                 | Type     | Description                                                                                                                                                                                                 | Default value |
-|-------------------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `APPRISE_API_URL`                   | string   | The URL of the Apprise API to send notifications to (e.g. `http://apprise:8000/notify`)                                                                                                                     |               |
-| `APPRISE_NOTIFY_URLS`               | string   | A comma-separated list of Apprise-URLs to send notifications to the [supported services/platforms](https://appriseit.com/services/) (e.g. `pover://{user_key}@{token},mailto://{user}:{password}@{domain}`) |               |
-| `APPRISE_NOTIFY_URLS_FILE`          | string   | Path to the file inside the container containing the Apprise-URLs (see `APPRISE_NOTIFY_URLS`). Mutually exclusive with `APPRISE_NOTIFY_URLS`.                                                               |               |
-| `APPRISE_NOTIFY_LEVEL`              | string   | The minimum level of notifications to send. Possible values: `info`, `success`, `warning`, `failure`                                                                                                        | `success`     |
-| `APPRISE_NOTIFY_REPEAT_INTERVAL`    | duration | How long an unchanged failure notification is suppressed before it is sent again as a reminder (see [Repeated failures](#repeated-failures)). `0` sends every failure.                                      | `1h`          |
-| `APPRISE_NOTIFY_BODY_TEMPLATE`      | string   | Optional [Go `text/template`](https://pkg.go.dev/text/template) rendering the notification body (see [Custom notification body](#custom-notification-body)). Empty uses the built-in format.                |               |
-| `APPRISE_NOTIFY_BODY_TEMPLATE_FILE` | string   | Path to a file inside the container containing the template (see `APPRISE_NOTIFY_BODY_TEMPLATE`). Mutually exclusive with `APPRISE_NOTIFY_BODY_TEMPLATE`.                                                   |               |
+| Key                                  | Type     | Description                                                                                                                                                                                                 | Default value |
+|--------------------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `APPRISE_API_URL`                    | string   | The URL of the Apprise API to send notifications to (e.g. `http://apprise:8000/notify`)                                                                                                                     |               |
+| `APPRISE_NOTIFY_URLS`                | string   | A comma-separated list of Apprise-URLs to send notifications to the [supported services/platforms](https://appriseit.com/services/) (e.g. `pover://{user_key}@{token},mailto://{user}:{password}@{domain}`) |               |
+| `APPRISE_NOTIFY_URLS_FILE`           | string   | Path to the file inside the container containing the Apprise-URLs (see `APPRISE_NOTIFY_URLS`). Mutually exclusive with `APPRISE_NOTIFY_URLS`.                                                               |               |
+| `APPRISE_NOTIFY_LEVEL`               | string   | The minimum level of notifications to send. Possible values: `info`, `success`, `warning`, `failure`                                                                                                        | `success`     |
+| `APPRISE_NOTIFY_REPEAT_INTERVAL`     | duration | How long an unchanged failure notification is suppressed before it is sent again as a reminder (see [Repeated failures](#repeated-failures)). `0` sends every failure.                                      | `1h`          |
+| `APPRISE_NOTIFY_BODY_TEMPLATE`       | string   | Optional [Go `text/template`](https://pkg.go.dev/text/template) rendering the notification body (see [Custom notification body](#custom-notification-body)). Empty uses the built-in format.                |               |
+| `APPRISE_NOTIFY_BODY_TEMPLATE_FILE`  | string   | Path to a file inside the container containing the template (see `APPRISE_NOTIFY_BODY_TEMPLATE`). Mutually exclusive with `APPRISE_NOTIFY_BODY_TEMPLATE`.                                                   |               |
+| `APPRISE_NOTIFY_TITLE_TEMPLATE`      | string   | Optional [Go `text/template`](https://pkg.go.dev/text/template) rendering the notification title (see [Custom notification title](#custom-notification-title)). Empty uses the built-in title.             |               |
+| `APPRISE_NOTIFY_TITLE_TEMPLATE_FILE` | string   | Path to a file inside the container containing the template (see `APPRISE_NOTIFY_TITLE_TEMPLATE`). Mutually exclusive with `APPRISE_NOTIFY_TITLE_TEMPLATE`.                                                 |               |
 
 A request to the Apprise API fails if Apprise does not answer within 30 seconds, so an unresponsive Apprise server cannot hold up deployments.
 
@@ -104,7 +106,7 @@ When a notification is sent, the following metadata fields are included in the n
 
 By default the notification body is the message followed by the [metadata fields](#metadata-fields) as `key: value` lines. Set `APPRISE_NOTIFY_BODY_TEMPLATE` (or `APPRISE_NOTIFY_BODY_TEMPLATE_FILE`) to a [Go `text/template`](https://pkg.go.dev/text/template) to render the body yourself. This is useful to drop noisy fields, add a host label, or produce a one-liner when several stacks report into one channel.
 
-The template is validated at startup: a syntax error or a reference to an unknown field stops doco-cd from starting. The title (emoji + optional `[R]` marker + title text) is not affected by the template.
+The template is validated at startup: a syntax error or a reference to an unknown field stops doco-cd from starting. The title is rendered by a separate [title template](#custom-notification-title).
 
 !!! warning "Don't swallow failure reasons"
 
@@ -138,7 +140,7 @@ The following fields are available:
 | `.Duration`           | Time the deployment (or destroy) took, from job start to the notification, e.g. `12.483s`. Zero where no deployment ran (reconciliation restarts, scheduled jobs); hide it with `{{if .Duration}}...{{end}}` |
 | `.ChangedServices`    | Sorted names of the services changed by this deploy: force-recreated ones (changed mounted/referenced files or a changed auto-discovery label) plus services whose image digest changed in the registry (detected with [`force_image_pull`](../Deploy-Settings.md)). Empty when the whole stack is (re)deployed for other reasons, e.g. a compose config change (including image tag changes in the compose file), state drift or `force_recreate` |
 
-`{{ .DefaultBody }}` renders the built-in body (message + metadata), so you can extend the default format instead of replacing it, e.g. `{{ .DefaultBody }}\nhost: my-vm`.
+`{{ .DefaultBody }}` renders the built-in body (message + metadata), so you can extend the default format instead of replacing it, e.g. `{{ .DefaultBody }}\nhost: my-vm`. `{{ .DefaultTitle }}` renders the built-in title (see [Custom notification title](#custom-notification-title)).
 
 !!! example "One-line body"
 
@@ -190,9 +192,25 @@ Up to 50 commits are listed, counted after that filtering. A walk reads at most 
 
 The changelog is best-effort: with a small `GIT_CLONE_DEPTH` the previously deployed commit may sit beyond the shallow boundary, in which case the list is truncated or omitted. It never blocks the notification.
 
+## Custom notification title
+
+By default the title is the level emoji, an optional `[R]` marker and the title text, e.g. `✅ Deployment completed`. Set `APPRISE_NOTIFY_TITLE_TEMPLATE` (or `APPRISE_NOTIFY_TITLE_TEMPLATE_FILE`) to a [Go `text/template`](https://pkg.go.dev/text/template) to render the whole title yourself, emoji and `[R]` marker included. It has the same [fields](#custom-notification-body) as the body template. Both templates can use `{{ .DefaultTitle }}` and `{{ .DefaultBody }}`. It is validated at startup like the body template.
+
+Some services use the title for more than a heading, e.g. Zulip uses it as the topic. Keep the title short, and stable per stack if it should group messages. Not every notification belongs to a stack, so fall back to the built-in title where `.Stack` is empty. Putting the emoji in the body keeps a stack's successes and failures in one topic, whereas a level emoji in the title would split them:
+
+```yaml
+APPRISE_NOTIFY_TITLE_TEMPLATE: '{{ if .Stack }}{{ .Stack }}{{ else }}{{ .DefaultTitle }}{{ end }}'
+APPRISE_NOTIFY_BODY_TEMPLATE: |
+  {{ if .Stack }}{{ .DefaultTitle }}
+
+  {{ end }}{{ .DefaultBody }}
+```
+
+The new-version notification always uses the built-in title and body.
+
 ## Reconciliation notifications
 
-If a notification was triggered by reconciliation, the title gets a short `[R]` marker.
+If a notification was triggered by reconciliation, the title gets a short `[R]` marker by default.
 
 !!! example "Example notification titles"
 

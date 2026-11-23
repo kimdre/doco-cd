@@ -173,9 +173,10 @@ func TestNotificationForNewAppVersion(t *testing.T) {
 			t.Parallel()
 
 			notifier, received := newVersionTestNotifier(t, notification.Config{
-				NotifyURLs:   "apprise://test",
-				NotifyLevel:  "info",
-				BodyTemplate: "custom deployment body",
+				NotifyURLs:    "apprise://test",
+				NotifyLevel:   "info",
+				BodyTemplate:  "custom deployment body",
+				TitleTemplate: "custom deployment title",
 			})
 
 			var logs bytes.Buffer
@@ -210,7 +211,7 @@ func TestNotificationForNewAppVersion(t *testing.T) {
 			}
 
 			payload := <-received
-			if payload.Type != "info" || !strings.HasSuffix(payload.Title, "New version of doco-cd is available") {
+			if payload.Type != "info" || payload.Title != "ℹ️ New version of doco-cd is available" {
 				t.Fatalf("unexpected release notification: %+v", payload)
 			}
 
