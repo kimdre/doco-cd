@@ -33,6 +33,16 @@ These files are logged at `debug` level only, so they do not fill the log with w
 Other decryption errors, for example a failed integrity (MAC) check, are logged as warnings.
 If a deployment actually uses an encrypted file, the deployment fails at that point, naming the file.
 
+If an included Compose file fails validation because it is still SOPS-encrypted, the error names the file and includes a diagnostic:
+
+- `no SOPS key is configured`: see [Usage with SOPS and age](#usage-with-sops-and-age) or [Usage with SOPS and cloud key services](#usage-with-sops-and-cloud-key-services).
+- `SOPS could not retrieve the data key`: check the recipients for the file and doco-cd's access to the key or key service.
+- `decryption failed`: decryption failed for another reason, for example a failed integrity (MAC) check.
+- `it was not decrypted when doco-cd fetched the source`: doco-cd can decrypt the file now.
+  Check whether it is outside the source tree, matches `.gitignore`, or is in an excluded directory.
+
+The diagnostic does not change the file or continue the deployment.
+
 Files a compose project references outside the repository (for example a bind mount pointing at an arbitrary host path) are decrypted as well,
 when the project is loaded. For bind-mounted directories, all files inside are scanned recursively.
 
