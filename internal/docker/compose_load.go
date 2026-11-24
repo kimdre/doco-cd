@@ -160,7 +160,7 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 		// before this call decides whether a reload is necessary.
 		project, err = options.LoadProject(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to load compose project: %w", err)
+			return fmt.Errorf("failed to load compose project: %w", explainEncryptedComposeFile(err))
 		}
 
 		files, decryptErr := DecryptProjectFiles(repoPath, project)
@@ -175,7 +175,7 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 
 		project, err = options.LoadProject(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to reload compose project after decryption: %w", err)
+			return fmt.Errorf("failed to reload compose project after decryption: %w", explainEncryptedComposeFile(err))
 		}
 
 		return nil
