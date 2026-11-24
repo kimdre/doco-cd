@@ -169,16 +169,14 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 		}
 
 		decryptedFiles = append(decryptedFiles, files...)
-		if len(files) == 0 {
-			return nil
+		if len(files) > 0 {
+			project, err = options.LoadProject(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to reload compose project after decryption: %w", explainEncryptedComposeFile(err))
+			}
 		}
 
-		project, err = options.LoadProject(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to reload compose project after decryption: %w", explainEncryptedComposeFile(err))
-		}
-
-		return nil
+		return checkEncryptedExtendsFiles(ctx, options, project)
 	})
 	if err != nil {
 		return nil, err

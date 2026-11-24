@@ -43,6 +43,11 @@ If an included Compose file fails validation because it is still SOPS-encrypted,
 
 The diagnostic does not change the file or continue the deployment.
 
+Compose does not validate a file reached through `extends: file:`, and it reads only the `services` section of that file.
+A still-encrypted extends file loads without an error and gives the service its encrypted values, for example `image: ENC[AES256_GCM,...]`.
+If the loaded services contain SOPS-encrypted values, doco-cd follows the local `extends: file:` chain of each service,
+and fails the deployment with the same diagnostic for the first file that is still SOPS-encrypted.
+
 Files a compose project references outside the repository (for example a bind mount pointing at an arbitrary host path) are decrypted as well,
 when the project is loaded. For bind-mounted directories, all files inside are scanned recursively.
 
