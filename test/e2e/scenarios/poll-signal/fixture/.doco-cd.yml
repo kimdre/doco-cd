@@ -1,0 +1,4 @@
+name: e2e-poll-signal
+working_dir: deploy
+swarm:
+  enabled: false

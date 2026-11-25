@@ -152,6 +152,16 @@ curl -s -X POST "https://cd.example.com/v1/api/poll/run?wait=false" \
 
 Make the hook executable with `chmod +x hooks/post-receive`.
 
+If the hook runs on the Docker host of doco-cd and the user can access Docker, you can instead [send a signal](../Poll-Settings.md#trigger-a-poll-run-with-a-signal) to run all configured poll jobs once. This needs no API key:
+
+```sh title="hooks/post-receive"
+#!/bin/sh
+docker kill --signal=HUP doco-cd >/dev/null
+```
+
+!!! note
+    The signal runs **all enabled** poll jobs from `POLL_CONFIG` or `POLL_CONFIG_FILE`, not only the job for the pushed repository.
+
 ### Repository on the same host
 
 If doco-cd runs on the same machine as the bare repository, you don't need SSH or a hook at all: bind-mount the repository into the container (read-only is fine) and use its path as the poll URL, e.g. `url: /local-repos/myrepo.git`.

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -20,6 +22,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/syncwindow"
 )
 
 const validPollSourceURL = "https://github.com/kimdre/doco-cd_tests.git"
@@ -174,6 +177,207 @@ func TestControlPlaneRunsTriggerPollRejectsTooManyConfigs(t *testing.T) {
 	if _, ok := tracker.Get(jobID); ok {
 		t.Fatal("rejected poll batch must not be tracked")
 	}
+}
+
+func TestControlPlaneRunsTriggerConfiguredPolls(t *testing.T) {
+	t.Parallel()
+
+	t.Run("passes reason and manual origin", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			mu      sync.Mutex
+			reasons []string
+			origins []syncwindow.Origin
+			configs []poll.Config
+		)
+
+		tracker := newDeploymentRunTracker(nil)
+		log := logger.New(logger.LevelCritical)
+		controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig: &app.Config{},
+			log:       log,
+			tracker:   tracker,
+			pollRunner: func(ctx context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, reason string,
+			) error {
+				mu.Lock()
+				defer mu.Unlock()
+
+				reasons = append(reasons, reason)
+				origins = append(origins, DeploymentOrigin(ctx))
+				configs = append(configs, cfg)
+
+				return nil
+			},
+		})
+
+		jobID, err := controlPlane.TriggerConfiguredPolls(t.Context(), []poll.Config{{
+			SourceUrl: validPollSourceURL,
+			Interval:  time.Hour,
+		}}, "poll-signal", log.Logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(reasons) != 1 || reasons[0] != "poll-signal" {
+			t.Fatalf("trigger reasons = %v, want [poll-signal]", reasons)
+		}
+
+		if origins[0] != syncwindow.OriginManual {
+			t.Fatalf("deployment origin = %v, want %v", origins[0], syncwindow.OriginManual)
+		}
+
+		if !configs[0].RunOnce || configs[0].Interval != 0 {
+			t.Fatalf("poll defaults = run_once %t, interval %s", configs[0].RunOnce, configs[0].Interval)
+		}
+
+		run, ok := tracker.Get(jobID)
+		if !ok {
+			t.Fatal("tracked poll run not found")
+		}
+
+		if run.Status != deploymentRunStatusSucceeded {
+			t.Fatalf("tracked run status = %q, want %q", run.Status, deploymentRunStatusSucceeded)
+		}
+	})
+
+	t.Run("empty reason uses default", func(t *testing.T) {
+		t.Parallel()
+
+		var gotReason string
+
+		log := logger.New(logger.LevelCritical)
+		controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig: &app.Config{},
+			log:       log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, reason string,
+			) error {
+				gotReason = reason
+
+				return nil
+			},
+		})
+
+		if _, err := controlPlane.TriggerConfiguredPolls(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, "", log.Logger); err != nil {
+			t.Fatal(err)
+		}
+
+		if gotReason != defaultPollTrigger {
+			t.Fatalf("trigger reason = %q, want %q", gotReason, defaultPollTrigger)
+		}
+	})
+
+	t.Run("accepts more configs than the API limit", func(t *testing.T) {
+		t.Parallel()
+
+		var runCount atomic.Int64
+
+		log := logger.New(logger.LevelCritical)
+		controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig: &app.Config{},
+			log:       log,
+			pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
+			) error {
+				runCount.Add(1)
+
+				return nil
+			},
+		})
+
+		configs := make([]poll.Config, MaxTriggerPollConfigs+1)
+		for i := range configs {
+			configs[i].SourceUrl = validPollSourceURL
+		}
+
+		if _, err := controlPlane.TriggerConfiguredPolls(t.Context(), configs, "poll-signal", log.Logger); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := runCount.Load(); got != int64(len(configs)) {
+			t.Fatalf("poll runs = %d, want %d", got, len(configs))
+		}
+	})
+
+	t.Run("empty configs", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.New(logger.LevelCritical)
+		controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig: &app.Config{},
+			log:       log,
+		})
+
+		if _, err := controlPlane.TriggerConfiguredPolls(t.Context(), nil, "poll-signal", log.Logger); !errors.Is(err, ErrNoPollConfiguration) {
+			t.Fatalf("error = %v, want %v", err, ErrNoPollConfiguration)
+		}
+	})
+}
+
+func TestTriggerConfiguredPollsFinishesDuringDrain(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		workCtx, stopWork := context.WithCancel(t.Context())
+		defer stopWork()
+
+		release := make(chan struct{})
+		started := make(chan struct{})
+		log := logger.New(logger.LevelCritical)
+		runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
+			) error {
+				close(started)
+
+				select {
+				case <-release:
+					return ctx.Err()
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			},
+		})
+		result := make(chan error, 1)
+
+		go func() {
+			_, err := runs.TriggerConfiguredPolls(workCtx, []poll.Config{{SourceUrl: validPollSourceURL}}, "poll-signal", log.Logger)
+			result <- err
+		}()
+
+		<-started
+		stopWork()
+
+		drained := make(chan struct{})
+
+		go func() {
+			runs.Drain()
+			close(drained)
+		}()
+
+		synctest.Wait()
+
+		select {
+		case <-drained:
+			t.Fatal("drain finished before the active poll completed")
+		default:
+		}
+
+		if _, err := runs.TriggerConfiguredPolls(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, "poll-signal", log.Logger); !errors.Is(err, ErrBackgroundWorkClosed) {
+			t.Errorf("error starting another poll during drain = %v, want %v", err, ErrBackgroundWorkClosed)
+		}
+
+		close(release)
+
+		if err := <-result; err != nil {
+			t.Fatalf("active signal poll failed during drain: %v", err)
+		}
+
+		<-drained
+	})
 }
 
 func TestControlPlaneRunsTriggerPollBoundsConcurrentRunners(t *testing.T) {

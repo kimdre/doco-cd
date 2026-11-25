@@ -561,7 +561,7 @@ reconciliation: false
 
 - Pause takes effect on the next trigger that successfully resolves a valid, trusted configuration, not immediately when a Git file changes.
   The configuration source continues to be fetched so a cleared flag can be detected.
-- All deployment triggers honor pause: polling, webhooks, local watchers, and manual REST/MCP polls.
+- All deployment triggers honor pause: polling, webhooks, local watchers, and manual REST/MCP/signal polls.
   It blocks first deployment, updates, mode migration, deployment-driven destruction and cleanup, and automatic certificate reissuance/redeployment.
   Manual retry privileges, `force_recreate`, image-pull settings, and `destroy` do not bypass pause.
   Effective [inline deployment definitions](Poll-Settings.md#inline-deploy-configs) replace repository definitions and remain authoritative.
@@ -628,9 +628,9 @@ retaining the base delay. An explicit `#!yaml delay: 0` removes the inherited de
 
 #### Manual retry
 
-An explicit deployment trigger through the [REST polling endpoint](Endpoints/REST-API.md#polling) or the
-[MCP `trigger_poll` tool](Endpoints/MCP-Server.md#poll-input) bypasses both delay and exhaustion for that attempt only,
-including when `#!yaml limit: 0`. This applies with either `#!yaml wait: true` or `#!yaml wait: false`.
+An explicit deployment trigger through the [REST polling endpoint](Endpoints/REST-API.md#polling), the
+[MCP `trigger_poll` tool](Endpoints/MCP-Server.md#poll-input), or a [poll signal](Poll-Settings.md#trigger-a-poll-run-with-a-signal) bypasses both delay and exhaustion for that attempt only,
+including when `#!yaml limit: 0`. For API and MCP requests, this applies with either `#!yaml wait: true` or `#!yaml wait: false`.
 A failed manual attempt updates the failure details and retry-delay deadline but neither consumes nor refills the automatic retry budget;
 an exhausted budget stays exhausted and a successful manual attempt clears the state.
 Manual retries still obey sync windows, source trust checks, and other deployment safety checks.
