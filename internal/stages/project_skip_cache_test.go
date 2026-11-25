@@ -416,6 +416,7 @@ func TestProjectSkipCacheSwarmScheduledJob(t *testing.T) {
 
 	revision := commitN(t, wt, 1, 0)[0].String()
 	jobLabel := docker.DocoCDJobLabels.JobEnabled
+	jobMode := docker.DocoCDJobLabels.JobExecutionMode
 
 	for _, tt := range []struct {
 		name     string
@@ -426,6 +427,8 @@ func TestProjectSkipCacheSwarmScheduledJob(t *testing.T) {
 		{name: "idle after deploy", labels: types.Labels{jobLabel: "true"}, deployed: 0, wantSkip: true},
 		{name: "scaled up by run", labels: types.Labels{jobLabel: "true"}, deployed: 1, wantSkip: true},
 		{name: "manual scale", labels: types.Labels{jobLabel: "true"}, deployed: 2},
+		{name: "one-off source is idle", labels: types.Labels{jobLabel: "true", jobMode: "one_off"}, deployed: 0, wantSkip: true},
+		{name: "one-off source scaled out of band", labels: types.Labels{jobLabel: "true", jobMode: "one_off"}, deployed: 1},
 		{name: "not a job", deployed: 0},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

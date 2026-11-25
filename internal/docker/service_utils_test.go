@@ -1936,13 +1936,15 @@ func TestCheckServiceMismatch_SwarmScheduledJobReplicas(t *testing.T) {
 	intPtr := func(v int) *int { return &v }
 
 	for _, tt := range []struct {
-		name     string
-		mode     swarm.DeployMode
-		enabled  string
-		custom   bool
-		replicas *int
-		deployed uint64
-		want     bool
+		name        string
+		mode        swarm.DeployMode
+		enabled     string
+		jobMode     string
+		custom      bool
+		replicas    *int
+		deployed    uint64
+		want        bool
+		wantReplica *int
 	}{
 		{name: "pinned after deploy", enabled: "true", deployed: 0},
 		{name: "scaled up by run", enabled: "true", deployed: 1},
@@ -1953,6 +1955,9 @@ func TestCheckServiceMismatch_SwarmScheduledJobReplicas(t *testing.T) {
 		{name: "multi replica partial", enabled: "true", replicas: intPtr(3), deployed: 1, want: true},
 		{name: "zero replicas run", enabled: "true", replicas: intPtr(0), deployed: 1},
 		{name: "zero replicas manual scale", enabled: "true", replicas: intPtr(0), deployed: 2, want: true},
+		{name: "one-off idle", enabled: "true", jobMode: "one_off", deployed: 0},
+		{name: "one-off scaled to Compose count", enabled: "true", jobMode: " one_off ", deployed: 1, want: true, wantReplica: intPtr(0)},
+		{name: "one-off scaled from zero", enabled: "true", jobMode: "one_off", replicas: intPtr(0), deployed: 1, want: true},
 		{name: "disabled", enabled: "false", deployed: 0, want: true},
 		{name: "invalid label", enabled: "invalid", deployed: 0, want: true},
 		{name: "no label", deployed: 0, want: true},
@@ -1978,6 +1983,10 @@ func TestCheckServiceMismatch_SwarmScheduledJobReplicas(t *testing.T) {
 				svc.Labels = types.Labels{DocoCDJobLabels.JobEnabled: tt.enabled}
 			}
 
+			if tt.jobMode != "" {
+				svc.Labels[DocoCDJobLabels.JobExecutionMode] = tt.jobMode
+			}
+
 			got, err := CheckServiceMismatch(true,
 				map[Service]ServiceStatus{"job": {SwarmMode: mode, Replicas: tt.deployed}},
 				types.Services{"job": svc})
@@ -1997,8 +2006,13 @@ func TestCheckServiceMismatch_SwarmScheduledJobReplicas(t *testing.T) {
 				t.Fatalf("Swarm mismatches = %v, want %q", got, ServiceMismatchReasonReplicas)
 			}
 
-			if got[0].Reasons[0].Want != svc.GetScale() || got[0].Reasons[0].Got != tt.deployed {
-				t.Fatalf("replica mismatch = %+v, want %d got %d", got[0].Reasons[0], svc.GetScale(), tt.deployed)
+			want := svc.GetScale()
+			if tt.wantReplica != nil {
+				want = *tt.wantReplica
+			}
+
+			if got[0].Reasons[0].Want != want || got[0].Reasons[0].Got != tt.deployed {
+				t.Fatalf("replica mismatch = %+v, want %d got %d", got[0].Reasons[0], want, tt.deployed)
 			}
 		})
 	}

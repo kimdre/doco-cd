@@ -357,21 +357,24 @@ type ServiceMismatch struct {
 	Reasons     []ServiceMismatchReason `json:"reasons"`
 }
 
-// swarmReplicasMatch reports whether the deployed Swarm replicas match the Compose scale.
-// doco-cd deploys a replicated scheduled job with 0 replicas. A restart-mode run scales
-// it to the Compose replica count, or to 1 when that count is 0. Nothing scales it back
-// to 0, so both states are expected and must not cause a redeploy on each poll.
-func swarmReplicasMatch(svcMode swarmInternal.DeployMode, svc types.ServiceConfig, deployed uint64) bool {
-	want := uint64(svc.GetScale()) //nolint:gosec // Compose scale is never negative.
-	if deployed == want {
-		return true
-	}
+// checkSwarmReplicas returns the expected replica count for drift reporting and
+// whether the deployed count is valid.
+func checkSwarmReplicas(svcMode swarmInternal.DeployMode, svc types.ServiceConfig, deployed uint64) (want int, matches bool) {
+	want = svc.GetScale()
+	scale := uint64(want) //nolint:gosec // Compose scale is never negative.
 
 	if svcMode != swarmInternal.DeployModeReplicated || !isSwarmScheduledJobService(svc) {
-		return false
+		return want, deployed == scale
 	}
 
-	return deployed == 0 || deployed == max(want, 1)
+	// Only restart-mode runs scale the source service. One-off runs use a
+	// temporary service, so their source must stay at zero replicas.
+	if mode, ok := svc.Labels[DocoCDJobLabels.JobExecutionMode]; ok &&
+		JobExecutionMode(strings.TrimSpace(mode)) != JobExecutionModeRestart {
+		return 0, deployed == 0
+	}
+
+	return want, deployed == 0 || deployed == max(scale, 1)
 }
 
 type ServiceMismatchReason struct {
@@ -384,8 +387,8 @@ type ServiceMismatchReason struct {
 // In standalone mode, services with autostart disabled may remain stopped,
 // but all of their containers must exist.
 // Invalid autostart labels return an error in standalone mode.
-// In Swarm mode, a replicated scheduled job may be idle at 0 replicas or
-// scaled up by its last run.
+// In Swarm mode, replicated scheduled jobs may be idle at 0 replicas.
+// Only restart-mode jobs may stay scaled up after a run.
 func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) ([]ServiceMismatch, error) {
 	var mismatches []ServiceMismatch
 
@@ -442,10 +445,10 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 				} else {
 					switch svcMode {
 					case swarmInternal.DeployModeReplicated, swarmInternal.DeployModeReplicatedJob:
-						if !swarmReplicasMatch(svcMode, svc, status.Replicas) {
+						if want, matches := checkSwarmReplicas(svcMode, svc, status.Replicas); !matches {
 							reasons = append(reasons, ServiceMismatchReason{
 								Reason: ServiceMismatchReasonReplicas,
-								Want:   svc.GetScale(),
+								Want:   want,
 								Got:    status.Replicas,
 							})
 						}

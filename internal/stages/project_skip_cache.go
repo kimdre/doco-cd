@@ -431,6 +431,7 @@ func hasComposeIncludes(node yaml.Node) bool {
 var mismatchLabelKeys = []string{
 	docker.DocoCDLabels.Deployment.Autostart,
 	docker.DocoCDJobLabels.JobEnabled,
+	docker.DocoCDJobLabels.JobExecutionMode,
 }
 
 // selectMismatchLabels copies the mismatch labels into a new map.
