@@ -367,6 +367,9 @@ type ServiceMismatchReason struct {
 // In standalone mode, services with autostart disabled may remain stopped,
 // but all of their containers must exist.
 // Invalid autostart labels return an error in standalone mode.
+// In Swarm mode, replicated services with the preserve_replicas label skip the
+// replica count check, because an external tool owns that count. Invalid
+// preserve_replicas labels return an error in Swarm mode.
 func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) ([]ServiceMismatch, error) {
 	var mismatches []ServiceMismatch
 
@@ -423,8 +426,19 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 				} else {
 					switch svcMode {
 					case swarmInternal.DeployModeReplicated, swarmInternal.DeployModeReplicatedJob:
+						preserveReplicas := false
+
+						if svcMode == swarmInternal.DeployModeReplicated {
+							var err error
+
+							preserveReplicas, err = servicePreserveReplicasEnabled(svcName, svc)
+							if err != nil {
+								return nil, err
+							}
+						}
+
 						//  scale should always be >= 0
-						if uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
+						if !preserveReplicas && uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
 							reasons = append(reasons, ServiceMismatchReason{
 								Reason: ServiceMismatchReasonReplicas,
 								Want:   svc.GetScale(),

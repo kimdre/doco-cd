@@ -256,6 +256,38 @@ func TestProjectExpectedServicesPreservesAutostartLabels(t *testing.T) {
 	}
 }
 
+func TestProjectExpectedServicesKeepsSwarmReplicaLabels(t *testing.T) {
+	t.Parallel()
+
+	preserve := docker.DocoCDLabels.Deployment.PreserveReplicas
+	jobEnabled := docker.DocoCDJobLabels.JobEnabled
+	project := &types.Project{Services: types.Services{
+		"web": {
+			Name:         "web",
+			Labels:       types.Labels{preserve: "true", jobEnabled: "false", "unrelated": "value"},
+			CustomLabels: types.Labels{preserve: "false"},
+		},
+	}}
+
+	got := projectExpectedServices(project)
+
+	want := types.Services{
+		"web": {
+			Name:         "web",
+			Labels:       types.Labels{preserve: "true", jobEnabled: "false"},
+			CustomLabels: types.Labels{preserve: "false"},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected services = %#v, want %#v", got, want)
+	}
+
+	project.Services["web"].Labels[preserve] = "false"
+	if got["web"].Labels[preserve] != "true" {
+		t.Fatal("source mutations changed the cached service configuration")
+	}
+}
+
 func TestProjectSkipCacheAutostart(t *testing.T) {
 	t.Parallel()
 

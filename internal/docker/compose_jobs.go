@@ -220,6 +220,31 @@ func serviceAutostartEnabled(serviceName string, svc types.ServiceConfig) (bool,
 	return enabled, nil
 }
 
+// servicePreserveReplicasEnabled checks if a Swarm service lets an external
+// tool own its replica count. Scheduled job services never qualify, because
+// the scheduler controls their replica count. This matches the Swarm deploy
+// path.
+func servicePreserveReplicasEnabled(serviceName string, svc types.ServiceConfig) (bool, error) {
+	labels := getServiceSchedulerLabels(svc)
+
+	raw, ok := labels[DocoCDLabels.Deployment.PreserveReplicas]
+	if !ok {
+		return false, nil
+	}
+
+	enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false, fmt.Errorf("service %s: invalid %s label value %q",
+			serviceName, DocoCDLabels.Deployment.PreserveReplicas, raw)
+	}
+
+	if scheduled, err := strconv.ParseBool(strings.TrimSpace(labels[DocoCDJobLabels.JobEnabled])); err == nil && scheduled {
+		return false, nil
+	}
+
+	return enabled, nil
+}
+
 func getRunningServices(containers []api.ContainerSummary) set.Set[string] {
 	running := set.New[string]()
 

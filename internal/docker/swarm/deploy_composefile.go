@@ -334,6 +334,14 @@ const scheduledJobEnabledLabel = "cd.doco.job.enabled"
 // definitions cannot be imported from there without creating an import cycle.
 const scheduledJobRestartReplicasLabel = "cd.doco.job.swarm.restart_replicas"
 
+// preserveReplicasLabel lets an external tool, for example an autoscaler, own
+// the replica count of a replicated service. Updates keep the live count
+// instead of the Compose deploy.replicas value.
+//
+// This must stay in sync with docker.DocoCDLabels.Deployment.PreserveReplicas.
+// It is duplicated here for the same import cycle reason as the labels above.
+const preserveReplicasLabel = "cd.doco.deployment.preserve_replicas"
+
 // applyScheduledJobDeployReplicas ensures scheduled job services do not run as a
 // side effect of a deployment. Classic replicated scheduled services are pinned
 // to 0 replicas and their intended replica count is recorded in a label so the
@@ -458,6 +466,15 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 				serviceSpec.TaskTemplate.ForceUpdate++
 			}
 
+			// The doco-cd service always uses the Compose replica count, because
+			// self-update needs exactly one replica.
+			if name != opts.SelfService {
+				if replicas, ok := applyLivePreservedReplicas(&serviceSpec, service.Spec); ok && log != nil {
+					log.Debug("keeping live replica count of service",
+						append(ServiceLogAttrs(identity.name, identity.id), slog.Uint64("replicas", replicas))...)
+				}
+			}
+
 			if name == opts.SelfService && opts.PrepareSelfUpdate != nil {
 				waitIDs := make([]string, 0, len(deployed)+1)
 				for _, entry := range deployed {
@@ -535,6 +552,51 @@ func isScheduledServiceSpec(spec swarmTypes.ServiceSpec) bool {
 	}
 
 	return enabled
+}
+
+// preserveReplicasEnabled reports whether the service spec opts in to keep the
+// live replica count. Scheduled job services never qualify, because the
+// scheduler controls their replica count.
+func preserveReplicasEnabled(spec swarmTypes.ServiceSpec) bool {
+	if spec.TaskTemplate.ContainerSpec == nil || isScheduledServiceSpec(spec) {
+		return false
+	}
+
+	raw, ok := spec.TaskTemplate.ContainerSpec.Labels[preserveReplicasLabel]
+	if !ok {
+		return false
+	}
+
+	enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+
+	return enabled
+}
+
+// applyLivePreservedReplicas copies the live replica count into spec when the
+// service opts in with the preserve_replicas label. The desired and the live
+// service must both use replicated mode, so a mode change still applies the
+// Compose definition. It returns the kept replica count and true when it
+// changed spec.
+func applyLivePreservedReplicas(spec *swarmTypes.ServiceSpec, live swarmTypes.ServiceSpec) (uint64, bool) {
+	if spec == nil || spec.Mode.Replicated == nil || !preserveReplicasEnabled(*spec) {
+		return 0, false
+	}
+
+	if live.Mode.Replicated == nil || live.Mode.Replicated.Replicas == nil {
+		return 0, false
+	}
+
+	replicas := *live.Mode.Replicated.Replicas
+
+	// Replace the pointer so the caller's services map keeps the Compose value.
+	replicated := *spec.Mode.Replicated
+	replicated.Replicas = &replicas
+	spec.Mode.Replicated = &replicated
+
+	return replicas, true
 }
 
 // WaitOnServices waits for the specified Swarm services to converge.
