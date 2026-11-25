@@ -1,0 +1,9 @@
+name: e2e-swarm-job-skip-discovery
+working_dir: stacks
+reference: refs/heads/main
+context: remote
+swarm:
+  enabled: true
+auto_discovery:
+  enabled: true
+reconciliation: false

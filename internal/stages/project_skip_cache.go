@@ -433,6 +433,7 @@ var snapshotServiceLabels = []string{
 	docker.DocoCDLabels.Deployment.Autostart,
 	docker.DocoCDLabels.Deployment.PreserveReplicas,
 	docker.DocoCDJobLabels.JobEnabled,
+	docker.DocoCDJobLabels.JobExecutionMode,
 }
 
 // copySnapshotLabels returns a new map with only the snapshot labels from

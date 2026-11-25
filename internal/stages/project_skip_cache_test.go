@@ -210,17 +210,19 @@ func TestProjectSkipCacheOnlySkipsUnchangedProjectTree(t *testing.T) {
 	}
 }
 
-func TestProjectExpectedServicesPreservesAutostartLabels(t *testing.T) {
+func TestProjectExpectedServicesPreservesMismatchLabels(t *testing.T) {
 	t.Parallel()
 
 	label := docker.DocoCDLabels.Deployment.Autostart
+	jobLabel := docker.DocoCDJobLabels.JobEnabled
 	project := &types.Project{Services: types.Services{
 		"web": {
 			Name: "web", Restart: "unless-stopped", Scale: new(2),
 			Deploy:       &types.DeployConfig{Mode: "replicated", Replicas: new(2)},
-			Labels:       types.Labels{label: "true", "unrelated": "value"},
-			CustomLabels: types.Labels{label: "false", "unrelated": "custom"},
+			Labels:       types.Labels{label: "true", jobLabel: "true", "unrelated": "value"},
+			CustomLabels: types.Labels{label: "false", jobLabel: "false", "unrelated": "custom"},
 		},
+		"job":     {Name: "job", Labels: types.Labels{jobLabel: "true", "unrelated": "value"}},
 		"default": {Name: "default", Labels: types.Labels{"unrelated": "value"}},
 	}}
 
@@ -230,9 +232,10 @@ func TestProjectExpectedServicesPreservesAutostartLabels(t *testing.T) {
 		"web": {
 			Name: "web", Restart: "unless-stopped", Scale: new(2),
 			Deploy:       &types.DeployConfig{Mode: "replicated", Replicas: new(2)},
-			Labels:       types.Labels{label: "true"},
-			CustomLabels: types.Labels{label: "false"},
+			Labels:       types.Labels{label: "true", jobLabel: "true"},
+			CustomLabels: types.Labels{label: "false", jobLabel: "false"},
 		},
+		"job":     {Name: "job", Labels: types.Labels{jobLabel: "true"}},
 		"default": {Name: "default"},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -240,7 +243,9 @@ func TestProjectExpectedServicesPreservesAutostartLabels(t *testing.T) {
 	}
 
 	project.Services["web"].Labels[label] = "false"
+	project.Services["web"].Labels[jobLabel] = "false"
 	project.Services["web"].CustomLabels[label] = "true"
+	project.Services["web"].CustomLabels[jobLabel] = "true"
 	*project.Services["web"].Scale = 3
 	*project.Services["web"].Deploy.Replicas = 3
 
@@ -249,9 +254,12 @@ func TestProjectExpectedServicesPreservesAutostartLabels(t *testing.T) {
 	}
 
 	got["web"].Labels[label] = "cached-only"
-
+	got["web"].Labels[jobLabel] = "cached-only"
 	got["web"].CustomLabels[label] = "cached-only"
-	if project.Services["web"].Labels[label] != "false" || project.Services["web"].CustomLabels[label] != "true" {
+
+	got["web"].CustomLabels[jobLabel] = "cached-only"
+	if project.Services["web"].Labels[label] != "false" || project.Services["web"].Labels[jobLabel] != "false" ||
+		project.Services["web"].CustomLabels[label] != "true" || project.Services["web"].CustomLabels[jobLabel] != "true" {
 		t.Fatal("cached label mutations changed the source project")
 	}
 }
@@ -409,6 +417,98 @@ func TestProjectSkipCacheAutostart(t *testing.T) {
 			if tt.wantError && (!strings.Contains(logs.String(), "using full pre-deploy") ||
 				!strings.Contains(logs.String(), "service web: invalid "+label)) {
 				t.Fatalf("invalid cached labels did not log a fallback: %s", logs.String())
+			}
+		})
+	}
+}
+
+func TestProjectSkipCacheSwarmScheduledJob(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	composePath := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  job:\n    image: alpine\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo, err := gogit.PlainInit(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := wt.Add("compose.yaml"); err != nil {
+		t.Fatal(err)
+	}
+
+	revision := commitN(t, wt, 1, 0)[0].String()
+	jobLabel := docker.DocoCDJobLabels.JobEnabled
+	jobMode := docker.DocoCDJobLabels.JobExecutionMode
+
+	for _, tt := range []struct {
+		name     string
+		labels   types.Labels
+		deployed uint64
+		wantSkip bool
+	}{
+		{name: "idle after deploy", labels: types.Labels{jobLabel: "true"}, deployed: 0, wantSkip: true},
+		{name: "scaled up by run", labels: types.Labels{jobLabel: "true"}, deployed: 1, wantSkip: true},
+		{name: "manual scale", labels: types.Labels{jobLabel: "true"}, deployed: 2},
+		{name: "one-off source is idle", labels: types.Labels{jobLabel: "true", jobMode: "one_off"}, deployed: 0, wantSkip: true},
+		{name: "one-off source scaled out of band", labels: types.Labels{jobLabel: "true", jobMode: "one_off"}, deployed: 1},
+		{name: "not a job", deployed: 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &deploy.Config{
+				Name: "stack", WorkingDirectory: ".", ComposeFiles: []string{"compose.yaml"},
+				AutoDiscovery: deploy.AutoDiscoveryConfig{Enabled: true},
+			}
+			cfg.Internal.Hash = "effective-config"
+			project := &types.Project{
+				Name: "stack", ComposeFiles: []string{composePath},
+				Services: types.Services{"job": {
+					Name: "job", Labels: tt.labels,
+					Deploy: &types.DeployConfig{Mode: "replicated"},
+				}},
+			}
+			s := &StageManager{
+				Repository: &RepositoryData{
+					Source: config.SourceTypeGit, MirrorDir: root, Revision: revision,
+					PathInternal: root, PathExternal: root,
+				},
+				DeployConfig: cfg,
+				AppConfig:    &app.Config{},
+				Docker:       &Docker{Project: project, SwarmMode: true},
+				ProjectSkips: NewProjectSkipCache(),
+				GitAncestry:  NewGitAncestryCache(),
+			}
+
+			var logs bytes.Buffer
+
+			log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			status := map[docker.Service]docker.ServiceStatus{
+				"job": {SwarmMode: "replicated", Replicas: tt.deployed},
+			}
+
+			mismatches, err := docker.CheckServiceMismatch(true, status, project.Services, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if shouldSkipDeployment(false, false, false, nil, docker.IgnoredInfo{}, false, false, mismatches) != tt.wantSkip {
+				t.Fatalf("full drift check mismatches = %v, wantSkip %t", mismatches, tt.wantSkip)
+			}
+
+			s.cacheUnchangedProject(log, revision, "hash")
+			s.Docker.Project = nil
+
+			if got := s.skipFromCachedProject(log, revision, "hash", status); got != tt.wantSkip {
+				t.Fatalf("cached skip = %t, want %t; logs: %s", got, tt.wantSkip, logs.String())
 			}
 		})
 	}

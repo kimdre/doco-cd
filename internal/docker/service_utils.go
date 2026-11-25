@@ -357,6 +357,26 @@ type ServiceMismatch struct {
 	Reasons     []ServiceMismatchReason `json:"reasons"`
 }
 
+// checkSwarmReplicas returns the expected replica count for drift reporting and
+// whether the deployed count is valid.
+func checkSwarmReplicas(svcMode swarmInternal.DeployMode, svc types.ServiceConfig, deployed uint64) (want int, matches bool) {
+	want = svc.GetScale()
+	scale := uint64(want) //nolint:gosec // Compose scale is never negative.
+
+	if svcMode != swarmInternal.DeployModeReplicated || !isSwarmScheduledJobService(svc) {
+		return want, deployed == scale
+	}
+
+	// Only restart-mode runs scale the source service. One-off runs use a
+	// temporary service, so their source must stay at zero replicas.
+	if mode, ok := svc.Labels[DocoCDJobLabels.JobExecutionMode]; ok &&
+		JobExecutionMode(strings.TrimSpace(mode)) != JobExecutionModeRestart {
+		return 0, deployed == 0
+	}
+
+	return want, deployed == 0 || deployed == max(scale, 1)
+}
+
 type ServiceMismatchReason struct {
 	Reason string `json:"reason"`
 	Want   any    `json:"want"`
@@ -436,11 +456,10 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 							}
 						}
 
-						//  scale should always be >= 0
-						if !preserveReplicas && uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
+						if want, matches := checkSwarmReplicas(svcMode, svc, status.Replicas); !preserveReplicas && !matches {
 							reasons = append(reasons, ServiceMismatchReason{
 								Reason: ServiceMismatchReasonReplicas,
-								Want:   svc.GetScale(),
+								Want:   want,
 								Got:    status.Replicas,
 							})
 						}

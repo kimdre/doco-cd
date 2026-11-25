@@ -1,0 +1,7 @@
+name: e2e-swarm-job-skip
+working_dir: stacks/e2e-swarm-job-skip
+reference: refs/heads/main
+context: remote
+swarm:
+  enabled: true
+reconciliation: false
