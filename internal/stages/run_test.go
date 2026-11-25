@@ -66,7 +66,7 @@ func TestAutostartDisabledPollSkipHasNoDeploymentSideEffects(t *testing.T) {
 		entered = append(entered, StagePreDeploy)
 
 		mismatches, err := docker.CheckServiceMismatch(false,
-			map[docker.Service]docker.ServiceStatus{"web": {Containers: 1}}, s.Docker.Project.Services)
+			map[docker.Service]docker.ServiceStatus{"web": {Containers: 1}}, s.Docker.Project.Services, "")
 		if err != nil {
 			return err
 		}

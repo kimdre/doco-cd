@@ -348,7 +348,7 @@ func (s *LockedStack) deploy(ctx context.Context, req DeployRequest) error {
 	}
 
 	if projectHash == "" {
-		projectHash, err = ProjectHash(WithNormalizedEnvValues(project, req.HashNormMap), req.ExternalRepoPath)
+		projectHash, err = DeploymentProjectHash(WithNormalizedEnvValues(project, req.HashNormMap), req.ExternalRepoPath, req.SwarmMode)
 		if err != nil {
 			return fmt.Errorf("failed to generate project hash: %w", err)
 		}

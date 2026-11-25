@@ -215,6 +215,47 @@ func TestProjectHash_IgnoresScaleZeroServices(t *testing.T) {
 	}
 }
 
+func TestDeploymentProjectHash_IncludesScaleZeroSwarmPreserveReplicas(t *testing.T) {
+	t.Parallel()
+
+	project := func(image string, labels types.Labels) *types.Project {
+		return &types.Project{Services: types.Services{"web": {
+			Name: "web", Image: image, Labels: labels,
+			Deploy: &types.DeployConfig{Replicas: new(0)},
+		}}}
+	}
+
+	labels := types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "true"}
+	for _, tt := range []struct {
+		name      string
+		labels    types.Labels
+		swarmMode bool
+		wantDiff  bool
+	}{
+		{name: "Swarm opts in", labels: labels, swarmMode: true, wantDiff: true},
+		{name: "Swarm does not opt in", swarmMode: true},
+		{name: "standalone ignores label", labels: labels},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			previous, err := DeploymentProjectHash(project("nginx:1", tt.labels), "", tt.swarmMode)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			current, err := DeploymentProjectHash(project("nginx:2", tt.labels), "", tt.swarmMode)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if (previous != current) != tt.wantDiff {
+				t.Fatalf("hash changed = %t, want %t", previous != current, tt.wantDiff)
+			}
+		})
+	}
+}
+
 func TestProjectHash_IncludesScaleZeroJobServices(t *testing.T) {
 	t.Parallel()
 

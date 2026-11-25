@@ -17,6 +17,13 @@ You can overwrite this globally to always deploy as Compose projects while runni
 
 The deployment happens the same way as with Docker Compose projects, see the [Deploy Settings](../Deploy-Settings.md)
 
+## Replica count
+
+Each deployment sets the replica count of a service to its `deploy.replicas` value.
+To let an external tool, for example an autoscaler, control the replica count of a replicated service,
+set the `cd.doco.deployment.preserve_replicas` service label to `true`.
+See [Let an external tool control Swarm replicas](../Deploy-Settings.md#let-an-external-tool-control-swarm-replicas).
+
 ## Configs and Secrets
 
 When deploying configs or secrets in Swarm mode, doco-cd will add a suffix to the name of configs and secrets. 

@@ -799,7 +799,45 @@ Ensure dependent services can tolerate that service being unavailable until an e
 
 !!! note
     This label applies to Docker (Standalone) deployments. 
-    In Docker Swarm mode, use `deploy.replicas: 0` to deploy a managed service without running tasks.
+    In Docker Swarm mode, use `deploy.replicas: 0` to deploy a managed service without running tasks,
+    or [let an external tool control the replica count](#let-an-external-tool-control-swarm-replicas).
+
+### Let an external tool control Swarm replicas
+
+In Docker Swarm mode, each deployment sets the replica count of a service to its `deploy.replicas` value.
+To let an external tool, for example an autoscaler, control the replica count of a service,
+set the `cd.doco.deployment.preserve_replicas` service label to `true`.
+
+```yaml title="docker-compose.yml"
+services:
+  web:
+    image: example/web:latest
+    deploy:
+      replicas: 2
+    labels:
+      cd.doco.deployment.preserve_replicas: "true"
+```
+
+The label defaults to `false`. When it is `true`:
+
+- A new service starts with its `deploy.replicas` value, including `0` for a service that starts on demand.
+- An update of an existing service keeps its current replica count. All other changes, for example a new image, are applied normally.
+- A different replica count is not drift, so it does not cause a deployment on an otherwise unchanged poll.
+- A change of `deploy.replicas` in the repository still causes a deployment, but that deployment keeps the current replica count.
+
+When you remove the label or set it to `false`, the next deployment applies `deploy.replicas` again.
+
+Later deployments also keep a replica count that you set with the [REST API](Endpoints/REST-API.md) or the [MCP server](Endpoints/MCP-Server.md).
+Services that a scheduled job stops with [`cd.doco.job.stop_services`](Advanced/Job-Scheduling.md#temporarily-stop-services-during-a-job-run)
+return to the replica count they had when the job stopped them.
+
+!!! note
+    Set the label under the service `labels:`, not under `deploy.labels`.
+    The label applies only to Docker Swarm services in `replicated` mode (the default).
+    It has no effect in Docker (Standalone) deployments, on [scheduled job](Advanced/Job-Scheduling.md) services, and on the doco-cd service itself.
+    A change between `replicated` and `global` mode applies the Compose definition.
+
+    Use `true` or `false` as the value. An invalid value on a service that supports the label is rejected.
 
 ### Prevent recreation on config, secret or bind mount changes
 

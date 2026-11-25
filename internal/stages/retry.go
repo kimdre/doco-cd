@@ -184,7 +184,7 @@ func (s *StageManager) prepareDeploymentRetry(ctx context.Context, stageLog *slo
 		hashProject := docker.WithNormalizedEnvValues(s.Docker.Project,
 			docker.PKIRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
 
-		hash, err := docker.ProjectHash(hashProject, s.Repository.PathExternal)
+		hash, err := docker.DeploymentProjectHash(hashProject, s.Repository.PathExternal, s.Docker.SwarmMode)
 		if err != nil {
 			return fmt.Errorf("hash retry compose project: %w", err)
 		}

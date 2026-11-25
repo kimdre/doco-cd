@@ -279,7 +279,7 @@ func TestServiceInventory_IgnoresContainersWithoutServiceLabel(t *testing.T) {
 		t.Fatalf("deployed status = %#v, want %#v", status.DeployedStatus, want)
 	}
 
-	mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, types.Services{"app": {Name: "app"}})
+	mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, types.Services{"app": {Name: "app"}}, "")
 	if err != nil {
 		t.Fatalf("CheckServiceMismatch() error = %v", err)
 	}
@@ -372,7 +372,7 @@ func TestServiceInventory_IgnoresOneOffContainers(t *testing.T) {
 					status.deploymentCommitSHA, status.deploymentComposeHash)
 			}
 
-			mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, services)
+			mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, services, "")
 			if err != nil {
 				t.Fatalf("CheckServiceMismatch() error = %v", err)
 			}
@@ -462,7 +462,7 @@ func TestGetServiceStatusFromContainerStatus_ExcludesEngineJobRuns(t *testing.T)
 			t.Fatalf("deployed status = %#v, want %#v", status.DeployedStatus, want)
 		}
 
-		mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, types.Services{"app": {Name: "app", Restart: "unless-stopped"}})
+		mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, types.Services{"app": {Name: "app", Restart: "unless-stopped"}}, "")
 		if err != nil {
 			t.Fatalf("CheckServiceMismatch() error = %v", err)
 		}
@@ -1577,7 +1577,7 @@ func TestCheckServiceMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := CheckServiceMismatch(tt.swarmModeEnable, tt.deployed, tt.services)
+			got, err := CheckServiceMismatch(tt.swarmModeEnable, tt.deployed, tt.services, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1639,7 +1639,7 @@ func TestCheckServiceMismatch_AutostartDisabled(t *testing.T) {
 					deployed["web"] = ServiceStatus{Replicas: tt.replicas, Containers: tt.containers}
 				}
 
-				got, err := CheckServiceMismatch(false, deployed, services)
+				got, err := CheckServiceMismatch(false, deployed, services, "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1676,7 +1676,7 @@ func TestCheckServiceMismatch_ContainerCountNeedsAutostartDisabled(t *testing.T)
 
 			got, err := CheckServiceMismatch(false,
 				map[Service]ServiceStatus{"web": {Containers: 1}},
-				types.Services{"web": {Name: "web", Restart: restart, Scale: new(2)}})
+				types.Services{"web": {Name: "web", Restart: restart, Scale: new(2)}}, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1748,7 +1748,7 @@ func TestCheckServiceMismatch_AutostartContainerInventory(t *testing.T) {
 				Labels: types.Labels{DocoCDLabels.Deployment.Autostart: "false"},
 			}}
 
-			got, err := CheckServiceMismatch(false, deployed, services)
+			got, err := CheckServiceMismatch(false, deployed, services, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1808,7 +1808,7 @@ func TestCheckServiceMismatch_AutostartLabels(t *testing.T) {
 				Name: "web", Restart: "unless-stopped", Labels: tt.labels, CustomLabels: tt.customLabels,
 			}}
 
-			got, err := CheckServiceMismatch(false, deployed, services)
+			got, err := CheckServiceMismatch(false, deployed, services, "")
 			if tt.wantError {
 				if err == nil || !strings.Contains(err.Error(), "service web: invalid "+DocoCDLabels.Deployment.Autostart) {
 					t.Fatalf("expected a service-specific autostart error, got %v", err)
@@ -1879,7 +1879,7 @@ func TestCheckServiceMismatch_AutostartPreservesSwarm(t *testing.T) {
 					Labels: types.Labels{DocoCDLabels.Deployment.Autostart: label},
 				}}
 
-				got, err := CheckServiceMismatch(true, tt.deployed, services)
+				got, err := CheckServiceMismatch(true, tt.deployed, services, "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1893,6 +1893,116 @@ func TestCheckServiceMismatch_AutostartPreservesSwarm(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCheckServiceMismatch_PreserveReplicas(t *testing.T) {
+	t.Parallel()
+
+	preserve := types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "true"}
+	replicated := map[Service]ServiceStatus{"web": {Name: "stack_web", SwarmMode: swarm.DeployModeReplicated, Replicas: 5}}
+
+	for _, tt := range []struct {
+		name         string
+		swarmMode    bool
+		mode         swarm.DeployMode
+		labels       types.Labels
+		customLabels types.Labels
+		deployed     map[Service]ServiceStatus
+		selfService  string
+		reason       string
+		wantError    bool
+	}{
+		{name: "label skips replica count", swarmMode: true, labels: preserve, deployed: replicated},
+		{
+			name: "label value is trimmed", swarmMode: true, deployed: replicated,
+			labels: types.Labels{DocoCDLabels.Deployment.PreserveReplicas: " TRUE "},
+		},
+		{name: "no label reports replicas", swarmMode: true, deployed: replicated, reason: ServiceMismatchReasonReplicas},
+		{
+			name: "label false reports replicas", swarmMode: true, deployed: replicated, reason: ServiceMismatchReasonReplicas,
+			labels: types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "false"},
+		},
+		{
+			name: "custom label does not override", swarmMode: true, deployed: replicated,
+			labels: preserve, customLabels: types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "false"},
+		},
+		{
+			name: "custom label alone does not enable", swarmMode: true, deployed: replicated, reason: ServiceMismatchReasonReplicas,
+			customLabels: preserve,
+		},
+		{
+			name: "self service reports replicas", swarmMode: true, deployed: replicated,
+			labels: preserve, selfService: "stack_web", reason: ServiceMismatchReasonReplicas,
+		},
+		{name: "missing service is reported", swarmMode: true, labels: preserve, reason: ServiceMismatchReasonNotDeployed},
+		{
+			name: "mode drift is reported", swarmMode: true, labels: preserve, reason: ServiceMismatchReasonSwarmMode,
+			deployed: map[Service]ServiceStatus{"web": {SwarmMode: swarm.DeployModeGlobal}},
+		},
+		{
+			name: "replicated job is reported", swarmMode: true, mode: swarm.DeployModeReplicatedJob, labels: preserve,
+			deployed: map[Service]ServiceStatus{"web": {SwarmMode: swarm.DeployModeReplicatedJob, Replicas: 5}},
+			reason:   ServiceMismatchReasonReplicas,
+		},
+		{
+			name: "scheduled job is reported", swarmMode: true, deployed: replicated, reason: ServiceMismatchReasonReplicas,
+			labels: types.Labels{
+				DocoCDLabels.Deployment.PreserveReplicas: "true",
+				DocoCDJobLabels.JobEnabled:               "true",
+			},
+		},
+		{
+			name: "invalid label returns error", swarmMode: true, deployed: replicated, wantError: true,
+			labels: types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "invalid"},
+		},
+		{
+			name: "standalone ignores label", labels: preserve, reason: ServiceMismatchReasonReplicas,
+			deployed: map[Service]ServiceStatus{"web": {Replicas: 5}},
+		},
+		{
+			name:     "standalone ignores invalid label",
+			labels:   types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "invalid"},
+			deployed: map[Service]ServiceStatus{"web": {Replicas: 1}},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := types.ServiceConfig{Name: "web", Labels: tt.labels, CustomLabels: tt.customLabels}
+			if tt.swarmMode && tt.mode != "" {
+				svc.Deploy = &types.DeployConfig{Mode: string(tt.mode)}
+			}
+
+			if !tt.swarmMode {
+				svc.Restart = "always"
+			}
+
+			got, err := CheckServiceMismatch(tt.swarmMode, tt.deployed, types.Services{"web": svc}, tt.selfService)
+			if tt.wantError {
+				if err == nil || !strings.Contains(err.Error(), "service web: invalid "+DocoCDLabels.Deployment.PreserveReplicas) {
+					t.Fatalf("expected a service-specific preserve_replicas error, got %v", err)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if tt.reason == "" {
+				if len(got) != 0 {
+					t.Fatalf("unexpected mismatch: %v", got)
+				}
+
+				return
+			}
+
+			if len(got) != 1 || len(got[0].Reasons) != 1 || got[0].Reasons[0].Reason != tt.reason {
+				t.Fatalf("mismatches = %v, want %q", got, tt.reason)
+			}
+		})
 	}
 }
 
@@ -1989,7 +2099,7 @@ func TestCheckServiceMismatch_SwarmScheduledJobReplicas(t *testing.T) {
 
 			got, err := CheckServiceMismatch(true,
 				map[Service]ServiceStatus{"job": {SwarmMode: mode, Replicas: tt.deployed}},
-				types.Services{"job": svc})
+				types.Services{"job": svc}, "")
 			if err != nil {
 				t.Fatal(err)
 			}

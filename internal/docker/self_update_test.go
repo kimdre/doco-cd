@@ -118,8 +118,8 @@ func TestSwarmSelfService(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			configureTestSelfIdentity(t, "doco-cd", "app", tt.swarm)
 
-			if got := swarmSelfService(tt.dc); got != tt.want {
-				t.Errorf("swarmSelfService = %q, want %q", got, tt.want)
+			if got := SwarmSelfService(tt.dc); got != tt.want {
+				t.Errorf("SwarmSelfService = %q, want %q", got, tt.want)
 			}
 
 			if tt.swarm && IsSelfStack(tt.dc) != (tt.want != "") {

@@ -427,45 +427,47 @@ func hasComposeIncludes(node yaml.Node) bool {
 	return false
 }
 
-// mismatchLabelKeys lists the service labels that docker.CheckServiceMismatch reads.
-var mismatchLabelKeys = []string{
+// snapshotServiceLabels lists the labels that CheckServiceMismatch reads. The
+// warm skip snapshot keeps them so cached and full drift checks agree.
+var snapshotServiceLabels = []string{
 	docker.DocoCDLabels.Deployment.Autostart,
+	docker.DocoCDLabels.Deployment.PreserveReplicas,
 	docker.DocoCDJobLabels.JobEnabled,
 	docker.DocoCDJobLabels.JobExecutionMode,
 }
 
-// selectMismatchLabels copies the mismatch labels into a new map.
-// It returns nil when no such label is set.
-func selectMismatchLabels(labels types.Labels) types.Labels {
-	var selected types.Labels
+// copySnapshotLabels returns a new map with only the snapshot labels from
+// labels. It returns nil when no snapshot label is present.
+func copySnapshotLabels(labels types.Labels) types.Labels {
+	var copied types.Labels
 
-	for _, key := range mismatchLabelKeys {
+	for _, key := range snapshotServiceLabels {
 		value, ok := labels[key]
 		if !ok {
 			continue
 		}
 
-		if selected == nil {
-			selected = types.Labels{}
+		if copied == nil {
+			copied = types.Labels{}
 		}
 
-		selected[key] = value
+		copied[key] = value
 	}
 
-	return selected
+	return copied
 }
 
 // projectExpectedServices returns a map of service names to their expected configurations
 // based on the provided project. It includes the service name, restart policy,
-// the labels that the mismatch check reads, scale, and deploy configuration (mode and replicas).
+// the labels that drift checks read, scale, and deploy configuration (mode and replicas).
 func projectExpectedServices(project *types.Project) types.Services {
 	services := make(types.Services, len(project.Services))
 	for name, service := range project.Services {
 		expected := types.ServiceConfig{
 			Name:         service.Name,
 			Restart:      service.Restart,
-			Labels:       selectMismatchLabels(service.Labels),
-			CustomLabels: selectMismatchLabels(service.CustomLabels),
+			Labels:       copySnapshotLabels(service.Labels),
+			CustomLabels: copySnapshotLabels(service.CustomLabels),
 		}
 
 		if service.Scale != nil {
@@ -695,7 +697,8 @@ func (s *StageManager) skipFromCachedProject(
 		return fallback(reason)
 	}
 
-	mismatches, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedStatus, snapshot.services)
+	mismatches, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedStatus,
+		snapshot.services, docker.SwarmSelfService(s.DeployConfig))
 	if err != nil {
 		return fallback(err.Error())
 	}

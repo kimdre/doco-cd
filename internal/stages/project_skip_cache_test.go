@@ -264,6 +264,38 @@ func TestProjectExpectedServicesPreservesMismatchLabels(t *testing.T) {
 	}
 }
 
+func TestProjectExpectedServicesKeepsSwarmReplicaLabels(t *testing.T) {
+	t.Parallel()
+
+	preserve := docker.DocoCDLabels.Deployment.PreserveReplicas
+	jobEnabled := docker.DocoCDJobLabels.JobEnabled
+	project := &types.Project{Services: types.Services{
+		"web": {
+			Name:         "web",
+			Labels:       types.Labels{preserve: "true", jobEnabled: "false", "unrelated": "value"},
+			CustomLabels: types.Labels{preserve: "false"},
+		},
+	}}
+
+	got := projectExpectedServices(project)
+
+	want := types.Services{
+		"web": {
+			Name:         "web",
+			Labels:       types.Labels{preserve: "true", jobEnabled: "false"},
+			CustomLabels: types.Labels{preserve: "false"},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected services = %#v, want %#v", got, want)
+	}
+
+	project.Services["web"].Labels[preserve] = "false"
+	if got["web"].Labels[preserve] != "true" {
+		t.Fatal("source mutations changed the cached service configuration")
+	}
+}
+
 func TestProjectSkipCacheAutostart(t *testing.T) {
 	t.Parallel()
 
@@ -366,7 +398,7 @@ func TestProjectSkipCacheAutostart(t *testing.T) {
 				status["extra"] = docker.ServiceStatus{Replicas: 1, Containers: 1}
 			}
 
-			mismatches, err := docker.CheckServiceMismatch(false, status, project.Services)
+			mismatches, err := docker.CheckServiceMismatch(false, status, project.Services, "")
 			if (err != nil) != tt.wantError {
 				t.Fatalf("full drift check error = %v, wantError %t", err, tt.wantError)
 			}
@@ -463,7 +495,7 @@ func TestProjectSkipCacheSwarmScheduledJob(t *testing.T) {
 				"job": {SwarmMode: "replicated", Replicas: tt.deployed},
 			}
 
-			mismatches, err := docker.CheckServiceMismatch(true, status, project.Services)
+			mismatches, err := docker.CheckServiceMismatch(true, status, project.Services, "")
 			if err != nil {
 				t.Fatal(err)
 			}

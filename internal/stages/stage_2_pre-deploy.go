@@ -648,7 +648,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			changedServices = append(changedServices, staleArtifactChange(staleArtifacts))
 		}
 
-		mismatchServices, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus, s.Docker.Project.Services)
+		mismatchServices, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus,
+			s.Docker.Project.Services, docker.SwarmSelfService(s.DeployConfig))
 		if err != nil {
 			return fmt.Errorf("failed to check service mismatch: %w", err)
 		}
@@ -840,7 +841,7 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 
 	hashProject := docker.WithNormalizedEnvValues(s.Docker.Project, normMap)
 
-	projectHash, err := docker.ProjectHash(hashProject, s.Repository.PathExternal)
+	projectHash, err := docker.DeploymentProjectHash(hashProject, s.Repository.PathExternal, s.Docker.SwarmMode)
 	if err != nil {
 		return "", fmt.Errorf("failed to get project hash: %w", err)
 	}

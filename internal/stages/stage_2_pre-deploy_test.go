@@ -982,7 +982,7 @@ func TestDropSchedulerHeldMismatches_SkipsDeploymentDuringJobStopWindow(t *testi
 		"db": {Labels: docker.Labels{}},
 	}
 
-	mismatches, err := docker.CheckServiceMismatch(false, deployedStatus, project.Services)
+	mismatches, err := docker.CheckServiceMismatch(false, deployedStatus, project.Services, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1021,7 +1021,7 @@ func TestShouldSkipDeployment_AutostartDisabled(t *testing.T) {
 		types.Services{"web": {
 			Name: "web", Restart: "unless-stopped",
 			Labels: types.Labels{docker.DocoCDLabels.Deployment.Autostart: "false"},
-		}})
+		}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
