@@ -13,7 +13,7 @@ import (
 
 // waitForStackLock reports whether the deployment waits for a stack lock that
 // another operation holds. Webhook deployments wait, because nothing repeats
-// them. Polls, including polls triggered through the API or MCP, and
+// them. Polls, including polls triggered through the API, MCP, or a signal, and
 // reconciliation redeploys skip the stack, because the next poll or Docker
 // event tries it again. A poll that waits would stop all later polls of its
 // configuration.

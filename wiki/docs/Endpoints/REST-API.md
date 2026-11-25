@@ -193,7 +193,7 @@ If the application is not healthy, the endpoint returns a `503` status code and 
 
 ### Deployment Runs
 
-The API tracks deployment-related runs (for example webhook-triggered deployments, API-triggered poll runs, and automatic, manual, or recovered scheduled-job executions) in memory.
+The API tracks deployment-related runs (for example webhook-triggered deployments, API- or [signal](../Poll-Settings.md#trigger-a-poll-run-with-a-signal)-triggered poll runs, and automatic, manual, or recovered scheduled-job executions) in memory.
 Use these endpoints to inspect the current status and recent history by `job_id`.
 Each run's `deployments` collection reports the resolved stack and Docker context targets. A single poll or webhook run can contain targets from multiple contexts.
 Automatic attempts suppressed by a [deployment retry policy](../Deploy-Settings.md#retry-settings) are skipped, not successful.
@@ -245,6 +245,10 @@ Source trust checks, sync windows, and other safety checks still apply. Automati
 
 Manual polls do **not** bypass [`pause`](../Deploy-Settings.md#pause-settings). Inline deployments accept `"pause": true`.
 With `wait=true`, a poll whose deployments are all paused returns `202 Accepted` with the pause reason as `content`.
+
+!!! tip
+    To run all enabled poll jobs once without an API key, send `SIGHUP` or `SIGUSR1` to the doco-cd container.
+    See [Trigger a poll run with a signal](../Poll-Settings.md#trigger-a-poll-run-with-a-signal).
 
 #### Example Request
 

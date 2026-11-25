@@ -397,6 +397,22 @@ func (h *Harness) Start() {
 	h.startDaemon(pollPath)
 }
 
+// SignalDaemon sends a signal such as "SIGHUP" to the running doco-cd container.
+func (h *Harness) SignalDaemon(signal string) {
+	h.t.Helper()
+
+	if h.daemon == nil {
+		h.t.Fatal("doco-cd daemon is not running")
+	}
+
+	daemonID := h.daemon.GetContainerID()
+	h.logf("sending %s to doco-cd container %s", signal, shortContainerID(daemonID))
+
+	if _, err := h.docker.ContainerKill(h.ctx, daemonID, client.ContainerKillOptions{Signal: signal}); err != nil {
+		h.t.Fatalf("send %s to doco-cd container: %v", signal, err)
+	}
+}
+
 // KillAndRestartDaemon forcibly removes the daemon container, then starts a
 // replacement with the same scenario data volume and poll configuration.
 func (h *Harness) KillAndRestartDaemon() {

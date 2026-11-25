@@ -169,6 +169,18 @@ func main() {
 // run is the main entry point for the application.
 // It initializes the application, sets up necessary resources, and starts the server.
 func run() error {
+	applySelf := len(os.Args) > 1 && os.Args[1] == "apply-self"
+
+	var pollSignalCh <-chan os.Signal
+
+	if !applySelf {
+		// Subscribe before loading configuration. Without a subscription, SIGHUP can stop the process.
+		signals, stop := notifyPollSignals()
+		defer stop()
+
+		pollSignalCh = signals
+	}
+
 	ctx, rootCancel := context.WithCancel(context.Background())
 
 	defer rootCancel()
@@ -212,7 +224,7 @@ func run() error {
 	// Set the actual log level
 	log = logger.New(logLevel)
 
-	if len(os.Args) > 1 && os.Args[1] == "apply-self" {
+	if applySelf {
 		return runApplySelf(ctx, log, c, os.Args[2:])
 	}
 
@@ -664,6 +676,13 @@ func run() error {
 	if c.PprofEnabled {
 		profiling.RegisterServer(c.PprofPort, log)
 	}
+
+	drainPollSignal(pollSignalCh, log.Logger)
+
+	// The handover stops new signal polls and waits for active runs to finish.
+	graceful.SafeGo(&wg, log.Logger, func() {
+		runPollSignalLoop(workCtx, pollSignalCh, c.PollConfig, controlPlaneRuns.TriggerConfiguredPolls, log.Logger)
+	})
 
 	if err := graceful.Serve(log.Logger); err != nil {
 		log.Critical("failed to serve", logger.ErrAttr(err))

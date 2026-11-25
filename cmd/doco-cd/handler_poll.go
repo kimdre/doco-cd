@@ -26,12 +26,11 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-// Poll trigger reasons, reported in the "polling <entity>" log line's
-// trigger.event field so it's possible to tell a regular interval-driven poll
-// apart from one triggered by the local repository filesystem watcher.
+// The trigger.event log field shows why a poll started.
 const (
-	pollTriggerDefault = "poll"       // regular interval/startup/API-triggered poll
-	pollTriggerWatch   = "poll-watch" // triggered by the local repository filesystem watcher
+	pollTriggerDefault = "poll"        // regular interval/startup/API-triggered poll
+	pollTriggerWatch   = "poll-watch"  // triggered by the local repository filesystem watcher
+	pollTriggerSignal  = "poll-signal" // triggered by a SIGHUP or SIGUSR1 process signal
 )
 
 // pollWatcherlessFallbackInterval is used when a local git poll job has no
@@ -41,15 +40,22 @@ const (
 // polling again.
 const pollWatcherlessFallbackInterval = 24 * time.Hour
 
+// pollJobEnabled reports whether a poll configuration starts a poll job.
+// interval=0 disables polling, unless a schedule is set, run_once is set, or
+// the source is a local git repo, which can be driven by a filesystem watcher
+// instead (see poll.Config.Watch).
+func pollJobEnabled(pollConfig poll.Config) bool {
+	if pollConfig.Interval != 0 || pollConfig.Schedule != "" || pollConfig.RunOnce {
+		return true
+	}
+
+	return config.NormalizeSourceType(pollConfig.Source) == config.SourceTypeGit &&
+		git.IsLocalFile(pollConfig.SourceUrl)
+}
+
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
 func StartPoll(ctx context.Context, h *orchestrationHandler, pollConfig poll.Config, wg *sync.WaitGroup) error {
-	isLocalGit := config.NormalizeSourceType(pollConfig.Source) == config.SourceTypeGit &&
-		git.IsLocalFile(pollConfig.SourceUrl)
-
-	// interval=0 disables polling, unless a schedule is set or the source is a
-	// local git repo, which can be driven by a filesystem watcher instead (see
-	// pollConfig.Watch).
-	if pollConfig.Interval == 0 && pollConfig.Schedule == "" && !pollConfig.RunOnce && !isLocalGit {
+	if !pollJobEnabled(pollConfig) {
 		h.log.Info("polling job disabled by config", "config", &pollConfig)
 
 		return nil
@@ -465,6 +471,8 @@ func reportPollOutcome(
 		// An intentional no-op: the next poll inside a window deploys the
 		// latest revision.
 		jobLog.Info("job deferred by sync window", slog.String("reason", deployErr.Error()), elapsed, slog.String("next_run", nextRun))
+	case errors.Is(deployErr, stages.ErrDeploymentPaused):
+		jobLog.Info("job skipped by deployment pause", slog.String("reason", deployErr.Error()), elapsed, slog.String("next_run", nextRun))
 	case deployErr != nil:
 		pollError(jobLog, metadata, deployErr, notifier)
 		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), elapsed, slog.String("next_run", nextRun))
