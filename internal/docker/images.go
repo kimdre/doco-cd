@@ -40,7 +40,7 @@ const (
 	// TestRemoteDockerImage is the Docker-in-Docker image version used in e2e tests.
 	// Tracked by Renovate for automated updates .
 	// Needs to be outside of test/ directory because Renovate ignores test/ by default.
-	TestRemoteDockerImage = "docker:29-dind@sha256:1c90c08b6c8fc312aa4afd066d19edeb94b0c25384e9e7f2cd9e74a28a670be8"
+	TestRemoteDockerImage = "docker:29-dind@sha256:fbbc96e0af32cdc190aff92ba97a1281a115351a723afe21af78879cc55126b0"
 )
 
 var (
