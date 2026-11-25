@@ -28,7 +28,7 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) (retErr e
 
 	opts.Logger = req.stackLog
 	opts.ForceUpdateServices = staleArtifactServices(req.request.DetectedChanges)
-	opts.SelfService = swarmSelfService(deployConfig)
+	opts.SelfService = SwarmSelfService(deployConfig)
 
 	var handover *selfupdate.SwarmHandover
 
@@ -117,8 +117,9 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) (retErr e
 	return nil
 }
 
-// swarmSelfService limits handovers to this instance's service on the local Swarm.
-func swarmSelfService(deployConfig *deploy.Config) string {
+// SwarmSelfService returns the full name of this instance's service if the
+// deployment targets its stack on the local Swarm.
+func SwarmSelfService(deployConfig *deploy.Config) string {
 	identity := SelfUpdateConfig().Identity
 	if !identity.Swarm || !IsSelfStack(deployConfig) {
 		return ""

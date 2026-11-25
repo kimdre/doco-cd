@@ -368,9 +368,8 @@ type ServiceMismatchReason struct {
 // but all of their containers must exist.
 // Invalid autostart labels return an error in standalone mode.
 // In Swarm mode, replicated services with the preserve_replicas label skip the
-// replica count check, because an external tool owns that count. Invalid
-// preserve_replicas labels return an error in Swarm mode.
-func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) ([]ServiceMismatch, error) {
+// replica count check, except for the local doco-cd service and scheduled jobs.
+func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services, selfSwarmService string) ([]ServiceMismatch, error) {
 	var mismatches []ServiceMismatch
 
 	// In non-Swarm mode, services with unset, "on-failure", or "no" restart policy can be considered as "stopped" and won't cause a mismatch.
@@ -428,12 +427,12 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 					case swarmInternal.DeployModeReplicated, swarmInternal.DeployModeReplicatedJob:
 						preserveReplicas := false
 
-						if svcMode == swarmInternal.DeployModeReplicated {
+						if svcMode == swarmInternal.DeployModeReplicated && (selfSwarmService == "" || status.Name != selfSwarmService) {
 							var err error
 
-							preserveReplicas, err = servicePreserveReplicasEnabled(svcName, svc)
+							preserveReplicas, err = swarmInternal.PreserveReplicasEnabled(svc.Labels)
 							if err != nil {
-								return nil, err
+								return nil, fmt.Errorf("service %s: %w", svcName, err)
 							}
 						}
 

@@ -696,7 +696,8 @@ func (s *StageManager) skipFromCachedProject(
 		return fallback(reason)
 	}
 
-	mismatches, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedStatus, snapshot.services)
+	mismatches, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedStatus,
+		snapshot.services, docker.SwarmSelfService(s.DeployConfig))
 	if err != nil {
 		return fallback(err.Error())
 	}

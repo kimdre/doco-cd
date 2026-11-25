@@ -805,7 +805,7 @@ Ensure dependent services can tolerate that service being unavailable until an e
 ### Let an external tool control Swarm replicas
 
 In Docker Swarm mode, each deployment sets the replica count of a service to its `deploy.replicas` value.
-To let an external tool, for example an autoscaler, control the replica count of a service, 
+To let an external tool, for example an autoscaler, control the replica count of a service,
 set the `cd.doco.deployment.preserve_replicas` service label to `true`.
 
 ```yaml title="docker-compose.yml"
@@ -820,7 +820,7 @@ services:
 
 The label defaults to `false`. When it is `true`:
 
-- A new service starts with its `deploy.replicas` value.
+- A new service starts with its `deploy.replicas` value, including `0` for a service that starts on demand.
 - An update of an existing service keeps its current replica count. All other changes, for example a new image, are applied normally.
 - A different replica count is not drift, so it does not cause a deployment on an otherwise unchanged poll.
 - A change of `deploy.replicas` in the repository still causes a deployment, but that deployment keeps the current replica count.
@@ -833,11 +833,11 @@ return to the replica count they had when the job stopped them.
 
 !!! note
     Set the label under the service `labels:`, not under `deploy.labels`.
-    The label applies only to Docker Swarm services in `replicated` mode (the default). 
+    The label applies only to Docker Swarm services in `replicated` mode (the default).
     It has no effect in Docker (Standalone) deployments, on [scheduled job](Advanced/Job-Scheduling.md) services, and on the doco-cd service itself.
     A change between `replicated` and `global` mode applies the Compose definition.
 
-    Use `true` or `false` as the value. An invalid value causes deployments of the stack to fail with an error.
+    Use `true` or `false` as the value. An invalid value on a service that supports the label is rejected.
 
 ### Prevent recreation on config, secret or bind mount changes
 

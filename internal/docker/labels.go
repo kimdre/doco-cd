@@ -1,6 +1,10 @@
 package docker
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+)
 
 // docoCDLabelNamesMetadata contains the metadata labels used by DocoCD.
 type docoCDLabelNamesMetadata struct {
@@ -79,7 +83,7 @@ var DocoCDLabels = docoCdLabelNames{
 		AutoDiscovery:        "cd.doco.deployment.auto_discovery",
 		AutoDiscoveryConfig:  "cd.doco.deployment.auto_discovery.config",
 		Autostart:            "cd.doco.deployment.autostart",
-		PreserveReplicas:     "cd.doco.deployment.preserve_replicas",
+		PreserveReplicas:     swarm.PreserveReplicasLabel,
 		OneShot:              "cd.doco.deployment.one_shot",
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",

@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/docker/cli/cli/compose/convert"
@@ -142,50 +143,20 @@ func TestApplyLivePreservedReplicas(t *testing.T) {
 		wantLive bool
 	}{
 		{
-			name:     "label keeps live replicas",
-			desired:  replicatedSpec(&one, map[string]string{preserveReplicasLabel: "true"}),
+			name:     "copies live replicas",
+			desired:  replicatedSpec(&one, nil),
 			live:     replicatedSpec(&five, nil),
 			wantOK:   true,
 			wantLive: true,
-		},
-		{
-			name:     "label value is trimmed and case insensitive",
-			desired:  replicatedSpec(&one, map[string]string{preserveReplicasLabel: " TRUE "}),
-			live:     replicatedSpec(&five, nil),
-			wantOK:   true,
-			wantLive: true,
-		},
-		{
-			name:    "label false applies Compose replicas",
-			desired: replicatedSpec(&one, map[string]string{preserveReplicasLabel: "false"}),
-			live:    replicatedSpec(&five, nil),
-		},
-		{
-			name:    "invalid label applies Compose replicas",
-			desired: replicatedSpec(&one, map[string]string{preserveReplicasLabel: "invalid"}),
-			live:    replicatedSpec(&five, nil),
-		},
-		{
-			name:    "missing label applies Compose replicas",
-			desired: replicatedSpec(&one, nil),
-			live:    replicatedSpec(&five, nil),
-		},
-		{
-			name: "scheduled job applies Compose replicas",
-			desired: replicatedSpec(&one, map[string]string{
-				preserveReplicasLabel:    "true",
-				scheduledJobEnabledLabel: "true",
-			}),
-			live: replicatedSpec(&five, nil),
 		},
 		{
 			name:    "live service without replica count applies Compose replicas",
-			desired: replicatedSpec(&one, map[string]string{preserveReplicasLabel: "true"}),
+			desired: replicatedSpec(&one, nil),
 			live:    replicatedSpec(nil, nil),
 		},
 		{
 			name:    "mode change from global applies Compose definition",
-			desired: replicatedSpec(&one, map[string]string{preserveReplicasLabel: "true"}),
+			desired: replicatedSpec(&one, nil),
 			live: swarmTypes.ServiceSpec{
 				Mode: swarmTypes.ServiceMode{Global: &swarmTypes.GlobalService{}},
 			},
@@ -230,7 +201,6 @@ func TestApplyLivePreservedReplicas_IgnoresOtherModes(t *testing.T) {
 	t.Parallel()
 
 	five := uint64(5)
-	labels := map[string]string{preserveReplicasLabel: "true"}
 
 	for _, tt := range []struct {
 		name string
@@ -243,10 +213,7 @@ func TestApplyLivePreservedReplicas_IgnoresOtherModes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			spec := swarmTypes.ServiceSpec{
-				Mode:         tt.mode,
-				TaskTemplate: swarmTypes.TaskSpec{ContainerSpec: &swarmTypes.ContainerSpec{Labels: labels}},
-			}
+			spec := swarmTypes.ServiceSpec{Mode: tt.mode}
 
 			if _, ok := applyLivePreservedReplicas(&spec, replicatedSpec(&five, nil)); ok {
 				t.Fatal("non-replicated service must use the Compose definition")
@@ -264,20 +231,40 @@ func TestDeployServicesPreserveReplicas(t *testing.T) {
 
 	for _, tt := range []struct {
 		name        string
+		label       string
 		selfService string
+		scheduled   bool
 		existing    bool
+		wantErr     bool
 		want        uint64
 	}{
-		{name: "update keeps live replicas", existing: true, want: 5},
-		{name: "self service uses Compose replicas", existing: true, selfService: "stack_api", want: 1},
-		{name: "create uses Compose replicas", want: 1},
+		{name: "update keeps live replicas", label: "true", existing: true, want: 5},
+		{name: "label value is trimmed and case insensitive", label: " TRUE ", existing: true, want: 5},
+		{name: "label false uses Compose replicas", label: "false", existing: true, want: 1},
+		{name: "missing label uses Compose replicas", existing: true, want: 1},
+		{name: "self service uses Compose replicas", label: "true", existing: true, selfService: "stack_api", want: 1},
+		{name: "invalid label ignored for self service", label: "invalid", existing: true, selfService: "stack_api", want: 1},
+		{name: "invalid label ignored for scheduled job", label: "invalid", existing: true, scheduled: true, want: 1},
+		{name: "create uses Compose replicas", label: "true", want: 1},
+		{name: "invalid label rejects first deployment", label: "invalid", wantErr: true},
+		{name: "invalid label rejects update", label: "invalid", existing: true, wantErr: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			one := uint64(1)
 			five := uint64(5)
-			spec := replicatedSpec(&one, map[string]string{preserveReplicasLabel: "true"})
+
+			labels := map[string]string{}
+			if tt.label != "" {
+				labels[PreserveReplicasLabel] = tt.label
+			}
+
+			if tt.scheduled {
+				labels[scheduledJobEnabledLabel] = "true"
+			}
+
+			spec := replicatedSpec(&one, labels)
 			spec.Name = "stack_api"
 			spec.TaskTemplate.ContainerSpec.Image = "example:latest"
 
@@ -294,7 +281,20 @@ func TestDeployServicesPreserveReplicas(t *testing.T) {
 			opts := &options.Deploy{ResolveImage: ResolveImageNever, SelfService: tt.selfService}
 			cli := testServiceIdentityCLI(apiClient, io.Discard, io.Discard)
 
-			if _, err := deployServices(t.Context(), cli, services, convert.NewNamespace("stack"), opts); err != nil {
+			_, err := deployServices(t.Context(), cli, services, convert.NewNamespace("stack"), opts)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "service api: invalid "+PreserveReplicasLabel) {
+					t.Fatalf("expected a service-specific label error, got %v", err)
+				}
+
+				if len(apiClient.creates) != 0 || len(apiClient.updates) != 0 {
+					t.Fatal("invalid configuration must not create or update services")
+				}
+
+				return
+			}
+
+			if err != nil {
 				t.Fatal(err)
 			}
 

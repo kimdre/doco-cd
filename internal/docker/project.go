@@ -11,6 +11,7 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
 // isScaledToZero reports whether a service is configured to run 0 replicas
@@ -140,24 +141,27 @@ func normalizeSourceRoot(b []byte, sourceRoot string) []byte {
 // paths below it are normalized so the hash stays stable across revisions of the same
 // unchanged stack.
 func ProjectHash(p *types.Project, sourceRoot string) (string, error) {
+	return DeploymentProjectHash(p, sourceRoot, false)
+}
+
+// DeploymentProjectHash accounts for replica preservation in Swarm mode.
+func DeploymentProjectHash(p *types.Project, sourceRoot string, swarmMode bool) (string, error) {
 	pCopy := clone.New(p)
 
-	// Exclude parked services without job labels from restart-time hash checks.
-	// Keep job definitions so scheduler configuration changes trigger a redeploy.
+	// External scaling can start a Swarm service whose Compose count is zero.
+	// Keep those services and scheduled jobs in change detection.
 	for name, svc := range pCopy.Services {
-		if isScaledToZero(svc) && !hasJobLabels(svc) {
-			delete(pCopy.Services, name)
-		}
-	}
+		replicatedSwarm := swarmMode && (svc.Deploy == nil || svc.Deploy.Mode == "" || svc.Deploy.Mode == string(swarm.DeployModeReplicated))
+		replicaLabel := DocoCDLabels.Deployment.PreserveReplicas
 
-	// Only behavior-configuring labels should impact redeploy decisions.
-	for name := range pCopy.Services {
-		svc := pCopy.Services[name]
-		if svc.Labels != nil {
-			for l := range svc.Labels {
-				if shouldIgnoreLabelInProjectHash(l) {
-					delete(svc.Labels, l)
-				}
+		if isScaledToZero(svc) && !hasJobLabels(svc) && (!replicatedSwarm || !isTrueLabel(svc.Labels[replicaLabel])) {
+			delete(pCopy.Services, name)
+			continue
+		}
+
+		for l := range svc.Labels {
+			if (!replicatedSwarm || l != replicaLabel) && shouldIgnoreLabelInProjectHash(l) {
+				delete(svc.Labels, l)
 			}
 		}
 

@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -40,10 +41,9 @@ func TestDeployServicesPreserveReplicasIntegration(t *testing.T) {
 		_, _ = apiClient.ServiceRemove(context.Background(), serviceName, client.ServiceRemoveOptions{})
 	})
 
-	deploy := func(labels map[string]string) {
+	deploy := func(replicas uint64, labels map[string]string, env []string) {
 		t.Helper()
 
-		replicas := uint64(1)
 		spec := swarmTypes.ServiceSpec{
 			Name: serviceName,
 			Labels: map[string]string{
@@ -55,6 +55,7 @@ func TestDeployServicesPreserveReplicasIntegration(t *testing.T) {
 				Image:   image,
 				Command: []string{"sh", "-c", "sleep 600"},
 				Labels:  labels,
+				Env:     env,
 			}},
 		}
 
@@ -63,7 +64,7 @@ func TestDeployServicesPreserveReplicasIntegration(t *testing.T) {
 		}
 	}
 
-	assertReplicas := func(want uint64) {
+	assertSpec := func(want uint64, wantEnv []string) {
 		t.Helper()
 
 		result, err := apiClient.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{})
@@ -75,20 +76,25 @@ func TestDeployServicesPreserveReplicasIntegration(t *testing.T) {
 		if replicated == nil || replicated.Replicas == nil || *replicated.Replicas != want {
 			t.Fatalf("service %s replicas = %v, want %d", serviceName, replicated, want)
 		}
+
+		if got := result.Service.Spec.TaskTemplate.ContainerSpec.Env; !slices.Equal(got, wantEnv) {
+			t.Fatalf("service %s environment = %v, want %v", serviceName, got, wantEnv)
+		}
 	}
 
-	preserve := map[string]string{preserveReplicasLabel: "true"}
+	preserve := map[string]string{PreserveReplicasLabel: "true"}
 
-	deploy(preserve)
-	assertReplicas(1)
+	deploy(0, preserve, nil)
+	assertSpec(0, nil)
 
 	if err := ScaleService(ctx, dockerCli, serviceName, 3, false, false); err != nil {
 		t.Fatalf("scale service %s: %v", serviceName, err)
 	}
 
-	deploy(preserve)
-	assertReplicas(3)
+	env := []string{"DEPLOY_REVISION=updated"}
+	deploy(0, preserve, env)
+	assertSpec(3, env)
 
-	deploy(nil)
-	assertReplicas(1)
+	deploy(1, nil, nil)
+	assertSpec(1, nil)
 }

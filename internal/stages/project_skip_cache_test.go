@@ -390,7 +390,7 @@ func TestProjectSkipCacheAutostart(t *testing.T) {
 				status["extra"] = docker.ServiceStatus{Replicas: 1, Containers: 1}
 			}
 
-			mismatches, err := docker.CheckServiceMismatch(false, status, project.Services)
+			mismatches, err := docker.CheckServiceMismatch(false, status, project.Services, "")
 			if (err != nil) != tt.wantError {
 				t.Fatalf("full drift check error = %v, wantError %t", err, tt.wantError)
 			}
