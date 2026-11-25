@@ -427,22 +427,45 @@ func hasComposeIncludes(node yaml.Node) bool {
 	return false
 }
 
+// mismatchLabelKeys lists the service labels that docker.CheckServiceMismatch reads.
+var mismatchLabelKeys = []string{
+	docker.DocoCDLabels.Deployment.Autostart,
+	docker.DocoCDJobLabels.JobEnabled,
+	docker.DocoCDJobLabels.JobExecutionMode,
+}
+
+// selectMismatchLabels copies the mismatch labels into a new map.
+// It returns nil when no such label is set.
+func selectMismatchLabels(labels types.Labels) types.Labels {
+	var selected types.Labels
+
+	for _, key := range mismatchLabelKeys {
+		value, ok := labels[key]
+		if !ok {
+			continue
+		}
+
+		if selected == nil {
+			selected = types.Labels{}
+		}
+
+		selected[key] = value
+	}
+
+	return selected
+}
+
 // projectExpectedServices returns a map of service names to their expected configurations
 // based on the provided project. It includes the service name, restart policy,
-// autostart labels, scale, and deploy configuration (mode and replicas).
+// the labels that the mismatch check reads, scale, and deploy configuration (mode and replicas).
 func projectExpectedServices(project *types.Project) types.Services {
 	services := make(types.Services, len(project.Services))
 	for name, service := range project.Services {
 		expected := types.ServiceConfig{
-			Name:    service.Name,
-			Restart: service.Restart,
-		}
-		if value, ok := service.Labels[docker.DocoCDLabels.Deployment.Autostart]; ok {
-			expected.Labels = types.Labels{docker.DocoCDLabels.Deployment.Autostart: value}
-		}
-
-		if value, ok := service.CustomLabels[docker.DocoCDLabels.Deployment.Autostart]; ok {
-			expected.CustomLabels = types.Labels{docker.DocoCDLabels.Deployment.Autostart: value}
+			Name:         service.Name,
+			Restart:      service.Restart,
+			Labels:       selectMismatchLabels(service.Labels),
+			CustomLabels: selectMismatchLabels(service.CustomLabels),
 		}
 
 		if service.Scale != nil {

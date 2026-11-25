@@ -141,6 +141,11 @@ and then re-/started at the scheduled time without being removed after completio
     `global` services cannot be scaled to `0` (a global service always runs one task per node), so a `global` service
     combined with `restart` mode **will** run on deployment. Use [`one_off`](#one_off) mode for global scheduled jobs instead.
 
+!!! info "Docker Swarm replica drift"
+    A restart-mode execution scales a replicated Swarm service to its intended replica count and leaves it there.
+    Unchanged polls skip the service while it is idle at `0` replicas or still at the replica count of its last execution.
+    Any other replica count is drift, and the next poll redeploys the service at `0` replicas.
+
 ### `one_off`
 
 Alternatively, you can configure scheduled jobs to run in `one_off` mode, which means a new ephemeral container will
@@ -179,6 +184,7 @@ Exit results are kept in memory. When no result is available, the API falls back
     In Docker Swarm, `one_off` does **not** modify the source service mode permanently.
     Instead, doco-cd creates a temporary job service for each scheduled run, waits for completion,
     and removes that temporary service afterwards.
+    The replicated source service stays at `0` replicas. A different count on the source is drift.
     
     This means the original service may still show `replicated`/`global` when inspected,
     while each one-off execution runs as a temporary `replicated-job`/`global-job` service.

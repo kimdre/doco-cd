@@ -1929,3 +1929,91 @@ func TestRepositoryLabelMatches(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckServiceMismatch_SwarmScheduledJobReplicas(t *testing.T) {
+	t.Parallel()
+
+	intPtr := func(v int) *int { return &v }
+
+	for _, tt := range []struct {
+		name        string
+		mode        swarm.DeployMode
+		enabled     string
+		jobMode     string
+		custom      bool
+		replicas    *int
+		deployed    uint64
+		want        bool
+		wantReplica *int
+	}{
+		{name: "pinned after deploy", enabled: "true", deployed: 0},
+		{name: "scaled up by run", enabled: "true", deployed: 1},
+		{name: "trimmed label", enabled: " TRUE ", deployed: 0},
+		{name: "manual scale", enabled: "true", deployed: 5, want: true},
+		{name: "multi replica pinned", enabled: "true", replicas: intPtr(3), deployed: 0},
+		{name: "multi replica run", enabled: "true", replicas: intPtr(3), deployed: 3},
+		{name: "multi replica partial", enabled: "true", replicas: intPtr(3), deployed: 1, want: true},
+		{name: "zero replicas run", enabled: "true", replicas: intPtr(0), deployed: 1},
+		{name: "zero replicas manual scale", enabled: "true", replicas: intPtr(0), deployed: 2, want: true},
+		{name: "one-off idle", enabled: "true", jobMode: "one_off", deployed: 0},
+		{name: "one-off scaled to Compose count", enabled: "true", jobMode: " one_off ", deployed: 1, want: true, wantReplica: intPtr(0)},
+		{name: "one-off scaled from zero", enabled: "true", jobMode: "one_off", replicas: intPtr(0), deployed: 1, want: true},
+		{name: "disabled", enabled: "false", deployed: 0, want: true},
+		{name: "invalid label", enabled: "invalid", deployed: 0, want: true},
+		{name: "no label", deployed: 0, want: true},
+		{name: "custom label only", enabled: "true", custom: true, deployed: 0, want: true},
+		{name: "replicated job", mode: swarm.DeployModeReplicatedJob, enabled: "true", deployed: 0, want: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mode := tt.mode
+			if mode == "" {
+				mode = swarm.DeployModeReplicated
+			}
+
+			svc := types.ServiceConfig{
+				Name:   "job",
+				Deploy: &types.DeployConfig{Mode: string(mode), Replicas: tt.replicas},
+			}
+			switch {
+			case tt.custom:
+				svc.CustomLabels = types.Labels{DocoCDJobLabels.JobEnabled: tt.enabled}
+			case tt.enabled != "":
+				svc.Labels = types.Labels{DocoCDJobLabels.JobEnabled: tt.enabled}
+			}
+
+			if tt.jobMode != "" {
+				svc.Labels[DocoCDJobLabels.JobExecutionMode] = tt.jobMode
+			}
+
+			got, err := CheckServiceMismatch(true,
+				map[Service]ServiceStatus{"job": {SwarmMode: mode, Replicas: tt.deployed}},
+				types.Services{"job": svc})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !tt.want {
+				if len(got) != 0 {
+					t.Fatalf("unexpected Swarm mismatch: %v", got)
+				}
+
+				return
+			}
+
+			if len(got) != 1 || len(got[0].Reasons) != 1 || got[0].Reasons[0].Reason != ServiceMismatchReasonReplicas {
+				t.Fatalf("Swarm mismatches = %v, want %q", got, ServiceMismatchReasonReplicas)
+			}
+
+			want := svc.GetScale()
+			if tt.wantReplica != nil {
+				want = *tt.wantReplica
+			}
+
+			if got[0].Reasons[0].Want != want || got[0].Reasons[0].Got != tt.deployed {
+				t.Fatalf("replica mismatch = %+v, want %d got %d", got[0].Reasons[0], want, tt.deployed)
+			}
+		})
+	}
+}

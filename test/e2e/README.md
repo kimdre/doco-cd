@@ -58,6 +58,7 @@ state shared by parallel tests:
 | Scheduled pre_start   | Unrelated webhook skips, repeated hooks without source recreation, hook failure/retry, and unsupported one-off rejection          |
 | Stack lock            | Polls skip a stack locked by a running one-off job, keep deploying other stacks, and deploy the skipped change after the job ends |
 | Autostart drift       | Explicit and discovered stopped-service polling, cached skips, external start/stop, missing-container recovery, and config changes |
+| Swarm job skip        | Explicit and discovered polls skip a restart-mode Swarm job service at 0 replicas and after a run, and redeploy other replica counts |
 | Self-update scale-out | Bootstrap adoption and labels, followed by healthy overlap and handover                                                           |
 | API key roles         | REST and MCP role presets and explicit permissions for Compose and isolated Swarm, including control and removal                   |
 | API key migration     | Failed-upgrade rollback and self-update from a pinned legacy release to the working tree and back, checking configuration and access |

@@ -705,6 +705,12 @@ func waitForStartedServicesWith(ctx context.Context, listContainers projectConta
 	}
 }
 
+// isSwarmScheduledJobService reports whether a service is a scheduled job in Swarm mode.
+// Swarm reads only Compose service labels, so custom labels are ignored here.
+func isSwarmScheduledJobService(svc types.ServiceConfig) bool {
+	return isTrueLabel(svc.Labels[DocoCDJobLabels.JobEnabled])
+}
+
 func getServiceSchedulerLabels(svc types.ServiceConfig) map[string]string {
 	if len(svc.CustomLabels) == 0 {
 		return svc.Labels
