@@ -24,6 +24,10 @@ make test-e2e E2E_RUN=TestFailedDeployRetry         # one scenario
 go test -tags e2e ./test/e2e/... -run TestFailedDeployRetry -v
 ```
 
+The e2e test package itself compiles the Bitwarden SDK with cgo. `make test-e2e`
+first removes the LLVM bitcode sections from the SDK library that Go rejects.
+Before a direct `go test` call, run `make strip-bitwarden-lto` once.
+
 Set `E2E_KEEP_COMPONENTS_RUNNING=0` to stop each harness when its test ends,
 rather than at suite teardown. CI sets this so finished scenarios release their
 Docker networks before later scenarios start, avoiding exhaustion of the
