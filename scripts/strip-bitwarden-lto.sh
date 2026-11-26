@@ -156,3 +156,5 @@ if has_lto "$lib"; then
   echo "strip-bitwarden-lto: $lib still has LTO sections" >&2
   exit 1
 fi
+
+echo "strip-bitwarden-lto: successfully removed LTO sections from $lib"
