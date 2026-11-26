@@ -126,6 +126,15 @@ func NewSwarmRetentionOptions(c *app.Config) SwarmRetentionOptions {
 	}
 }
 
+// NewSwarmHelperImage returns the image for Swarm helper jobs from the application configuration.
+func NewSwarmHelperImage(c *app.Config) string {
+	if c == nil {
+		return DefaultSwarmHelperImage
+	}
+
+	return resolveSwarmHelperImage(c.DockerSwarmHelperImage)
+}
+
 // CertificateRotationOptions bundles the settings needed by RotateProjectCertificates to reload
 // the project and apply the shared Swarm retention policy after a rotation redeploy.
 type CertificateRotationOptions struct {

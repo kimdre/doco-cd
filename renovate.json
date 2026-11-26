@@ -59,6 +59,16 @@
       ],
       "autoReplaceStringTemplate": "TestRemoteDockerImage = \"{{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}\"",
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Track Docker CLI image used by Swarm helper jobs (image-prune)",
+      "managerFilePatterns": ["/internal/docker/images\\.go$/"],
+      "matchStrings": [
+        "DefaultSwarmHelperImage\\s+=\\s+\"(?<depName>docker):(?<currentValue>[0-9]+-cli)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?\""
+      ],
+      "autoReplaceStringTemplate": "DefaultSwarmHelperImage = \"{{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}\"",
+      "datasourceTemplate": "docker"
     }
   ]
 }

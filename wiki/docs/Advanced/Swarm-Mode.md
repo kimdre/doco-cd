@@ -48,6 +48,11 @@ It prunes dangling images and removes unused images whose only name is a single 
 Images that any container still uses, running or stopped, are kept, and so are images pulled within the last hour, which another deployment may be about to use.
 Images that also have a tag or a digest reference in another repository are kept as well.
 
+By default, the job uses the official Docker CLI image pinned to a multi-platform digest. Each node pulls the variant for its platform from the same image index.
+To use another image, for example from a registry mirror, set [`DOCKER_SWARM_HELPER_IMAGE`](../Docker-Settings.md#swarm-environment-variables). The image needs `sh`, `awk`, `date` and the `docker` CLI. Make sure it supports all platforms in your Swarm.
+Use a digest reference such as `image:tag@sha256:...` for reproducible pulls. If Swarm features are enabled, doco-cd warns at startup about overrides without a digest.
+doco-cd sends credentials for the image's registry from its Docker config. If it cannot retrieve them, the job attempts an anonymous pull instead of reusing credentials from an earlier run.
+
 Swarm keeps the containers of replaced tasks as task history so that a service can be rolled back, and those containers keep their images in use.
 With the default task history limit of 5, the images a deployment replaced therefore stay on the nodes until Swarm drops the old tasks.
 To free them on the next prune, lower the limit on a manager node:
