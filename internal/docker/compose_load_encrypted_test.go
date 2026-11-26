@@ -267,11 +267,19 @@ func TestLoadCompose_EncryptedExtendsFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The typed fixture sets int, bool, and port values, which compose-go cannot load while they are encrypted.
+	typedFixture, err := os.ReadFile("testdata/encrypted-extends-typed.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name       string
 		content    []byte
 		setupKey   func(t *testing.T)
 		wantReason string
+		// wantLoadError is the part of the compose-go load error that the error must keep.
+		wantLoadError string
 	}{
 		{
 			name:       "no key configured",
@@ -295,6 +303,26 @@ func TestLoadCompose_EncryptedExtendsFile(t *testing.T) {
 			content:    append([]byte("unexpected_unencrypted: tampered\n"), fixture...),
 			setupKey:   encryption.SetupAgeKeyEnvVar,
 			wantReason: "decryption failed",
+		},
+		{
+			name:          "typed values without key",
+			content:       typedFixture,
+			wantReason:    "no SOPS key is configured",
+			wantLoadError: "original error: ",
+		},
+		{
+			name:          "typed values decryptable file",
+			content:       typedFixture,
+			setupKey:      encryption.SetupAgeKeyEnvVar,
+			wantReason:    "it was not decrypted when doco-cd fetched the source",
+			wantLoadError: "original error: ",
+		},
+		{
+			name:          "typed values with unrelated key",
+			content:       typedFixture,
+			setupKey:      useUnrelatedAgeKey,
+			wantReason:    "SOPS could not retrieve the data key",
+			wantLoadError: "original error: ",
 		},
 	}
 
@@ -324,7 +352,7 @@ func TestLoadCompose_EncryptedExtendsFile(t *testing.T) {
 			}
 
 			msg := err.Error()
-			for _, want := range []string{basePath, tt.wantReason, "extends of service app"} {
+			for _, want := range []string{basePath, tt.wantReason, "extends of service app", tt.wantLoadError} {
 				if !strings.Contains(msg, want) {
 					t.Errorf("LoadCompose() error = %q, want it to contain %q", msg, want)
 				}
@@ -575,6 +603,20 @@ func TestEncryptedFileReason(t *testing.T) {
 func loadTestProject(t *testing.T, dir string) (*cli.ProjectOptions, *types.Project) {
 	t.Helper()
 
+	options := newTestProjectOptions(t, dir)
+
+	project, err := options.LoadProject(t.Context())
+	if err != nil {
+		t.Fatalf("LoadProject() error = %v", err)
+	}
+
+	return options, project
+}
+
+// newTestProjectOptions returns the options to load compose.yaml in dir with resolved paths, as LoadCompose does.
+func newTestProjectOptions(t *testing.T, dir string) *cli.ProjectOptions {
+	t.Helper()
+
 	options, err := cli.NewProjectOptions([]string{filepath.Join(dir, "compose.yaml")},
 		cli.WithName("extends-check"),
 		cli.WithWorkingDirectory(dir),
@@ -585,12 +627,100 @@ func loadTestProject(t *testing.T, dir string) (*cli.ProjectOptions, *types.Proj
 		t.Fatal(err)
 	}
 
-	project, err := options.LoadProject(t.Context())
+	return options
+}
+
+// TestExplainEncryptedLoadError does not check the reason, which depends on the SOPS key of the test process.
+func TestExplainEncryptedLoadError(t *testing.T) {
+	t.Parallel()
+
+	typedFixture, err := os.ReadFile("testdata/encrypted-extends-typed.yaml")
 	if err != nil {
-		t.Fatalf("LoadProject() error = %v", err)
+		t.Fatal(err)
 	}
 
-	return options, project
+	includeFixture, err := os.ReadFile("../encryption/testdata/encrypted.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name  string
+		files map[string]string
+		// err replaces the error of loading compose.yaml.
+		err           error
+		wantEncrypted string
+	}{
+		{
+			name: "no SOPS value in error",
+			files: map[string]string{
+				"compose.yaml": "services:\n  app:\n    image: alpine\n",
+			},
+			err: errors.New("failed to read compose file"),
+		},
+		{
+			name: "typed values in encrypted extends file",
+			files: map[string]string{
+				"compose.yaml": fmt.Sprintf(extendsComposeFile, "base.yaml"),
+				"base.yaml":    string(typedFixture),
+			},
+			wantEncrypted: "base.yaml",
+		},
+		{
+			name: "SOPS value without extends",
+			files: map[string]string{
+				"compose.yaml": "services:\n  app:\n    image: alpine\n    deploy:\n      replicas: \"ENC[AES256_GCM,data:abc]\"\n",
+			},
+		},
+		{
+			name: "encrypted included file",
+			files: map[string]string{
+				"compose.yaml":  "include:\n  - included.yaml\nservices:\n  app:\n    image: alpine\n",
+				"included.yaml": string(includeFixture),
+			},
+			wantEncrypted: "included.yaml",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeTestFiles(t, dir, tt.files)
+
+			options := newTestProjectOptions(t, dir)
+
+			loadErr := tt.err
+			if loadErr == nil {
+				if _, loadErr = options.LoadProject(t.Context()); loadErr == nil {
+					t.Fatal("LoadProject() error = nil, want an error")
+				}
+			}
+
+			got := explainEncryptedLoadError(t.Context(), options, loadErr)
+
+			if tt.wantEncrypted == "" {
+				if got != loadErr { //nolint:errorlint // The identical error must be returned.
+					t.Fatalf("explainEncryptedLoadError() = %v, want the original error", got)
+				}
+
+				return
+			}
+
+			if !errors.Is(got, ErrComposeFileEncrypted) {
+				t.Fatalf("explainEncryptedLoadError() = %v, want ErrComposeFileEncrypted", got)
+			}
+
+			if !errors.Is(got, loadErr) {
+				t.Fatalf("explainEncryptedLoadError() = %v, want it to wrap the original error", got)
+			}
+
+			if msg := got.Error(); !strings.Contains(msg, filepath.Join(dir, tt.wantEncrypted)) {
+				t.Fatalf("explainEncryptedLoadError() = %q, want it to contain %q", msg, filepath.Join(dir, tt.wantEncrypted))
+			}
+		})
+	}
 }
 
 func TestCheckEncryptedExtendsFiles(t *testing.T) {
@@ -702,25 +832,31 @@ func TestCheckEncryptedExtendsFiles(t *testing.T) {
 func TestLoadCompose_EncryptedExtendsFileInProcess(t *testing.T) {
 	t.Parallel()
 
-	fixture, err := os.ReadFile("testdata/encrypted-extends-base.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	for _, fixturePath := range []string{"testdata/encrypted-extends-base.yaml", "testdata/encrypted-extends-typed.yaml"} {
+		t.Run(filepath.Base(fixturePath), func(t *testing.T) {
+			t.Parallel()
 
-	dir := t.TempDir()
-	writeTestFiles(t, dir, map[string]string{
-		"base.yaml":    string(fixture),
-		"compose.yaml": fmt.Sprintf(extendsComposeFile, "base.yaml"),
-	})
+			fixture, err := os.ReadFile(fixturePath) // #nosec G304: path is a test fixture.
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	_, err = LoadCompose(t.Context(), nil, dir, dir, "encrypted-extends", []string{filepath.Join(dir, "compose.yaml")},
-		nil, nil, map[string]string{}, ComposeLoadOptions{})
-	if !errors.Is(err, ErrComposeFileEncrypted) {
-		t.Fatalf("LoadCompose() error = %v, want ErrComposeFileEncrypted", err)
-	}
+			dir := t.TempDir()
+			writeTestFiles(t, dir, map[string]string{
+				"base.yaml":    string(fixture),
+				"compose.yaml": fmt.Sprintf(extendsComposeFile, "base.yaml"),
+			})
 
-	if msg := err.Error(); !strings.Contains(msg, filepath.Join(dir, "base.yaml")) {
-		t.Fatalf("LoadCompose() error = %q, want it to contain %q", msg, filepath.Join(dir, "base.yaml"))
+			_, err = LoadCompose(t.Context(), nil, dir, dir, "encrypted-extends", []string{filepath.Join(dir, "compose.yaml")},
+				nil, nil, map[string]string{}, ComposeLoadOptions{})
+			if !errors.Is(err, ErrComposeFileEncrypted) {
+				t.Fatalf("LoadCompose() error = %v, want ErrComposeFileEncrypted", err)
+			}
+
+			if msg := err.Error(); !strings.Contains(msg, filepath.Join(dir, "base.yaml")) {
+				t.Fatalf("LoadCompose() error = %q, want it to contain %q", msg, filepath.Join(dir, "base.yaml"))
+			}
+		})
 	}
 }
 
@@ -738,15 +874,23 @@ func TestLoadCompose_EncryptedExtendsFileAfterPublish(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	typedFixture, err := os.ReadFile("testdata/encrypted-extends-typed.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name      string
 		base      string
+		content   []byte
 		gitignore string
 		wantErr   bool
 	}{
-		{name: "decrypted by publish", base: "base.yaml"},
-		{name: "excluded directory", base: ".github/base.yaml", wantErr: true},
-		{name: "matches gitignore", base: "secret/base.yaml", gitignore: "secret/\n", wantErr: true},
+		{name: "decrypted by publish", base: "base.yaml", content: fixture},
+		{name: "excluded directory", base: ".github/base.yaml", content: fixture, wantErr: true},
+		{name: "matches gitignore", base: "secret/base.yaml", content: fixture, gitignore: "secret/\n", wantErr: true},
+		{name: "typed values decrypted by publish", base: "base.yaml", content: typedFixture},
+		{name: "typed values in excluded directory", base: ".github/base.yaml", content: typedFixture, wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -762,7 +906,7 @@ func TestLoadCompose_EncryptedExtendsFileAfterPublish(t *testing.T) {
 			source := t.TempDir()
 			files := map[string]string{
 				"compose.yaml": fmt.Sprintf(extendsComposeFile, tt.base),
-				tt.base:        string(fixture),
+				tt.base:        string(tt.content),
 			}
 
 			if tt.gitignore != "" {

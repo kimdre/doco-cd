@@ -47,6 +47,8 @@ Compose does not validate a file reached through `extends: file:`, and it reads 
 A still-encrypted extends file loads without an error and gives the service its encrypted values, for example `image: ENC[AES256_GCM,...]`.
 If the loaded services contain SOPS-encrypted values, doco-cd follows the local `extends: file:` chain of each service,
 and fails the deployment with the same diagnostic for the first file that is still SOPS-encrypted.
+Compose cannot load fields such as `deploy.replicas`, `tty`, or `ports` when their values are encrypted strings, so the project fails to load before this check.
+In that case, doco-cd reports the same diagnostic and appends the original Compose error.
 
 Files a compose project references outside the repository (for example a bind mount pointing at an arbitrary host path) are decrypted as well,
 when the project is loaded. For bind-mounted directories, all files inside are scanned recursively.

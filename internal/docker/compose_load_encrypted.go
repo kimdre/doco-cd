@@ -117,12 +117,34 @@ func checkEncryptedExtendsFiles(ctx context.Context, options *cli.ProjectOptions
 		return nil
 	}
 
+	return findEncryptedExtendsInProject(ctx, options, nil)
+}
+
+// explainEncryptedLoadError adds SOPS diagnostics to a Compose load error.
+// SOPS stores typed values (int, bool, ports) as strings. compose-go cannot cast them,
+// so the load fails before the project exists. The error then names no file.
+func explainEncryptedLoadError(ctx context.Context, options *cli.ProjectOptions, err error) error {
+	explained := explainEncryptedComposeFile(err)
+	if errors.Is(explained, ErrComposeFileEncrypted) || !strings.Contains(err.Error(), string(sopsValuePrefix)) {
+		return explained
+	}
+
+	if extendsErr := findEncryptedExtendsInProject(ctx, options, err); errors.Is(extendsErr, ErrComposeFileEncrypted) {
+		return extendsErr
+	}
+
+	return explained
+}
+
+// findEncryptedExtendsInProject loads the project without extends and follows each local extends entry.
+// It returns ErrComposeFileEncrypted for the first SOPS-encrypted file. cause is the load error to wrap, or nil.
+func findEncryptedExtendsInProject(ctx context.Context, options *cli.ProjectOptions, cause error) error {
 	// Load the project again without applying extends, so that each service keeps its
 	// extends entry with the path resolved by compose-go, also in included files.
 	// The copy keeps the load options of the first load unchanged.
 	extendsOptions := *options
 
-	err = cli.WithLoadOptions(func(o *loader.Options) {
+	err := cli.WithLoadOptions(func(o *loader.Options) {
 		o.SkipExtends = true
 		o.SkipConsistencyCheck = true
 	})(&extendsOptions)
@@ -149,6 +171,11 @@ func checkEncryptedExtendsFiles(ctx context.Context, options *cli.ProjectOptions
 		}
 
 		reason, _ := encryptedFileReason(file)
+
+		if cause != nil {
+			return fmt.Errorf("%w: %s: %s (reached through extends of service %s, original error: %w)",
+				ErrComposeFileEncrypted, file, reason, name, cause)
+		}
 
 		return fmt.Errorf("%w: %s: %s (reached through extends of service %s)", ErrComposeFileEncrypted, file, reason, name)
 	}
