@@ -2,7 +2,7 @@ GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
 
-.PHONY: test test-verbose test-coverage test-run test-e2e build build-bitwarden fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
+.PHONY: test test-verbose test-coverage test-run test-e2e build build-bitwarden strip-bitwarden-lto fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
 
 .DEFAULT_GOAL := build
 
@@ -31,7 +31,13 @@ endif
 
 BUILD_FLAGS:=-ldflags="-X main.Version=dev $(BUILD_FLAGS)"
 
-test:
+# Go rejects the LLVM bitcode in the prebuilt Bitwarden SDK library, so every
+# target that compiles the SDK with cgo removes it first.
+# See scripts/strip-bitwarden-lto.sh for details.
+strip-bitwarden-lto:
+	@sh ./scripts/strip-bitwarden-lto.sh
+
+test: strip-bitwarden-lto
 	@echo "Running tests..."
 	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m
 
@@ -41,23 +47,23 @@ test-nobitwarden:
 	@echo "Running tests without bitwarden integration..."
 	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' CGO_ENABLED=0 go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover ./... -timeout 10m
 
-test-verbose:
+test-verbose: strip-bitwarden-lto
 	@echo "Running tests..."
 	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' ${COMPILER} go test ${BUILD_FLAGS} -v -cover ./... -timeout 10m
 
-test-coverage:
+test-coverage: strip-bitwarden-lto
 	@echo "Running tests with coverage..."
 	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' ${COMPILER} go test ${BUILD_FLAGS} -v -coverprofile cover.out ./...
 	@go tool cover -html cover.out -o cover.html
 
 # Run specified tests from arguments
-test-run:
+test-run: strip-bitwarden-lto
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
 	@WEBHOOK_SECRET="test_Secret1" API_KEYS='[{"key":"test_apiSecret1","role":"full"}]' ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
 # Run e2e scenarios against a real doco-cd built from the working tree.
 # Optionally filter scenarios: make test-e2e E2E_RUN=TestFailedDeployRetry
-test-e2e:
+test-e2e: strip-bitwarden-lto
 	@go test -tags e2e ./test/e2e/... -v -timeout 30m -run '$(E2E_RUN)'
 
 build:
@@ -66,11 +72,11 @@ build:
 	CGO_ENABLED=0 go build -ldflags="-X main.Version=dev" -tags nobitwarden -o $(BINARY_DIR) ./...
 
 # Build with Bitwarden SDK support, which requires cgo.
-build-bitwarden:
+build-bitwarden: strip-bitwarden-lto
 	mkdir -p $(BINARY_DIR)
 	${COMPILER} go build ${BUILD_FLAGS} -o $(BINARY_DIR) ./...
 
-lint fmt:
+lint fmt: strip-bitwarden-lto
 	${GO_BIN}/golangci-lint run --fix ./...
 	go fix ./...
 
