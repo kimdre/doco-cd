@@ -98,8 +98,8 @@ const (
 )
 
 // DeploymentFailureStore owns the recovery marker and retry budget together.
-// Its target lock precedes the scheduler/deploy lock, and must be held from
-// pre-deploy inspection through outcome recording for policy-managed runs.
+// Its target lock must be held from pre-deploy inspection through outcome
+// recording for policy-managed runs.
 type DeploymentFailureStore struct {
 	mu       sync.Mutex
 	failures map[DeploymentTarget]deploymentFailureState

@@ -155,6 +155,7 @@ func runSelfBootstrap(ctx context.Context, log *logger.Logger, c *app.Config, do
 		NotifyURLs:            c.AppriseNotifyUrls,
 		NotifyLevel:           c.AppriseNotifyLevel,
 		BodyTemplate:          c.AppriseNotifyBodyTemplate,
+		TitleTemplate:         c.AppriseNotifyTitleTemplate,
 		FailureRepeatInterval: c.AppriseNotifyRepeatInterval,
 	})
 	if err != nil {

@@ -3,7 +3,9 @@
   "extends": [
     "config:best-practices"
   ],
-  "dependencyDashboardLabels": ["dependencies"],
+  "dependencyDashboard": {
+    "labels": ["dependencies"]
+  },
   "labels": ["dependencies"],
   "timezone": "Europe/Berlin",
   "schedule": ["* 22-23,0-7 * * *"],
@@ -56,6 +58,16 @@
         "TestRemoteDockerImage\\s+=\\s+\"(?<depName>docker):(?<currentValue>[0-9]+-dind)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?\""
       ],
       "autoReplaceStringTemplate": "TestRemoteDockerImage = \"{{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}\"",
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Track Docker CLI image used by Swarm helper jobs (image-prune)",
+      "managerFilePatterns": ["/internal/docker/images\\.go$/"],
+      "matchStrings": [
+        "DefaultSwarmHelperImage\\s+=\\s+\"(?<depName>docker):(?<currentValue>[0-9]+-cli)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?\""
+      ],
+      "autoReplaceStringTemplate": "DefaultSwarmHelperImage = \"{{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}\"",
       "datasourceTemplate": "docker"
     }
   ]

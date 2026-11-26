@@ -13,6 +13,7 @@ func IsTransientError(err error) bool {
 	msg := strings.ToLower(err.Error())
 
 	return strings.Contains(msg, "lease does not exist") ||
+		(strings.Contains(msg, "failed to lease content:") && strings.Contains(msg, "not found")) ||
 		strings.Contains(msg, "failed commit on ref") ||
 		(strings.Contains(msg, "failed to extract layer") && strings.Contains(msg, "no such file or directory"))
 }

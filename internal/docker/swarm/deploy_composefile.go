@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,7 +14,9 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
 	"github.com/kimdre/doco-cd/internal/docker/registryauth"
@@ -26,7 +29,7 @@ import (
 	"github.com/moby/moby/client"
 )
 
-func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Deploy, config *composetypes.Config) error {
+func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Deploy, config *composetypes.Config) (retErr error) {
 	isSwarmManager, err := checkDaemonIsSwarmManager(ctx, dockerCli.Client())
 	if err != nil {
 		return err
@@ -92,6 +95,10 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 	applyScheduledJobDeployReplicas(services)
 
 	deployedServices, err := deployServices(ctx, dockerCli, services, namespace, opts)
+	defer func() {
+		retErr = selfUpdateHandoverError(ctx, retErr, opts.SelfService, deployedServices)
+	}()
+
 	if err != nil {
 		return err
 	}
@@ -116,12 +123,26 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		_, _ = fmt.Fprintf(dockerCli.Out(), "Waiting for service %s to converge\n", ServiceIdentity(service.name, service.id))
 
 		err := waitOnService(ctx, dockerCli, service.id)
-		if err != nil {
+		if lifecycle.IsCanceledOnly(err) {
+			logServiceDebug(opts.Logger, "stopped waiting for service to converge", service, err)
+		} else if err != nil {
 			logServiceError(opts.Logger, "service convergence failed", service, err)
 		}
 
 		return err
 	})
+}
+
+// selfUpdateHandoverError requires an accepted self-service update. Earlier failures
+// must retain retry state because Swarm has not yet been asked to replace this task.
+func selfUpdateHandoverError(ctx context.Context, err error, selfService string, deployed []deployedService) error {
+	if ctx.Err() == context.Canceled && selfService != "" && lifecycle.IsCanceledOnly(err) && slices.ContainsFunc(deployed, func(service deployedService) bool {
+		return service.name == selfService
+	}) {
+		return errors.Join(selfupdate.ErrHandover, err)
+	}
+
+	return err
 }
 
 func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) set.Set[string] {
@@ -285,9 +306,19 @@ func logService(log *slog.Logger, message string, service deployedService) {
 	}
 }
 
+func logServiceDebug(log *slog.Logger, message string, service deployedService, err error) {
+	if log != nil {
+		log.Debug(message, append(ServiceLogAttrs(service.name, service.id), slog.Any("reason", err))...)
+	}
+}
+
 func logServiceError(log *slog.Logger, message string, service deployedService, err error) {
 	if log != nil {
-		log.Error(message, append(ServiceLogAttrs(service.name, service.id), slog.Any("error", err))...)
+		if lifecycle.IsCanceledOnly(err) {
+			logServiceDebug(log, "service operation canceled", service, err)
+		} else {
+			log.Error(message, append(ServiceLogAttrs(service.name, service.id), slog.Any("error", err))...)
+		}
 	}
 }
 
@@ -302,6 +333,9 @@ const scheduledJobEnabledLabel = "cd.doco.job.enabled"
 // duplicated here because the docker package imports this package, so the label
 // definitions cannot be imported from there without creating an import cycle.
 const scheduledJobRestartReplicasLabel = "cd.doco.job.swarm.restart_replicas"
+
+// PreserveReplicasLabel lets an external tool own the replica count of a replicated service.
+const PreserveReplicasLabel = "cd.doco.deployment.preserve_replicas"
 
 // applyScheduledJobDeployReplicas ensures scheduled job services do not run as a
 // side effect of a deployment. Classic replicated scheduled services are pinned
@@ -355,7 +389,36 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 
 	var deployed []deployedService
 
-	for internalName, serviceSpec := range services {
+	serviceNames := slices.Sorted(maps.Keys(services))
+	selfName := namespace.Descope(opts.SelfService)
+
+	// Validate all eligible services before submitting any service changes.
+	preserveReplicas := set.New[string]()
+
+	for _, internalName := range serviceNames {
+		spec := services[internalName]
+		if spec.Mode.Replicated == nil || internalName == selfName || spec.TaskTemplate.ContainerSpec == nil {
+			continue
+		}
+
+		enabled, err := PreserveReplicasEnabled(spec.TaskTemplate.ContainerSpec.Labels)
+		if err != nil {
+			return nil, fmt.Errorf("service %s: %w", internalName, err)
+		}
+
+		if enabled {
+			preserveReplicas.Add(internalName)
+		}
+	}
+
+	// Submit other services first because the self update can stop this process.
+	if index := slices.Index(serviceNames, selfName); opts.SelfService != "" && index >= 0 {
+		serviceNames = append(slices.Delete(serviceNames, index, index+1), selfName)
+	}
+
+	for _, internalName := range serviceNames {
+		serviceSpec := services[internalName]
+
 		var (
 			name        = namespace.Scope(internalName)
 			image       = serviceSpec.TaskTemplate.ContainerSpec.Image
@@ -369,7 +432,7 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 			// Retrieve encoded auth token from the image reference
 			encodedAuth, err = command.RetrieveAuthTokenFromImage(dockerCLI.ConfigFile(), image)
 			if err != nil {
-				return nil, registryauth.WrapLookupError(dockerCLI.ConfigFile(), image, err)
+				return deployed, registryauth.WrapLookupError(dockerCLI.ConfigFile(), image, err)
 			}
 		}
 
@@ -417,12 +480,34 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 				serviceSpec.TaskTemplate.ForceUpdate++
 			}
 
+			if preserveReplicas.Contains(internalName) {
+				if replicas, ok := applyLivePreservedReplicas(&serviceSpec, service.Spec); ok && log != nil {
+					log.Debug("keeping live replica count of service",
+						append(ServiceLogAttrs(identity.name, identity.id), slog.Uint64("replicas", replicas))...)
+				}
+			}
+
+			if name == opts.SelfService && opts.PrepareSelfUpdate != nil {
+				waitIDs := make([]string, 0, len(deployed)+1)
+				for _, entry := range deployed {
+					if shouldWaitForService(entry) {
+						waitIDs = append(waitIDs, entry.id)
+					}
+				}
+
+				waitIDs = append(waitIDs, service.ID)
+
+				if err := opts.PrepareSelfUpdate(ctx, service, &serviceSpec, waitIDs); err != nil {
+					return deployed, err
+				}
+			}
+
 			updateOpts.Spec = serviceSpec
 
 			response, err := apiClient.ServiceUpdate(ctx, service.ID, updateOpts)
 			if err != nil {
 				logServiceError(log, "failed to update service", identity, err)
-				return nil, fmt.Errorf("failed to update service %s: %w", ServiceIdentity(name, service.ID), err)
+				return deployed, fmt.Errorf("failed to update service %s: %w", ServiceIdentity(name, service.ID), err)
 			}
 
 			for _, warning := range response.Warnings {
@@ -445,7 +530,7 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 			response, err := apiClient.ServiceCreate(ctx, createOpts)
 			if err != nil {
 				logServiceError(log, "failed to create service", deployedService{name: name}, err)
-				return nil, fmt.Errorf("failed to create service %s: %w", ServiceIdentity(name, ""), err)
+				return deployed, fmt.Errorf("failed to create service %s: %w", ServiceIdentity(name, ""), err)
 			}
 
 			identity := deployedService{id: response.ID, name: name, isJobMode: isJob, isScheduled: isScheduled}
@@ -464,21 +549,58 @@ func shouldWaitForService(svc deployedService) bool {
 }
 
 func isScheduledServiceSpec(spec swarmTypes.ServiceSpec) bool {
-	if spec.TaskTemplate.ContainerSpec == nil || spec.TaskTemplate.ContainerSpec.Labels == nil {
+	if spec.TaskTemplate.ContainerSpec == nil {
 		return false
 	}
 
-	raw, ok := spec.TaskTemplate.ContainerSpec.Labels[scheduledJobEnabledLabel]
+	return isScheduledService(spec.TaskTemplate.ContainerSpec.Labels)
+}
+
+func isScheduledService(labels map[string]string) bool {
+	enabled, err := strconv.ParseBool(strings.TrimSpace(labels[scheduledJobEnabledLabel]))
+
+	return err == nil && enabled
+}
+
+// PreserveReplicasEnabled checks service labels for the replica opt-in.
+// The scheduler controls replicas for scheduled jobs, so it ignores the opt-in.
+func PreserveReplicasEnabled(labels map[string]string) (bool, error) {
+	if isScheduledService(labels) {
+		return false, nil
+	}
+
+	raw, ok := labels[PreserveReplicasLabel]
 	if !ok {
-		return false
+		return false, nil
 	}
 
 	enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
 	if err != nil {
-		return false
+		return false, fmt.Errorf("invalid %s label value %q", PreserveReplicasLabel, raw)
 	}
 
-	return enabled
+	return enabled, nil
+}
+
+// applyLivePreservedReplicas copies the live replica count into an opted-in
+// spec. Both specs must use replicated mode, so a mode change uses Compose.
+func applyLivePreservedReplicas(spec *swarmTypes.ServiceSpec, live swarmTypes.ServiceSpec) (uint64, bool) {
+	if spec == nil || spec.Mode.Replicated == nil {
+		return 0, false
+	}
+
+	if live.Mode.Replicated == nil || live.Mode.Replicated.Replicas == nil {
+		return 0, false
+	}
+
+	replicas := *live.Mode.Replicated.Replicas
+
+	// Replace the pointer so the caller's services map keeps the Compose value.
+	replicated := *spec.Mode.Replicated
+	replicated.Replicas = &replicas
+	spec.Mode.Replicated = &replicated
+
+	return replicas, true
 }
 
 // WaitOnServices waits for the specified Swarm services to converge.
@@ -515,12 +637,25 @@ func waitOnServices(
 	services []deployedService,
 	wait func(context.Context, deployedService) error,
 ) error {
-	var errs []error
+	var (
+		errs          []error
+		cancellations []error
+	)
 
 	for _, service := range services {
 		if err := wait(ctx, service); err != nil {
-			errs = append(errs, fmt.Errorf("service %s: %w", ServiceIdentity(service.name, service.id), err))
+			wrapped := fmt.Errorf("service %s: %w", ServiceIdentity(service.name, service.id), err)
+			if lifecycle.IsCanceledOnly(err) {
+				cancellations = append(cancellations, wrapped)
+			} else {
+				errs = append(errs, wrapped)
+			}
 		}
+	}
+
+	// Keep failures observed before shutdown visible to failure reporting and retries.
+	if len(errs) == 0 {
+		return errors.Join(cancellations...)
 	}
 
 	return errors.Join(errs...)

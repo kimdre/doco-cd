@@ -17,6 +17,13 @@ You can overwrite this globally to always deploy as Compose projects while runni
 
 The deployment happens the same way as with Docker Compose projects, see the [Deploy Settings](../Deploy-Settings.md)
 
+## Replica count
+
+Each deployment sets the replica count of a service to its `deploy.replicas` value.
+To let an external tool, for example an autoscaler, control the replica count of a replicated service,
+set the `cd.doco.deployment.preserve_replicas` service label to `true`.
+See [Let an external tool control Swarm replicas](../Deploy-Settings.md#let-an-external-tool-control-swarm-replicas).
+
 ## Configs and Secrets
 
 When deploying configs or secrets in Swarm mode, doco-cd will add a suffix to the name of configs and secrets. 
@@ -33,6 +40,28 @@ Set retention to `-1` to disable automatic pruning for that scope and keep old r
 For example, if you deploy a stack named `myapp` with a config named `db-settings` and the content of the config is `hello world`, doco-cd will create a config named `myapp_db-settings_a948904f` in the Swarm cluster.
 
 If you later change the content of the config to `hello universe`, doco-cd will create a new config named `myapp_db-settings_0b5c6934`, redeploy the service/container with the new config and then prune older config revisions according to the configured retention.
+
+## Image pruning
+
+With `prune_images` enabled, doco-cd runs a global job on every node after a deployment.
+It prunes dangling images and removes unused images whose only name is a single digest reference, which is how Swarm pulls service images.
+Images that any container still uses, running or stopped, are kept, and so are images pulled within the last hour, which another deployment may be about to use.
+Images that also have a tag or a digest reference in another repository are kept as well.
+
+By default, the job uses the official Docker CLI image pinned to a multi-platform digest. Each node pulls the variant for its platform from the same image index.
+To use another image, for example from a registry mirror, set [`DOCKER_SWARM_HELPER_IMAGE`](../Docker-Settings.md#swarm-environment-variables). The image needs `sh`, `awk`, `date` and the `docker` CLI. Make sure it supports all platforms in your Swarm.
+Use a digest reference such as `image:tag@sha256:...` for reproducible pulls. If Swarm features are enabled, doco-cd warns at startup about overrides without a digest.
+doco-cd sends credentials for the image's registry from its Docker config. If it cannot retrieve them, the job attempts an anonymous pull instead of reusing credentials from an earlier run.
+
+Swarm keeps the containers of replaced tasks as task history so that a service can be rolled back, and those containers keep their images in use.
+With the default task history limit of 5, the images a deployment replaced therefore stay on the nodes until Swarm drops the old tasks.
+To free them on the next prune, lower the limit on a manager node:
+
+```shell
+docker swarm update --task-history-limit 1
+```
+
+`docker service rollback` still works with a lower limit or with `0`, because Swarm rolls back to the previous service spec and pulls its image again if it is no longer on the node, so the registry has to be reachable.
 
 ## Docker API Permissions
 

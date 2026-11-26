@@ -146,7 +146,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `profiles`          | array of strings      | List of [compose profiles](https://docs.docker.com/compose/how-tos/profiles/) to use for the deployment, e.g., `#!yaml ["prod", "debug"]`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `[]`                                                                                                                   |
 | `webhook_filter`    | string                | A regular expression to whitelist deployment triggers based on the webhook event payload. See the [Webhook Filter](#webhook-filter) Section below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | ` ` (Ignored when not specified)                                                                                       |
 | `remove_orphans`    | boolean               | Remove/Prune containers/services that are not (or no longer) defined in the Compose file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `true`                                                                                                                 |
-| `prune_images`      | boolean               | Prune images that are no longer in use after a deployment. If the image is still used by any other container, it won't get deleted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `true`                                                                                                                 |
+| `prune_images`      | boolean               | Prune images that are no longer in use after a deployment. If the image is still used by any other container, it won't get deleted. In Swarm mode, see [Image pruning](Advanced/Swarm-Mode.md#image-pruning).                                                                                                                                                                                                                                                                                                                                                                                                                  | `true`                                                                                                                 |
 | `swarm`             | object                | Docker Swarm-specific settings. See [Swarm settings](#swarm-settings).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | see [Swarm settings](#swarm-settings)                                                                                  |
 | `force_recreate`    | boolean               | Forces the recreation/redeployment of containers even if the configuration has not changed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `false`                                                                                                                |
 | `wait_running_jobs` | boolean               | Wait for currently running [scheduled jobs](Advanced/Job-Scheduling.md) to finish before deployment starts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `true`                                                                                                                 |
@@ -561,7 +561,7 @@ reconciliation: false
 
 - Pause takes effect on the next trigger that successfully resolves a valid, trusted configuration, not immediately when a Git file changes.
   The configuration source continues to be fetched so a cleared flag can be detected.
-- All deployment triggers honor pause: polling, webhooks, local watchers, and manual REST/MCP polls.
+- All deployment triggers honor pause: polling, webhooks, local watchers, and manual REST/MCP/signal polls.
   It blocks first deployment, updates, mode migration, deployment-driven destruction and cleanup, and automatic certificate reissuance/redeployment.
   Manual retry privileges, `force_recreate`, image-pull settings, and `destroy` do not bypass pause.
   Effective [inline deployment definitions](Poll-Settings.md#inline-deploy-configs) replace repository definitions and remain authoritative.
@@ -628,9 +628,9 @@ retaining the base delay. An explicit `#!yaml delay: 0` removes the inherited de
 
 #### Manual retry
 
-An explicit deployment trigger through the [REST polling endpoint](Endpoints/REST-API.md#polling) or the
-[MCP `trigger_poll` tool](Endpoints/MCP-Server.md#poll-input) bypasses both delay and exhaustion for that attempt only,
-including when `#!yaml limit: 0`. This applies with either `#!yaml wait: true` or `#!yaml wait: false`.
+An explicit deployment trigger through the [REST polling endpoint](Endpoints/REST-API.md#polling), the
+[MCP `trigger_poll` tool](Endpoints/MCP-Server.md#poll-input), or a [poll signal](Poll-Settings.md#trigger-a-poll-run-with-a-signal) bypasses both delay and exhaustion for that attempt only,
+including when `#!yaml limit: 0`. For API and MCP requests, this applies with either `#!yaml wait: true` or `#!yaml wait: false`.
 A failed manual attempt updates the failure details and retry-delay deadline but neither consumes nor refills the automatic retry budget;
 an exhausted budget stays exhausted and a successful manual attempt clears the state.
 Manual retries still obey sync windows, source trust checks, and other deployment safety checks.
@@ -799,7 +799,45 @@ Ensure dependent services can tolerate that service being unavailable until an e
 
 !!! note
     This label applies to Docker (Standalone) deployments. 
-    In Docker Swarm mode, use `deploy.replicas: 0` to deploy a managed service without running tasks.
+    In Docker Swarm mode, use `deploy.replicas: 0` to deploy a managed service without running tasks,
+    or [let an external tool control the replica count](#let-an-external-tool-control-swarm-replicas).
+
+### Let an external tool control Swarm replicas
+
+In Docker Swarm mode, each deployment sets the replica count of a service to its `deploy.replicas` value.
+To let an external tool, for example an autoscaler, control the replica count of a service,
+set the `cd.doco.deployment.preserve_replicas` service label to `true`.
+
+```yaml title="docker-compose.yml"
+services:
+  web:
+    image: example/web:latest
+    deploy:
+      replicas: 2
+    labels:
+      cd.doco.deployment.preserve_replicas: "true"
+```
+
+The label defaults to `false`. When it is `true`:
+
+- A new service starts with its `deploy.replicas` value, including `0` for a service that starts on demand.
+- An update of an existing service keeps its current replica count. All other changes, for example a new image, are applied normally.
+- A different replica count is not drift, so it does not cause a deployment on an otherwise unchanged poll.
+- A change of `deploy.replicas` in the repository still causes a deployment, but that deployment keeps the current replica count.
+
+When you remove the label or set it to `false`, the next deployment applies `deploy.replicas` again.
+
+Later deployments also keep a replica count that you set with the [REST API](Endpoints/REST-API.md) or the [MCP server](Endpoints/MCP-Server.md).
+Services that a scheduled job stops with [`cd.doco.job.stop_services`](Advanced/Job-Scheduling.md#temporarily-stop-services-during-a-job-run)
+return to the replica count they had when the job stopped them.
+
+!!! note
+    Set the label under the service `labels:`, not under `deploy.labels`.
+    The label applies only to Docker Swarm services in `replicated` mode (the default).
+    It has no effect in Docker (Standalone) deployments, on [scheduled job](Advanced/Job-Scheduling.md) services, and on the doco-cd service itself.
+    A change between `replicated` and `global` mode applies the Compose definition.
+
+    Use `true` or `false` as the value. An invalid value on a service that supports the label is rejected.
 
 ### Prevent recreation on config, secret or bind mount changes
 
@@ -811,6 +849,10 @@ It accepts one or more of the following scopes: `configs`, `secrets`, `bindMount
 
 1. `configs` and `secrets` items refer to names defined in the top-level `configs` and `secrets` sections.
 2. `bindMounts` items refer to the **target paths** of bind mounts (not the source paths).
+
+Ignored configs and secrets with an `environment` or `content` attribute (for example [external secrets](External-Secrets/index.md#as-compose-secrets-and-configs))
+do not recreate the service when their value changes. The container keeps the old value until the service is recreated for another reason.
+A [signal](#send-signal-on-ignored-recreation) does not deliver the new value to the container.
 
 Ignored files and directories from the repository are mounted from a [live copy](Reference/Artifact-Storage.md#live-files)
 that doco-cd updates in place on each deployment, so the service sees the changed content without being recreated
@@ -902,6 +944,11 @@ Precedence:
 
 - Service label `cd.doco.job.wait_running_jobs` (if set)
 - Deployment default `wait_running_jobs`
+
+!!! note
+    An active scheduled run locks its stack. doco-cd checks `wait_running_jobs` only after the deployment has the stack lock,
+    so `#!yaml wait_running_jobs: false` does not let a deployment start during an active run.
+    See [Deployments during a job run](Advanced/Job-Scheduling.md#deployments-during-a-job-run).
 
 ### Swarm settings
 

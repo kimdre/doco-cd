@@ -13,10 +13,10 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/google/uuid"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/selfupdate"
@@ -50,6 +50,201 @@ func selfHealthTimeout(record selfupdate.Record, deployConfig *deploy.Config) ti
 	return record.Deploy.HealthTimeout()
 }
 
+// guardSelfUpdate refuses a deploy of the stack that contains this instance
+// when self-update cannot run. An unchanged service still has to pass it:
+// turning self-update off refuses the whole stack deploy.
+func guardSelfUpdate(project *types.Project, target *selfTarget, self *SelfDeployInput) error {
+	opts := SelfUpdateConfig()
+
+	if !opts.Enabled {
+		return fmt.Errorf(
+			"%w: stack %q contains this doco-cd instance (service %q); set SELF_UPDATE_ENABLED=true to let it update itself",
+			selfupdate.ErrDisabled, project.Name, target.Service)
+	}
+
+	if opts.Store == nil {
+		return fmt.Errorf("%w: no self-update journal is configured", selfupdate.ErrUnsupported)
+	}
+
+	// One handover at a time. A record that is still being converged means the
+	// stack has two containers, and a second attempt would race the first.
+	active, err := opts.Store.Active()
+	if err != nil {
+		return err
+	}
+
+	if active == nil {
+		return nil
+	}
+
+	// The successor finishes the handover's check. Close only the check this run opened.
+	self.stopPhaseReports()
+
+	if !legacyCommitStatusShared(self, active) {
+		self.concludeOwnStatus()
+	}
+
+	// Not a failure: the handover this instance is part of is still being
+	// converged. Reporting it as one would record a failed deploy and make
+	// the next poll force-recreate the stack.
+	selfUpdateLogger(self).Info("self-update: a handover is still in progress, skipping this attempt",
+		slog.String("id", active.ID),
+		slog.String("state", string(active.State)),
+	)
+
+	return selfupdate.ErrHandover
+}
+
+// legacyCommitStatusShared reports whether this run posts to the handover's
+// legacy commit status. Closing that status would replace the pending result.
+func legacyCommitStatusShared(self *SelfDeployInput, active *selfupdate.Record) bool {
+	if self == nil || self.CommitStatus == nil || active.Source.CommitStatus == nil {
+		return false
+	}
+
+	own := self.CommitStatus
+	theirs := active.Source.CommitStatus
+
+	if own.CommitSHA == "" || own.CommitSHA != theirs.CommitSHA || own.Context != theirs.Context {
+		return false
+	}
+
+	return own.Target == nil || own.Target.Backend != commitstatus.BackendChecks
+}
+
+func selfUpdateLogger(self *SelfDeployInput) *slog.Logger {
+	if self != nil && self.Log != nil {
+		return self.Log
+	}
+
+	return slog.Default()
+}
+
+// planSelfHandover returns a handover plan, or a skipped plan when the running
+// doco-cd service is unchanged. A skipped plan leaves the service in the project.
+func planSelfHandover(
+	ctx context.Context,
+	dockerCli command.Cli,
+	project *types.Project,
+	deployConfig *deploy.Config,
+	target *selfTarget,
+	recreateMode string,
+	services []string,
+	self *SelfDeployInput,
+	opts composeDeployOptions,
+) (selfUpdatePlan, bool, error) {
+	if err := guardSelfUpdate(project, target, self); err != nil {
+		return selfUpdatePlan{}, false, err
+	}
+
+	if err := pinUnchangedComposeServices(ctx, dockerCli.Client(), project, opts.ArtifactRoot, recreateMode, services, opts.logger()); err != nil {
+		opts.logger().Warn("failed to keep unchanged services on their current artifact", slog.Any("error", err))
+	}
+
+	skip, err := selfServiceUnchanged(ctx, dockerCli.Client(), project, target, recreateMode, services)
+	if err != nil {
+		return selfUpdatePlan{}, false, err
+	}
+
+	if skip {
+		if err = refuseSkippedSelfUpdate(ctx, dockerCli, project, target, self); err != nil {
+			return selfUpdatePlan{}, false, err
+		}
+
+		return selfUpdatePlan{}, true, nil
+	}
+
+	plan, err := prepareSelfUpdate(ctx, dockerCli, project, deployConfig, target, services, self)
+
+	return plan, false, err
+}
+
+// recheckSelfSkip repeats the unchanged check after images are pulled.
+// The digest compared before the pull can change once the image exists.
+func recheckSelfSkip(
+	ctx context.Context,
+	dockerCli command.Cli,
+	project *types.Project,
+	deployConfig *deploy.Config,
+	kept *selfTarget,
+	recreateMode string,
+	services []string,
+	self *SelfDeployInput,
+	plan selfUpdatePlan,
+	pendingSkip bool,
+) (selfUpdatePlan, error) {
+	if !pendingSkip {
+		return plan, nil
+	}
+
+	stillSkip, err := selfServiceUnchanged(ctx, dockerCli.Client(), project, kept, recreateMode, services)
+	if err != nil {
+		return selfUpdatePlan{}, err
+	}
+
+	if stillSkip {
+		svc := project.Services[kept.Service]
+		// A confirmed skip sets pull_policy to missing so Create does not pull a newer digest.
+		svc.PullPolicy = types.PullPolicyMissing
+		project.Services[kept.Service] = svc
+
+		selfUpdateLogger(self).Info(
+			"self-update: self service configuration is unchanged",
+			slog.String("service", kept.Service),
+			slog.String("stack", kept.Project),
+		)
+
+		return plan, nil
+	}
+
+	plan, err = prepareSelfUpdate(ctx, dockerCli, project, deployConfig, kept, services, self)
+	if err != nil {
+		return selfUpdatePlan{}, err
+	}
+
+	if plan.DeferToApplier {
+		return plan, plan.Step()
+	}
+
+	return plan, nil
+}
+
+// refuseSkippedSelfUpdate runs the handover refusals that do not need a successor.
+// A skip that later becomes a handover must already have failed these, before pull.
+func refuseSkippedSelfUpdate(
+	ctx context.Context,
+	dockerCli command.Cli,
+	project *types.Project,
+	target *selfTarget,
+	self *SelfDeployInput,
+) error {
+	if err := validatePredecessorRestartPolicy(ctx, dockerCli.Client(), SelfUpdateConfig().Identity.ContainerID); err != nil {
+		return err
+	}
+
+	sourceType := ""
+	if self != nil {
+		sourceType = self.SourceType
+	}
+
+	_, _, err := selfupdate.Select(project.Services[target.Service], sourceType, target.Context, SelfUpdateConfig().Strategy, selfupdate.Constraints{})
+	if err != nil {
+		return err
+	}
+
+	return validateSelfUpdateVolumes(ctx, dockerCli.Client(), project)
+}
+
+// applySelfPlan removes the self service from the project Compose creates when
+// a handover will recreate it. An unchanged service stays in that create.
+func applySelfPlan(project *types.Project, services []string, selfService string, plan selfUpdatePlan) (*types.Project, []string) {
+	if plan.Step == nil {
+		return project, services
+	}
+
+	return project.WithServicesDisabled(selfService), plan.Services
+}
+
 // prepareSelfUpdate splits a project that contains this instance into the part
 // that deploys normally and a closure that performs the handover afterwards.
 func prepareSelfUpdate(
@@ -61,44 +256,13 @@ func prepareSelfUpdate(
 	services []string,
 	self *SelfDeployInput,
 ) (selfUpdatePlan, error) {
-	opts := SelfUpdateConfig()
-
-	log := slog.Default()
-	if self != nil && self.Log != nil {
-		log = self.Log
-	}
-
-	if !opts.Enabled {
-		return selfUpdatePlan{}, fmt.Errorf(
-			"%w: stack %q contains this doco-cd instance (service %q); set SELF_UPDATE_ENABLED=true to let it update itself",
-			selfupdate.ErrDisabled, project.Name, target.Service)
-	}
-
-	if opts.Store == nil {
-		return selfUpdatePlan{}, fmt.Errorf("%w: no self-update journal is configured", selfupdate.ErrUnsupported)
-	}
-
-	// One handover at a time. A record that is still being converged means the
-	// stack has two containers, and a second attempt would race the first.
-	active, err := opts.Store.Active()
-	if err != nil {
+	if err := guardSelfUpdate(project, target, self); err != nil {
 		return selfUpdatePlan{}, err
 	}
 
-	if active != nil {
-		// The successor of that handover owns the commit status now.
-		self.stopPhaseReports()
+	opts := SelfUpdateConfig()
 
-		// Not a failure: the handover this instance is part of is still being
-		// converged. Reporting it as one would record a failed deploy and make
-		// the next poll force-recreate the stack.
-		log.Info("self-update: a handover is still in progress, skipping this attempt",
-			slog.String("id", active.ID),
-			slog.String("state", string(active.State)),
-		)
-
-		return selfUpdatePlan{}, selfupdate.ErrHandover
-	}
+	log := selfUpdateLogger(self)
 
 	if err := validatePredecessorRestartPolicy(ctx, dockerCli.Client(), opts.Identity.ContainerID); err != nil {
 		return selfUpdatePlan{}, err
@@ -424,7 +588,7 @@ func selfUpdateScaleOut(
 	opts := SelfUpdateConfig()
 	apiClient := dockerCli.Client()
 
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return err
 	}

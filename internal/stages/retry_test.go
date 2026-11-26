@@ -297,7 +297,7 @@ func TestRetryIdentityNormalizesPKICertificatesAndRuntimeValues(t *testing.T) {
 		}
 
 		hash, err := docker.ProjectHash(docker.WithNormalizedEnvValues(sm.Docker.Project,
-			pkiRoleNormMap(sm.DeployConfig.ExternalSecrets, sm.DeployConfig.Internal.Environment)), "")
+			docker.PKIRoleNormMap(sm.DeployConfig.ExternalSecrets, sm.DeployConfig.Internal.Environment)), "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -457,8 +457,10 @@ func TestRetrySuppressedPreDeployDoesNotAnnounceRetry(t *testing.T) {
 			var output bytes.Buffer
 
 			sm.Log = slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+			stack := acquireTestStack(t, sm)
 			for range 3 {
-				if err := sm.RunPreDeployStage(t.Context(), sm.Log); !errors.Is(err, ErrRetrySuppressed) {
+				if err := sm.RunPreDeployStage(t.Context(), sm.Log, stack); !errors.Is(err, ErrRetrySuppressed) {
 					t.Fatalf("expected suppression: %v", err)
 				}
 			}
@@ -723,7 +725,9 @@ func TestRetryOCIAndMissingResourcePreDeployAreGated(t *testing.T) {
 			sm.Docker.Project = nil
 
 			sm.Docker.ProjectHash = ""
-			if err := sm.RunPreDeployStage(t.Context(), sm.Log); err != nil {
+
+			stack := acquireTestStack(t, sm)
+			if err := sm.RunPreDeployStage(t.Context(), sm.Log, stack); err != nil {
 				t.Fatalf("original attempt: %v", err)
 			}
 
@@ -732,7 +736,7 @@ func TestRetryOCIAndMissingResourcePreDeployAreGated(t *testing.T) {
 			sm.Docker.Project = nil
 			sm.Docker.ProjectHash = ""
 
-			err = sm.RunPreDeployStage(t.Context(), sm.Log)
+			err = sm.RunPreDeployStage(t.Context(), sm.Log, stack)
 			if !errors.Is(err, ErrRetrySuppressed) {
 				t.Fatalf("%s with no runtime resources bypassed retry gate: %v", source, err)
 			}
@@ -799,7 +803,9 @@ func TestRetryReadinessPreDeployConvergesUnchangedSource(t *testing.T) {
 					sm.Docker.Project = nil
 
 					sm.Docker.ProjectHash = ""
-					if err := sm.RunPreDeployStage(t.Context(), sm.Log); err != nil {
+
+					stack := acquireTestStack(t, sm)
+					if err := sm.RunPreDeployStage(t.Context(), sm.Log, stack); err != nil {
 						t.Fatalf("original pre-deploy: %v", err)
 					}
 
@@ -834,7 +840,7 @@ func TestRetryReadinessPreDeployConvergesUnchangedSource(t *testing.T) {
 					sm.Docker.Project = nil
 
 					sm.Docker.ProjectHash = ""
-					if err := sm.RunPreDeployStage(t.Context(), sm.Log); err != nil {
+					if err := sm.RunPreDeployStage(t.Context(), sm.Log, stack); err != nil {
 						t.Fatalf("unchanged failed %s deployment was skipped or suppressed: %v", source, err)
 					}
 
@@ -1014,7 +1020,7 @@ func TestDeployStageRefusesUnissuedCertificates(t *testing.T) {
 
 	sm := newDeferredCertManager(t, "deferred-cert-guard", &issuingSecretProvider{})
 
-	if err := sm.RunDeployStage(t.Context(), sm.Log); !errors.Is(err, errDeferredCertificatesNotIssued) {
+	if err := sm.RunDeployStage(t.Context(), sm.Log, acquireTestStack(t, sm)); !errors.Is(err, errDeferredCertificatesNotIssued) {
 		t.Fatalf("deploy stage must refuse pki-role placeholders, got %v", err)
 	}
 }

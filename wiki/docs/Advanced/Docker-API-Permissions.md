@@ -102,6 +102,7 @@ These endpoints are only needed when the corresponding setting is enabled.
 - Default (`execution_mode: restart`): `POST /containers/{id}/restart`; Swarm: `GET /services/{id}`, `POST /services/{id}/update`
 - `execution_mode: one_off`: `GET /containers/json`, `GET /containers/{id}/json`, `POST /containers/create`, `POST /containers/{id}/wait`, `POST /containers/{id}/start`, `DELETE /containers/{id}`; Swarm: `GET /services`, `GET /services/{id}`, `POST /services/create`, `DELETE /services/{id}`, `GET /tasks`
 - `stop_services`: `POST /containers/{id}/stop|start`; Swarm: `POST /services/{id}/update`, `GET /tasks`
+- `cd.doco.job.timeout`: `GET /containers/{id}/json`, `POST /containers/{id}/wait`, `POST /containers/{id}/stop`; Swarm: `GET /services/{id}`, `DELETE /services/{id}`, `GET /tasks`, `GET /tasks/{id}`
 
 #### REST API endpoint details
 
@@ -113,6 +114,8 @@ These endpoints are only needed when the corresponding setting is enabled.
     **bind-mounts `/var/run/docker.sock` on every node**. That container talks to the local
     daemon directly, so your socket proxy does not apply to it, and every node needs the raw
     socket available. Set `prune_images: false` if this is unacceptable in your environment.
+    The job container gets full daemon access, so only use a trusted image.
+    See [Image pruning](Swarm-Mode.md#image-pruning) for the default and override.
 
 ### Building images
 

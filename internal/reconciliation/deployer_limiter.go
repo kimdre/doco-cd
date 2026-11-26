@@ -10,7 +10,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/prometheus"
 )
 
-// repoEntry stores per-repository metrics; stack-level exclusivity is handled by lock.LockStack.
+// repoEntry stores per-repository metrics; stack-level exclusivity is handled by the per-stack lock in internal/lock.
 type repoEntry struct {
 	mu       sync.Mutex
 	active   int

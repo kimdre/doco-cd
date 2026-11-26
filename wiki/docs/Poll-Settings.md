@@ -58,7 +58,7 @@ It accepts the same [schedule formats](Advanced/Job-Scheduling.md#schedule-forma
 - A scheduled poll job does **not** poll at startup. The first poll happens at the next scheduled time. Until then, doco-cd does not [reconcile](Deploy-Settings.md#reconciliation-settings) the stacks of that repository, e.g. it does not restore a container that died after the restart.
 - `schedule` and `interval` are mutually exclusive. When `schedule` is set, `interval` defaults to `0`.
 - For [local filesystem repositories](Advanced/Local-Filesystem-Polling.md), the repository watcher is disabled when `schedule` is set, so polls only happen at the scheduled times.
-- `run_once` ignores `schedule` and polls once at startup. Poll runs triggered via the [REST API](Endpoints/REST-API.md#polling) or [MCP](Endpoints/MCP-Server.md) also ignore it and run immediately.
+- `run_once` ignores `schedule` and polls once at startup. Poll runs triggered via the [REST API](Endpoints/REST-API.md#polling), [MCP](Endpoints/MCP-Server.md), or a [signal](#trigger-a-poll-run-with-a-signal) also ignore it and run immediately.
 
 !!! tip
     A poll `schedule` works well together with [sync windows](Advanced/Sync-Windows.md): schedule a poll for when an allow window opens so that deferred changes are deployed right away.
@@ -75,6 +75,28 @@ Inline deployment definitions replace repository definitions, so their `pause` s
     - name: production
       pause: true
 ```
+
+## Trigger a poll run with a signal
+
+Send `SIGHUP` or `SIGUSR1` to the doco-cd container to run all enabled poll jobs from `POLL_CONFIG` or `POLL_CONFIG_FILE` once, right away.
+These commands require access to Docker, but they do not require a doco-cd API key or an open API port.
+
+```sh
+docker kill --signal=HUP doco-cd
+# or, in the directory of the doco-cd Compose project
+docker compose kill --signal=HUP app
+```
+
+- The signal does **not** reload `POLL_CONFIG` or `POLL_CONFIG_FILE`.
+- `#!yaml interval: 0` disables a poll job unless it has a `schedule`, sets `#!yaml run_once: true`, or uses a local Git repository.
+  The signal runs each enabled job once without waiting for its interval or schedule, even if a `run_once` job already ran at startup.
+- The run counts as a manual deployment, the same as a poll run triggered via the [REST API](Endpoints/REST-API.md#polling).
+  It can pass [sync windows](Advanced/Sync-Windows.md#manual-deployments) that set `manual_sync`, it bypasses the [retry delay and exhausted retry budget](Deploy-Settings.md#manual-retry), and it respects [`pause`](Deploy-Settings.md#pause-settings).
+- If another deployment of a stack is in progress, the signal run skips that stack.
+- doco-cd runs one signal-triggered poll run at a time. Signals that arrive during a run cause at most one more run.
+  doco-cd ignores signals that arrive before startup completes.
+- The `polling` log lines of the run show `poll-signal` as the trigger event. The [deployment run](Endpoints/REST-API.md#deployment-runs) has the trigger `poll`.
+- In Docker Swarm, run `docker kill` on the node that hosts the doco-cd task. Only the task container you target receives the signal.
 
 ## Example
 

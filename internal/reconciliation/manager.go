@@ -199,9 +199,8 @@ type job struct {
 	// Populated at the start of run() and closed when the job exits.
 	contextCLIs map[string]contextCLIEntry
 	// carried maps deploy configs taken over from a previous job to the
-	// request they were deployed with. A sync window deferred the newer
-	// revision of these stacks, so reconciliation must keep restoring the
-	// revision that is actually deployed. Configs missing here belong to info.
+	// request they were deployed with. The newer revision was skipped, so
+	// reconciliation must restore the deployed revision. Other configs belong to info.
 	carried map[*deployConfig.Config]*DeployRequest
 	// pinned are deferred deploy configs the previous job did not know. They
 	// are not reconciled, but the obsolete-stack cleanup treats their stacks
@@ -572,8 +571,8 @@ func (r *deploymentTracker) isInProgress(repository, context, stack string) bool
 
 // addJob replaces the reconciliation job of the request's repository with one
 // watching the stacks of req. Stacks in deferred were not deployed because a
-// sync window blocked them; see reconciliationJobInfo. Stacks the webhook event
-// filter skipped were not deployed either and are handled the same way.
+// sync window blocked them or another operation held the stack lock.
+// The webhook event filter can also defer a stack.
 //
 // A request whose revision predates the one of the current job does not replace
 // it unless a forced deployment succeeded. A successful rollback replaces only
@@ -783,9 +782,9 @@ func predatesJob(req, job DeployRequest) bool {
 // watches, the deploy configs it carries over from the previous job, and the
 // deferred deploy configs it pins.
 //
-// Stacks in deferred were blocked by a sync window, so their revision in req
-// is not deployed. Reconciling them with req would deploy it anyway, bypassing
-// the window. They keep the deploy config and request of the previous job
+// Stacks in deferred were not deployed. Reconciling them with req could deploy
+// the new revision instead of restoring the deployed revision.
+// They keep the deploy config and request of the previous job
 // instead, which reflect the revision that is actually deployed. Deferred
 // stacks the previous job does not know (e.g. after a restart, or a stack
 // added by the deferred revision) are pinned: they are not reconciled until a

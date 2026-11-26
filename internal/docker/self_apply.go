@@ -12,7 +12,6 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/lifecycle"
@@ -385,7 +384,7 @@ func prepareSelfApply(
 			app.Version, timestamp, ComposeVersion, record.Source.CommitSHA, record.Source.ProjectHash)
 	}
 
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("initialise Compose for self-update: %w", err)
 	}

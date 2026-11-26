@@ -51,7 +51,7 @@ func TestAutostartDisabledPollSkipHasNoDeploymentSideEffects(t *testing.T) {
 		t.Fatal("commit status must be enabled to verify that skipped polls do not post it")
 	}
 
-	order := s.GetDeployStageOrder()
+	order := s.GetDeployStageOrder(nil)
 
 	var entered []StageName
 
@@ -66,7 +66,7 @@ func TestAutostartDisabledPollSkipHasNoDeploymentSideEffects(t *testing.T) {
 		entered = append(entered, StagePreDeploy)
 
 		mismatches, err := docker.CheckServiceMismatch(false,
-			map[docker.Service]docker.ServiceStatus{"web": {Containers: 1}}, s.Docker.Project.Services)
+			map[docker.Service]docker.ServiceStatus{"web": {Containers: 1}}, s.Docker.Project.Services, "")
 		if err != nil {
 			return err
 		}

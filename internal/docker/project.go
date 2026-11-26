@@ -11,6 +11,7 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
 // isScaledToZero reports whether a service is configured to run 0 replicas
@@ -20,6 +21,17 @@ import (
 // state is expected and must not be treated as drift.
 func isScaledToZero(svc types.ServiceConfig) bool {
 	return svc.GetScale() == 0
+}
+
+// hasJobLabels reports whether a service has at least one cd.doco.job.* label.
+func hasJobLabels(svc types.ServiceConfig) bool {
+	for key := range getServiceSchedulerLabels(svc) {
+		if strings.HasPrefix(key, jobLabelPrefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // behaviorLabelPrefixes lists the cd.doco.* label prefixes that configure behaviour and
@@ -35,7 +47,7 @@ func shouldIgnoreLabelInProjectHash(label string) bool {
 		return true
 	}
 
-	if !strings.HasPrefix(label, "cd.doco.") {
+	if !strings.HasPrefix(label, "cd.doco.") || label == DocoCDLabels.Deployment.ContentDigest {
 		return false
 	}
 
@@ -129,23 +141,27 @@ func normalizeSourceRoot(b []byte, sourceRoot string) []byte {
 // paths below it are normalized so the hash stays stable across revisions of the same
 // unchanged stack.
 func ProjectHash(p *types.Project, sourceRoot string) (string, error) {
+	return DeploymentProjectHash(p, sourceRoot, false)
+}
+
+// DeploymentProjectHash accounts for replica preservation in Swarm mode.
+func DeploymentProjectHash(p *types.Project, sourceRoot string, swarmMode bool) (string, error) {
 	pCopy := clone.New(p)
 
-	// Services scaled to zero never create containers, so they must not affect restart-time hash checks.
+	// External scaling can start a Swarm service whose Compose count is zero.
+	// Keep those services and scheduled jobs in change detection.
 	for name, svc := range pCopy.Services {
-		if isScaledToZero(svc) {
-			delete(pCopy.Services, name)
-		}
-	}
+		replicatedSwarm := swarmMode && (svc.Deploy == nil || svc.Deploy.Mode == "" || svc.Deploy.Mode == string(swarm.DeployModeReplicated))
+		replicaLabel := DocoCDLabels.Deployment.PreserveReplicas
 
-	// Only behavior-configuring labels should impact redeploy decisions.
-	for name := range pCopy.Services {
-		svc := pCopy.Services[name]
-		if svc.Labels != nil {
-			for l := range svc.Labels {
-				if shouldIgnoreLabelInProjectHash(l) {
-					delete(svc.Labels, l)
-				}
+		if isScaledToZero(svc) && !hasJobLabels(svc) && (!replicatedSwarm || !isTrueLabel(svc.Labels[replicaLabel])) {
+			delete(pCopy.Services, name)
+			continue
+		}
+
+		for l := range svc.Labels {
+			if (!replicatedSwarm || l != replicaLabel) && shouldIgnoreLabelInProjectHash(l) {
+				delete(svc.Labels, l)
 			}
 		}
 

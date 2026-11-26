@@ -7,12 +7,11 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/docker/compose/v5/pkg/compose"
 )
 
 // ComposeSignal will send signal to service.
 func ComposeSignal(ctx context.Context, dockerCli command.Cli, project *types.Project, signal []SignalService) error {
-	service, err := compose.NewComposeService(dockerCli)
+	service, err := newComposeService(dockerCli)
 	if err != nil {
 		return err
 	}

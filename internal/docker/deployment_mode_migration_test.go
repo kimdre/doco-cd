@@ -51,6 +51,19 @@ func (c deploymentModeMigrationCLI) Client() client.APIClient {
 	return c.apiClient
 }
 
+func lockMigrationTestStack(ctx context.Context, t *testing.T, name string) *LockedStack {
+	t.Helper()
+
+	stack, err := AcquireStackLock(ctx, nil, "", name, StackLockOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(stack.Release)
+
+	return stack
+}
+
 func TestMigrateDeploymentMode_RejectsUnmanagedPreviousMode(t *testing.T) {
 	t.Parallel()
 
@@ -63,7 +76,7 @@ func TestMigrateDeploymentMode_RejectsUnmanagedPreviousMode(t *testing.T) {
 		}},
 	}}
 
-	_, err := MigrateDeploymentMode(t.Context(), nil, dockerCli, "", "example", "github.com/acme/example", true, true)
+	_, err := lockMigrationTestStack(t.Context(), t, "example").MigrateDeploymentMode(t.Context(), nil, dockerCli, "github.com/acme/example", true, true)
 	if !errors.Is(err, ErrDeploymentModeConflict) {
 		t.Fatalf("MigrateDeploymentMode() error = %v, want ErrDeploymentModeConflict", err)
 	}
@@ -88,7 +101,7 @@ func TestMigrateDeploymentMode_RejectsUnmanagedSelectedMode(t *testing.T) {
 	}
 	dockerCli := deploymentModeMigrationCLI{apiClient: apiClient}
 
-	_, err := MigrateDeploymentMode(t.Context(), nil, dockerCli, "", "example", "owner/repo", true, true)
+	_, err := lockMigrationTestStack(t.Context(), t, "example").MigrateDeploymentMode(t.Context(), nil, dockerCli, "owner/repo", true, true)
 	if !errors.Is(err, ErrDeploymentModeConflict) {
 		t.Fatalf("MigrateDeploymentMode() error = %v, want ErrDeploymentModeConflict", err)
 	}
@@ -104,7 +117,7 @@ func TestMigrateDeploymentMode_SkipsMigrationWhenSwarmUnavailable(t *testing.T) 
 	apiClient := &deploymentModeMigrationClient{}
 	dockerCli := deploymentModeMigrationCLI{apiClient: apiClient}
 
-	migrated, err := MigrateDeploymentMode(t.Context(), nil, dockerCli, "", "example", "owner/repo", false, false)
+	migrated, err := lockMigrationTestStack(t.Context(), t, "example").MigrateDeploymentMode(t.Context(), nil, dockerCli, "owner/repo", false, false)
 	if err != nil {
 		t.Fatalf("MigrateDeploymentMode() error = %v, want nil", err)
 	}
@@ -129,9 +142,7 @@ func TestDeploymentModeMigrationRequiredDoesNotMutate(t *testing.T) {
 	}
 	dockerCli := deploymentModeMigrationCLI{apiClient: apiClient}
 
-	required, err := DeploymentModeMigrationRequired(
-		t.Context(), dockerCli, "", "example", "owner/repo", true, true,
-	)
+	required, err := lockMigrationTestStack(t.Context(), t, "example").DeploymentModeMigrationRequired(t.Context(), dockerCli, "owner/repo", true, true)
 	if err != nil {
 		t.Fatalf("DeploymentModeMigrationRequired() error = %v", err)
 	}
@@ -336,7 +347,7 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 			sourceContainerID := migrationServiceContainerID(ctx, t, apiClient, stackName, tt.sourceMode)
 			writeMigrationVolumeMarker(ctx, t, apiClient, sourceContainerID)
 
-			migrated, err := MigrateDeploymentMode(ctx, nil, dockerCli, "", stackName, "owner/repo", !tt.sourceMode, true)
+			migrated, err := lockMigrationTestStack(ctx, t, stackName).MigrateDeploymentMode(ctx, nil, dockerCli, "owner/repo", !tt.sourceMode, true)
 			if err != nil {
 				t.Fatalf("MigrateDeploymentMode() error = %v", err)
 			}

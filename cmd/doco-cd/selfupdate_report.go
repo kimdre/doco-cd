@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
-	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -38,9 +37,27 @@ func newSelfUpdateReporter(appConfig *app.Config, notifier *notification.Notifie
 	return &selfUpdateReporter{notifier: notifier, appConfig: appConfig}
 }
 
-func (r *selfUpdateReporter) reportSuccess(ctx context.Context, log *logger.Logger, record selfupdate.Record) {
+func (r *selfUpdateReporter) reportSuccess(ctx context.Context, log *logger.Logger, record selfupdate.Record) error {
 	if r == nil {
-		return
+		return nil
+	}
+
+	var (
+		startedAt time.Time
+		summary   string
+	)
+
+	if record.Source.CommitStatus != nil {
+		startedAt = record.Source.CommitStatus.StartedAt
+		summary = record.Source.CommitStatus.Summary
+	}
+
+	if err := r.postCommitStatus(ctx, log, record, commitstatus.Status{
+		State:       commitstatus.StateSuccess,
+		Description: commitstatus.SuccessDescription(startedAt, time.Now()),
+		Summary:     summary,
+	}); err != nil {
+		return err
 	}
 
 	if r.notifier != nil {
@@ -55,26 +72,12 @@ func (r *selfUpdateReporter) reportSuccess(ctx context.Context, log *logger.Logg
 		}
 	}
 
-	var (
-		startedAt time.Time
-		summary   string
-	)
-
-	if record.Source.CommitStatus != nil {
-		startedAt = record.Source.CommitStatus.StartedAt
-		summary = record.Source.CommitStatus.Summary
-	}
-
-	r.postCommitStatus(ctx, log, record, commitstatus.Status{
-		State:       commitstatus.StateSuccess,
-		Description: commitstatus.SuccessDescription(startedAt, time.Now()),
-		Summary:     summary,
-	})
+	return nil
 }
 
-func (r *selfUpdateReporter) reportFailure(ctx context.Context, log *logger.Logger, record selfupdate.Record) {
+func (r *selfUpdateReporter) reportFailure(ctx context.Context, log *logger.Logger, record selfupdate.Record) error {
 	if r == nil {
-		return
+		return nil
 	}
 
 	reason := record.Error
@@ -82,11 +85,25 @@ func (r *selfUpdateReporter) reportFailure(ctx context.Context, log *logger.Logg
 		reason = "the new version did not become healthy"
 	}
 
+	status := commitstatus.FailureStatus(commitstatus.StateFailure, errors.New(reason))
+	if record.TimedOut {
+		status.Outcome = commitstatus.OutcomeTimedOut
+	}
+
+	if err := r.postCommitStatus(ctx, log, record, status); err != nil {
+		return err
+	}
+
 	if r.notifier != nil {
+		description := fmt.Sprintf("Self-update of stack %s was rolled back: %s", record.Stack, reason)
+		if record.Strategy == selfupdate.StrategySwarm {
+			description = fmt.Sprintf("Self-update of stack %s failed: %s", record.Stack, reason)
+		}
+
 		err := r.notifier.Send(
 			notification.Failure,
 			"Deployment failed",
-			fmt.Sprintf("Self-update of stack %s was rolled back: %s", record.Stack, reason),
+			description,
 			selfUpdateMetadata(record),
 		)
 		if err != nil {
@@ -94,22 +111,21 @@ func (r *selfUpdateReporter) reportFailure(ctx context.Context, log *logger.Logg
 		}
 	}
 
-	status := commitstatus.FailureStatus(commitstatus.StateFailure, errors.New(reason))
-	if record.TimedOut {
-		status.Outcome = commitstatus.OutcomeTimedOut
-	}
-
-	r.postCommitStatus(ctx, log, record, status)
+	return nil
 }
 
 // postCommitStatus resolves the commit status the predecessor left pending. The
 // token is resolved from this process's configuration, never from the journal.
 func (r *selfUpdateReporter) postCommitStatus(
 	ctx context.Context, log *logger.Logger, record selfupdate.Record, status commitstatus.Status,
-) {
+) error {
 	info := record.Source.CommitStatus
-	if r.appConfig == nil || info == nil {
-		return
+	if info == nil {
+		return nil
+	}
+
+	if r.appConfig == nil {
+		return errors.New("self-update reporting configuration is unavailable")
 	}
 
 	target := info.Target
@@ -133,7 +149,7 @@ func (r *selfUpdateReporter) postCommitStatus(
 		Target:           target,
 	})
 	if !ok {
-		return
+		return errors.New("cannot resolve the pending self-update commit status")
 	}
 
 	log.Debug("self-update: posting commit status",
@@ -147,12 +163,8 @@ func (r *selfUpdateReporter) postCommitStatus(
 	)
 
 	if err := req.Post(ctx, status); err != nil {
-		if lifecycle.IsCanceled(err) {
-			log.Debug("self-update: skipped commit status during application shutdown", logger.ErrAttr(err))
-
-			return
-		}
-
-		log.Warn("self-update: failed to post the commit status", logger.ErrAttr(err))
+		return fmt.Errorf("post pending self-update commit status: %w", err)
 	}
+
+	return nil
 }

@@ -434,8 +434,8 @@ func TestWebhookHandlerDifferentTargetsRunConcurrently(t *testing.T) {
 // TestWebhookHandlerSameTargetStillSerializesViaStackLock proves that even
 // without the removed repository-wide webhook lock, two webhook events for
 // the same repository AND the same stack still cannot run concurrently: the
-// per-stack lock (internal/lock.LockStack/UnlockStack), applied deep inside
-// the real deployment path (internal/docker.Deploy), still serializes them.
+// per-stack lock (internal/lock.AcquireStack/UnlockStack), applied deep inside
+// the real deployment path (internal/docker.DeployStack), still serializes them.
 // The fake reconciler below stands in for that call site by taking the same
 // lock the real one does.
 func TestWebhookHandlerSameTargetStillSerializesViaStackLock(t *testing.T) {
@@ -451,8 +451,11 @@ func TestWebhookHandlerSameTargetStillSerializesViaStackLock(t *testing.T) {
 		active  bool
 	)
 
-	h := newConcurrencyTestHandler(t, func(context.Context, reconciliation.DeployRequest) error {
-		lock.LockStack(stackKey)
+	h := newConcurrencyTestHandler(t, func(ctx context.Context, _ reconciliation.DeployRequest) error {
+		if err := lock.LockStackContext(ctx, stackKey, "webhook test deployment"); err != nil {
+			return err
+		}
+
 		defer lock.UnlockStack(stackKey)
 
 		mu.Lock()

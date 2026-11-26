@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -41,6 +42,10 @@ type JobScheduleConfig struct {
 	// (falling back to a default if the target has none configured).
 	// See docker.DefaultStopServicesTimeout.
 	StopServicesTimeout *int
+	// Timeout is the maximum runtime of the workload of one scheduled run.
+	// The stop and restore phases of stop_services are not included.
+	// Zero disables the limit.
+	Timeout time.Duration
 }
 
 // StopServiceRef identifies a compose service (or swarm service) to be temporarily
@@ -185,7 +190,68 @@ func ParseJobScheduleLabels(labels map[string]string) (JobScheduleConfig, bool, 
 		cfg.StopServicesTimeout = &timeoutSecs
 	}
 
+	if timeoutRaw, ok := labels[docoCDJobLabelNames.JobTimeout]; ok {
+		timeout, parseErr := ParseJobTimeout(timeoutRaw)
+		if parseErr != nil {
+			return cfg, false, parseErr
+		}
+
+		cfg.Timeout = timeout
+	}
+
 	return cfg, true, nil
+}
+
+// ParseJobTimeout parses the value of the cd.doco.job.timeout label.
+// The value is a Go duration, for example "30m" or "1h30m".
+// An empty value disables the limit and returns zero.
+func ParseJobTimeout(raw string) (time.Duration, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, nil
+	}
+
+	timeout, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s label value %q: use a Go duration such as 30m or 1h30m", docoCDJobLabelNames.JobTimeout, raw)
+	}
+
+	if timeout <= 0 {
+		return 0, fmt.Errorf("%s must be > 0", docoCDJobLabelNames.JobTimeout)
+	}
+
+	return timeout, nil
+}
+
+// ValidateSwarmJobTimeout returns an error when a Swarm job sets a timeout without one_off mode.
+// doco-cd cannot detect when a restart-mode Swarm job completes, so it cannot limit its runtime.
+func ValidateSwarmJobTimeout(cfg JobScheduleConfig) error {
+	if cfg.Timeout <= 0 || cfg.ExecutionMode == JobExecutionModeOneOff {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"%s requires %s=%q in Swarm mode (got %q): doco-cd cannot detect job completion for Swarm services in %q mode",
+		docoCDJobLabelNames.JobTimeout, docoCDJobLabelNames.JobExecutionMode,
+		JobExecutionModeOneOff, cfg.ExecutionMode, cfg.ExecutionMode,
+	)
+}
+
+// ErrScheduledJobTimeout reports that a scheduled run exceeded cd.doco.job.timeout.
+var ErrScheduledJobTimeout = errors.New("scheduled job exceeded timeout")
+
+// JobTimeoutError reports that a scheduled run exceeded its configured timeout.
+// errors.Is matches it with ErrScheduledJobTimeout.
+type JobTimeoutError struct {
+	Timeout time.Duration
+}
+
+func (e *JobTimeoutError) Error() string {
+	return fmt.Sprintf("exceeded timeout of %s", e.Timeout)
+}
+
+func (e *JobTimeoutError) Unwrap() error {
+	return ErrScheduledJobTimeout
 }
 
 // ValidateStopServicesSelfReference returns an error if refs contains an entry

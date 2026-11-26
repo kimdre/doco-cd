@@ -182,13 +182,21 @@ type DeployRequest struct {
 	ComposeLoad     ComposeLoadOptions
 	SwarmRetention  SwarmRetentionOptions
 	SwarmMode       bool
-	HashNormMap     map[string]string
-	Project         *types.Project
-	ProjectHash     string
+	// SwarmHelperImage overrides the image for Swarm helper jobs such as image-prune.
+	// Empty selects DefaultSwarmHelperImage.
+	SwarmHelperImage string
+	HashNormMap      map[string]string
+	Project          *types.Project
+	ProjectHash      string
 	// CommitStatus is the commit status left pending for this deployment. A
 	// self-update records it so the process that resolves the handover can
 	// post the final state.
 	CommitStatus *selfupdate.CommitStatusInfo
+	// SelfUpdateRecovery preserves the failure target and desired fingerprints across a Swarm handover.
+	SelfUpdateRecovery *SwarmRecoveryInfo
+	// ConcludeOwnStatus closes the commit status this deployment already
+	// opened when it skips because another handover is still in progress.
+	ConcludeOwnStatus func() `validate:"-"`
 	// PhaseReporter optionally receives the deployment's phase changes. It is
 	// stopped before a self-update hands over, so it never reports past the
 	// point where a successor takes over the commit status.
@@ -206,32 +214,49 @@ type runtimeDeployRequest struct {
 	repositoryLabel    string
 	deploymentLabel    string
 	contextLabel       string
+	startedAt          time.Time
 }
 
 func (r runtimeDeployRequest) recordError() {
 	prometheus.DeploymentErrorsTotal.WithLabelValues(r.repositoryLabel, r.deploymentLabel, r.contextLabel).Inc()
 }
 
-// DeployStack performs shared deployment lifecycle work and dispatches to the selected runtime.
+// DeployStack deploys a stack, waiting for the stack lock if needed.
 func DeployStack(ctx context.Context, req DeployRequest) error {
 	if err := validation.Validate(req); err != nil {
 		return fmt.Errorf("validate deploy stack request: %w", err)
 	}
 
+	stack, err := AcquireStackLock(ctx, req.JobLog.With(slog.String("stack", req.DeployConfig.Name)),
+		req.DeployConfig.Context, req.DeployConfig.Name, StackLockOptions{})
+	if err != nil {
+		return fmt.Errorf("acquire stack lock: %w", err)
+	}
+
+	defer stack.Release()
+
+	return stack.deploy(ctx, req)
+}
+
+// Deploy runs the deployment while the caller holds the stack lock.
+func (s *LockedStack) Deploy(ctx context.Context, req DeployRequest) error {
+	if err := validation.Validate(req); err != nil {
+		return fmt.Errorf("validate deploy stack request: %w", err)
+	}
+
+	if key := lock.StackKey(req.DeployConfig.Context, req.DeployConfig.Name); key != s.key {
+		return fmt.Errorf("deploy stack %q with lock for stack %q", key, s.key)
+	}
+
+	return s.deploy(ctx, req)
+}
+
+func (s *LockedStack) deploy(ctx context.Context, req DeployRequest) error {
 	startTime := time.Now()
 	repositoryLabel := resolveDeploymentMetricsRepositoryLabel(req.Payload)
 	deploymentLabel := resolveDeploymentMetricsDeploymentLabel(req.DeployConfig.Name)
 	contextLabel := DisplayContextName(req.DeployConfig.Context)
 	stackLog := req.JobLog.With(slog.String("stack", req.DeployConfig.Name))
-
-	stackLog.Debug("waiting for scheduler/deploy lock")
-
-	stackLockKey := lock.StackKey(req.DeployConfig.Context, req.DeployConfig.Name)
-
-	lock.LockStack(stackLockKey)
-	defer lock.UnlockStack(stackLockKey)
-
-	stackLog.Debug("acquired scheduler/deploy lock")
 
 	deploymentPhase := newDeploymentPhaseState("resolving working directory", req.PhaseReporter)
 
@@ -276,10 +301,21 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 		if err != nil {
 			return fmt.Errorf("failed to load compose config: %w", err)
 		}
+
+		// Preloaded projects already have these labels from the pre-deploy stage.
+		if !req.SwarmMode {
+			if err = ApplyContentDigestLabels(project, req.DeployConfig.ExternalSecrets); err != nil {
+				return fmt.Errorf("failed to set content digest labels: %w", err)
+			}
+		}
 	}
 
 	if err = validateScheduledJobPolicies(project, req.SwarmMode); err != nil {
 		return fmt.Errorf("invalid scheduled job configuration: %w", err)
+	}
+
+	if req.SwarmMode {
+		warnSwarmNativeJobs(stackLog, project)
 	}
 
 	if req.DeployConfig.WaitRunningJobs {
@@ -315,7 +351,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	}
 
 	if projectHash == "" {
-		projectHash, err = ProjectHash(WithNormalizedEnvValues(project, req.HashNormMap), req.ExternalRepoPath)
+		projectHash, err = DeploymentProjectHash(WithNormalizedEnvValues(project, req.HashNormMap), req.ExternalRepoPath, req.SwarmMode)
 		if err != nil {
 			return fmt.Errorf("failed to generate project hash: %w", err)
 		}
@@ -332,6 +368,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 		repositoryLabel:    repositoryLabel,
 		deploymentLabel:    deploymentLabel,
 		contextLabel:       contextLabel,
+		startedAt:          startTime,
 	}
 
 	if req.SwarmMode {

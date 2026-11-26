@@ -1,11 +1,14 @@
 package docker
 
 import (
+	"context"
 	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/types/duration"
@@ -13,6 +16,112 @@ import (
 	"github.com/kimdre/doco-cd/internal/test"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+func TestDeployStackComposeContentDigest(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	filePath := filepath.Join(root, "compose.yaml")
+	createComposeFile(t, filePath, `services:
+  app: &service
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    stop_grace_period: 1s
+    secrets: [password]
+  ignored:
+    <<: *service
+    labels:
+      cd.doco.deployment.recreate.ignore: "{secrets: [password]}"
+  other:
+    <<: *service
+    secrets: []
+secrets:
+  password:
+    environment: DB_PASSWORD
+`)
+
+	dockerCli, err := test.NewDockerCli()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		if err := dockerCli.Client().Close(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stack := &test.ComposeStack{
+		Name:      test.ConvertTestName(t.Name()),
+		Service:   service,
+		DockerCli: dockerCli,
+		Client:    dockerCli.Client(),
+	}
+	t.Cleanup(func() {
+		if err := service.Down(context.WithoutCancel(ctx), stack.Name, api.DownOptions{RemoveOrphans: true}); err != nil {
+			t.Error(err)
+		}
+	})
+
+	config := &deploy.Config{
+		Name:             stack.Name,
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{filePath},
+		Timeout:          duration.Duration(time.Minute),
+	}
+	run := func(password string) {
+		t.Helper()
+
+		config.Internal.Environment = map[string]string{"DB_PASSWORD": password}
+		if err := DeployStack(ctx, DeployRequest{
+			JobLog:           slog.Default(),
+			ExternalRepoPath: root,
+			DockerCLI:        dockerCli,
+			Payload:          &webhook.ParsedPayload{FullName: "example/content-digest"},
+			DeployConfig:     config,
+			AppVersion:       "test",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	run("initial")
+
+	services := []string{"app", "ignored", "other"}
+	before := make(map[string]string, len(services))
+
+	for _, name := range services {
+		before[name] = stack.ServiceContainerID(ctx, t, name)
+	}
+
+	run("initial")
+
+	for _, name := range services {
+		if got := stack.ServiceContainerID(ctx, t, name); got != before[name] {
+			t.Errorf("service %s was recreated without a value change", name)
+		}
+	}
+
+	run("rotated")
+
+	for _, name := range services {
+		recreated := stack.ServiceContainerID(ctx, t, name) != before[name]
+		if recreated != (name == "app") {
+			t.Errorf("service %s: recreated = %v, want %v", name, recreated, name == "app")
+		}
+	}
+
+	for name, want := range map[string]string{"app": "rotated", "ignored": "initial"} {
+		code, _ := stack.Exec(ctx, t, name, []string{"sh", "-c", `test "$(cat /run/secrets/password)" = "$1"`, "sh", want})
+		if code != 0 {
+			t.Errorf("service %s has the wrong secret value", name)
+		}
+	}
+}
 
 func TestDeployStackComposeForceRecreate(t *testing.T) {
 	tests := []struct {

@@ -9,6 +9,7 @@ import (
 
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/stages"
 )
 
@@ -148,5 +149,53 @@ func TestCleanupRechecksRemovalPredicateUnderStackLock(t *testing.T) {
 		deployConfig.AutoDiscoveryConfig{Delete: true}, nil)
 	if err != nil || !called || !cleanup.pending {
 		t.Fatalf("locked removal check: called=%v, pending=%v, err=%v", called, cleanup.pending, err)
+	}
+}
+
+func TestCleanupSkipsStackLockedByAnotherOperation(t *testing.T) {
+	t.Parallel()
+
+	const (
+		stackName = "cleanup-busy-lock-test"
+		holder    = "scheduled job backup (run 1)"
+	)
+
+	stack := cleanupTestStack(stackName, "services/"+stackName, map[string]string{
+		docker.DocoCDLabels.Deployment.AutoDiscoveryConfig: docker.MarshalAutoDiscoveryConfig(
+			deployConfig.AutoDiscoveryConfig{Enabled: true, Delete: true}),
+	})
+	cleanup := newObsoleteStackCleanup(slog.Default(),
+		cleanupTestCLI{apiClient: &cleanupTestClient{containers: []container.Summary{stack}}},
+		false, "", cleanupTestRequest(), nil)
+	called := false
+	cleanup.allowRemoval = func(_ *slog.Logger, _ string) bool {
+		called = true
+		return true
+	}
+
+	key := lock.StackKey("", stackName)
+	if ok, _ := lock.TryLockStack(key, holder); !ok {
+		t.Fatal("TryLockStack() failed")
+	}
+
+	t.Cleanup(func() { lock.UnlockStack(key) })
+
+	err := cleanup.remove(t.Context(), slog.New(slog.DiscardHandler), stackName,
+		map[docker.Service]map[string]string{"/" + stackName + "-app": stack.Labels},
+		deployConfig.AutoDiscoveryConfig{Delete: true}, nil)
+	if err != nil || called || !cleanup.pending {
+		t.Fatalf("busy lock: called=%v, pending=%v, err=%v; want a pending skip", called, cleanup.pending, err)
+	}
+
+	if got, locked := lock.StackLockHolder(key); !locked || got != holder {
+		t.Fatalf("StackLockHolder() = %q, %v; cleanup changed the lock", got, locked)
+	}
+}
+
+func TestStackLockedIsNotUnchangedOutcome(t *testing.T) {
+	t.Parallel()
+
+	if isUnchangedOutcome(stages.StackLocked("scheduled job backup")) {
+		t.Fatal("a skipped locked stack was treated as proof of an unchanged deployed state")
 	}
 }

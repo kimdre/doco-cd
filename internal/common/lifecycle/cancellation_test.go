@@ -43,6 +43,37 @@ func TestIsCanceledExcludesDeadline(t *testing.T) {
 	}
 }
 
+func TestIsCanceledOnly(t *testing.T) {
+	t.Parallel()
+
+	failure := errors.New("service failed")
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil"},
+		{name: "canceled", err: context.Canceled, want: true},
+		{name: "wrapped", err: fmt.Errorf("wait: %w", context.Canceled), want: true},
+		{name: "joined cancellations", err: errors.Join(context.Canceled, fmt.Errorf("wait: %w", context.Canceled)), want: true},
+		{name: "joined failure", err: errors.Join(context.Canceled, failure)},
+		{name: "wrapped joined failure", err: fmt.Errorf("wait: %w", errors.Join(context.Canceled, failure))},
+		{name: "deadline", err: context.DeadlineExceeded},
+		{name: "joined deadline", err: errors.Join(context.Canceled, context.DeadlineExceeded)},
+		{name: "failure", err: failure},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := IsCanceledOnly(tt.err); got != tt.want {
+				t.Fatalf("IsCanceledOnly(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsTimeout(t *testing.T) {
 	t.Parallel()
 

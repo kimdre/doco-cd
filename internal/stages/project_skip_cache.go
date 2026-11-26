@@ -427,22 +427,47 @@ func hasComposeIncludes(node yaml.Node) bool {
 	return false
 }
 
+// snapshotServiceLabels lists the labels that CheckServiceMismatch reads. The
+// warm skip snapshot keeps them so cached and full drift checks agree.
+var snapshotServiceLabels = []string{
+	docker.DocoCDLabels.Deployment.Autostart,
+	docker.DocoCDLabels.Deployment.PreserveReplicas,
+	docker.DocoCDJobLabels.JobEnabled,
+	docker.DocoCDJobLabels.JobExecutionMode,
+}
+
+// copySnapshotLabels returns a new map with only the snapshot labels from
+// labels. It returns nil when no snapshot label is present.
+func copySnapshotLabels(labels types.Labels) types.Labels {
+	var copied types.Labels
+
+	for _, key := range snapshotServiceLabels {
+		value, ok := labels[key]
+		if !ok {
+			continue
+		}
+
+		if copied == nil {
+			copied = types.Labels{}
+		}
+
+		copied[key] = value
+	}
+
+	return copied
+}
+
 // projectExpectedServices returns a map of service names to their expected configurations
 // based on the provided project. It includes the service name, restart policy,
-// autostart labels, scale, and deploy configuration (mode and replicas).
+// the labels that drift checks read, scale, and deploy configuration (mode and replicas).
 func projectExpectedServices(project *types.Project) types.Services {
 	services := make(types.Services, len(project.Services))
 	for name, service := range project.Services {
 		expected := types.ServiceConfig{
-			Name:    service.Name,
-			Restart: service.Restart,
-		}
-		if value, ok := service.Labels[docker.DocoCDLabels.Deployment.Autostart]; ok {
-			expected.Labels = types.Labels{docker.DocoCDLabels.Deployment.Autostart: value}
-		}
-
-		if value, ok := service.CustomLabels[docker.DocoCDLabels.Deployment.Autostart]; ok {
-			expected.CustomLabels = types.Labels{docker.DocoCDLabels.Deployment.Autostart: value}
+			Name:         service.Name,
+			Restart:      service.Restart,
+			Labels:       copySnapshotLabels(service.Labels),
+			CustomLabels: copySnapshotLabels(service.CustomLabels),
 		}
 
 		if service.Scale != nil {
@@ -530,7 +555,7 @@ func (s *StageManager) cacheUnchangedProject(stageLog *slog.Logger, deployedComm
 // resolution, and the Compose project hash already normalizes them the same
 // way, so the raw config hash would never match a cached snapshot.
 func (s *StageManager) projectSkipConfigHash() (string, error) {
-	norm := pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment)
+	norm := docker.PKIRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment)
 	if len(norm) == 0 {
 		return s.DeployConfig.Internal.Hash, nil
 	}
@@ -672,7 +697,8 @@ func (s *StageManager) skipFromCachedProject(
 		return fallback(reason)
 	}
 
-	mismatches, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedStatus, snapshot.services)
+	mismatches, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedStatus,
+		snapshot.services, docker.SwarmSelfService(s.DeployConfig))
 	if err != nil {
 		return fallback(err.Error())
 	}

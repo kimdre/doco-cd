@@ -89,6 +89,11 @@ Missing or invalid credentials return `401 Unauthorized`. A valid key without
 the required permission returns `403 Forbidden`. The health, webhook, metrics,
 profiling, and public OpenAPI endpoints have separate access rules.
 
+Unknown Compose project or Swarm stack action paths return a plain-text
+`404 Not Found` before authentication, including for requests without a valid
+key. Previously, authenticated requests for an existing project or stack
+returned a JSON `400 Bad Request` with `invalid action`.
+
 ### Roles
 
 Roles are cumulative: `inspect` includes `read`, `write` includes `inspect`,
@@ -188,7 +193,7 @@ If the application is not healthy, the endpoint returns a `503` status code and 
 
 ### Deployment Runs
 
-The API tracks deployment-related runs (for example webhook-triggered deployments, API-triggered poll runs, and automatic, manual, or recovered scheduled-job executions) in memory.
+The API tracks deployment-related runs (for example webhook-triggered deployments, API- or [signal](../Poll-Settings.md#trigger-a-poll-run-with-a-signal)-triggered poll runs, and automatic, manual, or recovered scheduled-job executions) in memory.
 Use these endpoints to inspect the current status and recent history by `job_id`.
 Each run's `deployments` collection reports the resolved stack and Docker context targets. A single poll or webhook run can contain targets from multiple contexts.
 Automatic attempts suppressed by a [deployment retry policy](../Deploy-Settings.md#retry-settings) are skipped, not successful.
@@ -240,6 +245,10 @@ Source trust checks, sync windows, and other safety checks still apply. Automati
 
 Manual polls do **not** bypass [`pause`](../Deploy-Settings.md#pause-settings). Inline deployments accept `"pause": true`.
 With `wait=true`, a poll whose deployments are all paused returns `202 Accepted` with the pause reason as `content`.
+
+!!! tip
+    To run all enabled poll jobs once without an API key, send `SIGHUP` or `SIGUSR1` to the doco-cd container.
+    See [Trigger a poll run with a signal](../Poll-Settings.md#trigger-a-poll-run-with-a-signal).
 
 #### Example Request
 
@@ -294,6 +303,10 @@ such as `exited (0)` or `exited (7)`, instead of an older exit status of the sou
 container keeps its own state. Exit results are kept in memory. If no result is available, `status` falls back to the
 source container's state. This occurs after a doco-cd restart without a recovered execution, or after a run that failed
 without an exit code, for example because the image pull failed. Compose `restart` jobs use the source container's state.
+
+If a job sets a [job timeout](../Advanced/Job-Scheduling.md#job-timeout), the `timeout` field contains the configured
+value, for example `2h0m0s`. A run that exceeds the timeout fails with the message `exceeded timeout of <timeout>`.
+The `timeout` field is omitted when no timeout is configured.
 
 ??? question "What is the `jobName` for a scheduled job?"
     `jobName` is the runtime name of the scheduled target:
@@ -482,6 +495,9 @@ reporting success.
 | `/v1/api/stack/{stackName}/scale`   | POST   | Rescale a Swarm stack or service                                                                                  | - `replicas` (integer): Scale to n replicas.<br/>- `service` (string, optional): Name of service to scale.<br/>- `wait` (boolean, default: `true`): Wait for service to be running/healthy | 
 | `/v1/api/stack/{stackName}/restart` | POST   | Restart/Redeploy a Swarm stack or service                                                                         | - `service` (string, optional): Name of service to restart.                                                                                                                                | 
 | `/v1/api/stack/{stackName}/run`     | POST   | Trigger one or all [jobs](https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job) in stack | - `service` (string, optional): Name of the job service to run.                                                                                                                            |
+
+The `wait` parameter has no effect on `restart` or `run`, but is still
+validated as a boolean. Invalid values return `400 Bad Request`.
 
 ## Example Request
 

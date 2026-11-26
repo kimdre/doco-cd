@@ -91,11 +91,41 @@ func TestSend(t *testing.T) {
 	}
 }
 
-func TestNewValidatesBodyTemplate(t *testing.T) {
+func TestNewValidatesTemplates(t *testing.T) {
 	t.Parallel()
 
-	if _, err := New(Config{BodyTemplate: "{{.Missing}}"}); !errors.Is(err, ErrInvalidTemplate) {
-		t.Fatalf("New() error = %v, want ErrInvalidTemplate", err)
+	for name, tc := range map[string]struct {
+		config       Config
+		wantSetting  string
+		otherSetting string
+	}{
+		"invalid body template": {
+			config:       Config{BodyTemplate: "{{.Missing}}"},
+			wantSetting:  "APPRISE_NOTIFY_BODY_TEMPLATE",
+			otherSetting: "APPRISE_NOTIFY_TITLE_TEMPLATE",
+		},
+		"invalid title template": {
+			config:       Config{TitleTemplate: "{{.Missing}}"},
+			wantSetting:  "APPRISE_NOTIFY_TITLE_TEMPLATE",
+			otherSetting: "APPRISE_NOTIFY_BODY_TEMPLATE",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := New(tc.config)
+			if !errors.Is(err, ErrInvalidTemplate) {
+				t.Fatalf("New() error = %v, want ErrInvalidTemplate", err)
+			}
+
+			if !strings.Contains(err.Error(), tc.wantSetting) {
+				t.Fatalf("New() error = %q, want it to name %s", err, tc.wantSetting)
+			}
+
+			if strings.Contains(err.Error(), tc.otherSetting) {
+				t.Fatalf("New() error = %q, must not name %s", err, tc.otherSetting)
+			}
+		})
 	}
 }
 
@@ -603,18 +633,29 @@ func TestValidateTemplate(t *testing.T) {
 	})
 }
 
-func TestRenderTemplate(t *testing.T) {
+// newRenderNotifier builds a notifier for render tests; no Apprise is contacted.
+func newRenderNotifier(t *testing.T, config Config) *Notifier {
+	t.Helper()
+
+	config.APIURL, config.NotifyURLs, config.NotifyLevel = "http://apprise.invalid", "apprise://test", "info"
+
+	notifier, err := New(config)
+	if err != nil {
+		t.Fatalf("failed to create notifier: %v", err)
+	}
+
+	return notifier
+}
+
+func TestRenderBodyTemplate(t *testing.T) {
 	t.Parallel()
 
 	t.Run("renders metadata fields and trims trailing newlines", func(t *testing.T) {
 		t.Parallel()
 
-		tmpl, err := validateTemplate("{{.Emoji}} {{.Title}} - {{.Target}}/{{.Stack}} @ {{.Revision}}\n")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		n := newRenderNotifier(t, Config{BodyTemplate: "{{.Emoji}} {{.Title}} - {{.Target}}/{{.Stack}} @ {{.Revision}}\n"})
 
-		got := renderTemplate(tmpl, Success, "Deployment completed", "ignored body", Metadata{
+		_, got := n.render(Success, "Deployment completed", "ignored body", Metadata{
 			Target:   "prod-vm",
 			Stack:    "app",
 			Revision: "main (abc123)",
@@ -630,21 +671,20 @@ func TestRenderTemplate(t *testing.T) {
 	t.Run("exposes reconciliation flag", func(t *testing.T) {
 		t.Parallel()
 
-		tmpl, err := validateTemplate("{{if .IsReconciliation}}reconcile {{.ReconciliationEvent}}{{else}}deploy{{end}}")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		n := newRenderNotifier(t, Config{BodyTemplate: "{{if .IsReconciliation}}reconcile {{.ReconciliationEvent}}{{else}}deploy{{end}}"})
 
-		got := renderTemplate(tmpl, Warning, "Service restarted", "", Metadata{ReconciliationEvent: "unhealthy"})
+		_, got := n.render(Warning, "Service restarted", "", Metadata{ReconciliationEvent: "unhealthy"})
 		if got != "reconcile unhealthy" {
 			t.Errorf("expected %q, got %q", "reconcile unhealthy", got)
 		}
 	})
 
-	t.Run("nil template falls back to the built-in body", func(t *testing.T) {
+	t.Run("no body template renders the built-in body", func(t *testing.T) {
 		t.Parallel()
 
-		got := renderTemplate(nil, Success, "Deployment completed", "Deploy done", Metadata{
+		n := newRenderNotifier(t, Config{})
+
+		_, got := n.render(Success, "Deployment completed", "Deploy done", Metadata{
 			Repository: "acme/repo",
 			JobID:      "job-99",
 		})
@@ -658,12 +698,9 @@ func TestRenderTemplate(t *testing.T) {
 	t.Run("renders duration and changed services", func(t *testing.T) {
 		t.Parallel()
 
-		tmpl, err := validateTemplate("{{.Stack}} in {{.Duration}}{{range .ChangedServices}} {{.}}{{end}}")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		n := newRenderNotifier(t, Config{BodyTemplate: "{{.Stack}} in {{.Duration}}{{range .ChangedServices}} {{.}}{{end}}"})
 
-		got := renderTemplate(tmpl, Success, "Deployment completed", "", Metadata{
+		_, got := n.render(Success, "Deployment completed", "", Metadata{
 			Stack:           "app",
 			Duration:        1500 * time.Millisecond,
 			ChangedServices: []string{"web", "worker"},
@@ -676,25 +713,25 @@ func TestRenderTemplate(t *testing.T) {
 	})
 }
 
-func TestWithoutBodyTemplate(t *testing.T) {
+func TestWithoutTemplates(t *testing.T) {
 	t.Parallel()
 
-	var o sendOptions
+	n := newRenderNotifier(t, Config{BodyTemplate: "custom body", TitleTemplate: "custom title"})
 
-	WithoutBodyTemplate()(&o)
+	title, body := n.render(Info, "Ping", "hello", Metadata{}, WithoutTemplates())
 
-	if !o.skipBodyTemplate {
-		t.Fatal("expected WithoutBodyTemplate to set skipBodyTemplate; Send then renders the built-in body regardless of APPRISE_NOTIFY_BODY_TEMPLATE")
+	if title != "ℹ️ Ping" || body != "hello" {
+		t.Errorf("got title %q and body %q, want the built-in ones", title, body)
 	}
 }
 
-func TestFormatTitle(t *testing.T) {
+func TestDefaultTitle(t *testing.T) {
 	t.Parallel()
 
 	t.Run("regular title does not include reconciliation marker", func(t *testing.T) {
 		t.Parallel()
 
-		title := formatTitle(Success, "Deployment completed", Metadata{})
+		title := newTemplateData(Success, "Deployment completed", "", Metadata{}).DefaultTitle()
 		expected := "✅ Deployment completed"
 
 		if title != expected {
@@ -705,7 +742,7 @@ func TestFormatTitle(t *testing.T) {
 	t.Run("reconciliation title includes short marker", func(t *testing.T) {
 		t.Parallel()
 
-		title := formatTitle(Success, "Deployment completed", Metadata{ReconciliationEvent: "unhealthy"})
+		title := newTemplateData(Success, "Deployment completed", "", Metadata{ReconciliationEvent: "unhealthy"}).DefaultTitle()
 		expected := "✅ [R] Deployment completed"
 
 		if title != expected {
@@ -716,11 +753,60 @@ func TestFormatTitle(t *testing.T) {
 	t.Run("whitespace reconciliation event is ignored", func(t *testing.T) {
 		t.Parallel()
 
-		title := formatTitle(Warning, "Service restarted", Metadata{ReconciliationEvent: "   "})
+		title := newTemplateData(Warning, "Service restarted", "", Metadata{ReconciliationEvent: "   "}).DefaultTitle()
 		expected := "⚠️ Service restarted"
 
 		if title != expected {
 			t.Errorf("expected %q, got %q", expected, title)
+		}
+	})
+}
+
+func TestRenderTitleTemplate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("renders the configured title template", func(t *testing.T) {
+		t.Parallel()
+
+		n := newRenderNotifier(t, Config{TitleTemplate: "{{ if .Stack }}{{ .Stack }}{{ else }}{{ .DefaultTitle }}{{ end }}"})
+
+		got, _ := n.render(Success, "Deployment completed", "done", Metadata{Stack: "app"})
+		if got != "app" {
+			t.Errorf("expected %q, got %q", "app", got)
+		}
+	})
+
+	t.Run("trims trailing newlines from the title", func(t *testing.T) {
+		t.Parallel()
+
+		n := newRenderNotifier(t, Config{TitleTemplate: "{{.Stack}}\n"})
+
+		got, _ := n.render(Success, "Deployment completed", "", Metadata{Stack: "app"})
+		if got != "app" {
+			t.Errorf("expected %q, got %q", "app", got)
+		}
+	})
+
+	t.Run("exposes the built-in title", func(t *testing.T) {
+		t.Parallel()
+
+		n := newRenderNotifier(t, Config{TitleTemplate: "{{.Stack}}: {{.DefaultTitle}}"})
+
+		got, _ := n.render(Success, "Deployment completed", "", Metadata{Stack: "app"})
+		if got != "app: ✅ Deployment completed" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("execution failure falls back to the built-in title", func(t *testing.T) {
+		t.Parallel()
+
+		// Passes startup validation, fails on the empty ChangedServices at runtime.
+		n := newRenderNotifier(t, Config{TitleTemplate: "{{index .ChangedServices 0}}"})
+
+		got, _ := n.render(Success, "Deployment completed", "", Metadata{})
+		if got != "✅ Deployment completed" {
+			t.Errorf("got %q", got)
 		}
 	})
 }

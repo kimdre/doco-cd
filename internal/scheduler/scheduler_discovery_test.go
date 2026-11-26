@@ -402,3 +402,69 @@ func TestValidateStopServicesSelfReference_SwarmIdentity(t *testing.T) {
 		t.Fatalf("expected self-reference error, got: %v", err)
 	}
 }
+
+func TestParseJobConfig_Timeout(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name          string
+		mode          scheduledJobMode
+		executionMode string
+		wantErr       bool
+		wantTimeout   time.Duration
+	}{
+		{name: "container restart mode", mode: scheduledJobModeContainer, executionMode: "restart", wantTimeout: 30 * time.Minute},
+		{name: "container one_off mode", mode: scheduledJobModeContainer, executionMode: "one_off", wantTimeout: 30 * time.Minute},
+		{name: "swarm one_off mode", mode: scheduledJobModeSwarm, executionMode: "one_off", wantTimeout: 30 * time.Minute},
+		{name: "swarm restart mode", mode: scheduledJobModeSwarm, executionMode: "restart", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			job := scheduledJob{
+				mode: tc.mode,
+				name: "mystack_backup",
+				labels: map[string]string{
+					swarm.StackNamespaceLabel:               "mystack",
+					docker.DocoCDJobLabels.JobEnabled:       "true",
+					docker.DocoCDJobLabels.JobSchedule:      "0 2 * * *",
+					docker.DocoCDJobLabels.JobExecutionMode: tc.executionMode,
+					docker.DocoCDJobLabels.JobTimeout:       "30m",
+				},
+			}
+
+			cfg, enabled, err := parseJobConfig(job)
+			if tc.wantErr {
+				if err == nil || enabled {
+					t.Fatalf("parseJobConfig() = enabled %v, error %v; want a disabled job with an error", enabled, err)
+				}
+
+				if !strings.Contains(err.Error(), docker.DocoCDJobLabels.JobTimeout) {
+					t.Fatalf("parseJobConfig() error = %v, want a message about %s", err, docker.DocoCDJobLabels.JobTimeout)
+				}
+
+				return
+			}
+
+			if err != nil || !enabled {
+				t.Fatalf("parseJobConfig() = enabled %v, error %v", enabled, err)
+			}
+
+			if cfg.Timeout != tc.wantTimeout {
+				t.Fatalf("parseJobConfig() timeout = %s, want %s", cfg.Timeout, tc.wantTimeout)
+			}
+		})
+	}
+}
+
+func TestGetScheduleFingerprint_Timeout(t *testing.T) {
+	t.Parallel()
+
+	base := docker.JobScheduleConfig{Schedule: "0 2 * * *", ExecutionMode: docker.JobExecutionModeOneOff}
+	withTimeout := base
+	withTimeout.Timeout = 30 * time.Minute
+
+	if getScheduleFingerprint(base) == getScheduleFingerprint(withTimeout) {
+		t.Fatal("getScheduleFingerprint() ignores the timeout, so a timeout change does not reload the job")
+	}
+}

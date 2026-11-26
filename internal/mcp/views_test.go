@@ -18,7 +18,7 @@ func TestMCPReadOutputSanitizesDockerObjects(t *testing.T) {
 	projects := summarizeProjects([]composeapi.Stack{{
 		ID:          "project-id",
 		Name:        "project",
-		Status:      composeapi.RUNNING,
+		Status:      "running(1)",
 		ConfigFiles: "/home/" + secret + "/compose.yaml",
 		Reason:      secret,
 	}})

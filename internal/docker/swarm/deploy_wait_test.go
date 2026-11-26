@@ -3,12 +3,103 @@ package swarm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	swarmTypes "github.com/moby/moby/api/types/swarm"
+
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 )
+
+func TestSelfUpdateHandoverError(t *testing.T) {
+	t.Parallel()
+
+	self := deployedService{id: "self-service-id", name: "doco-cd_app"}
+	canceled := fmt.Errorf("deploy: %w", context.Canceled)
+	failure := errors.New("service update failed")
+	tests := []struct {
+		name          string
+		selfService   string
+		deployed      []deployedService
+		err           error
+		activeContext bool
+		want          bool
+	}{
+		{name: "accepted self update interrupted", selfService: self.name, deployed: []deployedService{self}, err: canceled, want: true},
+		{name: "operation canceled without shutdown", selfService: self.name, deployed: []deployedService{self}, err: canceled, activeContext: true},
+		{name: "success", selfService: self.name, deployed: []deployedService{self}},
+		{name: "self update not submitted", selfService: self.name, err: canceled},
+		{name: "other service updated", selfService: self.name, deployed: []deployedService{{name: "doco-cd_worker"}}, err: canceled},
+		{name: "not a self stack", deployed: []deployedService{self}, err: canceled},
+		{name: "timeout", selfService: self.name, deployed: []deployedService{self}, err: context.DeadlineExceeded},
+		{name: "service failure", selfService: self.name, deployed: []deployedService{self}, err: failure},
+		{name: "joined failure", selfService: self.name, deployed: []deployedService{self}, err: errors.Join(canceled, failure)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			if !tt.activeContext {
+				cancel()
+			}
+
+			got := selfUpdateHandoverError(ctx, tt.err, tt.selfService, tt.deployed)
+			if errors.Is(got, selfupdate.ErrHandover) != tt.want {
+				t.Fatalf("selfUpdateHandoverError() = %v, want handover %v", got, tt.want)
+			}
+
+			if tt.want {
+				if !errors.Is(got, context.Canceled) {
+					t.Fatal("handover lost its cancellation cause")
+				}
+			} else if got != tt.err {
+				t.Fatalf("selfUpdateHandoverError() changed non-handover error to %v", got)
+			}
+		})
+	}
+}
+
+func TestWaitOnServicesPreservesFailureBeforeCancellation(t *testing.T) {
+	t.Parallel()
+
+	failure := errors.New("rollback paused")
+	services := []deployedService{{id: "failed", name: "stack_worker"}, {id: "canceled", name: "stack_app"}}
+
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reverse=%v", reverse), func(t *testing.T) {
+			t.Parallel()
+
+			order := services
+			if reverse {
+				order = []deployedService{services[1], services[0]}
+			}
+
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+
+			err := waitOnServices(ctx, order, func(_ context.Context, service deployedService) error {
+				if service.id == "failed" {
+					return failure
+				}
+
+				return context.Canceled
+			})
+			if !errors.Is(err, failure) || errors.Is(err, context.Canceled) {
+				t.Fatalf("waitOnServices() = %v, want failure without cancellation", err)
+			}
+
+			if errors.Is(selfUpdateHandoverError(ctx, err, services[1].name, services), selfupdate.ErrHandover) {
+				t.Fatal("a service failure was turned into a self-update handover")
+			}
+		})
+	}
+}
 
 func TestWaitOnServicesWithTimeout(t *testing.T) {
 	t.Parallel()

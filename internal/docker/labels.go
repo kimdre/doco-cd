@@ -1,6 +1,10 @@
 package docker
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+)
 
 // docoCDLabelNamesMetadata contains the metadata labels used by DocoCD.
 type docoCDLabelNamesMetadata struct {
@@ -22,6 +26,7 @@ type docoCdLabelNamesDeployment struct {
 	AutoDiscovery        string // Whether the deployment was auto-discovered
 	AutoDiscoveryConfig  string // JSON-serialized AutoDiscoveryConfig settings
 	Autostart            string // Whether deployment should start the service automatically
+	PreserveReplicas     string // Whether Swarm deployments keep the live replica count of a replicated service
 	OneShot              string // Whether the service is expected to complete successfully and exit
 	RecreateIgnore       string // Whether the deployment file changes should ignore recreate
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
@@ -31,6 +36,7 @@ type docoCdLabelNamesDeployment struct {
 	PinnedRevisions      string // Comma-separated source revisions whose artifacts are still mounted by a service because their content is unchanged
 	LiveResources        string // Comma-separated repository paths a service mounts from its stack's live directory (see recreate.ignore)
 	LifecycleHooks       string // Comma-separated Compose lifecycle hook phases that the service declares (pre_start, post_start, pre_stop)
+	ContentDigest        string // SHA256 digest of the inline secret and config values (environment/content) that a service consumes
 }
 
 // docoCdLabelNamesSource contains the labels used by DocoCD to identify the deployment source.
@@ -77,6 +83,7 @@ var DocoCDLabels = docoCdLabelNames{
 		AutoDiscovery:        "cd.doco.deployment.auto_discovery",
 		AutoDiscoveryConfig:  "cd.doco.deployment.auto_discovery.config",
 		Autostart:            "cd.doco.deployment.autostart",
+		PreserveReplicas:     swarm.PreserveReplicasLabel,
 		OneShot:              "cd.doco.deployment.one_shot",
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
@@ -86,6 +93,7 @@ var DocoCDLabels = docoCdLabelNames{
 		PinnedRevisions:      "cd.doco.deployment.pinned_revisions",
 		LiveResources:        "cd.doco.deployment.live_resources",
 		LifecycleHooks:       "cd.doco.deployment.lifecycle_hooks",
+		ContentDigest:        "cd.doco.deployment.content.sha",
 	},
 	Source: docoCdLabelNamesSource{
 		Type:             "cd.doco.source",
@@ -117,6 +125,7 @@ var docoCDJobLabelNames = struct {
 	JobNextRun             string // Timestamp of the next scheduled run in RFC3339 format
 	JobStopServices        string // Comma-separated list of services to stop before the job runs and restart after
 	JobStopServicesTimeout string // Explicit timeout in seconds used when stopping stop_services targets
+	JobTimeout             string // Maximum runtime of one scheduled run as a Go duration
 }{
 	JobEnabled:             "cd.doco.job.enabled",
 	JobSchedule:            "cd.doco.job.schedule",
@@ -135,6 +144,7 @@ var docoCDJobLabelNames = struct {
 	JobNextRun:             "cd.doco.job.next_run",
 	JobStopServices:        "cd.doco.job.stop_services",
 	JobStopServicesTimeout: "cd.doco.job.stop_services.timeout",
+	JobTimeout:             "cd.doco.job.timeout",
 }
 
 // DocoCDJobLabels exposes the scheduler/job labels for consumers outside this package.

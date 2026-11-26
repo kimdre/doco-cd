@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/docker/cli/cli/command"
+	"github.com/docker/cli/cli/config/configfile"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
@@ -66,9 +67,20 @@ func (c swarmJobIdentityClient) ServiceCreate(context.Context, client.ServiceCre
 type swarmJobIdentityCLI struct {
 	command.Cli
 	apiClient client.APIClient
+	cfg       *configfile.ConfigFile
 }
 
 func (c swarmJobIdentityCLI) Client() client.APIClient { return c.apiClient }
+
+// ConfigFile returns an empty config when the test sets none.
+// RunSwarmJob reads it to resolve registry credentials.
+func (c swarmJobIdentityCLI) ConfigFile() *configfile.ConfigFile {
+	if c.cfg == nil {
+		return configfile.New("")
+	}
+
+	return c.cfg
+}
 
 func TestRemoveSwarmOneOffServiceIdentity(t *testing.T) {
 	t.Parallel()
@@ -134,7 +146,7 @@ func TestRunSwarmJobCreateFailureIdentity(t *testing.T) {
 
 	log := slog.New(slog.NewJSONHandler(&output, nil))
 	cli := swarmJobIdentityCLI{apiClient: swarmJobIdentityClient{createErr: createErr}}
-	err := RunSwarmJob(t.Context(), cli, swarm.DeployModeGlobalJob, []string{"true"}, "identity-create-failure", log)
+	err := RunSwarmJob(t.Context(), cli, swarm.DeployModeGlobalJob, "", []string{"true"}, "identity-create-failure", log)
 
 	name := app.Name + "_identity-create-failure"
 	if !errors.Is(err, createErr) || !strings.Contains(err.Error(), name+" (id=unavailable)") {

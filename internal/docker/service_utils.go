@@ -274,6 +274,11 @@ func getDeployStatus(ctx context.Context, client client.APIClient, swarmMode boo
 // getServiceStatusFromContainerStatus returns a map of service names to their current status.
 // Compose lifecycle-hook runners are not service replicas and do not carry the doco-cd deployment labels,
 // so they are excluded.
+// One-off containers are also excluded. This includes scheduler job runs, which share the service label
+// but do not carry the doco-cd deployment labels. Docker lists the newest container first, so a running
+// one-off would otherwise supply the service labels and make the stack look changed on every poll.
+// Runs of native Compose jobs are also excluded. The Docker Engine jobs extension creates them with the job name
+// as service label, and they do not carry the doco-cd deployment labels either.
 // Containers without a Compose service label are also excluded. They are not replicas of any service,
 // for example helper containers that other tools start with only the project label.
 // Compose ignores them too, so a deployment cannot remove them and they must not count as drift.
@@ -281,7 +286,7 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 	result := make(map[Service]ServiceStatus)
 
 	for _, cont := range containers {
-		if cont.Labels[api.ProjectLabel] != projectName || cont.Labels[api.HookLabel] != "" {
+		if cont.Labels[api.ProjectLabel] != projectName || cont.Labels[api.HookLabel] != "" || isOneOffContainer(cont.Labels) || isEngineJobRun(cont.Labels) {
 			continue
 		}
 
@@ -312,6 +317,32 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 	return result
 }
 
+// isOneOffContainer reports whether labels belong to a one-off container.
+// Compose marks "compose run" containers with oneoff=True. The scheduler marks its job runs as ephemeral.
+// Containers without the oneoff label are not one-off containers.
+func isOneOffContainer(labels Labels) bool {
+	if isEphemeral, err := strconv.ParseBool(strings.TrimSpace(labels[DocoCDJobLabels.JobEphemeral])); err == nil && isEphemeral {
+		return true
+	}
+
+	return strings.EqualFold(strings.TrimSpace(labels[api.OneoffLabel]), "true")
+}
+
+// engineJobRunLabel is the reserved label of the Docker Engine jobs extension on the container of a job run.
+const engineJobRunLabel = "com.docker.job.id"
+
+// isEngineJobRun reports whether labels belong to a run of a native Compose job.
+// The Docker Engine jobs extension creates these containers. They are not replicas of a service.
+func isEngineJobRun(labels Labels) bool {
+	if _, ok := labels[engineJobRunLabel]; ok {
+		return true
+	}
+
+	_, ok := labels[api.JobLabel]
+
+	return ok
+}
+
 const (
 	ServiceMismatchReasonNotDeployed = "service not deployed"
 	ServiceMismatchReasonUnnecessary = "service is unnecessary"
@@ -326,6 +357,26 @@ type ServiceMismatch struct {
 	Reasons     []ServiceMismatchReason `json:"reasons"`
 }
 
+// checkSwarmReplicas returns the expected replica count for drift reporting and
+// whether the deployed count is valid.
+func checkSwarmReplicas(svcMode swarmInternal.DeployMode, svc types.ServiceConfig, deployed uint64) (want int, matches bool) {
+	want = svc.GetScale()
+	scale := uint64(want) //nolint:gosec // Compose scale is never negative.
+
+	if svcMode != swarmInternal.DeployModeReplicated || !isSwarmScheduledJobService(svc) {
+		return want, deployed == scale
+	}
+
+	// Only restart-mode runs scale the source service. One-off runs use a
+	// temporary service, so their source must stay at zero replicas.
+	if mode, ok := svc.Labels[DocoCDJobLabels.JobExecutionMode]; ok &&
+		JobExecutionMode(strings.TrimSpace(mode)) != JobExecutionModeRestart {
+		return 0, deployed == 0
+	}
+
+	return want, deployed == 0 || deployed == max(scale, 1)
+}
+
 type ServiceMismatchReason struct {
 	Reason string `json:"reason"`
 	Want   any    `json:"want"`
@@ -336,7 +387,9 @@ type ServiceMismatchReason struct {
 // In standalone mode, services with autostart disabled may remain stopped,
 // but all of their containers must exist.
 // Invalid autostart labels return an error in standalone mode.
-func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) ([]ServiceMismatch, error) {
+// In Swarm mode, replicated services with the preserve_replicas label skip the
+// replica count check, except for the local doco-cd service and scheduled jobs.
+func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services, selfSwarmService string) ([]ServiceMismatch, error) {
 	var mismatches []ServiceMismatch
 
 	// In non-Swarm mode, services with unset, "on-failure", or "no" restart policy can be considered as "stopped" and won't cause a mismatch.
@@ -392,11 +445,21 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 				} else {
 					switch svcMode {
 					case swarmInternal.DeployModeReplicated, swarmInternal.DeployModeReplicatedJob:
-						//  scale should always be >= 0
-						if uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
+						preserveReplicas := false
+
+						if svcMode == swarmInternal.DeployModeReplicated && (selfSwarmService == "" || status.Name != selfSwarmService) {
+							var err error
+
+							preserveReplicas, err = swarmInternal.PreserveReplicasEnabled(svc.Labels)
+							if err != nil {
+								return nil, fmt.Errorf("service %s: %w", svcName, err)
+							}
+						}
+
+						if want, matches := checkSwarmReplicas(svcMode, svc, status.Replicas); !preserveReplicas && !matches {
 							reasons = append(reasons, ServiceMismatchReason{
 								Reason: ServiceMismatchReasonReplicas,
-								Want:   svc.GetScale(),
+								Want:   want,
 								Got:    status.Replicas,
 							})
 						}

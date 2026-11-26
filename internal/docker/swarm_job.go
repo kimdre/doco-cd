@@ -17,7 +17,9 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/config/app"
 
+	"github.com/moby/moby/api/pkg/authconfig"
 	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/registry"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
@@ -28,6 +30,7 @@ import (
 
 const (
 	swarmOneOffCleanupTimeout = 30 * time.Second
+	swarmTaskPollInterval     = 500 * time.Millisecond
 	maxSwarmServiceNameLength = 63
 	// swarmJobLockDir holds one lock file per named Swarm job service
 	// (e.g. the shared "image-prune" job every stack deployment can trigger).
@@ -44,10 +47,12 @@ func swarmJobLockPath(name string) string {
 	return filepath.Join(os.TempDir(), swarmJobLockDir, name)
 }
 
-// RunSwarmJob runs a Docker Swarm job container with the specified mode and command.
+// RunSwarmJob runs a Docker Swarm job container with the specified mode, image and command.
+// An empty image selects DefaultSwarmHelperImage. The image must provide the tools the command uses.
 // https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job
-func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMode, command []string, title string, logs ...*slog.Logger) error {
+func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMode, image string, command []string, title string, logs ...*slog.Logger) error {
 	apiClient := dockerCLI.Client()
+	image = resolveSwarmHelperImage(image)
 
 	var (
 		serviceMode          swarmTypes.ServiceMode
@@ -84,6 +89,17 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	unlock := sourcecache.AcquireExclusivePathLock(swarmJobLockPath(name))
 	defer unlock()
 
+	encodedAuth := registryAuthForImage(dockerCLI, image)
+	if encodedAuth == "" {
+		// If auth is omitted on update, Swarm reuses the old credentials.
+		anonymousAuth, err := authconfig.Encode(registry.AuthConfig{})
+		if err != nil {
+			return fmt.Errorf("error encoding anonymous registry auth: %w", err)
+		}
+
+		encodedAuth = anonymousAuth
+	}
+
 	newServiceSpec := swarmTypes.ServiceSpec{
 		Name: name,
 		Labels: map[string]string{
@@ -93,7 +109,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 		},
 		TaskTemplate: swarmTypes.TaskSpec{
 			ContainerSpec: &swarmTypes.ContainerSpec{
-				Image:   "docker:cli",
+				Image:   image,
 				Command: command,
 				Mounts: []mount.Mount{
 					{
@@ -112,8 +128,9 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	}
 
 	response, err := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{
-		Spec:          newServiceSpec,
-		QueryRegistry: true,
+		Spec:                newServiceSpec,
+		EncodedRegistryAuth: encodedAuth,
+		QueryRegistry:       true,
 	})
 	if err == nil {
 		serviceID = response.ID
@@ -166,16 +183,25 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 						previousJobIteration = &iteration
 					}
 
-					// Update ForceUpdate monotonically so every invocation starts a
-					// new job iteration, including multiple runs in one second.
-					existingService.Spec.TaskTemplate.ContainerSpec.Labels = newServiceSpec.TaskTemplate.ContainerSpec.Labels
-					existingService.Spec.TaskTemplate.ContainerSpec.Command = newServiceSpec.TaskTemplate.ContainerSpec.Command
-					existingService.Spec.TaskTemplate.ForceUpdate++
+					task := &existingService.Spec.TaskTemplate
+					newContainer := newServiceSpec.TaskTemplate.ContainerSpec
+
+					// Do not keep platforms from a different image if registry lookup fails.
+					if task.ContainerSpec.Image != newContainer.Image && task.Placement != nil {
+						task.Placement.Platforms = nil
+					}
+
+					task.ContainerSpec.Image = newContainer.Image
+					task.ContainerSpec.Labels = newContainer.Labels
+					task.ContainerSpec.Command = newContainer.Command
+					// Start a new iteration even when jobs run in the same second.
+					task.ForceUpdate++
 
 					_, updateErr := apiClient.ServiceUpdate(ctx, serviceID, client.ServiceUpdateOptions{
-						Version:       existingService.Version,
-						Spec:          existingService.Spec,
-						QueryRegistry: true,
+						Version:             existingService.Version,
+						Spec:                existingService.Spec,
+						EncodedRegistryAuth: encodedAuth,
+						QueryRegistry:       true,
 					})
 
 					return updateErr
@@ -202,15 +228,36 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	return nil
 }
 
+// imagePruneScript also removes unused digest-only images: on the containerd image store a
+// Swarm digest pull keeps a repo@digest name, so the image is never dangling. rm without
+// --force keeps images any container uses, including the task history kept for rollback,
+// and the age check keeps fresh pulls a concurrent deployment has not started yet.
+// Images with any other name are skipped, because rm would only untag them without
+// checking for containers. The containerd store also lists digest names in RepoTags.
+const imagePruneScript = `docker image prune --force &&
+cutoff=$(($(date +%s) - 3600)) &&
+docker image ls --digests --format '{{.Tag}} {{.Repository}}@{{.Digest}}' |
+awk '$1 == "<none>" && $2 !~ /<none>/ {print $2}' |
+while read -r ref; do
+	info=$(docker image inspect --format '{{.Metadata.LastTagTime.Unix}}{{range .RepoTags}} {{.}}{{end}}{{range .RepoDigests}} {{.}}{{end}}' "$ref" 2>/dev/null) || continue
+	set -- $info
+	[ "$1" -lt "$cutoff" ] || continue
+	shift
+	for name; do [ "$name" = "$ref" ] || continue 2; done
+	out=$(docker image rm "$ref" 2>&1) || case "$out" in *conflict*) ;; *) echo "$out" >&2 ;; esac
+done`
+
 // RunImagePruneJob runs a Docker Swarm global job to prune unused images on all nodes.
-func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli, logs ...*slog.Logger) error {
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, []string{"docker", "image", "prune", "--force"}, "image-prune", logs...)
+// An empty image selects DefaultSwarmHelperImage.
+func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli, image string, logs ...*slog.Logger) error {
+	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, image, []string{"sh", "-c", imagePruneScript}, "image-prune", logs...)
 }
 
 // RunImageRemoveJob runs a Docker Swarm global job to remove specified images.
-func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []string, logs ...*slog.Logger) error {
+// An empty image selects DefaultSwarmHelperImage.
+func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, image string, images []string, logs ...*slog.Logger) error {
 	args := append([]string{"docker", "image", "rm", "--force"}, images...)
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, args, "image-remove", logs...)
+	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, image, args, "image-remove", logs...)
 }
 
 type SwarmOneOffFromServiceOptions struct {
@@ -384,6 +431,145 @@ func RemoveSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, servic
 	return nil
 }
 
+// StopSwarmOneOffService removes a temporary job service and waits until its tasks stop.
+// Swarm applies the stop grace period of the service before it kills the task containers.
+//
+// The stop continues when ctx is canceled, so a timeout stop is not lost on shutdown.
+// The wait is limited to the grace period plus a buffer, or to
+// DefaultStopServicesTimeout when the service has no grace period.
+// A missing service is not an error.
+func StopSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string, logs ...*slog.Logger) error {
+	stopCtx := context.WithoutCancel(ctx)
+	apiClient := dockerCLI.Client()
+
+	var jobLog *slog.Logger
+	if len(logs) > 0 {
+		jobLog = logs[0]
+	}
+
+	lookupCtx, cancelLookup := context.WithTimeout(stopCtx, jobStopLookupTimeout)
+	defer cancelLookup()
+
+	inspectResult, err := apiClient.ServiceInspect(lookupCtx, serviceID, client.ServiceInspectOptions{})
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return nil
+		}
+
+		return fmt.Errorf("inspect one-off service %s: %w", swarm.ServiceIdentity("", serviceID), err)
+	}
+
+	name := swarm.OrUnavailable(inspectResult.Service.Spec.Name)
+
+	// Get the tasks before the removal, because the service filter finds no tasks after it.
+	tasks, err := apiClient.TaskList(lookupCtx, client.TaskListOptions{
+		Filters: make(client.Filters).Add("service", serviceID),
+	})
+	if err != nil {
+		return fmt.Errorf("list tasks of one-off service %s: %w", swarm.ServiceIdentity(name, serviceID), err)
+	}
+
+	taskIDs := make([]string, 0, len(tasks.Items))
+	for _, task := range tasks.Items {
+		if !swarmTaskIsTerminal(task.Status.State) {
+			taskIDs = append(taskIDs, task.ID)
+		}
+	}
+
+	logSwarmJob(jobLog, "stopping one-off swarm service", name, serviceID)
+
+	removeCtx, cancelRemove := context.WithTimeout(stopCtx, swarmOneOffCleanupTimeout)
+	defer cancelRemove()
+
+	if _, err = apiClient.ServiceRemove(removeCtx, serviceID, client.ServiceRemoveOptions{}); err != nil && !errdefs.IsNotFound(err) {
+		logSwarmJobError(jobLog, "failed to remove one-off swarm service", name, serviceID, err)
+		return fmt.Errorf("remove one-off service %s: %w", swarm.ServiceIdentity(name, serviceID), err)
+	}
+
+	wait := resolveSwarmStopWaitTimeout(nil, inspectResult.Service.Spec.TaskTemplate.ContainerSpec)
+
+	return waitForSwarmTasksTerminal(stopCtx, apiClient, taskIDs, name, serviceID, wait)
+}
+
+// waitForSwarmTasksTerminal waits until each task is in a terminal state or removed, or until timeout elapses.
+func waitForSwarmTasksTerminal(ctx context.Context, apiClient client.APIClient, taskIDs []string, serviceName, serviceID string, timeout time.Duration) error {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(swarmTaskPollInterval)
+	defer ticker.Stop()
+
+	for {
+		live := make([]string, 0, len(taskIDs))
+
+		for _, taskID := range taskIDs {
+			result, err := apiClient.TaskInspect(waitCtx, taskID, client.TaskInspectOptions{})
+			if err != nil {
+				if errdefs.IsNotFound(err) {
+					continue
+				}
+
+				if waitCtx.Err() != nil && ctx.Err() == nil {
+					return fmt.Errorf("timed out after %s waiting for task(s) of one-off service %s to stop", timeout, swarm.ServiceIdentity(serviceName, serviceID))
+				}
+
+				return fmt.Errorf("inspect task %s of one-off service %s: %w", taskID, swarm.ServiceIdentity(serviceName, serviceID), err)
+			}
+
+			if !swarmTaskIsTerminal(result.Task.Status.State) {
+				live = append(live, taskID)
+			}
+		}
+
+		if len(live) == 0 {
+			return nil
+		}
+
+		taskIDs = live
+
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("timed out after %s waiting for %d task(s) of one-off service %s to stop", timeout, len(live), swarm.ServiceIdentity(serviceName, serviceID))
+		case <-ticker.C:
+		}
+	}
+}
+
+// swarmTaskIsTerminal reports whether a task no longer runs and holds no resources.
+func swarmTaskIsTerminal(state swarmTypes.TaskState) bool {
+	switch state {
+	case swarmTypes.TaskStateShutdown, swarmTypes.TaskStateComplete,
+		swarmTypes.TaskStateFailed, swarmTypes.TaskStateRejected,
+		swarmTypes.TaskStateOrphaned, swarmTypes.TaskStateRemove:
+		return true
+	default:
+		return false
+	}
+}
+
+// SwarmOneOffServiceActive reports whether a temporary job service still has a task that is not terminal.
+// A service without tasks is active, because Swarm has not created its task yet.
+func SwarmOneOffServiceActive(ctx context.Context, dockerCLI command.Cli, serviceID string) (bool, error) {
+	tasks, err := dockerCLI.Client().TaskList(ctx, client.TaskListOptions{
+		Filters: make(client.Filters).Add("service", serviceID),
+	})
+	if err != nil {
+		return false, fmt.Errorf("list tasks of one-off service %s: %w", swarm.ServiceIdentity("", serviceID), err)
+	}
+
+	if len(tasks.Items) == 0 {
+		return true, nil
+	}
+
+	for _, task := range tasks.Items {
+		if !swarmTaskIsTerminal(task.Status.State) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // FindSwarmOneOffService finds the single retained temporary service for runID.
 func FindSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, runID string) (string, error) {
 	filter := make(client.Filters)
@@ -403,6 +589,25 @@ func FindSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, runID st
 	}
 
 	return result.Items[0].ID, nil
+}
+
+// StopSwarmOneOffRun finds the temporary job service of runID and stops it with StopSwarmOneOffService.
+// The lookup continues when ctx is canceled. A missing service is not an error.
+func StopSwarmOneOffRun(ctx context.Context, dockerCLI command.Cli, runID string, logs ...*slog.Logger) error {
+	lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jobStopLookupTimeout)
+	serviceID, err := FindSwarmOneOffService(lookupCtx, dockerCLI, runID)
+
+	cancel()
+
+	if err != nil {
+		return err
+	}
+
+	if serviceID == "" {
+		return nil
+	}
+
+	return StopSwarmOneOffService(ctx, dockerCLI, serviceID, logs...)
 }
 
 // WaitOnSwarmOneOffService adopts a retained temporary job service.

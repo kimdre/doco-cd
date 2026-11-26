@@ -12,7 +12,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
-func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger) error {
+func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger, stack *docker.LockedStack) error {
 	s.Stages.Deploy.StartedAt = time.Now()
 
 	defer func() {
@@ -37,12 +37,10 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 
 	// Migrate deployment mode if needed
 	if s.DeployState.modeMigrationNeeded {
-		_, err = docker.MigrateDeploymentMode(
+		_, err = stack.MigrateDeploymentMode(
 			ctx,
 			stageLog,
 			s.Docker.Cmd,
-			s.DeployConfig.Context,
-			s.DeployConfig.Name,
 			s.migrationSource(),
 			s.Docker.SwarmMode,
 			s.Docker.SwarmAvailable,
@@ -75,7 +73,16 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		defer reporter.Stop()
 	}
 
-	err = docker.DeployStack(ctx, docker.DeployRequest{
+	err = stack.Deploy(ctx, s.deployRequest(ctx, stageLog, latestCommit, phaseReporter))
+	if err != nil {
+		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
+	}
+
+	return nil
+}
+
+func (s *StageManager) deployRequest(ctx context.Context, stageLog *slog.Logger, latestCommit string, phaseReporter docker.PhaseReporter) docker.DeployRequest {
+	return docker.DeployRequest{
 		JobLog:           stageLog,
 		ExternalRepoPath: s.Repository.PathExternal,
 		InternalRepoPath: s.Repository.PathInternal,
@@ -91,17 +98,18 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		ComposeLoad:      docker.NewComposeLoadOptions(s.AppConfig),
 		SwarmRetention:   docker.NewSwarmRetentionOptions(s.AppConfig),
 		SwarmMode:        s.Docker.SwarmMode,
-		HashNormMap:      pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment),
+		SwarmHelperImage: docker.NewSwarmHelperImage(s.AppConfig),
+		HashNormMap:      docker.PKIRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment),
 		Project:          s.Docker.Project,
 		ProjectHash:      s.Docker.ProjectHash,
 		CommitStatus:     s.selfUpdateCommitStatus(),
-		PhaseReporter:    phaseReporter,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
+		SelfUpdateRecovery: &docker.SwarmRecoveryInfo{
+			Target:  s.deploymentFailureTarget(),
+			Desired: s.retryDesired,
+		},
+		ConcludeOwnStatus: func() { s.concludeCollidingCommitStatus(ctx) },
+		PhaseReporter:     phaseReporter,
 	}
-
-	return nil
 }
 
 func sourceURLForLabels(repository *RepositoryData) string {

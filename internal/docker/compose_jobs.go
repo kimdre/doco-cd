@@ -301,7 +301,7 @@ func getOneShotServices(project *types.Project) (set.Set[string], error) {
 
 		switch strings.ToLower(strings.TrimSpace(svc.Restart)) {
 		case types.RestartPolicyAlways, types.RestartPolicyUnlessStopped:
-			return nil, fmt.Errorf("service %s: restart=%q is incompatible with %s; use no, on-failure, or unset",
+			return nil, fmt.Errorf("service %s: effective restart policy %q is incompatible with %s; use no or on-failure for restart, or none or on-failure for deploy.restart_policy.condition",
 				serviceName, svc.Restart, DocoCDLabels.Deployment.OneShot)
 		}
 	}
@@ -703,6 +703,12 @@ func waitForStartedServicesWith(ctx context.Context, listContainers projectConta
 		case <-ticker.C:
 		}
 	}
+}
+
+// isSwarmScheduledJobService reports whether a service is a scheduled job in Swarm mode.
+// Swarm reads only Compose service labels, so custom labels are ignored here.
+func isSwarmScheduledJobService(svc types.ServiceConfig) bool {
+	return isTrueLabel(svc.Labels[DocoCDJobLabels.JobEnabled])
 }
 
 func getServiceSchedulerLabels(svc types.ServiceConfig) map[string]string {

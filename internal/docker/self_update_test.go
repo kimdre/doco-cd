@@ -1,11 +1,13 @@
 package docker
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/common/types/duration"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -27,6 +29,18 @@ func selfUpdateTestProject(name, service string) *types.Project {
 func withSelfIdentity(t *testing.T, project, service string) {
 	t.Helper()
 
+	configureTestSelfIdentity(t, project, service, false)
+}
+
+func withSwarmSelfIdentity(t *testing.T, project, service string) {
+	t.Helper()
+
+	configureTestSelfIdentity(t, project, service, true)
+}
+
+func configureTestSelfIdentity(t *testing.T, project, service string, swarm bool) {
+	t.Helper()
+
 	previous := SelfUpdateConfig()
 
 	t.Cleanup(func() { ConfigureSelfUpdate(previous) })
@@ -40,6 +54,7 @@ func withSelfIdentity(t *testing.T, project, service string) {
 			Project:       project,
 			Service:       service,
 			Number:        1,
+			Swarm:         swarm,
 		},
 	})
 }
@@ -70,6 +85,45 @@ func TestSelfUpdateFor(t *testing.T) {
 
 			if (got != nil) != tt.want {
 				t.Errorf("selfUpdateFor = %v, want match %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSelfUpdateForSwarm(t *testing.T) {
+	withSwarmSelfIdentity(t, "doco-cd", "app")
+
+	if got := selfUpdateFor(selfUpdateTestProject("doco-cd", "app"), ""); got != nil {
+		t.Errorf("selfUpdateFor = %v, want nil for a swarm identity", got)
+	}
+}
+
+func TestSwarmSelfService(t *testing.T) {
+	tests := []struct {
+		name  string
+		swarm bool
+		dc    *deploy.Config
+		want  string
+	}{
+		{name: "own swarm stack", swarm: true, dc: &deploy.Config{Name: "doco-cd"}, want: "doco-cd_app"},
+		{name: "explicit default context", swarm: true, dc: &deploy.Config{Name: "doco-cd", Context: "default"}, want: "doco-cd_app"},
+		{name: "case sensitive swarm stack", swarm: true, dc: &deploy.Config{Name: "Doco-CD"}},
+		{name: "another swarm stack", swarm: true, dc: &deploy.Config{Name: "my-app"}},
+		{name: "remote swarm stack", swarm: true, dc: &deploy.Config{Name: "doco-cd", Context: "remote"}},
+		{name: "own compose stack", dc: &deploy.Config{Name: "doco-cd"}},
+		{name: "no config", swarm: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configureTestSelfIdentity(t, "doco-cd", "app", tt.swarm)
+
+			if got := SwarmSelfService(tt.dc); got != tt.want {
+				t.Errorf("SwarmSelfService = %q, want %q", got, tt.want)
+			}
+
+			if tt.swarm && IsSelfStack(tt.dc) != (tt.want != "") {
+				t.Errorf("IsSelfStack does not match the selected self-service")
 			}
 		})
 	}
@@ -160,16 +214,26 @@ func TestSelfDeployInputCarriesCommitStatus(t *testing.T) {
 		Context:   "doco-cd/nas/doco-cd",
 	}
 
+	concluded := false
 	req := runtimeDeployRequest{request: DeployRequest{
-		DeployConfig: &deploy.Config{Name: "doco-cd", Timeout: duration.Duration(90 * time.Second)},
-		LatestCommit: "abc123",
-		CommitStatus: status,
+		DeployConfig:      &deploy.Config{Name: "doco-cd", Timeout: duration.Duration(90 * time.Second)},
+		LatestCommit:      "abc123",
+		CommitStatus:      status,
+		ConcludeOwnStatus: func() { concluded = true },
 	}}
 
 	in := req.selfDeployInput()
 	if in.CommitStatus != status {
 		t.Fatalf("selfDeployInput().CommitStatus = %v, want %v", in.CommitStatus, status)
 	}
+
+	in.concludeOwnStatus()
+
+	if !concluded {
+		t.Fatal("selfDeployInput() dropped ConcludeOwnStatus")
+	}
+
+	(*SelfDeployInput)(nil).concludeOwnStatus()
 
 	if in.TimeoutSeconds != 90 {
 		t.Fatalf("selfDeployInput().TimeoutSeconds = %d, want 90", in.TimeoutSeconds)
@@ -182,5 +246,89 @@ func TestSelfDeployInputCarriesCommitStatus(t *testing.T) {
 	fromLabels := SelfDeployInputFromLabels(map[string]string{DocoCDLabels.Deployment.CommitSHA: "abc123"})
 	if got := selfSourceInfo(fromLabels).CommitStatus; got != nil {
 		t.Errorf("label-based redeploy handed over commit status %+v, want nil", *got)
+	}
+}
+
+// TestPrepareSelfUpdateClosesOwnStatusWhenHandoverIsActive checks that a
+// deploy which finds a handover already running closes the check it opened
+// and does not report a failure.
+func TestPrepareSelfUpdateClosesOwnStatusWhenHandoverIsActive(t *testing.T) {
+	withSelfIdentity(t, "stack", "app")
+
+	store := selfupdate.NewStore(t.TempDir())
+	if err := store.Create(&selfupdate.Record{
+		ID:       "5056a901-3c03-4478-91d4-7a20aab30e8e",
+		State:    selfupdate.StateStarted,
+		Strategy: selfupdate.StrategyScaleOut,
+		Stack:    "tools",
+		Service:  "doco-cd",
+	}); err != nil {
+		t.Fatalf("create handover: %v", err)
+	}
+
+	opts := SelfUpdateConfig()
+	opts.Store = store
+	ConfigureSelfUpdate(opts)
+
+	concluded := false
+	_, err := prepareSelfUpdate(t.Context(), nil, selfUpdateTestProject("stack", "app"), nil, nil, nil, &SelfDeployInput{
+		ConcludeOwnStatus: func() { concluded = true },
+	})
+
+	if !errors.Is(err, selfupdate.ErrHandover) {
+		t.Fatalf("prepareSelfUpdate() error = %v, want %v", err, selfupdate.ErrHandover)
+	}
+
+	if !concluded {
+		t.Fatal("colliding attempt left its commit status open")
+	}
+}
+
+func TestGuardSelfUpdateKeepsSharedLegacyStatus(t *testing.T) {
+	previous := SelfUpdateConfig()
+
+	t.Cleanup(func() { ConfigureSelfUpdate(previous) })
+
+	store := selfupdate.NewStore(t.TempDir())
+	if err := store.Create(&selfupdate.Record{
+		ID: "5056a901-3c03-4478-91d4-7a20aab30e8e", State: selfupdate.StateStarted,
+		Strategy: selfupdate.StrategyScaleOut, Stack: "tools", Service: "doco-cd",
+		Source: selfupdate.SourceInfo{CommitStatus: &selfupdate.CommitStatusInfo{
+			CommitSHA: "abc123", Context: "doco-cd/tools",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ConfigureSelfUpdate(SelfUpdateOptions{Enabled: true, Store: store})
+
+	project := selfUpdateTestProject("tools", "doco-cd")
+	target := &selfTarget{Service: "doco-cd", Project: project.Name}
+	shared := &selfupdate.CommitStatusInfo{CommitSHA: "abc123", Context: "doco-cd/tools"}
+
+	for _, tt := range []struct {
+		name      string
+		status    *selfupdate.CommitStatusInfo
+		wantClose bool
+	}{
+		{name: "shared legacy status", status: shared},
+		{name: "shared checks run", status: &selfupdate.CommitStatusInfo{
+			CommitSHA: "abc123", Context: "doco-cd/tools",
+			Target: &commitstatus.Target{Backend: commitstatus.BackendChecks, CheckRunID: 9},
+		}, wantClose: true},
+		{name: "other commit", status: &selfupdate.CommitStatusInfo{CommitSHA: "def456", Context: "doco-cd/tools"}, wantClose: true},
+		{name: "other context", status: &selfupdate.CommitStatusInfo{CommitSHA: "abc123", Context: "doco-cd/other"}, wantClose: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			concluded := false
+			err := guardSelfUpdate(project, target, &SelfDeployInput{
+				CommitStatus:      tt.status,
+				ConcludeOwnStatus: func() { concluded = true },
+			})
+
+			if !errors.Is(err, selfupdate.ErrHandover) || concluded != tt.wantClose {
+				t.Fatalf("guardSelfUpdate() concluded=%v err=%v, want concluded=%v", concluded, err, tt.wantClose)
+			}
+		})
 	}
 }

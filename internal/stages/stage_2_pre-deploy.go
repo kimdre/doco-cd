@@ -16,8 +16,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
-
 	"github.com/kimdre/doco-cd/internal/config"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -256,12 +254,18 @@ func measurePreDeployOperation[T any](
 	return value, err
 }
 
-func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
+func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger, stack *docker.LockedStack) error {
 	s.Stages.PreDeploy.StartedAt = time.Now()
 
 	defer func() {
 		s.Stages.PreDeploy.FinishedAt = time.Now()
 	}()
+
+	if s.Docker.SwarmMode {
+		if err := docker.WaitForSwarmSelfUpdate(ctx, s.Docker.Cmd.Client(), s.DeployConfig.Name, s.DeployConfig.Context, stageLog); err != nil {
+			return err
+		}
+	}
 
 	// Check for external secret changes and current deployed commit
 	var (
@@ -308,11 +312,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	// before any skip detection, otherwise an unchanged source could leave the
 	// previous runtime mode alive indefinitely.
 	s.DeployState.modeMigrationNeeded, err = measurePreDeployOperation(stageLog, "deployment_mode_inspection", func() (bool, error) {
-		return docker.DeploymentModeMigrationRequired(
+		return stack.DeploymentModeMigrationRequired(
 			ctx,
 			s.Docker.Cmd,
-			s.DeployConfig.Context,
-			s.DeployConfig.Name,
 			s.migrationSource(),
 			s.Docker.SwarmMode,
 			s.Docker.SwarmAvailable,
@@ -646,7 +648,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			changedServices = append(changedServices, staleArtifactChange(staleArtifacts))
 		}
 
-		mismatchServices, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus, s.Docker.Project.Services)
+		mismatchServices, err := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus,
+			s.Docker.Project.Services, docker.SwarmSelfService(s.DeployConfig))
 		if err != nil {
 			return fmt.Errorf("failed to check service mismatch: %w", err)
 		}
@@ -703,7 +706,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		s.DeployState.imageChangedServices = imageChangedServices
 		s.DeployState.ignoredInfo = ignoredInfo
 
-		stageLog.Debug("changes detected, proceeding with deployment",
+		stageLog.Info("changes detected, proceeding with deployment",
 			slog.String("directory", s.DeployConfig.WorkingDirectory),
 			slog.Bool("force_recreate", s.DeployConfig.ForceRecreate),
 			slog.Group("has_changes",
@@ -826,9 +829,19 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 	// pki-role external secrets issue a fresh certificate on every resolution.
 	// Hash their references instead of the resolved values to avoid redeploying
 	// solely because an unchanged role issued a fresh certificate.
-	hashProject := docker.WithNormalizedEnvValues(s.Docker.Project, pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
+	normMap := docker.PKIRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment)
 
-	projectHash, err := docker.ProjectHash(hashProject, s.Repository.PathExternal)
+	// The digest lets Compose detect value changes. It also covers values that
+	// are not part of the project hash. Swarm does not use this label.
+	if !s.Docker.SwarmMode {
+		if err = docker.ApplyContentDigestLabels(s.Docker.Project, s.DeployConfig.ExternalSecrets); err != nil {
+			return "", fmt.Errorf("failed to set content digest labels: %w", err)
+		}
+	}
+
+	hashProject := docker.WithNormalizedEnvValues(s.Docker.Project, normMap)
+
+	projectHash, err := docker.DeploymentProjectHash(hashProject, s.Repository.PathExternal, s.Docker.SwarmMode)
 	if err != nil {
 		return "", fmt.Errorf("failed to get project hash: %w", err)
 	}
@@ -851,39 +864,6 @@ func getAbsWorkingDir(repoPath, workingDir string) (string, error) {
 	}
 
 	return absPath, nil
-}
-
-// pkiRoleNormMap builds a map from resolved pki-role cert and private-key PEM
-// values to stable placeholder strings (the ref string itself), for use with
-// docker.WithNormalizedEnvValues during project hash computation.
-//
-// Certs issued by OpenBao pki-role refs are always freshly generated on every
-// ResolveSecretReferences call, so their PEM bytes differ each time even when no
-// configuration has changed. Using the ref string as a stable placeholder prevents
-// the project hash from changing on every poll cycle.
-func pkiRoleNormMap(externalSecrets map[string]secrettypes.ExternalSecretRef, env map[string]string) map[string]string {
-	norm := make(map[string]string)
-
-	for envVar, ref := range externalSecrets {
-		if !strings.HasPrefix(ref.LegacyRef, secrettypes.PKIRoleRefPrefix) {
-			continue
-		}
-
-		if v, ok := env[envVar]; ok && v != "" {
-			norm[v] = ref.LegacyRef
-		}
-
-		// The matching private-key value is stored under <NAME>_KEY, and the full certificate
-		// chain bundle under <NAME>_FULL. Both change on every issuance, so they need the same
-		// stable placeholder treatment as the certificate itself.
-		for _, suffix := range [2]string{secrettypes.PKIRoleKeySuffix, secrettypes.PKIFullChainSuffix} {
-			if v, ok := env[envVar+suffix]; ok && v != "" {
-				norm[v] = ref.LegacyRef + suffix
-			}
-		}
-	}
-
-	return norm
 }
 
 // errDeferredCertificatesNotIssued stops a deployment that would start containers with pki-role

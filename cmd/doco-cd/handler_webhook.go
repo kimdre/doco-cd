@@ -25,6 +25,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/selfupdate"
 	"github.com/kimdre/doco-cd/internal/source"
 	"github.com/kimdre/doco-cd/internal/stages"
 
@@ -568,6 +569,17 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return controlplane.SkippedRun(msg), nil
 	}
 
+	// The successor reports the result once it has proven itself healthy,
+	// so this run is neither a success nor a failure.
+	if errors.Is(deployErr, selfupdate.ErrHandover) {
+		msg := "self-update handover in progress"
+		elapsedTime := time.Since(startTime)
+		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
+		restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
+
+		return controlplane.SkippedRun(msg), nil
+	}
+
 	if deployErr != nil {
 		if controlplane.IsLifecycleCancellation(deployErr) {
 			return controlplane.FailedRun(deployErr.Error()), deployErr
@@ -727,8 +739,7 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 
 	// No repository-wide lock is taken here:
 	// source preparation is keyed per-revision (internal/source.Prepare/MarkInFlight) and the actual deployment is
-	// keyed per-stack (internal/lock.LockStack, applied deep in internal/docker.Deploy), so unrelated stacks/revisions
-	// within the same repository run concurrently while conflicting ones still serialize at the layer that actually needs it.
+	// keyed per-stack before deployment admission. Unrelated stacks and revisions can run concurrently.
 	handleFn := func(ctx context.Context, w http.ResponseWriter) (controlplane.RunResult, error) {
 		return handleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, metadata, h.testName, h.deployment, h.notifier)
 	}

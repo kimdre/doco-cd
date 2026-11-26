@@ -59,6 +59,7 @@ The settings can be set via environment variables, a `.env` file, or Docker secr
 | `TZ`                    | string  | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container.                                                                                                                         | `UTC`   |
 
 !!! question "For Docker-specific settings, see [Docker Settings](Docker-Settings.md)."
+    To override the pinned image used for Swarm helper jobs, see [`DOCKER_SWARM_HELPER_IMAGE`](Docker-Settings.md#swarm-environment-variables).
 
 ## API and Webhook Settings
 
@@ -127,7 +128,7 @@ If you want to pull images from a private registry, see [Container Registry Auth
 
 Doco-CD can be configured to send [Notifications](Advanced/Notifications.md) with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, failed, or triggered by [reconciliation](Deploy-Settings.md#reconciliation-settings).
 
-Reconciliation-triggered notifications use a short `[R]` marker in the title.  
+Reconciliation-triggered notifications use a short `[R]` marker in the title by default.  
 See [Reconciliation notifications](Advanced/Notifications.md#reconciliation-notifications) for configuration and format details.
 
 ## Encrypting sensitive data

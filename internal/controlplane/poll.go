@@ -123,16 +123,55 @@ func newControlPlanePoll(
 	}
 }
 
+// triggerPollOptions controls how triggerPolls accepts and runs a batch.
+type triggerPollOptions struct {
+	mode RunMode
+	// triggerReason is passed to the poll runner as the trigger event.
+	triggerReason string
+	// maxConfigs limits the batch size. Zero means no limit.
+	maxConfigs int
+}
+
 // TriggerPoll validates and executes a bounded batch of one-shot poll configurations.
 // If sync windows deferred every configuration of a synchronous batch, it
 // returns a *stages.SyncWindowBlockedError and the run is marked skipped.
 func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool, jobLog *slog.Logger) (string, error) {
+	mode := RunAsynchronous
+	if wait {
+		mode = RunSynchronous
+	}
+
+	return c.triggerPolls(ctx, configs, triggerPollOptions{
+		mode:          mode,
+		triggerReason: defaultPollTrigger,
+		maxConfigs:    MaxTriggerPollConfigs,
+	}, jobLog)
+}
+
+// TriggerConfiguredPolls runs the configured polls (POLL_CONFIG) once and waits for the result.
+// The run is a manual deployment, the same as a poll triggered through the API.
+// There is no batch size limit, because the operator controls the poll configuration.
+// The run uses the application lifecycle so it can finish during a self-update handover.
+// An empty triggerReason uses the default poll trigger.
+// The function changes the configurations in place, so callers must pass copies.
+func (c *Runs) TriggerConfiguredPolls(ctx context.Context, configs []poll.Config, triggerReason string, jobLog *slog.Logger) (string, error) {
+	if triggerReason == "" {
+		triggerReason = defaultPollTrigger
+	}
+
+	return c.triggerPolls(ctx, configs, triggerPollOptions{
+		mode:          RunSynchronousDetached,
+		triggerReason: triggerReason,
+	}, jobLog)
+}
+
+func (c *Runs) triggerPolls(ctx context.Context, configs []poll.Config, opts triggerPollOptions, jobLog *slog.Logger) (string, error) {
 	jobID := id.New()
 	if len(configs) == 0 {
 		return jobID, ErrNoPollConfiguration
 	}
 
-	if len(configs) > MaxTriggerPollConfigs {
+	if opts.maxConfigs > 0 && len(configs) > opts.maxConfigs {
 		return jobID, ErrTooManyPollConfigurations
 	}
 
@@ -161,18 +200,13 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 		Target:     target,
 	})
 
-	mode := RunAsynchronous
-	if wait {
-		mode = RunSynchronous
-	}
-
 	err := c.Execute(ctx, jobID, RunExecution{
-		Mode:         mode,
+		Mode:         opts.mode,
 		PanicContext: "poll run",
 		PanicError:   ErrPollRunPanicked,
 	}, func(runCtx context.Context) (RunResult, error) {
-		// Polls triggered through the API or MCP are manual deployments,
-		// which sync windows with manual_sync let through.
+		// Polls triggered through the API, MCP, or a process signal are manual
+		// deployments, which sync windows with manual_sync let through.
 		runCtx = WithDeploymentOrigin(runCtx, syncwindow.OriginManual)
 
 		workerCount := defaultConcurrentPollExecutions
@@ -208,7 +242,7 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 							jobLog,
 							metadata,
 							c.poll.secretProvider,
-							defaultPollTrigger,
+							opts.triggerReason,
 						)
 					})
 				}

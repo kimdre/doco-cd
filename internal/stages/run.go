@@ -26,6 +26,28 @@ func shouldPostPendingCommitStatus(stageName StageName, destroyEnabled, pendingP
 	return !destroyEnabled && !pendingPosted && stageName == StagePreDeploy
 }
 
+// handoverAlreadyActive reports whether a self-update handover for this
+// instance is already in progress. That run owns the commit status.
+func (s *StageManager) handoverAlreadyActive() bool {
+	// Project names are unique per Docker context, so only this instance's own stack waits.
+	if !docker.IsSelfStack(s.DeployConfig) {
+		return false
+	}
+
+	store := docker.SelfUpdateConfig().Store
+	if store == nil {
+		return false
+	}
+
+	active, err := store.Active()
+	if err != nil || active == nil {
+		return false
+	}
+
+	return active.Stack == s.DeployConfig.Name &&
+		active.Context == docker.NormalizeContextName(s.DeployConfig.Context)
+}
+
 func shouldSendDeploymentStartedNotification(stageName StageName, destroyEnabled, startedNotified bool) bool {
 	return !destroyEnabled && !startedNotified && stageName == StagePreDeploy
 }
@@ -54,7 +76,7 @@ type StageOrder struct {
 }
 
 // GetDeployStageOrder returns the order of stages for the deployment process.
-func (s *StageManager) GetDeployStageOrder() StageOrder {
+func (s *StageManager) GetDeployStageOrder(stack *docker.LockedStack) StageOrder {
 	return StageOrder{
 		Order: []StageName{
 			StageInit,
@@ -64,9 +86,11 @@ func (s *StageManager) GetDeployStageOrder() StageOrder {
 			StageCleanup,
 		},
 		Funcs: map[StageName]StageFunc{
-			StageInit:       func(ctx context.Context, stageLog *slog.Logger) error { return s.RunInitStage(ctx, stageLog) },
-			StagePreDeploy:  func(ctx context.Context, stageLog *slog.Logger) error { return s.RunPreDeployStage(ctx, stageLog) },
-			StageDeploy:     func(ctx context.Context, stageLog *slog.Logger) error { return s.RunDeployStage(ctx, stageLog) },
+			StageInit: func(ctx context.Context, stageLog *slog.Logger) error { return s.RunInitStage(ctx, stageLog) },
+			StagePreDeploy: func(ctx context.Context, stageLog *slog.Logger) error {
+				return s.RunPreDeployStage(ctx, stageLog, stack)
+			},
+			StageDeploy:     func(ctx context.Context, stageLog *slog.Logger) error { return s.RunDeployStage(ctx, stageLog, stack) },
 			StagePostDeploy: func(ctx context.Context, stageLog *slog.Logger) error { return s.RunPostDeployStage(ctx, stageLog) },
 			StageCleanup:    func(ctx context.Context, stageLog *slog.Logger) error { return s.RunCleanupStage(ctx, stageLog) },
 		},
@@ -91,16 +115,18 @@ func (s *StageManager) GetDestroyStageOrder() StageOrder {
 	}
 }
 
-// RunStages executes the stages in the defined order. For regular deployments,
-// admitMutation runs after a successful pre-deploy stage and before any
-// deployment-side notifications or mutations.
-func (s *StageManager) RunStages(ctx context.Context, admitMutation MutationAdmission) error {
-	stageOrder := s.GetDeployStageOrder()
+// RunStages executes the stages in order. Regular deployments require a locked
+// stack and call admitMutation after pre-deploy, before notifications or mutations.
+func (s *StageManager) RunStages(ctx context.Context, stack *docker.LockedStack, admitMutation MutationAdmission) error {
 	if s.DeployConfig.Destroy.Enabled {
-		stageOrder = s.GetDestroyStageOrder()
+		return s.runStageOrder(ctx, nil, s.GetDestroyStageOrder())
 	}
 
-	return s.runStageOrder(ctx, admitMutation, stageOrder)
+	if stack == nil {
+		return errors.New("deployment requires a locked stack")
+	}
+
+	return s.runStageOrder(ctx, admitMutation, s.GetDeployStageOrder(stack))
 }
 
 func (s *StageManager) runStageOrder(ctx context.Context, admitMutation MutationAdmission, stageOrder StageOrder) error {
@@ -187,6 +213,18 @@ func (s *StageManager) runStageOrder(ctx context.Context, admitMutation Mutation
 			}
 
 			return s.handleStageFailure(ctx, stageName, stageLog, err)
+		}
+
+		// The handover's own run posts the commit status. A second run must
+		// not open another check for the same stack.
+		if stageName == StagePreDeploy && s.handoverAlreadyActive() {
+			stageLog.Debug("self-update handover in progress")
+
+			if s.retryAttempt != nil {
+				s.retryAttempt.Cancel()
+			}
+
+			return selfupdate.ErrHandover
 		}
 
 		stageLog.Debug(string("completed stage: "+stageName),

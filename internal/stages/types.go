@@ -54,6 +54,11 @@ var (
 	// deployment. It wraps ErrSkipDeployment, because a deferred deployment is
 	// an intentional no-op and not a failure.
 	ErrSyncWindowBlocked = fmt.Errorf("deferred by sync window: %w", ErrSkipDeployment)
+
+	// ErrStackLocked is returned when the deployment is skipped because another
+	// operation, for example a running scheduled job, holds the stack lock. It
+	// wraps ErrSkipDeployment, so the next poll tries the stack again.
+	ErrStackLocked = fmt.Errorf("stack locked: %w", ErrSkipDeployment)
 )
 
 // SyncWindowBlockedError describes stacks whose deployment was deferred by
@@ -781,6 +786,24 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 
 func (s *StageManager) PostCommitStatusWithOutcome(ctx context.Context, state commitstatus.State, description string, outcome commitstatus.Outcome) {
 	s.postCommitStatus(ctx, state, description, outcome)
+}
+
+// concludeCollidingCommitStatus closes the check this run opened when it
+// skips because another handover is already in progress.
+func (s *StageManager) concludeCollidingCommitStatus(ctx context.Context) {
+	// GitHub returns a check run ID for the Queued post, before In Progress succeeds.
+	if !s.inProgressPosted && (s.commitStatusTarget == nil || s.commitStatusTarget.CheckRunID == 0) {
+		return
+	}
+
+	const description = "Skipped: self-update handover in progress"
+
+	s.postStatus(ctx, commitstatus.Status{
+		State:       commitstatus.StateSuccess,
+		Outcome:     commitstatus.OutcomeSkipped,
+		Description: description,
+		Summary:     description,
+	})
 }
 
 // postCommitStatus posts a commit status like PostCommitStatusWithOutcome and

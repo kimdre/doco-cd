@@ -86,7 +86,7 @@ If a single trigger deploys several stacks and only some of them are blocked, th
 
 ### Manual deployments
 
-Poll runs you trigger via the [REST API](../Endpoints/REST-API.md#polling) or the [MCP server](../Endpoints/MCP-Server.md) count as manual deployments.
+Poll runs you trigger via the [REST API](../Endpoints/REST-API.md#polling), the [MCP server](../Endpoints/MCP-Server.md), or a [process signal](../Poll-Settings.md#trigger-a-poll-run-with-a-signal) count as manual deployments.
 A manual deployment may bypass a block only if **every** window that blocks it has `#!yaml manual_sync: true`. This lets you do emergency deployments during a freeze while webhooks and polls stay blocked.
 doco-cd logs `sync window bypassed by manual deployment` whenever this happens.
 

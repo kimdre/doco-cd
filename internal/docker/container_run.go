@@ -266,6 +266,94 @@ func FindOneOffContainer(ctx context.Context, apiClient client.APIClient, runID 
 	return result.Items[0].ID, nil
 }
 
+const (
+	// engineDefaultStopTimeout is the stop timeout that the Docker engine uses
+	// for a container without a configured StopTimeout.
+	engineDefaultStopTimeout = 10 * time.Second
+	// jobStopWaitBuffer gives the engine time to kill and reap a container
+	// after its grace period ends.
+	jobStopWaitBuffer = 5 * time.Second
+	// jobStopLookupTimeout limits the inspect and list calls of a timeout stop.
+	jobStopLookupTimeout = 10 * time.Second
+)
+
+// StopScheduledContainer stops a running job container gracefully.
+// The engine sends the StopSignal of the container and applies its StopTimeout
+// (stop_grace_period in Compose) before it kills the container.
+//
+// The stop continues when ctx is canceled, so a timeout stop is not lost on shutdown.
+// The wait is limited to the grace period plus a buffer. A container with a
+// negative StopTimeout is never killed by the engine, so the wait is
+// limited to DefaultStopServicesTimeout. A missing container is not an error.
+func StopScheduledContainer(ctx context.Context, apiClient client.APIClient, containerID string) error {
+	stopCtx := context.WithoutCancel(ctx)
+
+	inspectCtx, cancelInspect := context.WithTimeout(stopCtx, jobStopLookupTimeout)
+	inspectResult, err := apiClient.ContainerInspect(inspectCtx, containerID, client.ContainerInspectOptions{})
+
+	cancelInspect()
+
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return nil
+		}
+
+		return fmt.Errorf("inspect container %s: %w", containerID, err)
+	}
+
+	wait := containerStopWaitTimeout(inspectResult.Container.Config)
+
+	waitCtx, cancelWait := context.WithTimeout(stopCtx, wait)
+	defer cancelWait()
+
+	// Empty options let the engine apply the StopSignal and StopTimeout of the container.
+	if _, err = apiClient.ContainerStop(waitCtx, containerID, client.ContainerStopOptions{}); err != nil {
+		if errdefs.IsNotFound(err) {
+			return nil
+		}
+
+		if waitCtx.Err() != nil {
+			return fmt.Errorf("container %s did not stop within %s", containerID, wait)
+		}
+
+		return fmt.Errorf("stop container %s: %w", containerID, err)
+	}
+
+	return nil
+}
+
+// containerStopWaitTimeout returns how long StopScheduledContainer waits for the engine to stop a container.
+func containerStopWaitTimeout(config *containerTypes.Config) time.Duration {
+	if config == nil || config.StopTimeout == nil {
+		return engineDefaultStopTimeout + jobStopWaitBuffer
+	}
+
+	if *config.StopTimeout < 0 {
+		return DefaultStopServicesTimeout
+	}
+
+	return time.Duration(*config.StopTimeout)*time.Second + jobStopWaitBuffer
+}
+
+// StopOneOffContainer gracefully stops the retained one-off container for runID.
+// It does nothing when no container exists for runID.
+func StopOneOffContainer(ctx context.Context, apiClient client.APIClient, runID string) error {
+	lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jobStopLookupTimeout)
+	containerID, err := FindOneOffContainer(lookupCtx, apiClient, runID)
+
+	cancel()
+
+	if err != nil {
+		return err
+	}
+
+	if containerID == "" {
+		return nil
+	}
+
+	return StopScheduledContainer(ctx, apiClient, containerID)
+}
+
 // RemoveOneOffContainer removes a retained one-off container after reporting.
 func RemoveOneOffContainer(ctx context.Context, apiClient client.APIClient, containerID string) error {
 	_, err := apiClient.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})

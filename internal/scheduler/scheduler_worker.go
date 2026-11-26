@@ -316,7 +316,14 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		lockedStacks := append([]string{stackName}, resolveStopServiceStacks(cfg.StopServices, stackName)...)
 
 		runLog.Debug("waiting for scheduler/deploy lock(s)", slog.Any("stacks", lockedStacks))
-		unlockStacks := lockStacks(s.contextName, lockedStacks...)
+
+		unlockStacks, lockErr := lockStacks(ctx, s.contextName, scheduledRunLockHolder(job.name, runID), lockedStacks...)
+		if lockErr != nil {
+			// The lock wait only ends early on shutdown, which is not a run failure.
+			runErr = lockErr
+
+			return
+		}
 
 		defer unlockStacks()
 

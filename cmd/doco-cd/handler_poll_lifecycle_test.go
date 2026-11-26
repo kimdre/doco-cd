@@ -85,3 +85,12 @@ func TestReportPollOutcomeDoesNotReportSuppressionAsFailure(t *testing.T) {
 		t.Fatalf("missing suppression reason: %s", output)
 	}
 }
+
+func TestReportPollOutcomeDoesNotReportPauseAsFailure(t *testing.T) {
+	t.Parallel()
+
+	output := pollOutcomeLog(t, stages.DeploymentPaused())
+	if !strings.Contains(output, "level=INFO msg=\"job skipped by deployment pause\"") {
+		t.Fatalf("expected an info log for the pause, got %q", output)
+	}
+}

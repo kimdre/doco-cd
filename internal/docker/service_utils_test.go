@@ -279,13 +279,197 @@ func TestServiceInventory_IgnoresContainersWithoutServiceLabel(t *testing.T) {
 		t.Fatalf("deployed status = %#v, want %#v", status.DeployedStatus, want)
 	}
 
-	mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, types.Services{"app": {Name: "app"}})
+	mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, types.Services{"app": {Name: "app"}}, "")
 	if err != nil {
 		t.Fatalf("CheckServiceMismatch() error = %v", err)
 	}
 
 	if len(mismatches) != 0 {
 		t.Fatalf("CheckServiceMismatch() = %#v, want no mismatches", mismatches)
+	}
+}
+
+// A running scheduler one-off clone shares the service label of its source but has no
+// doco-cd deployment labels. Docker lists it first because it is the newest container.
+// It must not supply the service labels or count as a replica (#2211).
+func TestServiceInventory_IgnoresOneOffContainers(t *testing.T) {
+	t.Parallel()
+
+	const project = "ops"
+
+	deploymentLabels := func(service string) Labels {
+		return Labels{
+			api.ProjectLabel:                    project,
+			api.ServiceLabel:                    service,
+			api.OneoffLabel:                     "False",
+			DocoCDLabels.Source.Name:            "owner/repo",
+			DocoCDLabels.Deployment.CommitSHA:   "deployed-commit",
+			DocoCDLabels.Deployment.ComposeHash: "deployed-compose",
+			DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deploy.AutoDiscoveryConfig{
+				Enabled: true,
+			}),
+			DocoCDLabels.Deployment.Timestamp: "2026-10-14T07:00:00Z",
+		}
+	}
+
+	appLabels := deploymentLabels("app")
+	jobLabels := deploymentLabels("backup")
+	jobLabels[DocoCDJobLabels.JobEnabled] = "true"
+
+	app := container.Summary{State: container.StateRunning, Labels: appLabels}
+	source := container.Summary{State: container.StateCreated, Labels: jobLabels}
+	schedulerRun := container.Summary{State: container.StateRunning, Labels: Labels{
+		api.ProjectLabel:                   project,
+		api.ServiceLabel:                   "backup",
+		api.OneoffLabel:                    "True",
+		DocoCDJobLabels.JobEnabled:         "true",
+		DocoCDJobLabels.JobEphemeral:       "true",
+		DocoCDJobLabels.JobRunID:           "run-1",
+		DocoCDJobLabels.JobStartedAt:       "2026-10-14T08:00:00Z",
+		DocoCDJobLabels.JobScheduledAt:     "2026-10-14T08:00:00Z",
+		DocoCDJobLabels.JobSourceServiceID: "source-id",
+	}}
+	containerClone := container.Summary{State: container.StateRunning, Labels: Labels{
+		api.ProjectLabel:             project,
+		api.ServiceLabel:             "app",
+		api.OneoffLabel:              "False",
+		DocoCDJobLabels.JobEphemeral: "true",
+	}}
+	composeRun := container.Summary{State: container.StateRunning, Labels: Labels{
+		api.ProjectLabel: project,
+		api.ServiceLabel: "app",
+		api.OneoffLabel:  "True",
+	}}
+
+	services := types.Services{
+		"app":    {Name: "app", Restart: "unless-stopped"},
+		"backup": {Name: "backup", Restart: "no"},
+	}
+	wantStatus := map[Service]ServiceStatus{
+		"app":    {Labels: appLabels, Replicas: 1, Containers: 1},
+		"backup": {Labels: jobLabels, Containers: 1},
+	}
+
+	for _, tt := range []struct {
+		name       string
+		containers []container.Summary
+	}{
+		{name: "one-off containers first", containers: []container.Summary{schedulerRun, containerClone, composeRun, app, source}},
+		{name: "one-off containers last", containers: []container.Summary{app, source, schedulerRun, containerClone, composeRun}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			inventory := getServiceStatusFromContainerStatus(project, tt.containers)
+			status := getLatestServiceStatus(&sync.Map{}, inventory, "https://github.com/owner/repo.git", project)
+
+			if !reflect.DeepEqual(status.DeployedStatus, wantStatus) {
+				t.Fatalf("deployed status = %#v, want %#v", status.DeployedStatus, wantStatus)
+			}
+
+			if status.deploymentCommitSHA != "deployed-commit" || status.deploymentComposeHash != "deployed-compose" {
+				t.Fatalf("deployment metadata = %q/%q, want deployed-commit/deployed-compose",
+					status.deploymentCommitSHA, status.deploymentComposeHash)
+			}
+
+			mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, services, "")
+			if err != nil {
+				t.Fatalf("CheckServiceMismatch() error = %v", err)
+			}
+
+			if len(mismatches) != 0 {
+				t.Fatalf("CheckServiceMismatch() = %#v, want no mismatches", mismatches)
+			}
+		})
+	}
+}
+
+func TestIsOneOffContainer(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		labels Labels
+		want   bool
+	}{
+		{name: "no labels"},
+		{name: "service container", labels: Labels{api.OneoffLabel: "False"}},
+		{name: "compose run", labels: Labels{api.OneoffLabel: "True"}, want: true},
+		{name: "compose run lower case", labels: Labels{api.OneoffLabel: " true "}, want: true},
+		{name: "scheduler run", labels: Labels{api.OneoffLabel: "False", DocoCDJobLabels.JobEphemeral: "true"}, want: true},
+		{name: "ephemeral false", labels: Labels{DocoCDJobLabels.JobEphemeral: "false"}},
+		{name: "ephemeral invalid", labels: Labels{DocoCDJobLabels.JobEphemeral: "maybe"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isOneOffContainer(tt.labels); got != tt.want {
+				t.Fatalf("isOneOffContainer(%v) = %v, want %v", tt.labels, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsEngineJobRun(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		labels Labels
+		want   bool
+	}{
+		{name: "no labels"},
+		{name: "service container", labels: Labels{api.ServiceLabel: "app", api.OneoffLabel: "False"}},
+		{name: "engine job run", labels: Labels{api.ServiceLabel: "backup", engineJobRunLabel: "job-run-1"}, want: true},
+		{name: "native job label", labels: Labels{api.ServiceLabel: "backup", api.JobLabel: "backup"}, want: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isEngineJobRun(tt.labels); got != tt.want {
+				t.Fatalf("isEngineJobRun(%v) = %v, want %v", tt.labels, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetServiceStatusFromContainerStatus_ExcludesEngineJobRuns(t *testing.T) {
+	t.Parallel()
+
+	const project = "test-project"
+
+	appLabels := Labels{
+		api.ProjectLabel:                  project,
+		api.ServiceLabel:                  "app",
+		api.OneoffLabel:                   "False",
+		DocoCDLabels.Source.Name:          "owner/repo",
+		DocoCDLabels.Deployment.CommitSHA: "deployed-commit",
+	}
+	app := container.Summary{State: container.StateRunning, Labels: appLabels}
+	engineRun := container.Summary{State: container.StateRunning, Labels: Labels{
+		api.ProjectLabel:  project,
+		api.ServiceLabel:  "backup",
+		api.OneoffLabel:   "False",
+		engineJobRunLabel: "job-run-1",
+	}}
+
+	for _, containers := range [][]container.Summary{{engineRun, app}, {app, engineRun}} {
+		inventory := getServiceStatusFromContainerStatus(project, containers)
+		status := getLatestServiceStatus(&sync.Map{}, inventory, "https://github.com/owner/repo.git", project)
+
+		want := map[Service]ServiceStatus{"app": {Labels: appLabels, Replicas: 1, Containers: 1}}
+		if !reflect.DeepEqual(status.DeployedStatus, want) {
+			t.Fatalf("deployed status = %#v, want %#v", status.DeployedStatus, want)
+		}
+
+		mismatches, err := CheckServiceMismatch(false, status.DeployedStatus, types.Services{"app": {Name: "app", Restart: "unless-stopped"}}, "")
+		if err != nil {
+			t.Fatalf("CheckServiceMismatch() error = %v", err)
+		}
+
+		if len(mismatches) != 0 {
+			t.Fatalf("CheckServiceMismatch() = %#v, want no mismatches", mismatches)
+		}
 	}
 }
 
@@ -1393,7 +1577,7 @@ func TestCheckServiceMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := CheckServiceMismatch(tt.swarmModeEnable, tt.deployed, tt.services)
+			got, err := CheckServiceMismatch(tt.swarmModeEnable, tt.deployed, tt.services, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1455,7 +1639,7 @@ func TestCheckServiceMismatch_AutostartDisabled(t *testing.T) {
 					deployed["web"] = ServiceStatus{Replicas: tt.replicas, Containers: tt.containers}
 				}
 
-				got, err := CheckServiceMismatch(false, deployed, services)
+				got, err := CheckServiceMismatch(false, deployed, services, "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1492,7 +1676,7 @@ func TestCheckServiceMismatch_ContainerCountNeedsAutostartDisabled(t *testing.T)
 
 			got, err := CheckServiceMismatch(false,
 				map[Service]ServiceStatus{"web": {Containers: 1}},
-				types.Services{"web": {Name: "web", Restart: restart, Scale: new(2)}})
+				types.Services{"web": {Name: "web", Restart: restart, Scale: new(2)}}, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1564,7 +1748,7 @@ func TestCheckServiceMismatch_AutostartContainerInventory(t *testing.T) {
 				Labels: types.Labels{DocoCDLabels.Deployment.Autostart: "false"},
 			}}
 
-			got, err := CheckServiceMismatch(false, deployed, services)
+			got, err := CheckServiceMismatch(false, deployed, services, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1624,7 +1808,7 @@ func TestCheckServiceMismatch_AutostartLabels(t *testing.T) {
 				Name: "web", Restart: "unless-stopped", Labels: tt.labels, CustomLabels: tt.customLabels,
 			}}
 
-			got, err := CheckServiceMismatch(false, deployed, services)
+			got, err := CheckServiceMismatch(false, deployed, services, "")
 			if tt.wantError {
 				if err == nil || !strings.Contains(err.Error(), "service web: invalid "+DocoCDLabels.Deployment.Autostart) {
 					t.Fatalf("expected a service-specific autostart error, got %v", err)
@@ -1695,7 +1879,7 @@ func TestCheckServiceMismatch_AutostartPreservesSwarm(t *testing.T) {
 					Labels: types.Labels{DocoCDLabels.Deployment.Autostart: label},
 				}}
 
-				got, err := CheckServiceMismatch(true, tt.deployed, services)
+				got, err := CheckServiceMismatch(true, tt.deployed, services, "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1709,6 +1893,116 @@ func TestCheckServiceMismatch_AutostartPreservesSwarm(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCheckServiceMismatch_PreserveReplicas(t *testing.T) {
+	t.Parallel()
+
+	preserve := types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "true"}
+	replicated := map[Service]ServiceStatus{"web": {Name: "stack_web", SwarmMode: swarm.DeployModeReplicated, Replicas: 5}}
+
+	for _, tt := range []struct {
+		name         string
+		swarmMode    bool
+		mode         swarm.DeployMode
+		labels       types.Labels
+		customLabels types.Labels
+		deployed     map[Service]ServiceStatus
+		selfService  string
+		reason       string
+		wantError    bool
+	}{
+		{name: "label skips replica count", swarmMode: true, labels: preserve, deployed: replicated},
+		{
+			name: "label value is trimmed", swarmMode: true, deployed: replicated,
+			labels: types.Labels{DocoCDLabels.Deployment.PreserveReplicas: " TRUE "},
+		},
+		{name: "no label reports replicas", swarmMode: true, deployed: replicated, reason: ServiceMismatchReasonReplicas},
+		{
+			name: "label false reports replicas", swarmMode: true, deployed: replicated, reason: ServiceMismatchReasonReplicas,
+			labels: types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "false"},
+		},
+		{
+			name: "custom label does not override", swarmMode: true, deployed: replicated,
+			labels: preserve, customLabels: types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "false"},
+		},
+		{
+			name: "custom label alone does not enable", swarmMode: true, deployed: replicated, reason: ServiceMismatchReasonReplicas,
+			customLabels: preserve,
+		},
+		{
+			name: "self service reports replicas", swarmMode: true, deployed: replicated,
+			labels: preserve, selfService: "stack_web", reason: ServiceMismatchReasonReplicas,
+		},
+		{name: "missing service is reported", swarmMode: true, labels: preserve, reason: ServiceMismatchReasonNotDeployed},
+		{
+			name: "mode drift is reported", swarmMode: true, labels: preserve, reason: ServiceMismatchReasonSwarmMode,
+			deployed: map[Service]ServiceStatus{"web": {SwarmMode: swarm.DeployModeGlobal}},
+		},
+		{
+			name: "replicated job is reported", swarmMode: true, mode: swarm.DeployModeReplicatedJob, labels: preserve,
+			deployed: map[Service]ServiceStatus{"web": {SwarmMode: swarm.DeployModeReplicatedJob, Replicas: 5}},
+			reason:   ServiceMismatchReasonReplicas,
+		},
+		{
+			name: "scheduled job is reported", swarmMode: true, deployed: replicated, reason: ServiceMismatchReasonReplicas,
+			labels: types.Labels{
+				DocoCDLabels.Deployment.PreserveReplicas: "true",
+				DocoCDJobLabels.JobEnabled:               "true",
+			},
+		},
+		{
+			name: "invalid label returns error", swarmMode: true, deployed: replicated, wantError: true,
+			labels: types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "invalid"},
+		},
+		{
+			name: "standalone ignores label", labels: preserve, reason: ServiceMismatchReasonReplicas,
+			deployed: map[Service]ServiceStatus{"web": {Replicas: 5}},
+		},
+		{
+			name:     "standalone ignores invalid label",
+			labels:   types.Labels{DocoCDLabels.Deployment.PreserveReplicas: "invalid"},
+			deployed: map[Service]ServiceStatus{"web": {Replicas: 1}},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := types.ServiceConfig{Name: "web", Labels: tt.labels, CustomLabels: tt.customLabels}
+			if tt.swarmMode && tt.mode != "" {
+				svc.Deploy = &types.DeployConfig{Mode: string(tt.mode)}
+			}
+
+			if !tt.swarmMode {
+				svc.Restart = "always"
+			}
+
+			got, err := CheckServiceMismatch(tt.swarmMode, tt.deployed, types.Services{"web": svc}, tt.selfService)
+			if tt.wantError {
+				if err == nil || !strings.Contains(err.Error(), "service web: invalid "+DocoCDLabels.Deployment.PreserveReplicas) {
+					t.Fatalf("expected a service-specific preserve_replicas error, got %v", err)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if tt.reason == "" {
+				if len(got) != 0 {
+					t.Fatalf("unexpected mismatch: %v", got)
+				}
+
+				return
+			}
+
+			if len(got) != 1 || len(got[0].Reasons) != 1 || got[0].Reasons[0].Reason != tt.reason {
+				t.Fatalf("mismatches = %v, want %q", got, tt.reason)
+			}
+		})
 	}
 }
 
@@ -1741,6 +2035,94 @@ func TestRepositoryLabelMatches(t *testing.T) {
 
 			if got := RepositoryLabelMatches(tt.label, tt.repositories...); got != tt.want {
 				t.Fatalf("RepositoryLabelMatches(%q, %q) = %v, want %v", tt.label, tt.repositories, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckServiceMismatch_SwarmScheduledJobReplicas(t *testing.T) {
+	t.Parallel()
+
+	intPtr := func(v int) *int { return &v }
+
+	for _, tt := range []struct {
+		name        string
+		mode        swarm.DeployMode
+		enabled     string
+		jobMode     string
+		custom      bool
+		replicas    *int
+		deployed    uint64
+		want        bool
+		wantReplica *int
+	}{
+		{name: "pinned after deploy", enabled: "true", deployed: 0},
+		{name: "scaled up by run", enabled: "true", deployed: 1},
+		{name: "trimmed label", enabled: " TRUE ", deployed: 0},
+		{name: "manual scale", enabled: "true", deployed: 5, want: true},
+		{name: "multi replica pinned", enabled: "true", replicas: intPtr(3), deployed: 0},
+		{name: "multi replica run", enabled: "true", replicas: intPtr(3), deployed: 3},
+		{name: "multi replica partial", enabled: "true", replicas: intPtr(3), deployed: 1, want: true},
+		{name: "zero replicas run", enabled: "true", replicas: intPtr(0), deployed: 1},
+		{name: "zero replicas manual scale", enabled: "true", replicas: intPtr(0), deployed: 2, want: true},
+		{name: "one-off idle", enabled: "true", jobMode: "one_off", deployed: 0},
+		{name: "one-off scaled to Compose count", enabled: "true", jobMode: " one_off ", deployed: 1, want: true, wantReplica: intPtr(0)},
+		{name: "one-off scaled from zero", enabled: "true", jobMode: "one_off", replicas: intPtr(0), deployed: 1, want: true},
+		{name: "disabled", enabled: "false", deployed: 0, want: true},
+		{name: "invalid label", enabled: "invalid", deployed: 0, want: true},
+		{name: "no label", deployed: 0, want: true},
+		{name: "custom label only", enabled: "true", custom: true, deployed: 0, want: true},
+		{name: "replicated job", mode: swarm.DeployModeReplicatedJob, enabled: "true", deployed: 0, want: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mode := tt.mode
+			if mode == "" {
+				mode = swarm.DeployModeReplicated
+			}
+
+			svc := types.ServiceConfig{
+				Name:   "job",
+				Deploy: &types.DeployConfig{Mode: string(mode), Replicas: tt.replicas},
+			}
+			switch {
+			case tt.custom:
+				svc.CustomLabels = types.Labels{DocoCDJobLabels.JobEnabled: tt.enabled}
+			case tt.enabled != "":
+				svc.Labels = types.Labels{DocoCDJobLabels.JobEnabled: tt.enabled}
+			}
+
+			if tt.jobMode != "" {
+				svc.Labels[DocoCDJobLabels.JobExecutionMode] = tt.jobMode
+			}
+
+			got, err := CheckServiceMismatch(true,
+				map[Service]ServiceStatus{"job": {SwarmMode: mode, Replicas: tt.deployed}},
+				types.Services{"job": svc}, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !tt.want {
+				if len(got) != 0 {
+					t.Fatalf("unexpected Swarm mismatch: %v", got)
+				}
+
+				return
+			}
+
+			if len(got) != 1 || len(got[0].Reasons) != 1 || got[0].Reasons[0].Reason != ServiceMismatchReasonReplicas {
+				t.Fatalf("Swarm mismatches = %v, want %q", got, ServiceMismatchReasonReplicas)
+			}
+
+			want := svc.GetScale()
+			if tt.wantReplica != nil {
+				want = *tt.wantReplica
+			}
+
+			if got[0].Reasons[0].Want != want || got[0].Reasons[0].Got != tt.deployed {
+				t.Fatalf("replica mismatch = %+v, want %d got %d", got[0].Reasons[0], want, tt.deployed)
 			}
 		})
 	}
