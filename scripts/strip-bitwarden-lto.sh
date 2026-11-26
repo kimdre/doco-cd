@@ -18,6 +18,9 @@
 # Set OBJCOPY to use a specific objcopy binary. Linux uses GNU objcopy from
 # binutils by default. macOS needs LLVM objcopy, for example from
 # "brew install llvm" or "rust-objcopy" from the Rust llvm-tools component.
+#
+# TODO: Remove this script when the Bitwarden SDK library is rebuilt without LTO sections.
+
 set -eu
 
 module=github.com/bitwarden/sdk-go/v2
