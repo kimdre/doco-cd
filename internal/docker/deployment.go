@@ -182,9 +182,12 @@ type DeployRequest struct {
 	ComposeLoad     ComposeLoadOptions
 	SwarmRetention  SwarmRetentionOptions
 	SwarmMode       bool
-	HashNormMap     map[string]string
-	Project         *types.Project
-	ProjectHash     string
+	// SwarmHelperImage overrides the image for Swarm helper jobs such as image-prune.
+	// Empty selects DefaultSwarmHelperImage.
+	SwarmHelperImage string
+	HashNormMap      map[string]string
+	Project          *types.Project
+	ProjectHash      string
 	// CommitStatus is the commit status left pending for this deployment. A
 	// self-update records it so the process that resolves the handover can
 	// post the final state.

@@ -1343,6 +1343,63 @@ func TestGetConfig_DockerSwarmSecretRetentionRejectsBelowMinusOne(t *testing.T) 
 	}
 }
 
+func TestGetConfig_DockerSwarmHelperImage(t *testing.T) {
+	const digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+	for _, tc := range []struct {
+		name          string
+		value         string
+		want          string
+		wantNoDigest  bool
+		wantErrSubstr string
+	}{
+		{name: "empty selects built-in default", value: "", want: ""},
+		{name: "whitespace selects built-in default", value: "   ", want: ""},
+		{name: "digest-pinned override is trimmed", value: " registry.example.com/docker:29-cli@" + digest + " ", want: "registry.example.com/docker:29-cli@" + digest},
+		{name: "digest-only override is pinned", value: "docker@" + digest, want: "docker@" + digest},
+		{name: "tag-only override is accepted without digest", value: "docker:29-cli", want: "docker:29-cli", wantNoDigest: true},
+		{name: "invalid reference is rejected", value: "Docker:CLI", wantErrSubstr: "invalid DOCKER_SWARM_HELPER_IMAGE"},
+		{name: "reference with spaces is rejected", value: "docker cli", wantErrSubstr: "invalid DOCKER_SWARM_HELPER_IMAGE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", "info")
+			t.Setenv("HTTP_PORT", "8080")
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			t.Setenv("DOCKER_SWARM_HELPER_IMAGE", tc.value)
+
+			cfg, err := GetConfig()
+			if tc.wantErrSubstr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErrSubstr) {
+					t.Fatalf("GetConfig() error = %v, want error containing %q", err, tc.wantErrSubstr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("GetConfig() error = %v", err)
+			}
+
+			if cfg.DockerSwarmHelperImage != tc.want {
+				t.Errorf("DockerSwarmHelperImage = %q, want %q", cfg.DockerSwarmHelperImage, tc.want)
+			}
+
+			if got := cfg.DockerSwarmHelperImageWithoutDigest(); got != tc.wantNoDigest {
+				t.Errorf("DockerSwarmHelperImageWithoutDigest() = %v, want %v", got, tc.wantNoDigest)
+			}
+		})
+	}
+}
+
+func TestDockerSwarmHelperImageWithoutDigestNilConfig(t *testing.T) {
+	t.Parallel()
+
+	var cfg *Config
+	if cfg.DockerSwarmHelperImageWithoutDigest() {
+		t.Fatal("nil config must not report a missing digest")
+	}
+}
+
 func TestGetConfig_PollConfigAbsolutePathNormalizedInPlace(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")

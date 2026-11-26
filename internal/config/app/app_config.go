@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	distreference "github.com/distribution/reference"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"go.yaml.in/yaml/v4"
 
@@ -83,6 +84,7 @@ type Config struct {
 	DockerSwarmFeatures            bool                   `env:"DOCKER_SWARM_FEATURES,notEmpty" envDefault:"true"`                                                // DockerSwarmFeatures enables the usage Docker Swarm features in the application if it has detected that it is running in a Docker Swarm environment
 	DockerSwarmConfigRetention     int                    `env:"DOCKER_SWARM_CONFIG_RETENTION,notEmpty" envDefault:"0" validate:"min=-1"`                         // DockerSwarmConfigRetention is the global default number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning.
 	DockerSwarmSecretRetention     int                    `env:"DOCKER_SWARM_SECRET_RETENTION,notEmpty" envDefault:"0" validate:"min=-1"`                         // DockerSwarmSecretRetention is the global default number of old Swarm secret revisions to keep per resource (excluding the active one). -1 disables automatic pruning.
+	DockerSwarmHelperImage         string                 `env:"DOCKER_SWARM_HELPER_IMAGE"`                                                                       // DockerSwarmHelperImage overrides the image for Swarm helper jobs (e.g. image-prune). Empty selects the built-in digest-pinned image.
 	DataMountPath                  string                 `env:"DATA_MOUNT_PATH" envDefault:"/data"`                                                              // DataMountPath is the expected mount path inside the container for the writable deployment data volume.
 	DataHostPath                   string                 `env:"DATA_HOST_PATH"`                                                                                  // DataHostPath is the optional Docker daemon host path backing DataMountPath.
 	DeployConfigBaseDir            string                 `env:"DEPLOY_CONFIG_BASE_DIR" envDefault:"/"`                                                           // DeployConfigBaseDir is the base directory (relative to the repository root) where deployment configuration files will be searched for.
@@ -286,7 +288,43 @@ func GetConfig() (*Config, error) {
 		}
 	}
 
+	if err = cfg.parseDockerSwarmHelperImage(); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// parseDockerSwarmHelperImage trims DOCKER_SWARM_HELPER_IMAGE and checks that it is a valid image reference.
+// An empty value is valid and selects the built-in image.
+func (cfg *Config) parseDockerSwarmHelperImage() error {
+	cfg.DockerSwarmHelperImage = strings.TrimSpace(cfg.DockerSwarmHelperImage)
+	if cfg.DockerSwarmHelperImage == "" {
+		return nil
+	}
+
+	if _, err := distreference.ParseNormalizedNamed(cfg.DockerSwarmHelperImage); err != nil {
+		return fmt.Errorf("invalid DOCKER_SWARM_HELPER_IMAGE %q: %w", cfg.DockerSwarmHelperImage, err)
+	}
+
+	return nil
+}
+
+// DockerSwarmHelperImageWithoutDigest reports whether DOCKER_SWARM_HELPER_IMAGE is set
+// but does not pin a digest. A tag alone can resolve to different images over time.
+func (cfg *Config) DockerSwarmHelperImageWithoutDigest() bool {
+	if cfg == nil || cfg.DockerSwarmHelperImage == "" {
+		return false
+	}
+
+	named, err := distreference.ParseNormalizedNamed(cfg.DockerSwarmHelperImage)
+	if err != nil {
+		return false
+	}
+
+	_, pinned := named.(distreference.Digested)
+
+	return !pinned
 }
 
 func (cfg *Config) parseOciTrustPolicy() error {

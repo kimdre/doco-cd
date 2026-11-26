@@ -17,7 +17,9 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/config/app"
 
+	"github.com/moby/moby/api/pkg/authconfig"
 	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/registry"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
@@ -45,10 +47,12 @@ func swarmJobLockPath(name string) string {
 	return filepath.Join(os.TempDir(), swarmJobLockDir, name)
 }
 
-// RunSwarmJob runs a Docker Swarm job container with the specified mode and command.
+// RunSwarmJob runs a Docker Swarm job container with the specified mode, image and command.
+// An empty image selects DefaultSwarmHelperImage. The image must provide the tools the command uses.
 // https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job
-func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMode, command []string, title string, logs ...*slog.Logger) error {
+func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMode, image string, command []string, title string, logs ...*slog.Logger) error {
 	apiClient := dockerCLI.Client()
+	image = resolveSwarmHelperImage(image)
 
 	var (
 		serviceMode          swarmTypes.ServiceMode
@@ -85,6 +89,17 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	unlock := sourcecache.AcquireExclusivePathLock(swarmJobLockPath(name))
 	defer unlock()
 
+	encodedAuth := registryAuthForImage(dockerCLI, image)
+	if encodedAuth == "" {
+		// If auth is omitted on update, Swarm reuses the old credentials.
+		anonymousAuth, err := authconfig.Encode(registry.AuthConfig{})
+		if err != nil {
+			return fmt.Errorf("error encoding anonymous registry auth: %w", err)
+		}
+
+		encodedAuth = anonymousAuth
+	}
+
 	newServiceSpec := swarmTypes.ServiceSpec{
 		Name: name,
 		Labels: map[string]string{
@@ -94,7 +109,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 		},
 		TaskTemplate: swarmTypes.TaskSpec{
 			ContainerSpec: &swarmTypes.ContainerSpec{
-				Image:   "docker:cli",
+				Image:   image,
 				Command: command,
 				Mounts: []mount.Mount{
 					{
@@ -113,8 +128,9 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	}
 
 	response, err := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{
-		Spec:          newServiceSpec,
-		QueryRegistry: true,
+		Spec:                newServiceSpec,
+		EncodedRegistryAuth: encodedAuth,
+		QueryRegistry:       true,
 	})
 	if err == nil {
 		serviceID = response.ID
@@ -167,16 +183,25 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 						previousJobIteration = &iteration
 					}
 
-					// Update ForceUpdate monotonically so every invocation starts a
-					// new job iteration, including multiple runs in one second.
-					existingService.Spec.TaskTemplate.ContainerSpec.Labels = newServiceSpec.TaskTemplate.ContainerSpec.Labels
-					existingService.Spec.TaskTemplate.ContainerSpec.Command = newServiceSpec.TaskTemplate.ContainerSpec.Command
-					existingService.Spec.TaskTemplate.ForceUpdate++
+					task := &existingService.Spec.TaskTemplate
+					newContainer := newServiceSpec.TaskTemplate.ContainerSpec
+
+					// Do not keep platforms from a different image if registry lookup fails.
+					if task.ContainerSpec.Image != newContainer.Image && task.Placement != nil {
+						task.Placement.Platforms = nil
+					}
+
+					task.ContainerSpec.Image = newContainer.Image
+					task.ContainerSpec.Labels = newContainer.Labels
+					task.ContainerSpec.Command = newContainer.Command
+					// Start a new iteration even when jobs run in the same second.
+					task.ForceUpdate++
 
 					_, updateErr := apiClient.ServiceUpdate(ctx, serviceID, client.ServiceUpdateOptions{
-						Version:       existingService.Version,
-						Spec:          existingService.Spec,
-						QueryRegistry: true,
+						Version:             existingService.Version,
+						Spec:                existingService.Spec,
+						EncodedRegistryAuth: encodedAuth,
+						QueryRegistry:       true,
 					})
 
 					return updateErr
@@ -223,14 +248,16 @@ while read -r ref; do
 done`
 
 // RunImagePruneJob runs a Docker Swarm global job to prune unused images on all nodes.
-func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli, logs ...*slog.Logger) error {
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, []string{"sh", "-c", imagePruneScript}, "image-prune", logs...)
+// An empty image selects DefaultSwarmHelperImage.
+func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli, image string, logs ...*slog.Logger) error {
+	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, image, []string{"sh", "-c", imagePruneScript}, "image-prune", logs...)
 }
 
 // RunImageRemoveJob runs a Docker Swarm global job to remove specified images.
-func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []string, logs ...*slog.Logger) error {
+// An empty image selects DefaultSwarmHelperImage.
+func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, image string, images []string, logs ...*slog.Logger) error {
 	args := append([]string{"docker", "image", "rm", "--force"}, images...)
-	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, args, "image-remove", logs...)
+	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, image, args, "image-remove", logs...)
 }
 
 type SwarmOneOffFromServiceOptions struct {

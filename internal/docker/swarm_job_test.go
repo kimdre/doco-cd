@@ -79,7 +79,7 @@ func TestRunSwarmJob(t *testing.T) {
 
 			t.Logf("Running job with mode: %s, command: %v, title: %s", tc.mode, tc.command, tc.title)
 
-			err := RunSwarmJob(t.Context(), dockerCli, tc.mode, tc.command, tc.title)
+			err := RunSwarmJob(t.Context(), dockerCli, tc.mode, "", tc.command, tc.title)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Errorf("RunSwarmJob failed: %v", err)
@@ -232,7 +232,7 @@ func TestRunImagePruneJob(t *testing.T) {
 		t.Skip("Swarm mode is not enabled, skipping test")
 	}
 
-	err = RunImagePruneJob(t.Context(), dockerCli)
+	err = RunImagePruneJob(t.Context(), dockerCli, "")
 	if err != nil {
 		t.Errorf("RunImagePruneJob failed: %v", err)
 	}

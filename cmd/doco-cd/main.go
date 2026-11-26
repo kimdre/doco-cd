@@ -284,6 +284,10 @@ func run() error {
 
 	if !c.DockerSwarmFeatures {
 		log.Debug("swarm features disabled by configuration")
+	} else if c.DockerSwarmHelperImageWithoutDigest() {
+		log.Warn("DOCKER_SWARM_HELPER_IMAGE has no digest; Swarm nodes can run different image versions over time. Pin it with @sha256:<digest>",
+			slog.String("image", c.DockerSwarmHelperImage),
+		)
 	}
 
 	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{

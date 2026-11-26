@@ -41,7 +41,20 @@ const (
 	// Tracked by Renovate for automated updates .
 	// Needs to be outside of test/ directory because Renovate ignores test/ by default.
 	TestRemoteDockerImage = "docker:29-dind@sha256:fbbc96e0af32cdc190aff92ba97a1281a115351a723afe21af78879cc55126b0"
+	// DefaultSwarmHelperImage is the image for Swarm helper jobs such as image-prune.
+	// The digest pins the image index for all supported platforms. Renovate updates it.
+	DefaultSwarmHelperImage = "docker:29-cli@sha256:4e60c31615e83523afbb59773b25d055c0da9edcd5f80a4c6a6eebad49de1a25"
 )
+
+// resolveSwarmHelperImage returns the image for Swarm helper jobs.
+// An empty image selects DefaultSwarmHelperImage.
+func resolveSwarmHelperImage(image string) string {
+	if image = strings.TrimSpace(image); image != "" {
+		return image
+	}
+
+	return DefaultSwarmHelperImage
+}
 
 var (
 	registryManifestAccepts = strings.Join([]string{

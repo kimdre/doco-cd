@@ -114,6 +114,8 @@ These endpoints are only needed when the corresponding setting is enabled.
     **bind-mounts `/var/run/docker.sock` on every node**. That container talks to the local
     daemon directly, so your socket proxy does not apply to it, and every node needs the raw
     socket available. Set `prune_images: false` if this is unacceptable in your environment.
+    The job container gets full daemon access, so only use a trusted image.
+    See [Image pruning](Swarm-Mode.md#image-pruning) for the default and override.
 
 ### Building images
 

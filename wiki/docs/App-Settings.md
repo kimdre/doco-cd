@@ -59,6 +59,7 @@ The settings can be set via environment variables, a `.env` file, or Docker secr
 | `TZ`                    | string  | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container.                                                                                                                         | `UTC`   |
 
 !!! question "For Docker-specific settings, see [Docker Settings](Docker-Settings.md)."
+    To override the pinned image used for Swarm helper jobs, see [`DOCKER_SWARM_HELPER_IMAGE`](Docker-Settings.md#swarm-environment-variables).
 
 ## API and Webhook Settings
 

@@ -109,7 +109,7 @@ func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) (retErr e
 		req.phase.Set("pruning images on swarm nodes")
 		req.stackLog.Info("prune images on swarm nodes")
 
-		if err = RunImagePruneJob(ctx, req.request.DockerCLI, req.stackLog); err != nil {
+		if err = RunImagePruneJob(ctx, req.request.DockerCLI, req.request.SwarmHelperImage, req.stackLog); err != nil {
 			return fmt.Errorf("failed to run image prune job: %w", err)
 		}
 	}
