@@ -451,10 +451,7 @@ func TestScheduledOneOffCalendarSchedule(t *testing.T) {
 func triggerScheduledOneOffFixturePoll(t *testing.T, h *Harness) string {
 	t.Helper()
 
-	endpoint, err := h.daemon.Endpoint(h.ctx, "http")
-	if err != nil {
-		t.Fatalf("get daemon API endpoint for schedule deployment: %v", err)
-	}
+	endpoint := h.DaemonEndpoint()
 
 	ctx, cancel := context.WithTimeout(h.ctx, 15*time.Second)
 	defer cancel()

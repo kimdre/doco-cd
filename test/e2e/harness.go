@@ -74,6 +74,8 @@ type Harness struct {
 	net      *testcontainers.DockerNetwork
 	gitSrv   testcontainers.Container
 	daemon   testcontainers.Container
+	// daemonEndpoint caches the API base URL of the current daemon container.
+	daemonEndpoint string
 
 	selfUpdate           bool
 	selfStack            string
@@ -443,6 +445,7 @@ func (h *Harness) KillAndRestartDaemon() {
 	}
 
 	h.daemon = nil
+	h.daemonEndpoint = ""
 	h.logf("starting replacement doco-cd container")
 	h.startDaemon(h.pollConfig)
 }
@@ -529,7 +532,41 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 	}
 
 	h.daemon = daemon
+	h.daemonEndpoint = ""
 	h.logContainerStart("doco-cd", daemon)
+}
+
+// DaemonEndpoint returns the http base URL of the doco-cd API.
+// The host port does not change while the container exists, so the first
+// result is cached. Docker can briefly return an inspect result without port
+// bindings while parallel scenarios change networks, so the lookup retries.
+func (h *Harness) DaemonEndpoint() string {
+	h.t.Helper()
+
+	if h.daemon == nil {
+		h.t.Fatal("doco-cd daemon is not running")
+	}
+
+	if h.daemonEndpoint != "" {
+		return h.daemonEndpoint
+	}
+
+	deadline := time.Now().Add(15 * time.Second)
+
+	for {
+		endpoint, err := h.daemon.Endpoint(h.ctx, "http")
+		if err == nil {
+			h.daemonEndpoint = endpoint
+
+			return endpoint
+		}
+
+		if time.Now().After(deadline) || h.ctx.Err() != nil {
+			h.t.Fatalf("get daemon API endpoint: %v", err)
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // daemonEnv returns the daemon container environment: the harness defaults

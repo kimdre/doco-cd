@@ -2,6 +2,8 @@ services:
   app:
     image: alpine:3.22
     command: ["tail", "-f", "/dev/null"]
+    # tail ignores SIGTERM as PID 1. The init process makes recreation fast.
+    init: true
     volumes:
       - state:/state
     post_start:

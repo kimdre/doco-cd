@@ -5,7 +5,6 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
+
+	"github.com/kimdre/doco-cd/internal/controlplane"
 )
 
 func TestDeploymentRetryBudgetCompose(t *testing.T) {
@@ -51,8 +52,15 @@ func TestDeploymentRetryBudgetCompose(t *testing.T) {
 		t.Fatalf("exhausted budget admitted extra attempts: %q", got)
 	}
 
+	// Manual runs use the async API. A deployment with a failing hook can take
+	// longer than the API client timeout.
 	body := `[{"url":"http://gitserver/retry-budget.git","reference":"main"}]`
-	h.APIRequestWithBody(http.MethodPost, "/v1/api/poll/run", http.StatusInternalServerError, body)
+
+	run := h.WaitForRun(3*time.Minute, "failed manual retry run", h.TriggerPollAsync(body))
+	if run.Status != controlplane.RunStatusFailed {
+		t.Fatalf("failed manual retry run = %#v, want %s", run, controlplane.RunStatusFailed)
+	}
+
 	h.WaitForComposeContainerRecreate(stack, "app", paused, 2*time.Minute)
 
 	paused = containerID()
@@ -65,7 +73,12 @@ func TestDeploymentRetryBudgetCompose(t *testing.T) {
 	// Fix the external condition without changing the watched source.
 	h.ExecOutput(paused, "touch", "/state/ready")
 	mark := h.LogMark()
-	h.APIRequestWithBody(http.MethodPost, "/v1/api/poll/run", http.StatusOK, body)
+
+	run = h.WaitForRun(3*time.Minute, "successful manual retry run", h.TriggerPollAsync(body))
+	if run.Status != controlplane.RunStatusSucceeded {
+		t.Fatalf("successful manual retry run = %#v, want %s", run, controlplane.RunStatusSucceeded)
+	}
+
 	h.WaitForLogAfter(deployCompletedLog, mark, 2*time.Minute)
 	h.WaitForComposeContainerRecreate(stack, "app", paused, 2*time.Minute)
 	h.WaitForLogAfter("no changes detected, skipping deployment", mark, 2*time.Minute)

@@ -154,10 +154,7 @@ func TestOCISourceDeploymentConfigBaseDir(t *testing.T) {
 			h.Start()
 
 			if trigger == "webhook" {
-				endpoint, err := h.daemon.Endpoint(h.ctx, "http")
-				if err != nil {
-					t.Fatalf("get webhook endpoint: %v", err)
-				}
+				endpoint := h.DaemonEndpoint()
 
 				payload := fmt.Appendf(nil, `{"source":"oci","artifact":%q}`, ref)
 
