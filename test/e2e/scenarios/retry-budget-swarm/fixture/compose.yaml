@@ -1,6 +1,7 @@
 services:
   app:
     image: alpine:3.22
+    init: true
     command: ["sh", "-c", "tail -f /dev/null"]
     deploy:
       replicas: 1

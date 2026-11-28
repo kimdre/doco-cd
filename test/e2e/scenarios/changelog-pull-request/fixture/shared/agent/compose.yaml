@@ -1,6 +1,7 @@
 services:
   agent:
     image: alpine:${AGENT_TAG}
+    init: true
     command: ["sleep", "infinity"]
     volumes:
       - ./config:/etc/agent:ro

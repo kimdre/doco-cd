@@ -1,6 +1,8 @@
 services:
   app:
     image: alpine:3.22
+    pull_policy: missing
+    init: true
     command: ["sleep", "600"]
     volumes:
       - ./data:/data:ro

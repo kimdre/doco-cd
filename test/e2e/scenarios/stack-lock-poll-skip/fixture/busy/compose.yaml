@@ -1,6 +1,7 @@
 services:
   app:
     image: alpine:3.22
+    pull_policy: missing
     command: ["sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done"]
     environment:
       REVISION: "1"
@@ -9,6 +10,7 @@ services:
 
   backup:
     image: alpine:3.22
+    pull_policy: missing
     command:
       - sh
       - -c

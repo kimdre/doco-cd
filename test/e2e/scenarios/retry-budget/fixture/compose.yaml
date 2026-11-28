@@ -1,6 +1,7 @@
 services:
   app:
     image: alpine:3.22
+    pull_policy: missing
     command: ["tail", "-f", "/dev/null"]
     # tail ignores SIGTERM as PID 1. The init process makes recreation fast.
     init: true

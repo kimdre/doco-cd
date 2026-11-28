@@ -1,6 +1,8 @@
 services:
   app:
     image: alpine:3.22
+    pull_policy: missing
+    init: true
     command: ["tail", "-f", "/dev/null"]
     restart: unless-stopped
     environment:
@@ -8,6 +10,7 @@ services:
 
   backup:
     image: alpine:3.22
+    pull_policy: missing
     command: ["true"]
     restart: "no"
     labels:

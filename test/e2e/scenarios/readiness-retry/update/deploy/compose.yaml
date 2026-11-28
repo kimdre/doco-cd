@@ -1,6 +1,8 @@
 services:
   healthy:
     image: alpine:3.22
+    pull_policy: missing
+    init: true
     command: ["tail", "-f", "/dev/null"]
     healthcheck:
       test: ["CMD", "true"]
@@ -9,10 +11,14 @@ services:
       retries: 1
   consumer:
     image: alpine:3.22
+    pull_policy: missing
+    init: true
     command: ["tail", "-f", "/dev/null"]
     network_mode: service:healthy
   slow:
     image: alpine:3.22
+    pull_policy: missing
+    init: true
     command: ["tail", "-f", "/dev/null"]
     healthcheck:
       test: ["CMD", "test", "-f", "/tmp/ready"]

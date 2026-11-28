@@ -1,6 +1,7 @@
 services:
   app:
     image: alpine:3.22
+    init: true
     command: ["tail", "-f", "/dev/null"]
     environment:
       VERSION: "1"

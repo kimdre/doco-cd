@@ -1,6 +1,7 @@
 services:
   app:
     image: alpine:3.22
+    init: true
     command: ["sh", "-c", "grep -q e2e-decrypted-marker /secrets/secret.yaml && sleep 600"]
     volumes:
       - ./secrets:/secrets:ro

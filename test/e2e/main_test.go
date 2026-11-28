@@ -24,6 +24,7 @@ func TestMain(m *testing.M) {
 	terminateSharedOCIRegistry()
 	removeGitServerImage()
 	removeDaemonImage()
+	removePreloadArchive()
 
 	os.Exit(code)
 }

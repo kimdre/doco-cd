@@ -1,6 +1,7 @@
 services:
   db:
     image: alpine:3.22
+    pull_policy: missing
     command: ["sleep", "3600"]
     init: true
     healthcheck:
@@ -19,6 +20,7 @@ services:
       - marks:/marks
   backup:
     image: alpine:3.22
+    pull_policy: missing
     command: ["sh", "-c", "echo job >> /marks/log"]
     restart: "no"
     volumes:
