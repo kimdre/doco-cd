@@ -9,6 +9,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,6 +33,7 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker/jsonstream"
 	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
@@ -115,7 +118,19 @@ var (
 
 	buildGitServerImageOnce = sync.OnceValues(buildGitServerImage)
 	buildDaemonImageOnce    = sync.OnceValues(buildDaemonImage)
+	buildPreloadArchiveOnce = sync.OnceValues(buildPreloadArchive)
+
+	// preloadArchivePath is the archive that buildPreloadArchive created.
+	// TestMain removes it. It is empty when no scenario built the archive.
+	preloadArchivePath atomic.Pointer[string]
 )
+
+// remotePreloadImages are the fixture images that scenarios deploy to the
+// remote Docker daemon. Each remote daemon starts with an empty image store.
+// The harness saves these images from the host daemon once and loads them into
+// each remote daemon, so parallel scenarios do not pull them from Docker Hub
+// and hit its rate limit.
+var remotePreloadImages = []string{"alpine:3.22", "alpine:3.21"}
 
 // NewHarness prepares a harness for the given scenario. Call Start to bring
 // up the gitserver + doco-cd containers.
@@ -641,6 +656,8 @@ func (h *Harness) startRemoteDocker() {
 		h.t.Fatalf("ping remote Docker daemon: %v", err)
 	}
 
+	h.preloadRemoteImages(remoteDocker)
+
 	h.remoteDaemon = remote
 
 	h.remoteDocker = remoteDocker
@@ -678,6 +695,140 @@ func (h *Harness) writeDockerContextConfig() {
 func prewarmImages() {
 	go func() { _, _ = buildGitServerImageOnce() }()
 	go func() { _, _ = buildDaemonImageOnce() }()
+	go func() { _, _ = buildPreloadArchiveOnce() }()
+}
+
+// buildPreloadArchive saves remotePreloadImages from the host daemon into a
+// tar file once per test process. Scenarios load this file and do not read the
+// host images again, because parallel scenarios can prune them from the host.
+func buildPreloadArchive() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	dockerCli, err := client.New(client.FromEnv)
+	if err != nil {
+		return "", fmt.Errorf("create docker client: %w", err)
+	}
+
+	defer func() { _ = dockerCli.Close() }()
+
+	if err := pullMissingImages(ctx, dockerCli, remotePreloadImages); err != nil {
+		return "", err
+	}
+
+	archive, err := os.CreateTemp("", "doco-cd-e2e-preload-*.tar")
+	if err != nil {
+		return "", fmt.Errorf("create preload archive: %w", err)
+	}
+
+	path := archive.Name()
+	preloadArchivePath.Store(&path)
+
+	if err := saveImages(ctx, dockerCli, remotePreloadImages, archive); err != nil {
+		_ = archive.Close()
+		_ = os.Remove(path)
+
+		return "", err
+	}
+
+	if err := archive.Close(); err != nil {
+		_ = os.Remove(path)
+
+		return "", fmt.Errorf("close preload archive: %w", err)
+	}
+
+	return path, nil
+}
+
+// pullMissingImages pulls the refs that are not present on the daemon.
+func pullMissingImages(ctx context.Context, dockerCli *client.Client, refs []string) error {
+	for _, ref := range refs {
+		if _, err := dockerCli.ImageInspect(ctx, ref); err == nil {
+			continue
+		}
+
+		resp, err := dockerCli.ImagePull(ctx, ref, client.ImagePullOptions{})
+		if err != nil {
+			return fmt.Errorf("pull %s: %w", ref, err)
+		}
+
+		err = jsonstream.ErrorReader(ctx, resp)
+		_ = resp.Close()
+
+		if err != nil {
+			return fmt.Errorf("pull %s: %w", ref, err)
+		}
+	}
+
+	return nil
+}
+
+// saveImages writes an image save of refs to dst. The save has no platform
+// filter, so it keeps the image index. Swarm pins services to the index digest
+// and pulls the image again if the remote daemon does not have that digest.
+func saveImages(ctx context.Context, dockerCli *client.Client, refs []string, dst io.Writer) error {
+	saved, err := dockerCli.ImageSave(ctx, refs)
+	if err != nil {
+		return fmt.Errorf("save images: %w", err)
+	}
+
+	defer func() { _ = saved.Close() }()
+
+	if _, err := io.Copy(dst, saved); err != nil {
+		return fmt.Errorf("save images: %w", err)
+	}
+
+	return nil
+}
+
+// removePreloadArchive deletes the preload archive if the test process created
+// one.
+func removePreloadArchive() {
+	if path := preloadArchivePath.Load(); path != nil {
+		_ = os.Remove(*path)
+	}
+}
+
+// preloadRemoteImages loads the preload archive into the remote daemon. The
+// load is best effort: a failure only logs a warning, and the remote daemon
+// pulls the missing images on demand.
+func (h *Harness) preloadRemoteImages(remoteDocker *client.Client) {
+	h.t.Helper()
+
+	path, err := buildPreloadArchiveOnce()
+	if err != nil {
+		h.logf("warning: build image preload archive: %v", err)
+
+		return
+	}
+
+	if err := loadImageArchive(h.ctx, remoteDocker, path); err != nil {
+		h.logf("warning: preload images into remote Docker daemon: %v", err)
+	}
+}
+
+// loadImageArchive loads the image tar file at path into the daemon.
+func loadImageArchive(ctx context.Context, dockerCli *client.Client, path string) error {
+	// #nosec G304: path comes from buildPreloadArchive.
+	archive, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open preload archive: %w", err)
+	}
+
+	defer func() { _ = archive.Close() }()
+
+	loaded, err := dockerCli.ImageLoad(ctx, archive, client.ImageLoadWithQuiet(true))
+	if err != nil {
+		return fmt.Errorf("load images: %w", err)
+	}
+
+	defer func() { _ = loaded.Close() }()
+
+	if err := jsonstream.ErrorReader(ctx, loaded); err != nil {
+		return fmt.Errorf("load images: %w", err)
+	}
+
+	return nil
 }
 
 // buildGitServerImage builds the static gitserver image once for the test

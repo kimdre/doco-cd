@@ -1,6 +1,8 @@
 services:
   static:
     image: alpine:3.22
+    pull_policy: missing
+    init: true
     command: ["sleep", "600"]
     env_file:
       - app.env
@@ -11,6 +13,8 @@ services:
       - ../shared/config:/shared:ro
   changed:
     image: alpine:3.22
+    pull_policy: missing
+    init: true
     command: ["sleep", "600"]
     environment:
       VERSION: "1"

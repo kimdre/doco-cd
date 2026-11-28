@@ -22,9 +22,9 @@ doco-cd is a GitOps continuous deployment tool for Docker Compose and Docker Swa
   ```sh
   make test-e2e E2E_RUN=TestFailedDeployRetry
   # or
-  go test -tags e2e ./test/e2e/... -run TestFailedDeployRetry -v
+  CGO_ENABLED=0 go test -tags e2e,nobitwarden ./test/e2e/... -run TestFailedDeployRetry -v
   ```
-  Leave `E2E_TEST_MODE` unset locally to run all compatible scenarios, or set `standalone`/`swarm` to match a CI job. Harnesses stay up until suite teardown unless `E2E_KEEP_COMPONENTS_RUNNING=0` (as in CI). The harness builds doco-cd on the host with `-tags nobitwarden` and needs Docker with BuildKit.
+  `E2E_PARALLEL` (default 8) sets how many scenarios run at the same time. New scenarios call `t.Parallel()` unless they must stay serial. Leave `E2E_TEST_MODE` unset locally to run all compatible scenarios, or set `standalone`/`swarm` to match a CI job. Harnesses stay up until suite teardown unless `E2E_KEEP_COMPONENTS_RUNNING=0` (as in CI). The harness builds doco-cd on the host with `-tags nobitwarden` and needs Docker with BuildKit.
 - Deploy config JSON schema: `go run ./cmd/deploy-schema` writes `wiki/docs/schemas/deploy.schema.json` (gitignored). Test the generator with `go test ./cmd/deploy-schema`.
 - Wiki: `make wiki-tools` then `make wiki-serve`. CI runs `zensical build --config-file wiki/zensical.toml --strict`, so broken links fail the build. Wiki hooks in `wiki/hooks/` call Go generators (deploy schema, metrics table from `cmd/metrics-docs`).
 

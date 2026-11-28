@@ -22,6 +22,8 @@ import (
 // Swarm job service. doco-cd deploys the service at 0 replicas, and a run scales it up.
 // Both states differ from the Compose scale, but they are not drift.
 func TestSwarmScheduledJobPollSkip(t *testing.T) {
+	t.Parallel()
+
 	for _, target := range []string{"explicit", "discovery"} {
 		t.Run(target, func(t *testing.T) {
 			t.Parallel()

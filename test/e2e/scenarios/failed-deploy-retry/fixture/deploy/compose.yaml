@@ -1,6 +1,7 @@
 services:
   app:
     image: alpine:3.22
+    init: true
     command: ["sleep", "600"]
     # the hook runs after the container started, so a non-zero exit fails the
     # deployment AFTER the new commit is already stamped on the container

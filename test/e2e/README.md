@@ -21,12 +21,17 @@ is not exported by `--cache-to`, so it is always cold in CI.
 ```sh
 make test-e2e                                      # all scenarios
 make test-e2e E2E_RUN=TestFailedDeployRetry         # one scenario
-go test -tags e2e ./test/e2e/... -run TestFailedDeployRetry -v
+make test-e2e E2E_PARALLEL=4                        # fewer concurrent scenarios
+CGO_ENABLED=0 go test -tags e2e,nobitwarden ./test/e2e/... -run TestFailedDeployRetry -v
 ```
 
-The e2e test package itself compiles the Bitwarden SDK with cgo. `make test-e2e`
-first removes the LLVM bitcode sections from the SDK library that Go rejects.
-Before a direct `go test` call, run `make strip-bitwarden-lto` once.
+The `nobitwarden` tag keeps the Bitwarden SDK out of the e2e test package, so
+it builds without cgo. Without the tag, the package compiles the SDK with cgo
+and needs `make strip-bitwarden-lto` first.
+
+Most scenarios wait on Docker and on poll intervals, not on the CPU.
+`make test-e2e` runs 8 scenarios at the same time (`E2E_PARALLEL`), and CI runs
+6 (`-parallel`). Without `-parallel`, `go test` runs one scenario per CPU.
 
 Set `E2E_KEEP_COMPONENTS_RUNNING=0` to stop each harness when its test ends,
 rather than at suite teardown. CI sets this so finished scenarios release their
@@ -137,7 +142,13 @@ gitserver and doco-cd containers, its own host-side git repo and worktree,
 and its own `/data` volume - so scenarios are isolated and can run in
 parallel (`t.Parallel()`). Scenarios that call `EnableRemoteContext` also
 receive a privileged Docker-in-Docker daemon registered as the `remote`
-context.
+context. Each remote daemon starts with an empty image store. The harness
+saves the images in `remotePreloadImages` from the host daemon once and loads
+them into each remote daemon, so parallel scenarios do not pull them from
+Docker Hub and hit its rate limit. Add new fixture images for the remote
+context to that list, and set `pull_policy: missing` on their Compose services.
+The archive keeps the full image index. Swarm pins services to the index
+digest, so Swarm tasks also use the loaded images and skip the pull.
 
 The daemon polls `http://gitserver/<scenario>.git` every 10s (the minimum).
 Commits are written directly into the repo's storage directory via go-git,
@@ -172,7 +183,11 @@ by reading the stack name(s) straight from the fixture's `.doco-cd.yml`
    request, and `NextNotification` returns them per stack with the commit
    changelog as a list. `SetPollTarget` reads `.doco-cd.<target>.yml`, and
    `RepoCheckout` + `RepoMerge` build pull request merges.
-5. `go test -tags e2e ./test/e2e/... -run Test<Name> -v`.
+5. Call `t.Parallel()` at the start of the test. Top-level tests without it
+   run one after another before all parallel tests, which makes the suite
+   slower. Only scenarios that other scenarios on the same Docker daemon can
+   disturb, such as Swarm scheduled-job recovery, stay serial.
+6. `make test-e2e E2E_RUN=Test<Name>`.
 
 ## Self-update scenarios
 

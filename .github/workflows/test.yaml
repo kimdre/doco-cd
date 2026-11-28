@@ -156,16 +156,17 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      # Dedicated build cache for the CGO-free, nobitwarden host build of the
-      # doco-cd binary that the e2e image is assembled from. Kept apart from
-      # the setup-go cache, which other jobs fill with a different build config.
+      # Dedicated build cache for the CGO-free, nobitwarden builds of the e2e
+      # test package and of the doco-cd binary that the e2e image is assembled
+      # from. Kept apart from the setup-go cache, which other jobs fill with a
+      # different build config.
       - name: Restore e2e Go build cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/e2e-go-build
-          key: e2e-go-build-${{ hashFiles('go.mod', 'go.sum') }}
+          key: e2e-go-build-v2-${{ hashFiles('go.mod', 'go.sum') }}
           restore-keys: |
-            e2e-go-build-
+            e2e-go-build-v2-
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
@@ -173,14 +174,14 @@ jobs:
         if: matrix.mode == 'swarm'
         run: docker swarm init
 
-      # The e2e test package compiles the Bitwarden SDK with cgo, and Go
-      # rejects the LLVM bitcode in its library. See the script for details.
-      - name: Strip LTO sections from Bitwarden SDK
-        run: sh ./scripts/strip-bitwarden-lto.sh
-
+      # The nobitwarden tag keeps the test package free of the Bitwarden SDK,
+      # so it builds without cgo and without the LTO strip step.
+      # Most scenarios wait on Docker and on poll intervals, not on the CPU, so
+      # more parallel scenarios than vCPUs shorten the job.
       - name: Run e2e scenarios
-        run: go test -tags e2e ./test/e2e/... -v -timeout 25m
+        run: go test -tags e2e,nobitwarden ./test/e2e/... -v -parallel 6 -timeout 25m
         env:
+          CGO_ENABLED: "0"
           E2E_BUILD_CACHE_SCOPE: doco-cd-e2e-${{ matrix.mode }}
           E2E_KEEP_COMPONENTS_RUNNING: "0"
           E2E_TEST_MODE: ${{ matrix.mode }}
@@ -193,7 +194,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/e2e-go-build
-          key: e2e-go-build-${{ hashFiles('go.mod', 'go.sum') }}
+          key: e2e-go-build-v2-${{ hashFiles('go.mod', 'go.sum') }}
 
   docs-validation:
     name: Validate wiki build

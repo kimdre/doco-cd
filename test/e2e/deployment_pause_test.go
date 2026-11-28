@@ -19,6 +19,7 @@ import (
 
 func TestDeploymentPauseCompose(t *testing.T) {
 	requireStandaloneSuite(t)
+	t.Parallel()
 
 	const (
 		stack   = "e2e-deployment-pause-compose"

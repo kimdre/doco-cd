@@ -1,11 +1,14 @@
 services:
   idle:
     image: alpine:3.22
+    pull_policy: missing
+    init: true
     command: ["sleep", "3600"]
     labels:
       cd.doco.deployment.autostart: "false"
   backup:
     image: alpine:3.22
+    pull_policy: missing
     command: ["sh", "-c", "test $(wc -l < /state/hooks) -gt $(wc -l < /state/runs 2>/dev/null || echo 0) && echo run >> /state/runs"]
     restart: "no"
     pre_start:

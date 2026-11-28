@@ -5,3 +5,7 @@ context: default
 name: e2e-multi-context
 working_dir: deploy
 context: remote
+# The remote daemon is always standalone and has the fixture images preloaded.
+compose_files:
+  - compose.yaml
+  - compose.remote.yaml
