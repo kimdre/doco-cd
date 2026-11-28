@@ -825,26 +825,36 @@ func TestObsoleteStackCleanup_RemovalPolicyCombinesOwners(t *testing.T) {
 func TestObsoleteStackCleanup_RemoveSkipsChangedStacks(t *testing.T) {
 	t.Parallel()
 
-	listed := cleanupTestStack("web-old", "services/web-old", map[string]string{
-		docker.DocoCDLabels.Deployment.Timestamp: "2026-01-01T00:00:00Z",
-	})
-	redeployed := cleanupTestStack("web-old", "services/web-old", map[string]string{
-		docker.DocoCDLabels.Deployment.Timestamp: "2026-01-01T00:05:00Z",
-	})
-
-	services := map[docker.Service]map[string]string{"/web-old-app": listed.Labels}
 	listErr := errors.New("list failed")
 
+	// The stack lock registry is process-wide. Each parallel subtest uses its
+	// own stack name, so a busy lock does not skip the removal check.
 	tests := []struct {
 		name    string
-		client  *cleanupTestClient
+		stack   string
+		client  func(stack string, redeployed container.Summary) *cleanupTestClient
 		wantErr error
 	}{
-		{name: "stack was removed", client: &cleanupTestClient{}},
-		{name: "stack was redeployed", client: &cleanupTestClient{containers: []container.Summary{redeployed}}},
 		{
-			name:    "stack cannot be listed",
-			client:  &cleanupTestClient{listErr: map[string]error{docker.DocoCDLabels.Deployment.Name + "=web-old": listErr}},
+			name:  "stack was removed",
+			stack: "remove-skip-removed",
+			client: func(string, container.Summary) *cleanupTestClient {
+				return &cleanupTestClient{}
+			},
+		},
+		{
+			name:  "stack was redeployed",
+			stack: "remove-skip-redeployed",
+			client: func(_ string, redeployed container.Summary) *cleanupTestClient {
+				return &cleanupTestClient{containers: []container.Summary{redeployed}}
+			},
+		},
+		{
+			name:  "stack cannot be listed",
+			stack: "remove-skip-list-error",
+			client: func(stack string, _ container.Summary) *cleanupTestClient {
+				return &cleanupTestClient{listErr: map[string]error{docker.DocoCDLabels.Deployment.Name + "=" + stack: listErr}}
+			},
 			wantErr: listErr,
 		},
 	}
@@ -853,11 +863,19 @@ func TestObsoleteStackCleanup_RemoveSkipsChangedStacks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// The CLI cannot destroy stacks, so a removal would panic.
-			c := newObsoleteStackCleanup(slog.New(slog.DiscardHandler), cleanupTestCLI{apiClient: tt.client}, false, "",
-				cleanupTestRequest(), nil)
+			listed := cleanupTestStack(tt.stack, "services/"+tt.stack, map[string]string{
+				docker.DocoCDLabels.Deployment.Timestamp: "2026-01-01T00:00:00Z",
+			})
+			redeployed := cleanupTestStack(tt.stack, "services/"+tt.stack, map[string]string{
+				docker.DocoCDLabels.Deployment.Timestamp: "2026-01-01T00:05:00Z",
+			})
+			services := map[docker.Service]map[string]string{docker.Service("/" + tt.stack + "-app"): listed.Labels}
 
-			err := c.remove(t.Context(), slog.New(slog.DiscardHandler), "web-old", services,
+			// The CLI cannot destroy stacks, so a removal would panic.
+			c := newObsoleteStackCleanup(slog.New(slog.DiscardHandler),
+				cleanupTestCLI{apiClient: tt.client(tt.stack, redeployed)}, false, "", cleanupTestRequest(), nil)
+
+			err := c.remove(t.Context(), slog.New(slog.DiscardHandler), tt.stack, services,
 				deployConfig.AutoDiscoveryConfig{Delete: true}, nil)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("remove() error = %v, want %v", err, tt.wantErr)
