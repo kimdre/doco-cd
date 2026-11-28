@@ -5,7 +5,7 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,50 +13,58 @@ import (
 
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
+
+	"github.com/kimdre/doco-cd/internal/controlplane"
 )
 
 func TestDeploymentRetryBudgetCompose(t *testing.T) {
 	t.Parallel()
 
-	const stack = "e2e-retry-budget"
-
 	h := NewHarness(t, "retry-budget")
+	// Use a fresh project so a volume from an interrupted run cannot add attempts.
+	stack := strings.TrimPrefix(filepath.Base(h.workDir), "doco-cd-")
 	h.EnableAPI("retry-budget-test-key")
 	h.TrackVolume(stack + "_state")
+	h.TrackStack(stack)
+	h.SetPreCommitHook(func() {
+		h.ReplaceInWorktree(".doco-cd.yml", "name: e2e-retry-budget-template", "name: "+stack)
+	})
 	h.Start()
 	h.WaitForLog(`"reason":"delay"`, 2*time.Minute)
+	h.WaitForLog("budget_exhausted", 2*time.Minute)
 
 	containerID := func() string { return h.ComposeContainerID(stack, "app") }
+	attempts := func(id string) []string { return strings.Fields(h.ExecOutput(id, "cat", "/state/attempts")) }
 
-	first := containerID()
-	if first == "" {
+	paused := containerID()
+	if paused == "" {
 		t.Fatal("failed hook must leave its container running")
 	}
 
-	if got := h.ExecOutput(first, "sh", "-c", "wc -l < /state/attempts"); got != "1" {
-		t.Fatalf("original deployment attempts = %q, want 1", got)
-	}
-
-	h.WaitForComposeContainerRecreate(stack, "app", first, 2*time.Minute)
-	h.WaitForLog("budget_exhausted", 2*time.Minute)
-
-	paused := containerID()
-	if got := h.ExecOutput(paused, "sh", "-c", "wc -l < /state/attempts"); got != "2" {
-		t.Fatalf("attempts after one allowed retry = %q, want 2", got)
+	// Each hook records the container hostname, even if the test misses the first container.
+	if got := attempts(paused); len(got) != 2 || got[0] == got[1] {
+		t.Fatalf("attempts after one allowed retry = %q, want two distinct containers", got)
 	}
 
 	h.AssertStays(25*time.Second, "exhausted budget preserves container", paused, containerID)
 
-	if got := h.ExecOutput(paused, "sh", "-c", "wc -l < /state/attempts"); got != "2" {
+	if got := attempts(paused); len(got) != 2 {
 		t.Fatalf("exhausted budget admitted extra attempts: %q", got)
 	}
 
+	// Manual runs use the async API. A deployment with a failing hook can take
+	// longer than the API client timeout.
 	body := `[{"url":"http://gitserver/retry-budget.git","reference":"main"}]`
-	h.APIRequestWithBody(http.MethodPost, "/v1/api/poll/run", http.StatusInternalServerError, body)
+
+	run := h.WaitForRun(3*time.Minute, "failed manual retry run", h.TriggerPollAsync(body))
+	if run.Status != controlplane.RunStatusFailed {
+		t.Fatalf("failed manual retry run = %#v, want %s", run, controlplane.RunStatusFailed)
+	}
+
 	h.WaitForComposeContainerRecreate(stack, "app", paused, 2*time.Minute)
 
 	paused = containerID()
-	if got := h.ExecOutput(paused, "sh", "-c", "wc -l < /state/attempts"); got != "3" {
+	if got := attempts(paused); len(got) != 3 {
 		t.Fatalf("failed manual retry attempts = %q, want 3", got)
 	}
 
@@ -65,12 +73,17 @@ func TestDeploymentRetryBudgetCompose(t *testing.T) {
 	// Fix the external condition without changing the watched source.
 	h.ExecOutput(paused, "touch", "/state/ready")
 	mark := h.LogMark()
-	h.APIRequestWithBody(http.MethodPost, "/v1/api/poll/run", http.StatusOK, body)
+
+	run = h.WaitForRun(3*time.Minute, "successful manual retry run", h.TriggerPollAsync(body))
+	if run.Status != controlplane.RunStatusSucceeded {
+		t.Fatalf("successful manual retry run = %#v, want %s", run, controlplane.RunStatusSucceeded)
+	}
+
 	h.WaitForLogAfter(deployCompletedLog, mark, 2*time.Minute)
 	h.WaitForComposeContainerRecreate(stack, "app", paused, 2*time.Minute)
 	h.WaitForLogAfter("no changes detected, skipping deployment", mark, 2*time.Minute)
 
-	if got := h.ExecOutput(containerID(), "sh", "-c", "wc -l < /state/attempts"); got != "4" {
+	if got := attempts(containerID()); len(got) != 4 {
 		t.Fatalf("manual retry attempts = %q, want 4", got)
 	}
 }

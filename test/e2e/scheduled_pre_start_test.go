@@ -431,13 +431,10 @@ func sendScheduledPreStartWebhook(t *testing.T, h *Harness, secret string, paylo
 		t.Fatalf("encode scheduled pre_start webhook: %v", err)
 	}
 
+	endpoint := h.DaemonEndpoint()
+
 	ctx, cancel := context.WithTimeout(h.ctx, 15*time.Second)
 	defer cancel()
-
-	endpoint, err := h.daemon.Endpoint(ctx, "http")
-	if err != nil {
-		t.Fatalf("get daemon webhook endpoint: %v", err)
-	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/v1/webhook", bytes.NewReader(body))
 	if err != nil {

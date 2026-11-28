@@ -24,6 +24,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/syncwindow"
+	"github.com/kimdre/doco-cd/internal/test"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -825,42 +826,52 @@ func TestObsoleteStackCleanup_RemovalPolicyCombinesOwners(t *testing.T) {
 func TestObsoleteStackCleanup_RemoveSkipsChangedStacks(t *testing.T) {
 	t.Parallel()
 
-	listed := cleanupTestStack("web-old", "services/web-old", map[string]string{
-		docker.DocoCDLabels.Deployment.Timestamp: "2026-01-01T00:00:00Z",
-	})
-	redeployed := cleanupTestStack("web-old", "services/web-old", map[string]string{
-		docker.DocoCDLabels.Deployment.Timestamp: "2026-01-01T00:05:00Z",
-	})
-
-	services := map[docker.Service]map[string]string{"/web-old-app": listed.Labels}
 	listErr := errors.New("list failed")
 
 	tests := []struct {
-		name    string
-		client  *cleanupTestClient
-		wantErr error
+		name       string
+		redeployed bool
+		wantErr    error
 	}{
-		{name: "stack was removed", client: &cleanupTestClient{}},
-		{name: "stack was redeployed", client: &cleanupTestClient{containers: []container.Summary{redeployed}}},
-		{
-			name:    "stack cannot be listed",
-			client:  &cleanupTestClient{listErr: map[string]error{docker.DocoCDLabels.Deployment.Name + "=web-old": listErr}},
-			wantErr: listErr,
-		},
+		{name: "stack was removed"},
+		{name: "stack was redeployed", redeployed: true},
+		{name: "stack cannot be listed", wantErr: listErr},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// The CLI cannot destroy stacks, so a removal would panic.
-			c := newObsoleteStackCleanup(slog.New(slog.DiscardHandler), cleanupTestCLI{apiClient: tt.client}, false, "",
-				cleanupTestRequest(), nil)
+			// A shared stack name can skip the re-read because the lock is busy.
+			stack := test.ConvertTestName(t.Name())
+			listed := cleanupTestStack(stack, "services/"+stack, map[string]string{
+				docker.DocoCDLabels.Deployment.Timestamp: "2026-01-01T00:00:00Z",
+			})
+			services := map[docker.Service]map[string]string{docker.Service(listed.Names[0]): listed.Labels}
+			apiClient := &cleanupTestClient{}
 
-			err := c.remove(t.Context(), slog.New(slog.DiscardHandler), "web-old", services,
+			if tt.redeployed {
+				apiClient.containers = []container.Summary{cleanupTestStack(stack, "services/"+stack, map[string]string{
+					docker.DocoCDLabels.Deployment.Timestamp: "2026-01-01T00:05:00Z",
+				})}
+			}
+
+			if tt.wantErr != nil {
+				apiClient.listErr = map[string]error{docker.DocoCDLabels.Deployment.Name + "=" + stack: tt.wantErr}
+			}
+
+			// The CLI cannot destroy stacks, so a removal would panic.
+			c := newObsoleteStackCleanup(slog.New(slog.DiscardHandler),
+				cleanupTestCLI{apiClient: apiClient}, false, "", cleanupTestRequest(), nil)
+
+			err := c.remove(t.Context(), slog.New(slog.DiscardHandler), stack, services,
 				deployConfig.AutoDiscoveryConfig{Delete: true}, nil)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("remove() error = %v, want %v", err, tt.wantErr)
+			}
+
+			if c.pending != tt.redeployed {
+				t.Fatalf("cleanup pending = %t, want %t", c.pending, tt.redeployed)
 			}
 		})
 	}

@@ -37,7 +37,10 @@ import (
 // repoDir is the doco-cd repo root, relative to this package (test/e2e).
 const repoDir = "../.."
 
-const e2eStopTimeout = time.Second
+const (
+	e2eStopTimeout = time.Second
+	daemonHTTPPort = "80/tcp"
+)
 
 // Harness owns one gitserver + one doco-cd container built from the working
 // tree, plus the host-side git repo the daemon polls. Every scenario gets
@@ -74,6 +77,8 @@ type Harness struct {
 	net      *testcontainers.DockerNetwork
 	gitSrv   testcontainers.Container
 	daemon   testcontainers.Container
+	// daemonEndpoint caches the API base URL of the current daemon container.
+	daemonEndpoint string
 
 	selfUpdate           bool
 	selfStack            string
@@ -494,7 +499,7 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 
 	var exposedPorts []string
 	if h.apiKey != "" {
-		exposedPorts = []string{"80/tcp"}
+		exposedPorts = []string{daemonHTTPPort}
 	}
 
 	daemon, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
@@ -529,7 +534,43 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 	}
 
 	h.daemon = daemon
+	h.daemonEndpoint = ""
 	h.logContainerStart("doco-cd", daemon)
+}
+
+// DaemonEndpoint returns the cached HTTP base URL of the doco-cd API.
+// The first lookup retries if Docker does not report the published port.
+func (h *Harness) DaemonEndpoint() string {
+	h.t.Helper()
+
+	if h.daemon == nil {
+		h.t.Fatal("doco-cd daemon is not running")
+	}
+
+	if h.daemonEndpoint != "" {
+		return h.daemonEndpoint
+	}
+
+	ctx, cancel := context.WithTimeout(h.t.Context(), 15*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		endpoint, err := h.daemon.PortEndpoint(ctx, daemonHTTPPort, "http")
+		if err == nil {
+			h.daemonEndpoint = endpoint
+
+			return endpoint
+		}
+
+		select {
+		case <-ctx.Done():
+			h.t.Fatalf("get daemon API endpoint: %v (last error: %v)", ctx.Err(), err)
+		case <-ticker.C:
+		}
+	}
 }
 
 // daemonEnv returns the daemon container environment: the harness defaults

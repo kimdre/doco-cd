@@ -5,10 +5,12 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +30,7 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
+	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/restapi"
 )
@@ -470,6 +473,51 @@ func (h *Harness) APIRequestWithKey(method, path, apiKey string, wantStatus int)
 	return h.apiRequest(method, path, wantStatus, nil, apiKey)
 }
 
+// TriggerPollAsync starts a manual poll run and returns its tracked run ID.
+// The request does not wait for the deployment. A synchronous request can
+// take longer than the API client timeout, so use WaitForRun to wait for the
+// result.
+func (h *Harness) TriggerPollAsync(body string) string {
+	h.t.Helper()
+
+	var accepted struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.Unmarshal(h.APIRequestWithBody(http.MethodPost, "/v1/api/poll/run?wait=false",
+		http.StatusAccepted, body), &accepted); err != nil {
+		h.t.Fatalf("decode manual poll trigger: %v", err)
+	}
+
+	if accepted.JobID == "" {
+		h.t.Fatal("manual poll trigger returned no tracked run ID")
+	}
+
+	return accepted.JobID
+}
+
+// WaitForRun waits until the tracked run finishes and returns it.
+func (h *Harness) WaitForRun(timeout time.Duration, desc, runID string) controlplane.Run {
+	h.t.Helper()
+
+	var run controlplane.Run
+
+	h.WaitFor(timeout, desc, func() bool {
+		var response struct {
+			Content controlplane.Run `json:"content"`
+		}
+		if err := json.Unmarshal(h.APIRequest(http.MethodGet, "/v1/api/run/"+url.PathEscape(runID),
+			http.StatusOK), &response); err != nil {
+			h.t.Fatalf("decode run %s: %v", runID, err)
+		}
+
+		run = response.Content
+
+		return run.FinishedAt != nil
+	})
+
+	return run
+}
+
 func (h *Harness) apiRequest(method, path string, wantStatus int, requestBody io.Reader, apiKey string) []byte {
 	h.t.Helper()
 
@@ -477,10 +525,7 @@ func (h *Harness) apiRequest(method, path string, wantStatus int, requestBody io
 		h.t.Fatal("REST API is not enabled; call EnableAPI before Start")
 	}
 
-	endpoint, err := h.daemon.Endpoint(h.ctx, "http")
-	if err != nil {
-		h.t.Fatalf("get daemon API endpoint: %v", err)
-	}
+	endpoint := h.DaemonEndpoint()
 
 	ctx, cancel := context.WithTimeout(h.ctx, 15*time.Second)
 	defer cancel()

@@ -29,10 +29,7 @@ func (transport mcpKeyTransport) RoundTrip(request *http.Request) (*http.Respons
 func connectMCPWithKey(t *testing.T, h *Harness, key string) *sdkmcp.ClientSession {
 	t.Helper()
 
-	endpoint, err := h.daemon.Endpoint(h.ctx, "http")
-	if err != nil {
-		t.Fatalf("get daemon MCP endpoint: %v", err)
-	}
+	endpoint := h.DaemonEndpoint()
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "e2e-role-test", Version: "test"}, nil)
 
