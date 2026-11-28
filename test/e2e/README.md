@@ -165,6 +165,8 @@ by reading the stack name(s) straight from the fixture's `.doco-cd.yml`
    `Start`, e.g. `SOPS_AGE_KEY` for a scenario with encrypted fixtures.
    `EnableAPI` enables the REST API before `Start` and publishes the daemon
    HTTP port, so `APIRequest` can call the API from the test.
+   For manual deployments, use `TriggerPollAsync` and `WaitForRun` so the
+   deployment can finish independently of the HTTP request timeout.
 4. Scenarios asserting on notifications call `CaptureNotifications` before
    `Start`: the gitserver also answers as the Apprise API and logs every
    request, and `NextNotification` returns them per stack with the commit

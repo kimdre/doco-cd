@@ -37,7 +37,10 @@ import (
 // repoDir is the doco-cd repo root, relative to this package (test/e2e).
 const repoDir = "../.."
 
-const e2eStopTimeout = time.Second
+const (
+	e2eStopTimeout = time.Second
+	daemonHTTPPort = "80/tcp"
+)
 
 // Harness owns one gitserver + one doco-cd container built from the working
 // tree, plus the host-side git repo the daemon polls. Every scenario gets
@@ -445,7 +448,6 @@ func (h *Harness) KillAndRestartDaemon() {
 	}
 
 	h.daemon = nil
-	h.daemonEndpoint = ""
 	h.logf("starting replacement doco-cd container")
 	h.startDaemon(h.pollConfig)
 }
@@ -497,7 +499,7 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 
 	var exposedPorts []string
 	if h.apiKey != "" {
-		exposedPorts = []string{"80/tcp"}
+		exposedPorts = []string{daemonHTTPPort}
 	}
 
 	daemon, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
@@ -536,10 +538,8 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 	h.logContainerStart("doco-cd", daemon)
 }
 
-// DaemonEndpoint returns the http base URL of the doco-cd API.
-// The host port does not change while the container exists, so the first
-// result is cached. Docker can briefly return an inspect result without port
-// bindings while parallel scenarios change networks, so the lookup retries.
+// DaemonEndpoint returns the cached HTTP base URL of the doco-cd API.
+// The first lookup retries if Docker does not report the published port.
 func (h *Harness) DaemonEndpoint() string {
 	h.t.Helper()
 
@@ -551,21 +551,25 @@ func (h *Harness) DaemonEndpoint() string {
 		return h.daemonEndpoint
 	}
 
-	deadline := time.Now().Add(15 * time.Second)
+	ctx, cancel := context.WithTimeout(h.t.Context(), 15*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
-		endpoint, err := h.daemon.Endpoint(h.ctx, "http")
+		endpoint, err := h.daemon.PortEndpoint(ctx, daemonHTTPPort, "http")
 		if err == nil {
 			h.daemonEndpoint = endpoint
 
 			return endpoint
 		}
 
-		if time.Now().After(deadline) || h.ctx.Err() != nil {
-			h.t.Fatalf("get daemon API endpoint: %v", err)
+		select {
+		case <-ctx.Done():
+			h.t.Fatalf("get daemon API endpoint: %v (last error: %v)", ctx.Err(), err)
+		case <-ticker.C:
 		}
-
-		time.Sleep(200 * time.Millisecond)
 	}
 }
 

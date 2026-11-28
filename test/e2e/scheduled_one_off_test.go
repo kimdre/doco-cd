@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,7 +18,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
 const (
@@ -165,21 +163,13 @@ func TestScheduledOneOff_StatusUsesLatestExecution(t *testing.T) {
 	schedule, scheduledAt := scheduledOneOffCalendarSchedule(time.Now())
 	h.ReplaceInWorktree("deploy/compose.yaml", `"@every 24h"`, fmt.Sprintf("%q", schedule))
 	h.RepoPush("e2e: arm one automatic scheduled execution")
-	pollID := triggerScheduledOneOffFixturePoll(t, h)
-	h.WaitFor(2*time.Minute, "calendar schedule deployment completed", func() bool {
-		var response struct {
-			Content controlplane.Run `json:"content"`
-		}
-		if err := json.Unmarshal(h.APIRequest(http.MethodGet, "/v1/api/run/"+url.PathEscape(pollID), http.StatusOK), &response); err != nil {
-			t.Fatalf("decode calendar schedule deployment: %v", err)
-		}
 
-		if response.Content.Status == controlplane.RunStatusFailed || response.Content.Status == controlplane.RunStatusSkipped {
-			t.Fatalf("calendar schedule deployment did not succeed: %#v", response.Content)
-		}
+	body := fmt.Sprintf(`[{"url":"http://gitserver/%s.git","reference":"refs/heads/main"}]`, h.scenario)
 
-		return response.Content.Status == controlplane.RunStatusSucceeded && response.Content.FinishedAt != nil
-	})
+	run := h.WaitForRun(2*time.Minute, "calendar schedule deployment completed", h.TriggerPollAsync(body))
+	if run.Status != controlplane.RunStatusSucceeded {
+		t.Fatalf("calendar schedule deployment did not succeed: %#v", run)
+	}
 
 	var appID string
 
@@ -446,53 +436,6 @@ func TestScheduledOneOffCalendarSchedule(t *testing.T) {
 			}
 		})
 	}
-}
-
-func triggerScheduledOneOffFixturePoll(t *testing.T, h *Harness) string {
-	t.Helper()
-
-	endpoint := h.DaemonEndpoint()
-
-	ctx, cancel := context.WithTimeout(h.ctx, 15*time.Second)
-	defer cancel()
-
-	body := fmt.Appendf(nil, `[{"url":"http://gitserver/%s.git","reference":"refs/heads/main"}]`, h.scenario)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/v1/api/poll/run?wait=false", bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("create calendar schedule deployment request: %v", err)
-	}
-
-	req.Header.Set(restapi.KeyHeader, h.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	response, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("trigger calendar schedule deployment: %v", err)
-	}
-	defer response.Body.Close()
-
-	data, err := io.ReadAll(response.Body)
-	if err != nil {
-		t.Fatalf("read calendar schedule deployment response: %v", err)
-	}
-
-	if response.StatusCode != http.StatusAccepted {
-		t.Fatalf("calendar schedule deployment response = %d, want 202: %s", response.StatusCode, data)
-	}
-
-	var accepted struct {
-		JobID string `json:"job_id"`
-	}
-	if err := json.Unmarshal(data, &accepted); err != nil {
-		t.Fatalf("decode calendar schedule deployment response: %v", err)
-	}
-
-	if accepted.JobID == "" {
-		t.Fatal("calendar schedule deployment has no tracked run ID")
-	}
-
-	return accepted.JobID
 }
 
 func TestScheduledOneOff_RecoversAfterForcedDaemonTermination(t *testing.T) {
