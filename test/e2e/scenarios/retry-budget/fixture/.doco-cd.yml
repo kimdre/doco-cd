@@ -1,4 +1,4 @@
-name: e2e-retry-budget
+name: e2e-retry-budget-template
 swarm:
   enabled: false
 retry:

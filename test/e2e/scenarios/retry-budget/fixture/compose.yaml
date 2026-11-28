@@ -7,6 +7,6 @@ services:
     volumes:
       - state:/state
     post_start:
-      - command: ["sh", "-c", "echo attempt >> /state/attempts; test -f /state/ready"]
+      - command: ["sh", "-c", "hostname >> /state/attempts && test -f /state/ready"]
 volumes:
   state:
