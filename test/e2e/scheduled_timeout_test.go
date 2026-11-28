@@ -108,9 +108,9 @@ func assertStandaloneTimeoutRecovery(t *testing.T, h *Harness, appID string) {
 	job := getScheduledOneOffJob(t, h, "remote", scheduledTimeoutStack)
 	runID := triggerScheduledTimeoutJob(t, h, "remote", scheduledTimeoutStack, job.Name)
 
-	h.WaitFor(30*time.Second, "one-off workload starts before forced restart", func() bool {
-		return h.RemoteOneOffContainerID(scheduledTimeoutStack, scheduledOneOffJobService) != ""
-	})
+	// Wait for the running state, not only the created container. A kill between
+	// create and start gives a "never started" failure instead of a timeout.
+	waitForRunningScheduledOneOff(t, h, scheduledTimeoutStack)
 	h.KillAndRestartDaemon()
 	waitForScheduledTimeoutFailure(t, h, runID, scheduledTimeoutOneOff)
 
