@@ -63,8 +63,10 @@ test-run: strip-bitwarden-lto
 
 # Run e2e scenarios against a real doco-cd built from the working tree.
 # Optionally filter scenarios: make test-e2e E2E_RUN=TestFailedDeployRetry
-test-e2e: strip-bitwarden-lto
-	@go test -tags e2e ./test/e2e/... -v -timeout 30m -run '$(E2E_RUN)'
+# E2E_PARALLEL sets how many scenarios run at the same time.
+E2E_PARALLEL ?= 8
+test-e2e:
+	@CGO_ENABLED=0 go test -tags e2e,nobitwarden ./test/e2e/... -v -parallel $(E2E_PARALLEL) -timeout 30m -run '$(E2E_RUN)'
 
 build:
 	@echo "Building without bitwarden integration (no CGO)..."

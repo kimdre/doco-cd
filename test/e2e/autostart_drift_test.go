@@ -21,6 +21,7 @@ import (
 
 func TestAutostartDrift(t *testing.T) {
 	requireStandaloneSuite(t)
+	t.Parallel()
 
 	for _, target := range []string{"explicit", "discovery"} {
 		t.Run(target, func(t *testing.T) {
