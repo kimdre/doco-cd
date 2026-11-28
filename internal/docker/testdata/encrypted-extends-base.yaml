@@ -1,0 +1,25 @@
+services:
+    base:
+        image: ENC[AES256_GCM,data:FnLHJSAT,iv:ZDuu8H/mjMQJ2e5ErTgkDVzTN3Me5WtmaL72QCXHuuk=,tag:pzvgNxuA77tq8riZwfPJvg==,type:str]
+        environment:
+            SECRET: ENC[AES256_GCM,data:8aFhNpk=,iv:HVxv5BxtW3WwkBGg23gVSMEz2+CeFnYZxyxjmkQuNwg=,tag:MfVacyncv09ohJc86xkcqA==,type:str]
+sops:
+    kms: []
+    gcp_kms: []
+    azure_kv: []
+    hc_vault: []
+    age:
+        - recipient: age1g3lclrkw2j0fkvq8a9jgvhglu408378tmwj84uv05qkhvax2cdrqcwqvmx
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBYU3A2d2RGK0VhaTVGTnNs
+            WUUyc1FtTGdBTHF0a2tNZzE2THZYcWozNXk4CjVBNXgwQzZBWVB5SFFKd0NmODlC
+            WlRUQlpxZjY2aExMWW1qZm0wNlN6V0UKLS0tIFZYNnhzQlFlNFFXUUZNM3RqRUlp
+            aXZlNCtVVGFOcjZ3QkNrVFFJNkYzSXMKw+BYO+rcjcElC9caO34/7ue+Ofd1DMk6
+            QT5izgWrZJ+V8ivcNtwFgs7+2jSsBOxoLhy2dQx9+w23iZBGxuG1Hg==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-11-24T21:06:38Z"
+    mac: ENC[AES256_GCM,data:WFZSdcL5WEkk1mVP+o78nFSEUgpVx24NceEhuAsB3jXmJn2DUosZLvOf0tmaKp3RUe4Etj2giGXs+yIkEqMtvupuXQI3UhhywpbmSsKojX1L27ByfwMXr42BlE84qv2xpyW0A5YtpiyggSe8+NPk1EIoW/8h2yHclp9mlWW4mQw=,iv:LH95v19vPQNzyys0VxbqML6zT8fXSMJQ1ddjjxl4WyY=,tag:67NCsrCT+tKaFIqaA92BMA==,type:str]
+    pgp: []
+    unencrypted_suffix: _unencrypted
+    version: 3.9.0
